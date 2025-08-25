@@ -3,6 +3,11 @@ import { useParams, useNavigate } from "react-router-dom";
 import apiRequest from "../services/api";
 
 const TakeTest = () => {
+  const [permissionsGranted, setPermissionsGranted] = useState(false);
+  const [cameraPermission, setCameraPermission] = useState("prompt");
+  const [microphonePermission, setMicrophonePermission] = useState("prompt");
+  const [locationPermission, setLocationPermission] = useState("prompt");
+  const [showPermissionModal, setShowPermissionModal] = useState(true);
   const { assignmentId } = useParams();
   const navigate = useNavigate();
   const [test, setTest] = useState(null);
@@ -15,6 +20,10 @@ const TakeTest = () => {
   const [error, setError] = useState(null);
   const [testStarted, setTestStarted] = useState(false);
   const startRequestMade = useRef(false);
+  const [tabCount, setTabCount] = useState(1); // State to track the number of tabs
+  const [stream, setStream] = useState(null); // State to manage the video stream
+  const [isVideoActive, setIsVideoActive] = useState(false); // State to track video status
+  const videoRef = useRef(null); // Ref for the video element
 
   useEffect(() => {
     // Only start the test if we haven't already made the request
@@ -41,6 +50,140 @@ const TakeTest = () => {
 
     return () => clearInterval(timer);
   }, [testStarted, timeRemaining]);
+
+  // Tab monitoring effect
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        setTabCount(prev => prev + 1);
+      }
+    };
+
+    window.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (tabCount >= 2) {
+      alert("Test cancelled due to multiple tabs opened.");
+      submitTest(); // Submit the test or handle cancellation
+    }
+  }, [tabCount]);
+
+  const checkCameraPermission = async () => {
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      setCameraPermission("granted");
+      setStream(mediaStream);
+      setIsVideoActive(true);
+    } catch (error) {
+      setCameraPermission("denied");
+      setIsVideoActive(false);
+    }
+  };
+
+  const checkMicrophonePermission = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setMicrophonePermission("granted");
+      stream.getTracks().forEach(track => track.stop());
+    } catch (error) {
+      setMicrophonePermission("denied");
+    }
+  };
+
+  const checkLocationPermission = async () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        () => setLocationPermission("granted"),
+        () => setLocationPermission("denied")
+      );
+    } else {
+      setLocationPermission("denied");
+    }
+  };
+
+  const requestPermissions = async () => {
+    await checkCameraPermission();
+    await checkMicrophonePermission();
+    await checkLocationPermission();
+
+    if (
+      cameraPermission === "granted" &&
+      microphonePermission === "granted" &&
+      locationPermission === "granted"
+    ) {
+      setPermissionsGranted(true);
+      setShowPermissionModal(false);
+      startTest();
+    } else {
+      setPermissionsGranted(false);
+    }
+  };
+
+  useEffect(() => {
+    requestPermissions();
+    
+    // Cleanup function to stop video stream when component unmounts
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
+
+    // Effect to connect stream to video element when both are available
+    useEffect(() => {
+        const connectStreamToVideo = () => {
+            if (stream && videoRef.current) {
+                console.log("Connecting stream to video element");
+                videoRef.current.srcObject = stream;
+
+                // Add event listeners to debug video element
+                videoRef.current.onloadedmetadata = () => {
+                    console.log("Video metadata loaded");
+                };
+
+                videoRef.current.onplay = () => {
+                    console.log("Video started playing");
+                };
+
+                videoRef.current.onerror = (e) => {
+                    console.error("Video error:", e);
+                };
+                return true; // Connection successful
+            } else {
+                console.log("Stream or videoRef not available:", {
+                    streamAvailable: !!stream,
+                    videoRefAvailable: !!videoRef.current
+                });
+                return false; // Connection not successful
+            }
+        };
+
+        // Try to connect immediately
+        const connected = connectStreamToVideo();
+        
+        // If not connected, set up a more controlled interval (every 500ms instead of 100ms)
+        let interval;
+        if (!connected) {
+            interval = setInterval(() => {
+                const connectedNow = connectStreamToVideo();
+                if (connectedNow) {
+                    clearInterval(interval);
+                }
+            }, 500);
+        }
+
+        return () => {
+            if (interval) {
+                clearInterval(interval);
+            }
+        };
+    }, [stream, videoRef]);
 
   const startTest = async () => {
     try {
@@ -176,7 +319,13 @@ const TakeTest = () => {
         body: JSON.stringify({
           assignmentId,
           responses,
-          timeSpent
+          timeSpent,
+          tabCount, // Include tab count in submission
+          permissions: {
+            camera: cameraPermission,
+            microphone: microphonePermission,
+            location: locationPermission
+          }
         })
       });
 
@@ -211,6 +360,76 @@ const TakeTest = () => {
           >
             Back to Assignments
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (showPermissionModal) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-6">
+        <div className="max-w-2xl bg-slate-800 rounded-lg p-8">
+          <h2 className="text-2xl font-bold mb-6 text-center">Permission Requirements</h2>
+          
+          <div className="space-y-4 mb-6">
+            <div className="flex items-center justify-between p-4 bg-slate-700 rounded-lg">
+              <div>
+                <h3 className="font-semibold">Camera Access</h3>
+                <p className="text-slate-400 text-sm">Required for test monitoring</p>
+              </div>
+              <div className={`px-3 py-1 rounded-full text-sm ${
+                cameraPermission === "granted" ? "bg-green-600" : 
+                cameraPermission === "denied" ? "bg-red-600" : "bg-yellow-600"
+              }`}>
+                {cameraPermission === "granted" ? "✓ Granted" : 
+                 cameraPermission === "denied" ? "✗ Denied" : "Pending"}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-4 bg-slate-700 rounded-lg">
+              <div>
+                <h3 className="font-semibold">Microphone Access</h3>
+                <p className="text-slate-400 text-sm">Required for audio monitoring</p>
+              </div>
+              <div className={`px-3 py-1 rounded-full text-sm ${
+                microphonePermission === "granted" ? "bg-green-600" : 
+                microphonePermission === "denied" ? "bg-red-600" : "bg-yellow-600"
+              }`}>
+                {microphonePermission === "granted" ? "✓ Granted" : 
+                 microphonePermission === "denied" ? "✗ Denied" : "Pending"}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-4 bg-slate-700 rounded-lg">
+              <div>
+                <h3 className="font-semibold">Location Access</h3>
+                <p className="text-slate-400 text-sm">Required for location verification</p>
+              </div>
+              <div className={`px-3 py-1 rounded-full text-sm ${
+                locationPermission === "granted" ? "bg-green-600" : 
+                locationPermission === "denied" ? "bg-red-600" : "bg-yellow-600"
+              }`}>
+                {locationPermission === "granted" ? "✓ Granted" : 
+                 locationPermission === "denied" ? "✗ Denied" : "Pending"}
+              </div>
+            </div>
+          </div>
+
+          <div className="text-center">
+            <button
+              onClick={requestPermissions}
+              disabled={permissionsGranted}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-green-600 disabled:cursor-not-allowed text-white px-8 py-3 rounded-md font-semibold"
+            >
+              {permissionsGranted ? "All Permissions Granted ✓" : "Request Permissions"}
+            </button>
+            
+            {!permissionsGranted && (
+              <p className="text-slate-400 mt-4 text-sm">
+                All permissions must be granted to start the test
+              </p>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -337,6 +556,19 @@ const TakeTest = () => {
                 ))}
               </div>
 
+              {/* Video Element */}
+              {isVideoActive && (
+                <div className="mb-4">
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    muted
+                    playsInline
+                    className="w-full h-auto rounded-lg border border-slate-600"
+                  />
+                </div>
+              )}
+              
               {/* Navigation Buttons */}
               <div className="space-y-3">
                 <button

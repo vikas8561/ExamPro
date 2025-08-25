@@ -147,14 +147,14 @@ const StudentAssignments = () => {
                   {assignment.status === "Completed" && (
                     assignment.reviewStatus === "Reviewed" ? (
                       <button
-                        onClick={() => navigate(`/student/results/${assignment._id}`)}
+                        onClick={() => navigate(`/student/view-test/${assignment._id}`)}
                         className="w-full bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-md font-semibold transition-colors"
                       >
                         View Results
                       </button>
                     ) : (
                       <button
-                        onClick={() => navigate(`/student/results/${assignment._id}`)}
+                        onClick={() => navigate(`/student/view-test/${assignment._id}`)}
                         className="w-full bg-yellow-600 hover:bg-yellow-700 text-white py-2 px-4 rounded-md font-semibold transition-colors"
                       >
                         View Submission

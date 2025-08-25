@@ -9,6 +9,26 @@ const ResponseSchema = new mongoose.Schema({
   autoGraded: { type: Boolean, default: false }
 }, { _id: false });
 
+const TabViolationSchema = new mongoose.Schema({
+  timestamp: { 
+    type: Date, 
+    default: Date.now 
+  },
+  violationType: { 
+    type: String, 
+    enum: ["tab_switch", "window_open", "tab_close", "browser_switch"],
+    required: true 
+  },
+  details: { 
+    type: String, 
+    default: "" 
+  },
+  tabCount: { 
+    type: Number, 
+    default: 1 
+  }
+}, { _id: false });
+
 const TestSubmissionSchema = new mongoose.Schema({
   assignmentId: { 
     type: mongoose.Schema.Types.ObjectId, 
@@ -38,7 +58,31 @@ const TestSubmissionSchema = new mongoose.Schema({
     enum: ["Pending", "In Review", "Reviewed"],
     default: "Pending"
   },
-  reviewedAt: Date
+  reviewedAt: Date,
+  // Tab monitoring fields
+  permissions: {
+    cameraGranted: { type: Boolean, default: false },
+    microphoneGranted: { type: Boolean, default: false },
+    locationGranted: { type: Boolean, default: false },
+    permissionRequestedAt: { type: Date, default: Date.now },
+    permissionStatus: {
+      type: String,
+      enum: ["Pending", "Granted", "Partially Granted", "Denied"],
+      default: "Pending"
+    }
+  },
+  tabViolations: {
+    type: [TabViolationSchema],
+    default: []
+  },
+  tabViolationCount: {
+    type: Number,
+    default: 0
+  },
+  cancelledDueToViolation: {
+    type: Boolean,
+    default: false
+  }
 }, { timestamps: true });
 
 // Indexes for efficient queries

@@ -1,5 +1,25 @@
 const mongoose = require("mongoose");
 
+const TabViolationSchema = new mongoose.Schema({
+  timestamp: { 
+    type: Date, 
+    default: Date.now 
+  },
+  violationType: { 
+    type: String, 
+    enum: ["tab_switch", "window_open", "tab_close", "browser_switch"],
+    required: true 
+  },
+  details: { 
+    type: String, 
+    default: "" 
+  },
+  tabCount: { 
+    type: Number, 
+    default: 1 
+  }
+}, { _id: false });
+
 const AssignmentSchema = new mongoose.Schema({
   testId: { 
     type: mongoose.Schema.Types.ObjectId, 
@@ -18,7 +38,7 @@ const AssignmentSchema = new mongoose.Schema({
   },
   status: { 
     type: String, 
-    enum: ["Assigned", "In Progress", "Completed", "Overdue"],
+    enum: ["Assigned", "In Progress", "Completed", "Overdue", "Cancelled"],
     default: "Assigned" 
   },
   deadline: { 
@@ -51,7 +71,21 @@ const AssignmentSchema = new mongoose.Schema({
   timeSpent: {
     type: Number,
     default: 0
-  }
+  },
+  // Tab monitoring fields
+  tabViolations: {
+    type: [TabViolationSchema],
+    default: []
+  },
+  tabViolationCount: {
+    type: Number,
+    default: 0
+  },
+  cancelledDueToViolation: {
+    type: Boolean,
+    default: false
+  },
+  lastViolationAt: Date
 }, { timestamps: true });
 
 // Index for efficient queries

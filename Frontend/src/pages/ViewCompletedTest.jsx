@@ -21,7 +21,11 @@ const ViewCompletedTest = () => {
     const fetchTestResults = async () => {
       try {
         const data = await testSubmissionsAPI.getTestSubmission(assignmentId);
-        setTestData(data);
+        if (data === null) {
+          setError("Test submission not found");
+        } else {
+          setTestData(data);
+        }
       } catch (err) {
         console.error("Error fetching test results:", err);
         setError(err.message || "Failed to fetch test results");

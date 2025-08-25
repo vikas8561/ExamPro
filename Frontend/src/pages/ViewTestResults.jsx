@@ -80,6 +80,48 @@ const ViewTestResults = () => {
             </div>
           </div>
 
+          {/* Permission Status */}
+          {submission.permissions && (
+            <div className="mt-6 p-4 bg-slate-700 rounded-lg">
+              <h3 className="font-semibold text-slate-300 mb-4">Permission Status:</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="text-center">
+                  <div className={`text-lg font-semibold ${
+                    submission.permissions.cameraGranted ? 'text-green-400' : 'text-red-400'
+                  }`}>
+                    {submission.permissions.cameraGranted ? '✓ Camera' : '✗ Camera'}
+                  </div>
+                  <div className="text-sm text-slate-400">Access</div>
+                </div>
+                <div className="text-center">
+                  <div className={`text-lg font-semibold ${
+                    submission.permissions.microphoneGranted ? 'text-green-400' : 'text-red-400'
+                  }`}>
+                    {submission.permissions.microphoneGranted ? '✓ Microphone' : '✗ Microphone'}
+                  </div>
+                  <div className="text-sm text-slate-400">Access</div>
+                </div>
+                <div className="text-center">
+                  <div className={`text-lg font-semibold ${
+                    submission.permissions.locationGranted ? 'text-green-400' : 'text-red-400'
+                  }`}>
+                    {submission.permissions.locationGranted ? '✓ Location' : '✗ Location'}
+                  </div>
+                  <div className="text-sm text-slate-400">Access</div>
+                </div>
+              </div>
+              <div className="mt-4 text-center">
+                <div className={`text-sm font-medium px-3 py-1 rounded-full inline-block ${
+                  submission.permissions.permissionStatus === 'Granted' ? 'bg-green-600 text-white' :
+                  submission.permissions.permissionStatus === 'Partially Granted' ? 'bg-yellow-600 text-white' :
+                  'bg-red-600 text-white'
+                }`}>
+                  Overall: {submission.permissions.permissionStatus}
+                </div>
+              </div>
+            </div>
+          )}
+
           {submission.mentorReviewed && submission.mentorFeedback && (
             <div className="mt-6 p-4 bg-slate-700 rounded-lg">
               <h3 className="font-semibold text-slate-300 mb-2">Mentor Feedback:</h3>

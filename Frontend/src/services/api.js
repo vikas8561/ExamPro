@@ -82,7 +82,7 @@ const apiRequest = async (endpoint, options = {}) => {
 export const testSubmissionsAPI = {
   // Get test submission details
   getTestSubmission: async (assignmentId) => {
-    return apiRequest(`/test-submissions/${assignmentId}`);
+    return apiRequest(`/test-submissions/assignment/${assignmentId}`);
   },
   
   // Submit test results

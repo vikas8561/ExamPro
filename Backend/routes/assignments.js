@@ -102,7 +102,6 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
   }
 });
 
-// Start test
 router.post("/:id/start", authenticateToken, async (req, res, next) => {
   try {
     const assignment = await Assignment.findById(req.params.id)

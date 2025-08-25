@@ -189,6 +189,39 @@ const fetchSubmissions = async () => {
                   <label className="block text-sm font-medium text-slate-300 mb-1">Submitted</label>
                   <div className="text-slate-400">{formatDate(selectedSubmission.submittedAt)}</div>
                 </div>
+
+                {/* Permission Status */}
+                {selectedSubmission.permissions && (
+                  <div className="pt-4 border-t border-slate-700">
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Permission Status:</label>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className={`text-sm font-medium px-2 py-1 rounded ${
+                        selectedSubmission.permissions.cameraGranted ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'
+                      }`}>
+                        {selectedSubmission.permissions.cameraGranted ? '✓ Camera' : '✗ Camera'}
+                      </div>
+                      <div className={`text-sm font-medium px-2 py-1 rounded ${
+                        selectedSubmission.permissions.microphoneGranted ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'
+                      }`}>
+                        {selectedSubmission.permissions.microphoneGranted ? '✓ Mic' : '✗ Mic'}
+                      </div>
+                      <div className={`text-sm font-medium px-2 py-1 rounded ${
+                        selectedSubmission.permissions.locationGranted ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'
+                      }`}>
+                        {selectedSubmission.permissions.locationGranted ? '✓ Location' : '✗ Location'}
+                      </div>
+                    </div>
+                    <div className="mt-2 text-center">
+                      <span className={`text-xs px-2 py-1 rounded-full ${
+                        selectedSubmission.permissions.permissionStatus === 'Granted' ? 'bg-green-600 text-white' :
+                        selectedSubmission.permissions.permissionStatus === 'Partially Granted' ? 'bg-yellow-600 text-white' :
+                        'bg-red-600 text-white'
+                      }`}>
+                        Overall: {selectedSubmission.permissions.permissionStatus}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-4">

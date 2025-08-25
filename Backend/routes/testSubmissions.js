@@ -8,7 +8,7 @@ const { authenticateToken, requireRole } = require("../middleware/auth");
 // Submit test results
 router.post("/", authenticateToken, async (req, res, next) => {
   try {
-    const { assignmentId, responses, timeSpent } = req.body;
+    const { assignmentId, responses, timeSpent, permissions } = req.body;
     const userId = req.user.userId;
 
     if (!assignmentId || !responses) {
@@ -87,19 +87,47 @@ router.post("/", authenticateToken, async (req, res, next) => {
       });
     });
 
-    // Create or update submission
+    // Create or update submission with permission data
+    const submissionData = {
+      assignmentId,
+      testId: assignment.testId._id,
+      userId,
+      responses: processedResponses,
+      totalScore,
+      maxScore,
+      timeSpent: timeSpent || 0,
+      submittedAt: new Date()
+    };
+
+    // Add permission data if provided
+    if (permissions) {
+      // Handle both old and new permission formats
+      const cameraGranted = permissions.cameraGranted || permissions.camera === "granted";
+      const microphoneGranted = permissions.microphoneGranted || permissions.microphone === "granted";
+      const locationGranted = permissions.locationGranted || permissions.location === "granted";
+      
+      // Determine permission status
+      let permissionStatus = "Pending";
+      if (cameraGranted && microphoneGranted && locationGranted) {
+        permissionStatus = "Granted";
+      } else if (cameraGranted || microphoneGranted || locationGranted) {
+        permissionStatus = "Partially Granted";
+      } else {
+        permissionStatus = "Denied";
+      }
+
+      submissionData.permissions = {
+        cameraGranted,
+        microphoneGranted,
+        locationGranted,
+        permissionRequestedAt: new Date(),
+        permissionStatus
+      };
+    }
+
     const submission = await TestSubmission.findOneAndUpdate(
       { assignmentId, userId },
-      {
-        assignmentId,
-        testId: assignment.testId._id,
-        userId,
-        responses: processedResponses,
-        totalScore,
-        maxScore,
-        timeSpent: timeSpent || 0,
-        submittedAt: new Date()
-      },
+      submissionData,
       { upsert: true, new: true }
     );
 
@@ -116,6 +144,19 @@ router.post("/", authenticateToken, async (req, res, next) => {
       maxScore,
       message: "Test submitted successfully"
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/student", authenticateToken, async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const submissions = await TestSubmission.find({ userId })
+      .populate("assignmentId")
+      .populate("testId", "title questions");
+
+    res.json(submissions);
   } catch (error) {
     next(error);
   }
@@ -172,7 +213,8 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
           mentorScore: submission.mentorScore,
           mentorFeedback: submission.mentorFeedback,
           reviewStatus: submission.reviewStatus,
-          finalScore: submission.mentorScore || submission.totalScore
+          finalScore: submission.mentorScore || submission.totalScore,
+          permissions: submission.permissions
         },
         showResults: true
       });
@@ -206,7 +248,8 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
           mentorScore: null,
           mentorFeedback: null,
           reviewStatus: submission.reviewStatus,
-          finalScore: null
+          finalScore: null,
+          permissions: submission.permissions
         },
         showResults: false
       });
