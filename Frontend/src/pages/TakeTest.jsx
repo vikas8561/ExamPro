@@ -314,7 +314,7 @@ const TakeTest = () => {
         textAnswer: typeof answer === 'string' ? undefined : answer
       }));
 
-      await apiRequest("/test-submissions", {
+      const response = await apiRequest("/test-submissions", {
         method: "POST",
         body: JSON.stringify({
           assignmentId,
@@ -329,7 +329,8 @@ const TakeTest = () => {
         })
       });
 
-      navigate("/student/assignments");
+      // Navigate to results page or assignments after submission
+      navigate(`/view-completed-test/${assignmentId}`);
     } catch (error) {
       alert(error.message || "Failed to submit test");
     }

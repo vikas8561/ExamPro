@@ -96,7 +96,11 @@ router.post("/", authenticateToken, async (req, res, next) => {
       totalScore,
       maxScore,
       timeSpent: timeSpent || 0,
-      submittedAt: new Date()
+      submittedAt: new Date(),
+      // Mark as immediately reviewed for automatic assessment
+      mentorReviewed: true,
+      reviewStatus: "Reviewed",
+      reviewedAt: new Date()
     };
 
     // Add permission data if provided
@@ -136,6 +140,8 @@ router.post("/", authenticateToken, async (req, res, next) => {
     assignment.completedAt = new Date();
     assignment.autoScore = totalScore;
     assignment.timeSpent = timeSpent || 0;
+    // Set assignment as reviewed since we're doing immediate assessment
+    assignment.reviewStatus = "Reviewed";
     await assignment.save();
 
     res.status(201).json({

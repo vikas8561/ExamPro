@@ -54,8 +54,8 @@ const ViewCompletedTest = () => {
             
             <div className="bg-slate-800 shadow-lg rounded-xl p-8 border border-slate-700 text-center">
               <h2 className="text-2xl font-bold text-white mb-4">Test Completion Status</h2>
-              <p className="text-slate-300 mb-4">
-                This test was automatically marked as completed because it was started after the deadline.
+                <p className="text-slate-300 mb-4">
+                  This test has been assessed immediately upon submission.
               </p>
               <p className="text-slate-400">
                 No test submission data is available as the test was not fully completed.
