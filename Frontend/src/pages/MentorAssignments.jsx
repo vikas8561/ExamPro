@@ -64,7 +64,6 @@ export default function MentorAssignments() {
               <th className="p-4">Status</th>
               <th className="p-4">Deadline</th>
               <th className="p-4">Score</th>
-              <th className="p-4">Actions</th>
             </tr>
           </thead>
         </table>
@@ -87,32 +86,12 @@ export default function MentorAssignments() {
                   <td className="p-4">
                     {assignment.score !== undefined ? `${assignment.score}%` : "N/A"}
                   </td>
-                  <td className="p-4">
-                    <div className="flex gap-2">
-                      {assignment.status === "In Progress" && (
-                        <a
-                          href={`/mentor/monitor/${assignment._id}`}
-                          className="text-blue-400 hover:text-blue-300"
-                        >
-                          Monitor
-                        </a>
-                      )}
-                      {assignment.status === "Completed" && (
-                        <a
-                          href={`/mentor/view/${assignment._id}`}
-                          className="text-green-400 hover:text-green-300"
-                        >
-                          View Results
-                        </a>
-                      )}
-                    </div>
-                  </td>
                 </tr>
               ))}
               {filteredAssignments.length === 0 && (
                 <tr>
                   <td
-                    colSpan="6"
+                    colSpan="5"
                     className="p-4 text-center text-slate-400"
                   >
                     No assignments found.

@@ -1,26 +1,41 @@
 import React, { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import apiRequest from "../services/api";
 
 const ViewTestResults = () => {
   const { assignmentId } = useParams();
+  const navigate = useNavigate();
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [assignment, setAssignment] = useState(null);
 
   useEffect(() => {
-    fetchResults();
+    fetchAssignmentAndResults();
   }, [assignmentId]);
 
-  const fetchResults = async () => {
+  const fetchAssignmentAndResults = async () => {
     try {
-      const data = await apiRequest(`/test-submissions/assignment/${assignmentId}`);
-      setResults(data);
+      // First fetch the assignment to check the deadline
+      const assignmentData = await apiRequest(`/assignments/${assignmentId}`);
+      setAssignment(assignmentData);
+      
+      // Then fetch the results
+      const resultsData = await apiRequest(`/test-submissions/assignment/${assignmentId}`);
+      setResults(resultsData);
+      console.log("Results Data:", resultsData); // Log the results data
     } catch (error) {
-      console.error("Error fetching results:", error);
-      alert("Failed to load test results");
+      console.error("Error fetching data:", error);
+      alert("Failed to load test data");
     } finally {
       setLoading(false);
     }
+  };
+
+  const isDeadlinePassed = (deadline) => {
+    if (!deadline) return false;
+    const currentTime = new Date();
+    const deadlineTime = new Date(deadline);
+    return currentTime >= deadlineTime;
   };
 
   if (loading) {
@@ -31,7 +46,7 @@ const ViewTestResults = () => {
     );
   }
 
-  if (!results) {
+  if (!results || !assignment) {
     return (
       <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center">
         <div className="text-xl text-red-400">Failed to load results</div>
@@ -39,8 +54,38 @@ const ViewTestResults = () => {
     );
   }
 
-  const { test, submission, showResults } = results;
+  const { test, submission, showResults, message } = results;
   const finalScore = showResults ? (submission.mentorReviewed ? submission.mentorScore : submission.totalScore) : null;
+
+  // Check if results should be shown - if not, show access denied message
+  if (!showResults) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white p-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold mb-2">{test.title}</h1>
+            <p className="text-slate-400">Test Results</p>
+          </div>
+          
+          <div className="bg-slate-800 rounded-lg p-8 text-center">
+            <div className="text-2xl font-bold text-yellow-400 mb-4">Results Not Available Yet</div>
+            <p className="text-slate-300 mb-4">
+              {message || "The test results will be available after the deadline has passed."}
+            </p>
+            <p className="text-slate-400 mb-6">
+              Deadline: {new Date(assignment.deadline).toLocaleString()}
+            </p>
+            <button
+              onClick={() => navigate('/student/assignments')}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md font-semibold"
+            >
+              Back to Assignments
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6">
@@ -58,11 +103,11 @@ const ViewTestResults = () => {
             {showResults ? (
               <>
                 <div>
-                  <div className="text-2xl font-bold text-blue-400">{finalScore}%</div>
+<div className="text-2xl font-bold text-blue-400">{finalScore} / {submission.maxScore}</div>
                   <div className="text-slate-400">Final Score</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-green-400">{submission.totalScore}%</div>
+<div className="text-2xl font-bold text-green-400">{submission.totalScore} / {submission.maxScore}</div>
                   <div className="text-slate-400">Auto Score</div>
                 </div>
               </>
@@ -141,6 +186,9 @@ const ViewTestResults = () => {
               r.questionId === question._id.toString()
             );
 
+            const isCorrect = response?.isCorrect;
+            const correctAnswer = question.answer;
+
             return (
               <div key={question._id} className="bg-slate-800 rounded-lg p-6">
                 <div className="flex justify-between items-start mb-4">
@@ -173,19 +221,19 @@ const ViewTestResults = () => {
                         }`}
                       >
                         <div className="flex items-center">
-                          {showResults && option.text === question.answer && (
-                            <span className="text-green-400 mr-2">✓</span>
-                          )}
-                          {showResults && response?.selectedOption === option.text && option.text !== question.answer && (
-                            <span className="text-red-400 mr-2">✗</span>
-                          )}
-                          {!showResults && response?.selectedOption === option.text && (
-                            <span className="text-blue-400 mr-2">✓</span>
-                          )}
-                          <span>{option.text}</span>
-                          {showResults && option.text === question.answer && (
-                            <span className="ml-auto text-green-400 text-sm">Correct Answer</span>
-                          )}
+                        {showResults && option.text === question.answer && (
+                          <span className="text-green-400 mr-2">✓</span>
+                        )}
+                        {showResults && response?.selectedOption === option.text && option.text !== question.answer && (
+                          <span className="text-red-400 mr-2">✗</span>
+                        )}
+                        {!showResults && response?.selectedOption === option.text && (
+                          <span className="text-blue-400 mr-2">✓</span>
+                        )}
+                        <span>{option.text}</span>
+                        {showResults && option.text === question.answer && (
+                          <span className="ml-auto text-green-400 text-sm">Correct Answer</span>
+                        )}
                         </div>
                       </div>
                     ))}

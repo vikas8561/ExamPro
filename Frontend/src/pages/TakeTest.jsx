@@ -20,17 +20,37 @@ const TakeTest = () => {
   const [error, setError] = useState(null);
   const [testStarted, setTestStarted] = useState(false);
   const startRequestMade = useRef(false);
-  const [tabCount, setTabCount] = useState(1); // State to track the number of tabs
+  const [violationCount, setViolationCount] = useState(0); // State to track the number of tab violations
+  const [showResumeModal, setShowResumeModal] = useState(false); // State to control resume modal visibility
+  const [violations, setViolations] = useState([]); // State to store detailed violation information
   const [stream, setStream] = useState(null); // State to manage the video stream
   const [isVideoActive, setIsVideoActive] = useState(false); // State to track video status
   const videoRef = useRef(null); // Ref for the video element
 
   useEffect(() => {
-    // Only start the test if we haven't already made the request
-    if (assignmentId && !testStarted && !startRequestMade.current) {
-      startRequestMade.current = true;
-      startTest();
-    }
+    // Check if there's an existing test in progress when component mounts
+    const checkExistingTest = async () => {
+      if (assignmentId && !testStarted && !startRequestMade.current) {
+        try {
+          // First try to load existing test data to see if test was already started
+          const assignmentData = await apiRequest(`/assignments/${assignmentId}`);
+          if (assignmentData && assignmentData.startedAt) {
+            console.log("Existing test found, loading data...");
+            await loadExistingTestData();
+          } else {
+            // No existing test found, start a new one
+            startRequestMade.current = true;
+            startTest();
+          }
+        } catch (error) {
+          console.log("Error checking for existing test, starting new test:", error);
+          startRequestMade.current = true;
+          startTest();
+        }
+      }
+    };
+
+    checkExistingTest();
   }, [assignmentId, testStarted]);
 
   useEffect(() => {
@@ -55,7 +75,27 @@ const TakeTest = () => {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
-        setTabCount(prev => prev + 1);
+        const newViolationCount = violationCount + 1;
+        setViolationCount(newViolationCount);
+        
+        // Record detailed violation information
+        const violation = {
+          timestamp: new Date(),
+          violationType: "tab_switch",
+          details: `Tab switched - violation ${newViolationCount}`,
+          tabCount: newViolationCount
+        };
+        setViolations(prev => [...prev, violation]);
+
+        // Handle violation based on count
+        if (newViolationCount === 1 || newViolationCount === 2) {
+          // First or second violation - show resume option
+          setShowResumeModal(true);
+        } else if (newViolationCount >= 3) {
+          // Third violation - cancel immediately
+          alert("Test cancelled due to multiple tab violations (3+ violations detected).");
+          submitTest(true); // Submit the test with cancellation flag
+        }
       }
     };
 
@@ -64,14 +104,7 @@ const TakeTest = () => {
     return () => {
       window.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []);
-
-  useEffect(() => {
-    if (tabCount >= 2) {
-      alert("Test cancelled due to multiple tabs opened.");
-      submitTest(); // Submit the test or handle cancellation
-    }
-  }, [tabCount]);
+  }, [violationCount]);
 
   const checkCameraPermission = async () => {
     try {
@@ -135,55 +168,55 @@ const TakeTest = () => {
     };
   }, []);
 
-    // Effect to connect stream to video element when both are available
-    useEffect(() => {
-        const connectStreamToVideo = () => {
-            if (stream && videoRef.current) {
-                console.log("Connecting stream to video element");
-                videoRef.current.srcObject = stream;
+  // Effect to connect stream to video element when both are available
+  useEffect(() => {
+    const connectStreamToVideo = () => {
+      if (stream && videoRef.current) {
+        console.log("Connecting stream to video element");
+        videoRef.current.srcObject = stream;
 
-                // Add event listeners to debug video element
-                videoRef.current.onloadedmetadata = () => {
-                    console.log("Video metadata loaded");
-                };
-
-                videoRef.current.onplay = () => {
-                    console.log("Video started playing");
-                };
-
-                videoRef.current.onerror = (e) => {
-                    console.error("Video error:", e);
-                };
-                return true; // Connection successful
-            } else {
-                console.log("Stream or videoRef not available:", {
-                    streamAvailable: !!stream,
-                    videoRefAvailable: !!videoRef.current
-                });
-                return false; // Connection not successful
-            }
+        // Add event listeners to debug video element
+        videoRef.current.onloadedmetadata = () => {
+          console.log("Video metadata loaded");
         };
 
-        // Try to connect immediately
-        const connected = connectStreamToVideo();
-        
-        // If not connected, set up a more controlled interval (every 500ms instead of 100ms)
-        let interval;
-        if (!connected) {
-            interval = setInterval(() => {
-                const connectedNow = connectStreamToVideo();
-                if (connectedNow) {
-                    clearInterval(interval);
-                }
-            }, 500);
+        videoRef.current.onplay = () => {
+          console.log("Video started playing");
+        };
+
+        videoRef.current.onerror = (e) => {
+          console.error("Video error:", e);
+        };
+        return true; // Connection successful
+      } else {
+        console.log("Stream or videoRef not available:", {
+          streamAvailable: !!stream,
+          videoRefAvailable: !!videoRef.current
+        });
+        return false; // Connection not successful
+      }
+    };
+
+    // Try to connect immediately
+    const connected = connectStreamToVideo();
+    
+    // If not connected, set up a more controlled interval (every 500ms instead of 100ms)
+    let interval;
+    if (!connected) {
+      interval = setInterval(() => {
+        const connectedNow = connectStreamToVideo();
+        if (connectedNow) {
+          clearInterval(interval);
         }
+      }, 500);
+    }
 
-        return () => {
-            if (interval) {
-                clearInterval(interval);
-            }
-        };
-    }, [stream, videoRef]);
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [stream, videoRef]);
 
   const startTest = async () => {
     try {
@@ -225,10 +258,14 @@ const TakeTest = () => {
     }
   };
 
-  const loadExistingTestData = async () => {
+const loadExistingTestData = async () => {
+    console.log("Loading existing test data for assignment ID:", assignmentId);
     try {
+      console.log(`[TakeTest] Loading existing test data for assignment: ${assignmentId}`);
+      
       // Fetch the existing assignment data
       const assignmentData = await apiRequest(`/assignments/${assignmentId}`);
+      console.log(`[TakeTest] Assignment data loaded:`, assignmentData);
       setAssignment(assignmentData);
       
       // Calculate remaining time based on when the test was started
@@ -238,38 +275,45 @@ const TakeTest = () => {
       const elapsedSeconds = Math.floor((new Date() - startedAt) / 1000);
       const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
       
-      // Try to fetch any existing submission to restore answers
+      console.log(`[TakeTest] Time calculation - Limit: ${timeLimitMinutes}m, Elapsed: ${elapsedSeconds}s, Remaining: ${remainingSeconds}s`);
+      
+      // Try to fetch any existing answers to restore
       try {
-        console.log(`Fetching existing submission for assignment ID: ${assignmentId}`);
-        const submissionData = await apiRequest(`/test-submissions/assignment/${assignmentId}`);
-        console.log("Submission API response:", submissionData);
+        console.log(`[TakeTest] Fetching existing answers for assignment ID: ${assignmentId}`);
+        console.log("Access Token:", localStorage.getItem('token')); // Log the token before API call
+        const answersData = await apiRequest(`/answers/assignment/${assignmentId}`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        console.log("[TakeTest] Answers API response:", answersData);
         
-        if (submissionData && submissionData.submission) {
-          console.log("Existing submission found, restoring answers");
-          // Restore answers from existing submission
+        if (answersData && answersData.length > 0) {
+          console.log("[TakeTest] Existing answers found, restoring answers");
+          // Restore answers from existing answers
           const existingAnswers = {};
-          submissionData.test.questions.forEach(question => {
-            if (question.selectedOption) {
-              existingAnswers[question._id] = question.selectedOption;
-            } else if (question.textAnswer) {
-              existingAnswers[question._id] = question.textAnswer;
+          answersData.forEach(response => {
+            if (response.selectedOption) {
+              existingAnswers[response.questionId] = response.selectedOption;
+            } else if (response.textAnswer) {
+              existingAnswers[response.questionId] = response.textAnswer;
             }
           });
           setAnswers(existingAnswers);
-          console.log(`Restored ${Object.keys(existingAnswers).length} answers from existing submission`);
+          console.log(`[TakeTest] Restored ${Object.keys(existingAnswers).length} answers from existing answers`);
         } else {
-          console.log("No existing submission found (API returned null), starting fresh");
+          console.log("[TakeTest] No existing answers found, starting fresh");
         }
-      } catch (submissionError) {
+      } catch (answersError) {
         // Handle different types of errors
-        if (submissionError.message.includes("404") || 
-            submissionError.message.includes("not found") ||
-            submissionError.message.includes("Resource not found")) {
-          // Expected 404 - no submission exists yet
-          console.log("No existing submission found (404 error), starting fresh");
+        if (answersError.message.includes("404") || 
+            answersError.message.includes("not found") ||
+            answersError.message.includes("Resource not found")) {
+          // Expected 404 - no answers exist yet
+          console.log("[TakeTest] No existing answers found (404 error) - this is expected when test is in progress but no answers saved yet");
         } else {
           // Unexpected error
-          console.error("Error loading submission:", submissionError);
+          console.error("[TakeTest] Error loading answers:", answersError);
         }
       }
       
@@ -277,17 +321,37 @@ const TakeTest = () => {
       setTimeRemaining(remainingSeconds);
       setTestStarted(true);
       setLoading(false);
+      console.log("[TakeTest] Test data loaded successfully, test started");
     } catch (error) {
+      console.error("[TakeTest] Error loading test data:", error);
       setError(error.message || "Failed to load test data");
       setLoading(false);
     }
   };
 
-  const handleAnswerChange = (questionId, answer) => {
+  const handleAnswerChange = async (questionId, answer) => {
+    // Update local state immediately for responsive UI
     setAnswers(prev => ({
       ...prev,
       [questionId]: answer
     }));
+
+      // Save answer to backend in real-time
+      try {
+        await apiRequest("/answers", {
+          method: "POST",
+          body: JSON.stringify({
+            assignmentId,
+            questionId,
+            selectedOption: typeof answer === 'string' ? answer : undefined,
+            textAnswer: typeof answer === 'string' ? undefined : answer
+          })
+        });
+        console.log("Answer saved successfully for question:", questionId);
+      } catch (error) {
+        console.error("Failed to save answer:", error);
+        // Don't show error to user as it might disrupt their test experience
+      }
   };
 
   const handleNextQuestion = () => {
@@ -306,33 +370,69 @@ const TakeTest = () => {
     await submitTest();
   };
 
-  const submitTest = async () => {
+  const handleResumeTest = () => {
+    setShowResumeModal(false);
+  };
+
+  const submitTest = async (cancelledDueToViolation = false) => {
     try {
-      const responses = Object.entries(answers).map(([questionId, answer]) => ({
-        questionId,
-        selectedOption: typeof answer === 'string' ? answer : undefined,
-        textAnswer: typeof answer === 'string' ? undefined : answer
-      }));
+      // Create a safe, serializable version of the submission data
+      const submissionData = {
+        assignmentId,
+        responses: Object.entries(answers).map(([questionId, answer]) => ({
+          questionId,
+          selectedOption: typeof answer === 'string' ? answer : undefined,
+          textAnswer: typeof answer === 'string' ? undefined : answer
+        })).filter(response => response.questionId && (response.selectedOption || response.textAnswer)),
+        timeSpent,
+        tabViolationCount: violationCount,
+        tabViolations: violations.map(violation => ({
+          timestamp: violation.timestamp instanceof Date ? violation.timestamp.toISOString() : String(violation.timestamp),
+          violationType: String(violation.violationType),
+          details: String(violation.details),
+          tabCount: Number(violation.tabCount)
+        })),
+        cancelledDueToViolation: cancelledDueToViolation || violationCount >= 3,
+        permissions: {
+          camera: String(cameraPermission),
+          microphone: String(microphonePermission),
+          location: String(locationPermission)
+        }
+      };
+
+      // Use a custom JSON stringify with a replacer function to handle circular references
+      const safeJSONStringify = (obj) => {
+        const seen = new WeakSet();
+        return JSON.stringify(obj, (key, value) => {
+          if (typeof value === "object" && value !== null) {
+            if (seen.has(value)) {
+              return "[Circular]";
+            }
+            seen.add(value);
+          }
+          // Remove any DOM elements or React components
+          if (value && typeof value === 'object' && 
+              (value instanceof HTMLElement || 
+               value instanceof Event || 
+               value.nodeType !== undefined)) {
+            return "[DOM Element]";
+          }
+          return value;
+        });
+      };
 
       const response = await apiRequest("/test-submissions", {
         method: "POST",
-        body: JSON.stringify({
-          assignmentId,
-          responses,
-          timeSpent,
-          tabCount, // Include tab count in submission
-          permissions: {
-            camera: cameraPermission,
-            microphone: microphonePermission,
-            location: locationPermission
-          }
-        })
+        body: safeJSONStringify(submissionData)
       });
 
-      // Navigate to results page or assignments after submission
-      navigate(`/view-completed-test/${assignmentId}`);
+      // Navigate to assigned tests section after submission
+      navigate(`/student/assignments`);
     } catch (error) {
+      console.error("Test submission failed:", error);
       alert(error.message || "Failed to submit test");
+      // Optionally navigate back to assignments if submission fails
+      navigate("/student/assignments");
     }
   };
 
@@ -613,6 +713,42 @@ const TakeTest = () => {
           </div>
         </div>
       </div>
+
+      {/* Resume Exam Modal */}
+      {showResumeModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-lg p-6 max-w-md w-full">
+            <h2 className="text-xl font-bold mb-4 text-red-400">⚠️ Tab Switch Detected</h2>
+            
+            <div className="mb-6">
+              <p className="text-slate-300 mb-2">
+                You have switched tabs/windows {violationCount} time(s) during this test.
+              </p>
+              <p className="text-slate-400 text-sm">
+                {violationCount === 1 ? 
+                  "First warning: Please remain focused on the test. Next violation will result in another warning." :
+                  "Second warning: This is your final warning. The next violation will result in test cancellation."
+                }
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={handleResumeTest}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-md font-medium"
+              >
+                Resume Exam
+              </button>
+              <button
+                onClick={() => submitTest(true)}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 rounded-md font-medium"
+              >
+                Cancel Test
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

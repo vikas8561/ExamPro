@@ -71,10 +71,10 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
 // Create assignment (admin only)
 router.post("/", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
-    const { testId, userId, deadline, mentorId } = req.body;
+    const { testId, userId, startTime, duration, mentorId } = req.body;
 
-    if (!testId || !userId || !deadline) {
-      return res.status(400).json({ message: "testId, userId, and deadline are required" });
+    if (!testId || !userId || !startTime || !duration) {
+      return res.status(400).json({ message: "testId, userId, startTime, and duration are required" });
     }
 
     // Check if assignment already exists
@@ -87,7 +87,8 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
       testId,
       userId,
       mentorId: mentorId || null,
-      deadline: new Date(deadline),
+      startTime: new Date(startTime),
+      duration: Number(duration),
       status: "Assigned"
     });
 
@@ -131,15 +132,19 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
       });
     }
 
-    // Check deadline
+    // Check if test is within the allowed time window
     const now = new Date();
-    const deadline = new Date(assignment.deadline);
-    deadline.setHours(23, 59, 59, 999);
+    const startTime = new Date(assignment.startTime);
+    const endTime = new Date(startTime.getTime() + assignment.duration * 60000); // Convert minutes to milliseconds
 
-    if (now > deadline) {
+    if (now < startTime) {
+      return res.status(400).json({ message: "Test is not available yet. It will start at " + startTime.toLocaleString() });
+    }
+
+    if (now > endTime) {
       assignment.status = "Overdue";
       await assignment.save();
-      return res.status(400).json({ message: "Test deadline has passed" });
+      return res.status(400).json({ message: "Test deadline has passed. The test was available until " + endTime.toLocaleString() });
     }
 
     // Start the test
@@ -189,10 +194,10 @@ router.put("/:id", authenticateToken, requireRole("admin"), async (req, res, nex
 // Assign test to all students (admin only)
 router.post("/assign-all", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
-    const { testId, deadline, mentorId } = req.body;
+    const { testId, startTime, duration, mentorId } = req.body;
 
-    if (!testId || !deadline) {
-      return res.status(400).json({ message: "testId and deadline are required" });
+    if (!testId || !startTime || !duration) {
+      return res.status(400).json({ message: "testId, startTime, and duration are required" });
     }
 
     // Get all students
@@ -216,7 +221,8 @@ router.post("/assign-all", authenticateToken, requireRole("admin"), async (req, 
           testId,
           userId: student._id,
           mentorId: mentorId || null,
-          deadline: new Date(deadline),
+          startTime: new Date(startTime),
+          duration: Number(duration),
           status: "Assigned"
         });
         
@@ -227,6 +233,83 @@ router.post("/assign-all", authenticateToken, requireRole("admin"), async (req, 
     if (assignments.length === 0) {
       return res.status(200).json({ 
         message: "All students already have this assignment", 
+        assignedCount: 0 
+      });
+    }
+
+    await Promise.all(assignments);
+
+    res.status(201).json({ 
+      message: `Successfully assigned to ${assignments.length} students`, 
+      assignedCount: assignments.length 
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Assign test to specific students manually (admin only)
+router.post("/assign-manual", authenticateToken, requireRole("admin"), async (req, res, next) => {
+  try {
+    const { testId, studentIds, startTime, duration, mentorId } = req.body;
+
+    if (!testId || !studentIds || !startTime || !duration) {
+      return res.status(400).json({ 
+        message: "testId, studentIds, startTime, and duration are required" 
+      });
+    }
+
+    if (!Array.isArray(studentIds) || studentIds.length === 0) {
+      return res.status(400).json({ 
+        message: "studentIds must be a non-empty array" 
+      });
+    }
+
+    // Validate that all student IDs are valid and correspond to actual students
+    const students = await User.find({ 
+      _id: { $in: studentIds }, 
+      role: "Student" 
+    });
+
+    if (students.length !== studentIds.length) {
+      const validStudentIds = students.map(student => student._id.toString());
+      const invalidStudentIds = studentIds.filter(id => !validStudentIds.includes(id));
+      
+      return res.status(400).json({ 
+        message: "Some student IDs are invalid or not students",
+        invalidStudentIds 
+      });
+    }
+
+    // Create assignments for selected students
+    const assignments = [];
+    const existingAssignments = await Assignment.find({ 
+      testId, 
+      userId: { $in: studentIds } 
+    });
+
+    for (const studentId of studentIds) {
+      const existingAssignment = existingAssignments.find(
+        assignment => assignment.userId.toString() === studentId
+      );
+
+      if (!existingAssignment) {
+        const assignment = new Assignment({
+          testId,
+          userId: studentId,
+          mentorId: mentorId || null,
+          startTime: new Date(startTime),
+          duration: Number(duration),
+          status: "Assigned"
+        });
+        
+        assignments.push(assignment.save());
+      }
+    }
+
+    if (assignments.length === 0) {
+      return res.status(200).json({ 
+        message: "All selected students already have this assignment", 
         assignedCount: 0 
       });
     }

@@ -184,6 +184,12 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
       return res.status(404).json({ message: "Submission not found" });
     }
 
+    // Get the assignment to check the deadline
+    const assignment = await Assignment.findById(assignmentId);
+    if (!assignment) {
+      return res.status(404).json({ message: "Assignment not found" });
+    }
+
     // Merge responses with questions for display
     const questionsWithResponses = submission.testId.questions.map(question => {
       const response = submission.responses.find(
@@ -200,9 +206,23 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
       };
     });
 
-    // Return different data structure based on review status
-    if (submission.mentorReviewed) {
-      // Return full results with scores for reviewed submissions
+    // Check if the assignment deadline has passed
+    const currentTime = new Date();
+    const assignmentDeadline = assignment.deadline;
+
+    // Debug logging
+    console.log(`Current time: ${currentTime}`);
+    console.log(`Assignment deadline: ${assignmentDeadline}`);
+    console.log(`Submission mentorReviewed: ${submission.mentorReviewed}`);
+    console.log(`Current time >= deadline: ${currentTime >= assignmentDeadline}`);
+
+    // Determine if results should be shown
+    const showResults = submission.mentorReviewed && currentTime >= assignmentDeadline;
+    console.log(`Show results: ${showResults}`);
+
+    // Return the appropriate response based on whether results should be shown
+    if (showResults) {
+      // Return full results with scores when deadline has passed and submission is reviewed
       res.json({
         test: {
           _id: submission.testId._id,
@@ -225,7 +245,12 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
         showResults: true
       });
     } else {
-      // Return submission data without scores for unreviewed submissions
+        // Calculate remaining time until results are available
+        const remainingTime = Math.max(0, assignmentDeadline - currentTime);
+        const remainingMinutes = Math.floor((remainingTime / 1000) / 60);
+        const remainingSeconds = Math.floor((remainingTime / 1000) % 60);
+        const remainingTimeString = `${remainingMinutes} minutes and ${remainingSeconds} seconds`;
+
       res.json({
         test: {
           _id: submission.testId._id,
@@ -239,9 +264,10 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
             points: q.points,
             selectedOption: q.selectedOption,
             textAnswer: q.textAnswer,
-            // Hide correctness and points until reviewed
+            // Hide correctness, points, and answer until results can be shown
             isCorrect: false,
-            points: 0
+            points: 0,
+            answer: null  // Hide the correct answer
           }))
         },
         submission: {
@@ -257,45 +283,11 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
           finalScore: null,
           permissions: submission.permissions
         },
-        showResults: false
+        showResults: false,
+        message: `Results available after ${remainingTimeString}`
       });
     }
   } catch (error) {
-    next(error);
-  }
-});
-
-// Get submissions for mentor review
-router.get("/mentor/pending", authenticateToken, async (req, res, next) => {
-  try {
-    const mentorId = req.user.userId;
-    console.log(`Fetching pending submissions for mentor: ${mentorId}`);
-
-    // Find assignments assigned to this mentor
-    const assignments = await Assignment.find({ mentorId });
-    console.log(`Found ${assignments.length} assignments for mentor ${mentorId}`);
-    
-    const assignmentIds = assignments.map(a => a._id);
-    console.log(`Assignment IDs: ${assignmentIds}`);
-
-    const submissions = await TestSubmission.find({
-      assignmentId: { $in: assignmentIds },
-      mentorReviewed: false
-    })
-    .populate({
-      path: "assignmentId",
-      populate: {
-        path: "testId",
-        select: "title"
-      }
-    })
-    .populate("userId", "name email")
-    .sort({ submittedAt: -1 });
-
-    console.log(`Found ${submissions.length} pending submissions for review`);
-    res.json(submissions);
-  } catch (error) {
-    console.error("Error fetching mentor pending submissions:", error);
     next(error);
   }
 });

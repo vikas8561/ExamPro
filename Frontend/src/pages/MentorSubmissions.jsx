@@ -2,23 +2,22 @@ import React, { useEffect, useState } from "react";
 import apiRequest from "../services/api";
 
 const MentorSubmissions = () => {
-  const [submissions, setSubmissions] = useState([]);
+  const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedSubmission, setSelectedSubmission] = useState(null);
-  const [mentorScore, setMentorScore] = useState("");
-  const [mentorFeedback, setMentorFeedback] = useState("");
-  const [reviewing, setReviewing] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState(null);
+  const [studentSubmissions, setStudentSubmissions] = useState([]);
+  const [expandedStudents, setExpandedStudents] = useState(new Set());
 
   useEffect(() => {
     fetchSubmissions();
   }, []);
 
-const fetchSubmissions = async () => {
+  const fetchSubmissions = async () => {
     console.log("Fetching submissions for mentor...");
     try {
-      const data = await apiRequest("/mentor/submissions/pending");
-      console.log("Received submissions data:", data); // Log the received data
-      setSubmissions(data);
+      const data = await apiRequest("/mentor/submissions");
+      console.log("Received submissions data:", data);
+      setStudents(data);
     } catch (error) {
       console.error("Error fetching submissions:", error);
       alert("Failed to load submissions");
@@ -27,50 +26,54 @@ const fetchSubmissions = async () => {
     }
   };
 
-  const handleReview = async (submissionId) => {
-    if (!mentorScore || mentorScore < 0 || mentorScore > 100) {
-      alert("Please enter a valid score between 0 and 100");
-      return;
-    }
-
+  const fetchStudentSubmissions = async (studentId) => {
     try {
-      setReviewing(true);
-      await apiRequest(`/mentor/submissions/${submissionId}/review`, {
-        method: "PUT",
-        body: JSON.stringify({
-          mentorScore: parseInt(mentorScore),
-          mentorFeedback
-        })
-      });
-
-      alert("Test reviewed successfully!");
-      setSelectedSubmission(null);
-      setMentorScore("");
-      setMentorFeedback("");
-      fetchSubmissions();
+      const data = await apiRequest(`/mentor/student/${studentId}/submissions`);
+      setStudentSubmissions(data);
     } catch (error) {
-      alert(error.message || "Failed to review submission");
-    } finally {
-      setReviewing(false);
+      console.error("Error fetching student submissions:", error);
+      alert("Failed to load student submissions");
     }
   };
 
-  const openReviewModal = (submission) => {
-    setSelectedSubmission(submission);
-    setMentorScore(submission.totalScore || 0);
-    setMentorFeedback("");
+  const openStudentProfile = async (student) => {
+    setSelectedStudent(student);
+    await fetchStudentSubmissions(student.userId._id);
   };
 
-  const closeReviewModal = () => {
-    setSelectedSubmission(null);
-    setMentorScore("");
-    setMentorFeedback("");
+  const closeStudentProfile = () => {
+    setSelectedStudent(null);
+    setStudentSubmissions([]);
+  };
+
+  const toggleStudentExpansion = (studentId) => {
+    const newExpanded = new Set(expandedStudents);
+    if (newExpanded.has(studentId)) {
+      newExpanded.delete(studentId);
+    } else {
+      newExpanded.add(studentId);
+    }
+    setExpandedStudents(newExpanded);
   };
 
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
     return new Date(dateString).toLocaleDateString();
   };
+
+  // Calculate total statistics
+  const totalSubmissions = students.reduce((total, student) => total + student.totalSubmissions, 0);
+  const passingSubmissions = students.reduce((total, student) => {
+    return total + student.submissions.filter(s => (s.totalScore || 0) >= 70).length;
+  }, 0);
+  
+  // Calculate overall average score correctly
+  const totalScoreSum = students.reduce((total, student) => {
+    return total + student.submissions.reduce((sum, submission) => sum + (submission.totalScore || 0), 0);
+  }, 0);
+  const averageScore = totalSubmissions > 0 
+    ? Math.round(totalScoreSum / totalSubmissions)
+    : 0;
 
   if (loading) {
     return (
@@ -85,184 +88,226 @@ const fetchSubmissions = async () => {
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6">
       <div className="max-w-6xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8">Test Submissions for Review</h1>
+        <h1 className="text-3xl font-bold mb-8">Student Submissions</h1>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-slate-800 p-6 rounded-lg border border-slate-700">
-            <div className="text-2xl font-bold text-blue-400">{submissions.length}</div>
-            <div className="text-slate-400">Pending Reviews</div>
+            <div className="text-2xl font-bold text-blue-400">{totalSubmissions}</div>
+            <div className="text-slate-400">Total Submissions</div>
           </div>
           <div className="bg-slate-800 p-6 rounded-lg border border-slate-700">
             <div className="text-2xl font-bold text-green-400">
-              {submissions.filter(s => s.totalScore >= 70).length}
+              {passingSubmissions}
             </div>
             <div className="text-slate-400">Passing Scores</div>
           </div>
           <div className="bg-slate-800 p-6 rounded-lg border border-slate-700">
-            <div className="text-2xl font-bold text-yellow-400">
-              {submissions.reduce((avg, s) => avg + (s.totalScore || 0), 0) / (submissions.length || 1)}%
-            </div>
+<div className="text-2xl font-bold text-yellow-400">
+  {averageScore} / 100
+</div>
             <div className="text-slate-400">Average Score</div>
           </div>
         </div>
 
-        {submissions.length === 0 ? (
+        {students.length === 0 ? (
           <div className="text-center py-12">
-            <div className="text-2xl text-slate-400 mb-4">No submissions pending review</div>
-            <p className="text-slate-500">All tests have been reviewed.</p>
+            <div className="text-2xl text-slate-400 mb-4">No students found</div>
+            <p className="text-slate-500">No students have submitted tests yet.</p>
           </div>
         ) : (
-          <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-slate-700">
-                <tr>
-                  <th className="p-4 text-left text-slate-300">Student</th>
-                  <th className="p-4 text-left text-slate-300">Test</th>
-                  <th className="p-4 text-left text-slate-300">Auto Score</th>
-                  <th className="p-4 text-left text-slate-300">Submitted</th>
-                  <th className="p-4 text-left text-slate-300">Time Spent</th>
-                  <th className="p-4 text-left text-slate-300">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {submissions.map((submission) => (
-                  <tr key={submission._id} className="border-b border-slate-700 hover:bg-slate-700/50">
-                    <td className="p-4">
-                      <div className="font-medium">{submission.userId?.name || "Unknown"}</div>
-                      <div className="text-sm text-slate-400">{submission.userId?.email}</div>
-                    </td>
-                    <td className="p-4 font-medium">{submission.testId?.title || "Test"}</td>
-                    <td className="p-4">
+          <div className="space-y-4">
+            {students.map((studentData) => (
+              <div key={studentData.student._id} className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
+                {/* Student Header */}
+                <div 
+                  className="p-4 cursor-pointer hover:bg-slate-700/50 transition-colors"
+                  onClick={() => toggleStudentExpansion(studentData.student._id)}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="font-medium text-lg">{studentData.student.name}</div>
+                      <div className="text-sm text-slate-400">{studentData.student.email}</div>
+                      <div className="text-sm text-slate-400 mt-1">
+                        {studentData.totalSubmissions} submission{studentData.totalSubmissions !== 1 ? 's' : ''} • 
+                        Avg Score: <span className={`font-medium ${
+                          studentData.averageScore >= 70 ? 'text-green-400' : 
+                          studentData.averageScore >= 50 ? 'text-yellow-400' : 'text-red-400'
+                        }`}>
+                          {studentData.averageScore} / 100
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-4">
                       <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        (submission.totalScore || 0) >= 70 
-                          ? 'bg-green-900/50 text-green-300'
-                          : (submission.totalScore || 0) >= 50
-                          ? 'bg-yellow-900/50 text-yellow-300'
-                          : 'bg-red-900/50 text-red-300'
+                        studentData.averageScore >= 70 ? 'bg-green-900/50 text-green-300' :
+                        studentData.averageScore >= 50 ? 'bg-yellow-900/50 text-yellow-300' :
+                        'bg-red-900/50 text-red-300'
                       }`}>
-                        {submission.totalScore || 0}%
+                        {studentData.averageScore} / 100
                       </span>
-                    </td>
-                    <td className="p-4 text-slate-400">{formatDate(submission.submittedAt)}</td>
-                    <td className="p-4 text-slate-400">
-                      {Math.floor((submission.timeSpent || 0) / 60)}m {(submission.timeSpent || 0) % 60}s
-                    </td>
-                    <td className="p-4">
                       <button
-                        onClick={() => openReviewModal(submission)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openStudentProfile(studentData.submissions[0]);
+                        }}
                         className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium"
                       >
-                        Review
+                        View Profile
                       </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      <svg
+                        className={`w-5 h-5 text-slate-400 transform transition-transform ${
+                          expandedStudents.has(studentData.student._id) ? 'rotate-180' : ''
+                        }`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Student Submissions (Collapsible) */}
+                {expandedStudents.has(studentData.student._id) && (
+                  <div className="border-t border-slate-700">
+                    <table className="w-full">
+                      <thead className="bg-slate-700">
+                        <tr>
+                          <th className="p-4 text-left text-slate-300">Test</th>
+                          <th className="p-4 text-left text-slate-300">Score</th>
+                          <th className="p-4 text-left text-slate-300">Submitted</th>
+                          <th className="p-4 text-left text-slate-300">Time Spent</th>
+                          <th className="p-4 text-left text-slate-300">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {studentData.submissions.map((submission) => (
+                          <tr key={submission._id} className="border-b border-slate-700 hover:bg-slate-700/50">
+                            <td className="p-4 font-medium">{submission.testId?.title || submission.assignmentId?.testId?.title || "Test"}</td>
+<td className="p-4">
+  <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+    (submission.totalScore || 0) >= 70 
+      ? 'bg-green-900/50 text-green-300'
+      : (submission.totalScore || 0) >= 50
+      ? 'bg-yellow-900/50 text-yellow-300'
+      : 'bg-red-900/50 text-red-300'
+  }`}>
+    {submission.totalScore || 0} / {submission.maxScore || 0}
+  </span>
+</td>
+                            <td className="p-4 text-slate-400">{formatDate(submission.submittedAt)}</td>
+                            <td className="p-4 text-slate-400">
+                              {Math.floor((submission.timeSpent || 0) / 60)}m {(submission.timeSpent || 0) % 60}s
+                            </td>
+                            <td className="p-4">
+                              <span className="px-2 py-1 rounded text-xs bg-blue-900/50 text-blue-300">
+                                Completed
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
 
-        {/* Review Modal */}
-        {selectedSubmission && (
+        {/* Student Profile Modal */}
+        {selectedStudent && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-slate-800 rounded-lg p-6 max-w-md w-full">
-              <h2 className="text-xl font-bold mb-4">Review Test Submission</h2>
+            <div className="bg-slate-800 rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+              <h2 className="text-xl font-bold mb-4">Student Profile: {selectedStudent.userId?.name}</h2>
               
-              <div className="space-y-4 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Student</label>
-                  <div className="text-white">{selectedSubmission.userId?.name}</div>
+                  <h3 className="text-lg font-semibold mb-3">Student Information</h3>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300">Name</label>
+                      <div className="text-white">{selectedStudent.userId?.name || "Unknown"}</div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300">Email</label>
+                      <div className="text-white">{selectedStudent.userId?.email || "N/A"}</div>
+                    </div>
+                  </div>
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Test</label>
-                  <div className="text-white">{selectedSubmission.testId?.title}</div>
+                  <h3 className="text-lg font-semibold mb-3">Submission Details</h3>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300">Test</label>
+                      <div className="text-white">{selectedStudent.assignmentId?.testId?.title || "Test"}</div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300">Score</label>
+                      <div className="text-blue-400 font-medium">{selectedStudent.totalScore || 0} / {selectedStudent.maxScore || 0}</div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300">Submitted</label>
+                      <div className="text-slate-400">{formatDate(selectedStudent.submittedAt)}</div>
+                    </div>
+                  </div>
                 </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Auto Score</label>
-                  <div className="text-blue-400 font-medium">{selectedSubmission.totalScore}%</div>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Submitted</label>
-                  <div className="text-slate-400">{formatDate(selectedSubmission.submittedAt)}</div>
-                </div>
+              </div>
 
-                {/* Permission Status */}
-                {selectedSubmission.permissions && (
-                  <div className="pt-4 border-t border-slate-700">
-                    <label className="block text-sm font-medium text-slate-300 mb-2">Permission Status:</label>
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                      <div className={`text-sm font-medium px-2 py-1 rounded ${
-                        selectedSubmission.permissions.cameraGranted ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'
-                      }`}>
-                        {selectedSubmission.permissions.cameraGranted ? '✓ Camera' : '✗ Camera'}
-                      </div>
-                      <div className={`text-sm font-medium px-2 py-1 rounded ${
-                        selectedSubmission.permissions.microphoneGranted ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'
-                      }`}>
-                        {selectedSubmission.permissions.microphoneGranted ? '✓ Mic' : '✗ Mic'}
-                      </div>
-                      <div className={`text-sm font-medium px-2 py-1 rounded ${
-                        selectedSubmission.permissions.locationGranted ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'
-                      }`}>
-                        {selectedSubmission.permissions.locationGranted ? '✓ Location' : '✗ Location'}
-                      </div>
-                    </div>
-                    <div className="mt-2 text-center">
-                      <span className={`text-xs px-2 py-1 rounded-full ${
-                        selectedSubmission.permissions.permissionStatus === 'Granted' ? 'bg-green-600 text-white' :
-                        selectedSubmission.permissions.permissionStatus === 'Partially Granted' ? 'bg-yellow-600 text-white' :
-                        'bg-red-600 text-white'
-                      }`}>
-                        Overall: {selectedSubmission.permissions.permissionStatus}
-                      </span>
-                    </div>
+              {/* All Student Submissions */}
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold mb-3">All Test Submissions</h3>
+                {studentSubmissions.length === 0 ? (
+                  <p className="text-slate-400">No other submissions found for this student.</p>
+                ) : (
+                  <div className="bg-slate-700 rounded-lg p-4">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="text-left text-slate-300">
+                          <th className="p-2">Test</th>
+                          <th className="p-2">Score</th>
+                          <th className="p-2">Submitted</th>
+                          <th className="p-2">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {studentSubmissions.map((submission) => (
+                          <tr key={submission._id} className="border-b border-slate-600">
+                            <td className="p-2">{submission.testId?.title || submission.assignmentId?.testId?.title || "Test"}</td>
+                            <td className="p-2">
+                              <span className={`px-2 py-1 rounded text-xs ${
+                                (submission.totalScore || 0) >= 70 
+                                  ? 'bg-green-900/50 text-green-300'
+                                  : (submission.totalScore || 0) >= 50
+                                  ? 'bg-yellow-900/50 text-yellow-300'
+                                  : 'bg-red-900/50 text-red-300'
+                              }`}>
+                                {submission.totalScore || 0} / {submission.maxScore || 0}
+                              </span>
+                            </td>
+                            <td className="p-2 text-slate-400">{formatDate(submission.submittedAt)}</td>
+                            <td className="p-2">
+                              <span className="px-2 py-1 rounded text-xs bg-blue-900/50 text-blue-300">
+                                Completed
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
 
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Final Score *</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={mentorScore}
-                    onChange={(e) => setMentorScore(e.target.value)}
-                    className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md text-white"
-                    placeholder="Enter score (0-100)"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Feedback</label>
-                  <textarea
-                    value={mentorFeedback}
-                    onChange={(e) => setMentorFeedback(e.target.value)}
-                    className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md text-white"
-                    rows="3"
-                    placeholder="Optional feedback for the student..."
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3 mt-6">
+              <div className="flex justify-end">
                 <button
-                  onClick={() => handleReview(selectedSubmission._id)}
-                  disabled={reviewing}
-                  className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white py-2 rounded-md font-medium"
+                  onClick={closeStudentProfile}
+                  className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-md font-medium"
                 >
-                  {reviewing ? 'Reviewing...' : 'Submit Review'}
-                </button>
-                <button
-                  onClick={closeReviewModal}
-                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 rounded-md font-medium"
-                >
-                  Cancel
+                  Close
                 </button>
               </div>
             </div>

@@ -1,6 +1,77 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import apiRequest from "../services/api";
+
+// Custom Countdown Timer Component
+const CountdownTimer = ({ startTime, onTimerComplete }) => {
+  const [timeLeft, setTimeLeft] = useState(calculateTimeLeft());
+
+  function calculateTimeLeft() {
+    const now = new Date();
+    const start = new Date(startTime);
+    const difference = start - now;
+    
+    if (difference <= 0) {
+      return { completed: true };
+    }
+
+    return {
+      days: Math.floor(difference / (1000 * 60 * 60 * 24)),
+      hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
+      minutes: Math.floor((difference / 1000 / 60) % 60),
+      seconds: Math.floor((difference / 1000) % 60),
+      completed: false
+    };
+  }
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const newTimeLeft = calculateTimeLeft();
+      setTimeLeft(newTimeLeft);
+      
+      if (newTimeLeft.completed) {
+        clearInterval(timer);
+        onTimerComplete();
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [startTime, onTimerComplete]);
+
+  if (timeLeft.completed) {
+    return (
+      <div className="text-green-400 font-semibold text-center">
+        Test is now available!
+      </div>
+    );
+  }
+
+  return (
+    <div className="text-center">
+      <div className="text-sm text-slate-400 mb-2">Test will start in:</div>
+      <div className="flex justify-center space-x-2">
+        {timeLeft.days > 0 && (
+          <div className="bg-slate-700 px-2 py-1 rounded">
+            <div className="text-lg font-bold">{timeLeft.days}</div>
+            <div className="text-xs">days</div>
+          </div>
+        )}
+        <div className="bg-slate-700 px-2 py-1 rounded">
+          <div className="text-lg font-bold">{String(timeLeft.hours).padStart(2, '0')}</div>
+          <div className="text-xs">hours</div>
+        </div>
+        <div className="bg-slate-700 px-2 py-1 rounded">
+          <div className="text-lg font-bold">{String(timeLeft.minutes).padStart(2, '0')}</div>
+          <div className="text-xs">min</div>
+        </div>
+        <div className="bg-slate-700 px-2 py-1 rounded">
+          <div className="text-lg font-bold">{String(timeLeft.seconds).padStart(2, '0')}</div>
+          <div className="text-xs">sec</div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const StudentAssignments = () => {
   const [assignments, setAssignments] = useState([]);
@@ -24,13 +95,38 @@ const StudentAssignments = () => {
   };
 
   const formatDate = (dateString) => {
-    if (!dateString) return "No deadline";
+    if (!dateString) return "Not scheduled";
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', { 
       year: 'numeric', 
       month: 'short', 
-      day: 'numeric' 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
     });
+  };
+
+  const isDeadlinePassed = (startTime, duration) => {
+    if (!startTime || !duration) return false;
+    const currentTime = new Date();
+    const startTimeDate = new Date(startTime);
+    const endTime = new Date(startTimeDate.getTime() + duration * 60000);
+    return currentTime >= endTime;
+  };
+
+  const isTestAvailable = (startTime, duration) => {
+    if (!startTime || !duration) return false;
+    const currentTime = new Date();
+    const startTimeDate = new Date(startTime);
+    const endTime = new Date(startTimeDate.getTime() + duration * 60000);
+    return currentTime >= startTimeDate && currentTime <= endTime;
+  };
+
+  const isTestNotStarted = (startTime) => {
+    if (!startTime) return false;
+    const currentTime = new Date();
+    const startTimeDate = new Date(startTime);
+    return currentTime < startTimeDate;
   };
 
   const getStatusColor = (status) => {
@@ -43,7 +139,7 @@ const StudentAssignments = () => {
     }
   };
 
-  const handleStartTest = async (assignmentId) => {
+const handleStartTest = async (assignmentId) => {
     try {
       const response = await apiRequest(`/assignments/${assignmentId}/start`, {
         method: "POST"
@@ -101,8 +197,13 @@ const StudentAssignments = () => {
                   </div>
 
                   <div className="flex justify-between">
-                    <span>Deadline:</span>
-                    <span>{formatDate(assignment.deadline)}</span>
+                    <span>Start Time:</span>
+                    <span>{formatDate(assignment.startTime)}</span>
+                  </div>
+                  
+                  <div className="flex justify-between">
+                    <span>Duration:</span>
+                    <span>{assignment.duration} minutes</span>
                   </div>
 
                   <div className="flex justify-between">
@@ -126,12 +227,28 @@ const StudentAssignments = () => {
                 </div>
 
                 <div className="mt-6">
-                  {assignment.status === "Assigned" && (
+                  {assignment.status === "Assigned" && isTestNotStarted(assignment.startTime) && (
+                    <CountdownTimer 
+                      startTime={assignment.startTime} 
+                      onTimerComplete={() => fetchAssignments()} 
+                    />
+                  )}
+                  
+                  {assignment.status === "Assigned" && isTestAvailable(assignment.startTime, assignment.duration) && (
                     <button
                       onClick={() => handleStartTest(assignment._id)}
                       className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md font-semibold transition-colors"
                     >
                       Start Test
+                    </button>
+                  )}
+
+                  {assignment.status === "Assigned" && isDeadlinePassed(assignment.startTime, assignment.duration) && (
+                    <button
+                      disabled
+                      className="w-full bg-red-600 text-white py-2 px-4 rounded-md font-semibold opacity-50 cursor-not-allowed"
+                    >
+                      Deadline Passed
                     </button>
                   )}
 
@@ -145,19 +262,28 @@ const StudentAssignments = () => {
                   )}
 
                   {assignment.status === "Completed" && (
-                    assignment.reviewStatus === "Reviewed" ? (
-                      <button
-                        onClick={() => navigate(`/student/view-test/${assignment._id}`)}
-                        className="w-full bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-md font-semibold transition-colors"
-                      >
-                        View Results
-                      </button>
+                    isDeadlinePassed(assignment.startTime, assignment.duration) ? (
+                      assignment.reviewStatus === "Reviewed" ? (
+                        <button
+                          onClick={() => navigate(`/student/view-test/${assignment._id}`)}
+                          className="w-full bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-md font-semibold transition-colors"
+                        >
+                          View Results
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => navigate(`/student/view-test/${assignment._id}`)}
+                          className="w-full bg-yellow-600 hover:bg-yellow-700 text-white py-2 px-4 rounded-md font-semibold transition-colors"
+                        >
+                          View Submission
+                        </button>
+                      )
                     ) : (
                       <button
-                        onClick={() => navigate(`/student/view-test/${assignment._id}`)}
-                        className="w-full bg-yellow-600 hover:bg-yellow-700 text-white py-2 px-4 rounded-md font-semibold transition-colors"
+                        disabled
+                        className="w-full bg-gray-600 text-white py-2 px-4 rounded-md font-semibold opacity-50 cursor-not-allowed"
                       >
-                        View Submission
+                        Results Available After Deadline
                       </button>
                     )
                   )}

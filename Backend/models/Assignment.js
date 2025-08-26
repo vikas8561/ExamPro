@@ -41,9 +41,25 @@ const AssignmentSchema = new mongoose.Schema({
     enum: ["Assigned", "In Progress", "Completed", "Overdue", "Cancelled"],
     default: "Assigned" 
   },
-  deadline: { 
-    type: Date, 
-    required: true 
+  startTime: {
+    type: Date,
+    required: true
+  },
+  duration: {
+    type: Number,
+    required: true
+  },
+  deadline: {
+    type: Date,
+    default: function() {
+      // Calculate deadline based on startTime + duration
+      if (this.startTime && this.duration) {
+        const endTime = new Date(this.startTime);
+        endTime.setMinutes(endTime.getMinutes() + this.duration);
+        return endTime;
+      }
+      return null;
+    }
   },
   startedAt: Date,
   completedAt: Date,

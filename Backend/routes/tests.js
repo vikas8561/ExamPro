@@ -97,13 +97,25 @@ router.put("/:id", authenticateToken, requireRole("admin"), async (req, res, nex
 // Delete test (admin only)
 router.delete("/:id", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
-    const test = await Test.findByIdAndDelete(req.params.id);
+    const test = await Test.findById(req.params.id);
     
     if (!test) {
       return res.status(404).json({ message: "Test not found" });
     }
 
-    res.json({ message: "Test deleted successfully" });
+    const TestSubmission = require("../models/TestSubmission");
+    const Assignment = require("../models/Assignment");
+
+    // Delete associated submissions
+    await TestSubmission.deleteMany({ testId: req.params.id });
+    
+    // Delete associated assignments
+    await Assignment.deleteMany({ testId: req.params.id });
+
+    // Delete the test
+    await Test.findByIdAndDelete(req.params.id);
+
+    res.json({ message: "Test and all associated data deleted successfully" });
   } catch (error) {
     next(error);
   }

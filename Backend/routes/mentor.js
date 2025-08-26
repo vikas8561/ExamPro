@@ -60,7 +60,7 @@ router.get("/assignments", authenticateToken, async (req, res) => {
   }
 });
 
-// Get test submissions for monitoring
+// Get test submissions for monitoring - grouped by student
 router.get("/submissions", authenticateToken, async (req, res) => {
   try {
     const submissions = await TestSubmission.find()
@@ -72,6 +72,62 @@ router.get("/submissions", authenticateToken, async (req, res) => {
         }
       })
       .populate("userId", "name email")
+      .sort({ submittedAt: -1 });
+
+    // Group submissions by student
+    const studentsMap = new Map();
+    
+    submissions.forEach(submission => {
+      const studentId = submission.userId?._id?.toString();
+      if (!studentId) return;
+      
+      if (!studentsMap.has(studentId)) {
+        studentsMap.set(studentId, {
+          student: {
+            _id: submission.userId._id,
+            name: submission.userId.name,
+            email: submission.userId.email
+          },
+          submissions: [],
+          totalSubmissions: 0,
+          averageScore: 0,
+          totalScore: 0
+        });
+      }
+      
+      const studentData = studentsMap.get(studentId);
+      studentData.submissions.push(submission);
+      studentData.totalSubmissions++;
+      studentData.totalScore += submission.totalScore || 0;
+    });
+    
+    // Calculate average scores and convert to array
+    const groupedStudents = Array.from(studentsMap.values()).map(studentData => ({
+      ...studentData,
+      averageScore: studentData.totalSubmissions > 0 
+        ? Math.round(studentData.totalScore / studentData.totalSubmissions) 
+        : 0
+    }));
+
+    res.json(groupedStudents);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get submissions for a specific student
+router.get("/student/:studentId/submissions", authenticateToken, async (req, res) => {
+  try {
+    const { studentId } = req.params;
+
+    const submissions = await TestSubmission.find({ userId: studentId })
+      .populate({
+        path: "assignmentId",
+        populate: {
+          path: "testId",
+          select: "title"
+        }
+      })
       .sort({ submittedAt: -1 });
 
     res.json(submissions);

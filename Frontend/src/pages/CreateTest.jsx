@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import apiRequest from "../services/api";
 import JsonQuestionUploader from "../components/JsonQuestionUploader";
@@ -27,10 +27,58 @@ export default function CreateTest() {
   });
   const [assignmentOptions, setAssignmentOptions] = useState({
     assignToAll: false,
-    deadline: ""
+    startTime: "",
+    duration: ""
   });
+  const [students, setStudents] = useState([]);
+  const [selectedStudents, setSelectedStudents] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [assignmentMode, setAssignmentMode] = useState("all"); // "all" or "manual"
   const [loading, setLoading] = useState(false);
   const nav = useNavigate();
+
+  // Fetch students when manual assignment mode is selected
+  useEffect(() => {
+    if (assignmentMode === "manual" && assignmentOptions.assignToAll) {
+      fetchStudents();
+    }
+  }, [assignmentMode, assignmentOptions.assignToAll]);
+
+  const fetchStudents = async () => {
+    try {
+      const data = await apiRequest("/users");
+      const studentUsers = data.filter(user => user.role === "Student");
+      setStudents(studentUsers);
+    } catch (err) {
+      console.error("Error fetching students:", err);
+    }
+  };
+
+  // Toggle student selection
+  const toggleStudentSelection = (studentId) => {
+    setSelectedStudents(prev =>
+      prev.includes(studentId)
+        ? prev.filter(id => id !== studentId)
+        : [...prev, studentId]
+    );
+  };
+
+  // Select all students
+  const selectAllStudents = () => {
+    const filteredStudentIds = filteredStudents.map(student => student._id);
+    setSelectedStudents(filteredStudentIds);
+  };
+
+  // Clear all selections
+  const clearAllSelections = () => {
+    setSelectedStudents([]);
+  };
+
+  // Filter students based on search query
+  const filteredStudents = students.filter(student =>
+    student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    student.email.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const addQuestion = (kind) => {
     setForm(prev => ({
@@ -105,17 +153,28 @@ export default function CreateTest() {
 
       // Check if assignment is enabled
       if (assignmentOptions.assignToAll) {
-        const deadlineDate = new Date(assignmentOptions.deadline);
-        deadlineDate.setHours(23, 59, 59, 999);
-
-        await apiRequest("/assignments/assign-all", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            testId: createdTest._id, 
-            deadline: deadlineDate.toISOString() 
-          })
-        });
+        if (assignmentMode === "all") {
+          await apiRequest("/assignments/assign-all", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+              testId: createdTest._id, 
+              startTime: assignmentOptions.startTime,
+              duration: parseInt(assignmentOptions.duration)
+            })
+          });
+        } else if (assignmentMode === "manual" && selectedStudents.length > 0) {
+          await apiRequest("/assignments/assign-manual", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+              testId: createdTest._id, 
+              studentIds: selectedStudents,
+              startTime: assignmentOptions.startTime,
+              duration: parseInt(assignmentOptions.duration)
+            })
+          });
+        }
       }
 
       nav("/admin/tests");
@@ -210,25 +269,126 @@ export default function CreateTest() {
               </div>
 
               {assignmentOptions.assignToAll && (
-                <div>
-                  <label className="block text-sm font-medium mb-2">
-                    Assignment Deadline *
-                  </label>
-                  <input
-                    type="date"
-                    value={assignmentOptions.deadline}
-                    onChange={(e) => setAssignmentOptions(prev => ({ 
-                      ...prev, 
-                      deadline: e.target.value 
-                    }))}
-                    className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
-                    min={new Date().toISOString().split('T')[0]}
-                    required
-                  />
-                  <p className="text-sm text-slate-400 mt-1">
-                    Students must complete the test by this date
-                  </p>
-                </div>
+                <>
+                  {/* Assignment Mode Selection */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Assignment Mode
+                    </label>
+                    <div className="flex gap-4">
+                      <label className="flex items-center">
+                        <input
+                          type="radio"
+                          value="all"
+                          checked={assignmentMode === "all"}
+                          onChange={() => setAssignmentMode("all")}
+                          className="mr-2"
+                        />
+                        Assign to All Students
+                      </label>
+                      <label className="flex items-center">
+                        <input
+                          type="radio"
+                          value="manual"
+                          checked={assignmentMode === "manual"}
+                          onChange={() => setAssignmentMode("manual")}
+                          className="mr-2"
+                        />
+                        Assign to Specific Students
+                      </label>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Start Time *
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={assignmentOptions.startTime}
+                      onChange={(e) => setAssignmentOptions(prev => ({ 
+                        ...prev, 
+                        startTime: e.target.value 
+                      }))}
+                      className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Duration (minutes) *
+                    </label>
+                    <input
+                      type="number"
+                      value={assignmentOptions.duration}
+                      onChange={(e) => setAssignmentOptions(prev => ({ 
+                        ...prev, 
+                        duration: e.target.value 
+                      }))}
+                      className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
+                      min="1"
+                      required
+                    />
+                  </div>
+
+                  {/* Student Selection (Manual Mode Only) */}
+                  {assignmentMode === "manual" && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Select Students ({selectedStudents.length} selected)
+                      </label>
+                      
+                      {/* Search and Selection Controls */}
+                      <div className="flex gap-2 mb-3">
+                        <input
+                          type="text"
+                          placeholder="Search students..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="flex-1 p-2 bg-slate-700 border border-slate-600 rounded-md text-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={selectAllStudents}
+                          className="px-3 py-2 bg-blue-600 text-white rounded text-sm"
+                        >
+                          Select All
+                        </button>
+                        <button
+                          type="button"
+                          onClick={clearAllSelections}
+                          className="px-3 py-2 bg-gray-600 text-white rounded text-sm"
+                        >
+                          Clear All
+                        </button>
+                      </div>
+
+                      {/* Students List */}
+                      <div className="border border-slate-600 rounded max-h-48 overflow-y-auto bg-slate-700">
+                        {filteredStudents.length === 0 ? (
+                          <div className="p-3 text-center text-gray-400">
+                            No students found
+                          </div>
+                        ) : (
+                          filteredStudents.map((student) => (
+                            <label key={student._id} className="flex items-center p-3 border-b border-slate-600 last:border-b-0 hover:bg-slate-600 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={selectedStudents.includes(student._id)}
+                                onChange={() => toggleStudentSelection(student._id)}
+                                className="mr-3"
+                              />
+                              <div>
+                                <div className="font-medium text-white">{student.name}</div>
+                                <div className="text-sm text-gray-400">{student.email}</div>
+                              </div>
+                            </label>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>

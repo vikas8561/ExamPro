@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from "react";
 import StatusPill from "../components/StatusPill";
+import EmailUploader from "../components/EmailUploader";
 
 export default function Users() {
   const [users, setUsers] = useState([]);
@@ -148,6 +149,9 @@ export default function Users() {
           <option value="Inactive">Inactive</option>
         </select> */}
       </div>
+
+      {/* Bulk Upload Section */}
+      <EmailUploader onUploadComplete={fetchUsers} />
 
       <div className="mb-3">
         <label className="block text-slate-300 mb-2">Search Users</label>
