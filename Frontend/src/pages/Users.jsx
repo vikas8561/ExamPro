@@ -15,7 +15,7 @@ export default function Users() {
 
   // Fetch users from backend
   const fetchUsers = () => {
-    fetch("http://localhost:4000/api/users")
+    fetch("https://exampro-yilv.onrender.com/api/users")
       .then((res) => res.json())
       .then((data) => setUsers(data))
       .catch((err) => console.error("Error fetching users:", err));
@@ -38,7 +38,7 @@ export default function Users() {
 
     if (editing) {
       // Update existing user
-      fetch(`http://localhost:4000/api/users/${editing}`, {
+      fetch(`https://exampro-yilv.onrender.com/api/users/${editing}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
@@ -61,7 +61,7 @@ export default function Users() {
         });
     } else {
       // Create new user
-      fetch("http://localhost:4000/api/users", {
+      fetch("https://exampro-yilv.onrender.com/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
@@ -93,7 +93,7 @@ export default function Users() {
   };
 
   const deleteUser = (id) => {
-    fetch(`http://localhost:4000/api/users/${id}`, { method: "DELETE" })
+    fetch(`https://exampro-yilv.onrender.com/api/users/${id}`, { method: "DELETE" })
       .then(() => {
         setUsers((prev) => prev.filter((u) => u._id !== id));
       })

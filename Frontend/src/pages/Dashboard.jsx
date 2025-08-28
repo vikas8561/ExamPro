@@ -12,7 +12,7 @@ export default function Dashboard() {
     const token = localStorage.getItem('token');
     
     // Fetch tests
-    fetch("http://localhost:4000/api/tests", {
+    fetch("https://exampro-yilv.onrender.com/api/tests", {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
@@ -23,7 +23,7 @@ export default function Dashboard() {
       .catch((err) => console.error("Error fetching tests:", err));
 
     // Fetch users
-    fetch("http://localhost:4000/api/users", {
+    fetch("https://exampro-yilv.onrender.com/api/users", {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
@@ -34,7 +34,7 @@ export default function Dashboard() {
       .catch((err) => console.error("Error fetching users:", err));
 
     // Fetch reviews
-    fetch("http://localhost:4000/api/reviews", {
+    fetch("https://exampro-yilv.onrender.com/api/reviews", {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
