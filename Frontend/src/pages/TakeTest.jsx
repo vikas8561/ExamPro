@@ -3,6 +3,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import apiRequest from "../services/api";
 
 const TakeTest = () => {
+  const [timeRemaining, setTimeRemaining] = useState(0);
+  const [timeSpent, setTimeSpent] = useState(0);
   const [permissionsGranted, setPermissionsGranted] = useState(false);
   const [cameraPermission, setCameraPermission] = useState("prompt");
   const [microphonePermission, setMicrophonePermission] = useState("prompt");
@@ -14,31 +16,26 @@ const TakeTest = () => {
   const [assignment, setAssignment] = useState(null);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answers, setAnswers] = useState({});
-  const [timeRemaining, setTimeRemaining] = useState(0);
-  const [timeSpent, setTimeSpent] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [testStarted, setTestStarted] = useState(false);
   const startRequestMade = useRef(false);
-  const [violationCount, setViolationCount] = useState(0); // State to track the number of tab violations
-  const [showResumeModal, setShowResumeModal] = useState(false); // State to control resume modal visibility
-  const [violations, setViolations] = useState([]); // State to store detailed violation information
-  const [stream, setStream] = useState(null); // State to manage the video stream
-  const [isVideoActive, setIsVideoActive] = useState(false); // State to track video status
-  const videoRef = useRef(null); // Ref for the video element
+  const [violationCount, setViolationCount] = useState(0);
+  const [showResumeModal, setShowResumeModal] = useState(false);
+  const [violations, setViolations] = useState([]);
+  const [stream, setStream] = useState(null);
+  const [isVideoActive, setIsVideoActive] = useState(false);
+  const videoRef = useRef(null);
 
   useEffect(() => {
-    // Check if there's an existing test in progress when component mounts
     const checkExistingTest = async () => {
       if (assignmentId && !testStarted && !startRequestMade.current) {
         try {
-          // First try to load existing test data to see if test was already started
           const assignmentData = await apiRequest(`/assignments/${assignmentId}`);
           if (assignmentData && assignmentData.startedAt) {
             console.log("Existing test found, loading data...");
             await loadExistingTestData();
           } else {
-            // No existing test found, start a new one
             startRequestMade.current = true;
             startTest();
           }
@@ -55,6 +52,8 @@ const TakeTest = () => {
 
   useEffect(() => {
     let timer;
+    let backendCheckTimer;
+    
     if (testStarted && timeRemaining > 0) {
       timer = setInterval(() => {
         setTimeRemaining(prev => {
@@ -66,19 +65,30 @@ const TakeTest = () => {
         });
         setTimeSpent(prev => prev + 1);
       }, 1000);
+
+      backendCheckTimer = setInterval(async () => {
+        try {
+          await apiRequest(`/assignments/check-expiration/${assignmentId}`);
+        } catch (error) {
+          if (error.message.includes("Test time has expired")) {
+            await submitTest();
+          }
+        }
+      }, 30000);
     }
 
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      clearInterval(backendCheckTimer);
+    };
   }, [testStarted, timeRemaining]);
 
-  // Tab monitoring effect
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         const newViolationCount = violationCount + 1;
         setViolationCount(newViolationCount);
         
-        // Record detailed violation information
         const violation = {
           timestamp: new Date(),
           violationType: "tab_switch",
@@ -87,14 +97,11 @@ const TakeTest = () => {
         };
         setViolations(prev => [...prev, violation]);
 
-        // Handle violation based on count
         if (newViolationCount === 1 || newViolationCount === 2) {
-          // First or second violation - show resume option
           setShowResumeModal(true);
         } else if (newViolationCount >= 3) {
-          // Third violation - cancel immediately
           alert("Test cancelled due to multiple tab violations (3+ violations detected).");
-          submitTest(true); // Submit the test with cancellation flag
+          submitTest(true);
         }
       }
     };
@@ -151,7 +158,11 @@ const TakeTest = () => {
     ) {
       setPermissionsGranted(true);
       setShowPermissionModal(false);
-      startTest();
+
+      if (!testStarted && !startRequestMade.current) {
+        startRequestMade.current = true;
+        startTest();
+      }
     } else {
       setPermissionsGranted(false);
     }
@@ -160,7 +171,6 @@ const TakeTest = () => {
   useEffect(() => {
     requestPermissions();
     
-    // Cleanup function to stop video stream when component unmounts
     return () => {
       if (stream) {
         stream.getTracks().forEach(track => track.stop());
@@ -168,14 +178,12 @@ const TakeTest = () => {
     };
   }, []);
 
-  // Effect to connect stream to video element when both are available
   useEffect(() => {
     const connectStreamToVideo = () => {
       if (stream && videoRef.current) {
         console.log("Connecting stream to video element");
         videoRef.current.srcObject = stream;
 
-        // Add event listeners to debug video element
         videoRef.current.onloadedmetadata = () => {
           console.log("Video metadata loaded");
         };
@@ -187,20 +195,18 @@ const TakeTest = () => {
         videoRef.current.onerror = (e) => {
           console.error("Video error:", e);
         };
-        return true; // Connection successful
+        return true;
       } else {
         console.log("Stream or videoRef not available:", {
           streamAvailable: !!stream,
           videoRefAvailable: !!videoRef.current
         });
-        return false; // Connection not successful
+        return false;
       }
     };
 
-    // Try to connect immediately
     const connected = connectStreamToVideo();
     
-    // If not connected, set up a more controlled interval (every 500ms instead of 100ms)
     let interval;
     if (!connected) {
       interval = setInterval(() => {
@@ -222,65 +228,70 @@ const TakeTest = () => {
     try {
       setLoading(true);
       console.log(`Starting test for assignment ID: ${assignmentId}`);
-      console.log(`Current user ID from localStorage: ${localStorage.getItem('userId')}`);
-      console.log(`Current user token: ${localStorage.getItem('token')}`);
       
       const response = await apiRequest(`/assignments/${assignmentId}/start`, {
         method: "POST"
       });
+      console.log("[startTest] Response:", response);
 
-      // Check if test was already started (new backend response format)
       if (response.alreadyStarted) {
         console.log("Test already in progress, fetching existing data...");
         await loadExistingTestData();
         return;
       }
 
+      if (!response.assignment || !response.test) {
+        console.error("Unexpected response format from backend:", response);
+        throw new Error("Unexpected response format from backend. Expected assignment and test data.");
+      }
+
       setAssignment(response.assignment);
       setTest(response.test);
-      setTimeRemaining(response.test.timeLimit * 60);
+      
+      const timeLimitMinutes = response.test.timeLimit;
+      const totalSeconds = timeLimitMinutes * 60;
+      const testStartTime = new Date(response.assignment.startTime);
+      const currentTime = new Date();
+      const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
+      const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
+      
+      setTimeRemaining(remainingSeconds);
       setTestStarted(true);
       setLoading(false);
     } catch (error) {
-      // Handle other errors (fallback for old backend version)
       if (error.message === "Test already started") {
         console.log("Test already in progress, fetching existing data...");
         await loadExistingTestData();
       } else if (error.message.includes("400") && error.message.includes("Bad Request")) {
-        // Handle other 400 errors without showing them as console errors
         console.log("Test start request failed:", error.message);
         await loadExistingTestData();
       } else {
-        // Only show actual errors to the user
         setError(error.message || "Failed to start test");
         setLoading(false);
       }
     }
   };
 
-const loadExistingTestData = async () => {
+  const loadExistingTestData = async () => {
     console.log("Loading existing test data for assignment ID:", assignmentId);
     try {
       console.log(`[TakeTest] Loading existing test data for assignment: ${assignmentId}`);
       
-      // Fetch the existing assignment data
       const assignmentData = await apiRequest(`/assignments/${assignmentId}`);
       console.log(`[TakeTest] Assignment data loaded:`, assignmentData);
       setAssignment(assignmentData);
       
-      // Calculate remaining time based on when the test was started
       const timeLimitMinutes = assignmentData.testId.timeLimit;
       const totalSeconds = timeLimitMinutes * 60;
-      const startedAt = new Date(assignmentData.startedAt);
-      const elapsedSeconds = Math.floor((new Date() - startedAt) / 1000);
+      const testStartTime = new Date(assignmentData.startTime);
+      const currentTime = new Date();
+      const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
       const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
       
       console.log(`[TakeTest] Time calculation - Limit: ${timeLimitMinutes}m, Elapsed: ${elapsedSeconds}s, Remaining: ${remainingSeconds}s`);
       
-      // Try to fetch any existing answers to restore
       try {
         console.log(`[TakeTest] Fetching existing answers for assignment ID: ${assignmentId}`);
-        console.log("Access Token:", localStorage.getItem('token')); // Log the token before API call
         const answersData = await apiRequest(`/answers/assignment/${assignmentId}`, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -290,7 +301,6 @@ const loadExistingTestData = async () => {
         
         if (answersData && answersData.length > 0) {
           console.log("[TakeTest] Existing answers found, restoring answers");
-          // Restore answers from existing answers
           const existingAnswers = {};
           answersData.forEach(response => {
             if (response.selectedOption) {
@@ -305,14 +315,11 @@ const loadExistingTestData = async () => {
           console.log("[TakeTest] No existing answers found, starting fresh");
         }
       } catch (answersError) {
-        // Handle different types of errors
         if (answersError.message.includes("404") || 
             answersError.message.includes("not found") ||
             answersError.message.includes("Resource not found")) {
-          // Expected 404 - no answers exist yet
           console.log("[TakeTest] No existing answers found (404 error) - this is expected when test is in progress but no answers saved yet");
         } else {
-          // Unexpected error
           console.error("[TakeTest] Error loading answers:", answersError);
         }
       }
@@ -330,28 +337,25 @@ const loadExistingTestData = async () => {
   };
 
   const handleAnswerChange = async (questionId, answer) => {
-    // Update local state immediately for responsive UI
     setAnswers(prev => ({
       ...prev,
       [questionId]: answer
     }));
 
-      // Save answer to backend in real-time
-      try {
-        await apiRequest("/answers", {
-          method: "POST",
-          body: JSON.stringify({
-            assignmentId,
-            questionId,
-            selectedOption: typeof answer === 'string' ? answer : undefined,
-            textAnswer: typeof answer === 'string' ? undefined : answer
-          })
-        });
-        console.log("Answer saved successfully for question:", questionId);
-      } catch (error) {
-        console.error("Failed to save answer:", error);
-        // Don't show error to user as it might disrupt their test experience
-      }
+    try {
+      await apiRequest("/answers", {
+        method: "POST",
+        body: JSON.stringify({
+          assignmentId,
+          questionId,
+          selectedOption: typeof answer === 'string' ? answer : undefined,
+          textAnswer: typeof answer === 'string' ? undefined : answer
+        })
+      });
+      console.log("Answer saved successfully for question:", questionId);
+    } catch (error) {
+      console.error("Failed to save answer:", error);
+    }
   };
 
   const handleNextQuestion = () => {
@@ -368,6 +372,7 @@ const loadExistingTestData = async () => {
 
   const handleTimeUp = async () => {
     await submitTest();
+    alert("Time is up! Your test has been submitted automatically.");
   };
 
   const handleResumeTest = () => {
@@ -376,14 +381,13 @@ const loadExistingTestData = async () => {
 
   const submitTest = async (cancelledDueToViolation = false) => {
     try {
-      // Create a safe, serializable version of the submission data
       const submissionData = {
         assignmentId,
-        responses: Object.entries(answers).map(([questionId, answer]) => ({
-          questionId,
-          selectedOption: typeof answer === 'string' ? answer : undefined,
-          textAnswer: typeof answer === 'string' ? undefined : answer
-        })).filter(response => response.questionId && (response.selectedOption || response.textAnswer)),
+        responses: test.questions.map(question => ({
+          questionId: question._id,
+          selectedOption: answers[question._id] && typeof answers[question._id] === 'string' ? answers[question._id] : undefined,
+          textAnswer: answers[question._id] && typeof answers[question._id] !== 'string' ? answers[question._id] : undefined
+        })),
         timeSpent,
         tabViolationCount: violationCount,
         tabViolations: violations.map(violation => ({
@@ -400,7 +404,6 @@ const loadExistingTestData = async () => {
         }
       };
 
-      // Use a custom JSON stringify with a replacer function to handle circular references
       const safeJSONStringify = (obj) => {
         const seen = new WeakSet();
         return JSON.stringify(obj, (key, value) => {
@@ -410,7 +413,6 @@ const loadExistingTestData = async () => {
             }
             seen.add(value);
           }
-          // Remove any DOM elements or React components
           if (value && typeof value === 'object' && 
               (value instanceof HTMLElement || 
                value instanceof Event || 
@@ -426,12 +428,10 @@ const loadExistingTestData = async () => {
         body: safeJSONStringify(submissionData)
       });
 
-      // Navigate to assigned tests section after submission
       navigate(`/student/assignments`);
     } catch (error) {
       console.error("Test submission failed:", error);
       alert(error.message || "Failed to submit test");
-      // Optionally navigate back to assignments if submission fails
       navigate("/student/assignments");
     }
   };
@@ -549,7 +549,6 @@ const loadExistingTestData = async () => {
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6">
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
         <div className="flex justify-between items-center mb-8 p-4 bg-slate-800 rounded-lg">
           <div>
             <h1 className="text-2xl font-bold">{test.title}</h1>
@@ -564,7 +563,6 @@ const loadExistingTestData = async () => {
           </div>
         </div>
 
-        {/* Test Instructions */}
         {test.instructions && (
           <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4 mb-6">
             <h3 className="font-semibold text-blue-300 mb-2">Instructions:</h3>
@@ -573,10 +571,8 @@ const loadExistingTestData = async () => {
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Question Area */}
           <div className="lg:col-span-2">
             <div className="bg-slate-800 rounded-lg p-6">
-              {/* Question Header */}
               <div className="flex justify-between items-start mb-6">
                 <div>
                   <span className="text-sm text-slate-400">Question {currentQuestion + 1}</span>
@@ -587,7 +583,6 @@ const loadExistingTestData = async () => {
                 </div>
               </div>
 
-              {/* MCQ Options */}
               {question.kind === "mcq" && (
                 <div className="space-y-3">
                   {question.options?.map((option, index) => (
@@ -613,7 +608,6 @@ const loadExistingTestData = async () => {
                 </div>
               )}
 
-              {/* Theoretical Answer */}
               {question.kind === "theoretical" && (
                 <div>
                   {question.guidelines && (
@@ -633,12 +627,10 @@ const loadExistingTestData = async () => {
             </div>
           </div>
 
-          {/* Navigation Sidebar */}
           <div className="lg:col-span-1">
             <div className="bg-slate-800 rounded-lg p-6">
               <h3 className="font-semibold mb-4">Navigation</h3>
               
-              {/* Question Grid */}
               <div className="grid grid-cols-5 gap-2 mb-6">
                 {test.questions.map((q, index) => (
                   <button
@@ -657,7 +649,6 @@ const loadExistingTestData = async () => {
                 ))}
               </div>
 
-              {/* Video Element */}
               {isVideoActive && (
                 <div className="mb-4">
                   <video
@@ -670,7 +661,6 @@ const loadExistingTestData = async () => {
                 </div>
               )}
               
-              {/* Navigation Buttons */}
               <div className="space-y-3">
                 <button
                   onClick={handlePreviousQuestion}
@@ -696,7 +686,6 @@ const loadExistingTestData = async () => {
                 </button>
               </div>
 
-              {/* Progress */}
               <div className="mt-6 pt-4 border-t border-slate-700">
                 <div className="flex justify-between text-sm text-slate-400 mb-2">
                   <span>Answered</span>
@@ -714,7 +703,6 @@ const loadExistingTestData = async () => {
         </div>
       </div>
 
-      {/* Resume Exam Modal */}
       {showResumeModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-slate-800 rounded-lg p-6 max-w-md w-full">
@@ -726,8 +714,8 @@ const loadExistingTestData = async () => {
               </p>
               <p className="text-slate-400 text-sm">
                 {violationCount === 1 ? 
-                  "First warning: Please remain focused on the test. Next violation will result in another warning." :
-                  "Second warning: This is your final warning. The next violation will result in test cancellation."
+                  "First warning: Please remain focused on the test." :
+                  "Second warning: This is your final warning."
                 }
               </p>
             </div>
@@ -735,15 +723,9 @@ const loadExistingTestData = async () => {
             <div className="flex gap-3">
               <button
                 onClick={handleResumeTest}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-md font-medium"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-md font-medium"
               >
                 Resume Exam
-              </button>
-              <button
-                onClick={() => submitTest(true)}
-                className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 rounded-md font-medium"
-              >
-                Cancel Test
               </button>
             </div>
           </div>

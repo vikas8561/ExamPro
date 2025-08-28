@@ -11,6 +11,7 @@ const userSchema = new mongoose.Schema(
       enum: ["Student", "Mentor", "Admin"],
       default: "Student",
     },
+    activeSessions: [{ type: String }], // Array to store active session tokens
     // status: {
     //   type: String,
     //   enum: ["Active", "Inactive"],

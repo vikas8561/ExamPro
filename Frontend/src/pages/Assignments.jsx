@@ -77,30 +77,32 @@ export default function Assignments() {
 
       {/* Assignments Table */}
       <div className="rounded-xl border border-slate-700 bg-slate-800 overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="text-left text-slate-300 border-b border-slate-700">
-              <th className="p-4">Test</th>
-              <th className="p-4">User</th>
-              <th className="p-4">Status</th>
-              <th className="p-4">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {assignments.length > 0 ? assignments.map((a) => (
-              <tr key={a._id} className="border-b border-slate-700">
-                <td className="p-4">{getTest(a.testId)}</td>
-                <td className="p-4">{getUser(a.userId)}</td>
-                <td className="p-4"><StatusPill label={a.status} /></td>
-                <td className="p-4">
-                  <button onClick={() => deleteAssignment(a._id)} className="text-rose-400 hover:text-rose-500">Delete</button>
-                </td>
+        <div className="max-h-96 overflow-y-auto">
+          <table className="w-full">
+            <thead className="sticky top-0 bg-slate-800 z-10">
+              <tr className="text-left text-slate-300 border-b border-slate-700">
+                <th className="p-4">Test</th>
+                <th className="p-4">User</th>
+                <th className="p-4">Status</th>
+                <th className="p-4">Actions</th>
               </tr>
-            )) : (
-              <tr><td className="p-6 text-center text-slate-400" colSpan="4">No assignments yet.</td></tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {assignments.length > 0 ? assignments.map((a) => (
+                <tr key={a._id} className="border-b border-slate-700">
+                  <td className="p-4">{getTest(a.testId)}</td>
+                  <td className="p-4">{getUser(a.userId)}</td>
+                  <td className="p-4"><StatusPill label={a.status} /></td>
+                  <td className="p-4">
+                    <button onClick={() => deleteAssignment(a._id)} className="text-rose-400 hover:text-rose-500">Delete</button>
+                  </td>
+                </tr>
+              )) : (
+                <tr><td className="p-6 text-center text-slate-400" colSpan="4">No assignments yet.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

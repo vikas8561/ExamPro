@@ -24,15 +24,43 @@ router.post("/login", async (req, res) => {
     // Generate JWT token
     const token = generateToken(user);
 
+    // Clear any existing sessions and add new session
+    user.activeSessions = [token];
+    await user.save();
+
     // Return user without password
     const userResponse = user.toObject();
     delete userResponse.password;
+    delete userResponse.activeSessions;
 
     res.json({ 
       user: userResponse,
       token,
       message: "Login successful"
     });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Logout endpoint
+router.post("/logout", async (req, res) => {
+  try {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    
+    if (token) {
+      // Remove token from user's active sessions
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+      const user = await User.findById(decoded.userId);
+      
+      if (user) {
+        user.activeSessions = user.activeSessions.filter(sessionToken => sessionToken !== token);
+        await user.save();
+      }
+    }
+    
+    res.json({ message: "Logout successful" });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

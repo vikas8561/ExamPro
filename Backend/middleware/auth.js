@@ -1,7 +1,8 @@
 const jwt = require('jsonwebtoken');
+const User = require('../models/User');
 
 // Authentication middleware
-const authenticateToken = (req, res, next) => {
+const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
@@ -9,14 +10,21 @@ const authenticateToken = (req, res, next) => {
     return res.status(401).json({ message: 'Access token required' });
   }
 
-  jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', (err, user) => {
-    if (err) {
-      return res.status(403).json({ message: 'Invalid or expired token' });
+  try {
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    
+    // Check if token is in user's active sessions
+    const user = await User.findById(decoded.userId);
+    if (!user || !user.activeSessions.includes(token)) {
+      return res.status(403).json({ message: 'Invalid or expired session' });
     }
     
-    req.user = user;
+    req.user = decoded;
     next();
-  });
+  } catch (err) {
+    return res.status(403).json({ message: 'Invalid or expired token' });
+  }
 };
 
 // Role-based authorization middleware

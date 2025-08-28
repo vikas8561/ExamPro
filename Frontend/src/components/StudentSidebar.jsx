@@ -24,7 +24,7 @@ const StudentSidebar = () => {
   };
 
   return (
-    <aside className="w-64 bg-slate-800 text-slate-100 p-5 flex flex-col">
+    <aside className="w-64 h-screen bg-slate-800 text-slate-100 p-5 flex flex-col">
       <h1 className="text-xl font-bold mb-8">Student Portal</h1>
 
       <nav className="space-y-2">

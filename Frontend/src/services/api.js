@@ -41,6 +41,21 @@ const apiRequest = async (endpoint, options = {}) => {
     }
     
     if (response.status === 403) {
+      // Check if this is a session expiration due to new login
+      try {
+        const errorData = await response.json();
+        if (errorData.message === 'Invalid or expired session') {
+          // Clear local storage and redirect to login
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          localStorage.removeItem('userId');
+          window.location.href = '/login?message=session_expired';
+          throw new Error('Session expired due to new login');
+        }
+      } catch {
+        // If we can't parse the error response, throw generic error
+        throw new Error('Access forbidden');
+      }
       throw new Error('Access forbidden');
     }
     

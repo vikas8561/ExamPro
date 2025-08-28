@@ -164,58 +164,60 @@ export default function Users() {
       </div>
 
       <div className="rounded-xl border border-slate-700 bg-slate-800 overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="text-left text-slate-300 border-b border-slate-700">
-              <th className="p-4">Name</th>
-              <th className="p-4">Email</th>
-              <th className="p-4">Role</th>
-              {/* <th className="p-4">Status</th> */}
-              <th className="p-4">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((u) => (
-              <tr key={u._id} className="border-b border-slate-700">
-                <td className="p-4">{u.name}</td>
-                <td className="p-4 text-blue-400">{u.email}</td>
-                <td className="p-4">
-                  <StatusPill label={u.role} />
-                </td>
-                {/* <td className="p-4">{u.status}</td> */}
-                <td className="p-4 flex gap-3">
-                  <button
-                    onClick={() => {
-                      setEditing(u._id);
-                      setForm({
-                        name: u.name,
-                        email: u.email,
-                        role: u.role,
-                        // status: u.status,
-                      });
-                    }}
-                    className="text-blue-400"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => deleteUser(u._id)}
-                    className="text-rose-400"
-                  >
-                    Delete
-                  </button>
-                </td>
+        <div className="max-h-96 overflow-y-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="text-left text-slate-300 border-b border-slate-700 sticky top-0 bg-slate-800 z-10">
+                <th className="p-4">Name</th>
+                <th className="p-4">Email</th>
+                <th className="p-4">Role</th>
+                {/* <th className="p-4">Status</th> */}
+                <th className="p-4">Actions</th>
               </tr>
-            ))}
-            {!filtered.length && (
-              <tr>
-                <td className="p-6 text-center text-slate-400" colSpan="5">
-                  No users found.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filtered.map((u) => (
+                <tr key={u._id} className="border-b border-slate-700">
+                  <td className="p-4">{u.name}</td>
+                  <td className="p-4 text-blue-400">{u.email}</td>
+                  <td className="p-4">
+                    <StatusPill label={u.role} />
+                  </td>
+                  {/* <td className="p-4">{u.status}</td> */}
+                  <td className="p-4 flex gap-3">
+                    <button
+                      onClick={() => {
+                        setEditing(u._id);
+                        setForm({
+                          name: u.name,
+                          email: u.email,
+                          role: u.role,
+                          // status: u.status,
+                        });
+                      }}
+                      className="text-blue-400"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => deleteUser(u._id)}
+                      className="text-rose-400"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {!filtered.length && (
+                <tr>
+                  <td className="p-6 text-center text-slate-400" colSpan="5">
+                    No users found.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

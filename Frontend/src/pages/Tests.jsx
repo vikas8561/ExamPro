@@ -163,7 +163,7 @@ export default function Tests() {
   );
 
   return (
-    <div className="p-6">
+    <div className="p-6 h-screen flex flex-col">
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-3xl font-bold">Tests</h2>
         <Link
@@ -174,17 +174,18 @@ export default function Tests() {
         </Link>
       </div>
 
-      <div className="rounded-xl border border-slate-700 bg-slate-800 overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="text-left text-slate-300 border-b border-slate-700">
-              <th className="p-4">Title</th>
-              <th className="p-4">Type</th>
-              <th className="p-4">Status</th>
-              <th className="p-4">Time</th>
-              <th className="p-4">Actions</th>
-            </tr>
-          </thead>
+      <div className="rounded-xl border border-slate-700 bg-slate-800 overflow-hidden flex-grow">
+        <div className="overflow-y-auto h-full">
+          <table className="w-full">
+            <thead>
+              <tr className="text-left text-slate-300 border-b border-slate-700 sticky top-0 bg-slate-800 z-10">
+                <th className="p-4">Title</th>
+                <th className="p-4">Type</th>
+                <th className="p-4">Status</th>
+                <th className="p-4">Time</th>
+                <th className="p-4">Actions</th>
+              </tr>
+            </thead>
           <tbody>
             {tests.map((t) => (
               <tr key={t._id} className="border-b border-slate-700">
@@ -239,6 +240,7 @@ export default function Tests() {
           </tbody>
         </table>
       </div>
+    </div>
 
       {/* Assignment Modal */}
       {showAssignModal && (

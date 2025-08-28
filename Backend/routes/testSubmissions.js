@@ -15,12 +15,28 @@ router.post("/", authenticateToken, async (req, res, next) => {
       return res.status(400).json({ message: "assignmentId and responses are required" });
     }
 
-    // Get assignment and test
-    const assignment = await Assignment.findById(assignmentId)
-      .populate("testId", "questions");
+    // Get assignment to check if test time has expired
+    const assignment = await Assignment.findById(assignmentId);
     
     if (!assignment) {
       return res.status(404).json({ message: "Assignment not found" });
+    }
+
+    // Check if test time has expired
+    const now = new Date();
+    const endTime = new Date(assignment.startTime);
+    endTime.setMinutes(endTime.getMinutes() + assignment.duration);
+    
+    if (now > endTime) {
+      return res.status(400).json({ message: "Test time has expired. Please contact your instructor." });
+    }
+
+    // Get assignment with test populated for scoring
+    const assignmentWithTest = await Assignment.findById(assignmentId)
+      .populate("testId", "questions");
+    
+    if (!assignmentWithTest.testId) {
+      return res.status(404).json({ message: "Test not found" });
     }
 
     // Check if user has access to this assignment
@@ -174,88 +190,127 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
     const { assignmentId } = req.params;
     const userId = req.user.userId;
 
+    // Get the assignment to check the deadline and test details
+    const assignment = await Assignment.findById(assignmentId)
+      .populate("testId", "title questions");
+    
+    if (!assignment) {
+      return res.status(404).json({ message: "Assignment not found" });
+    }
+
     const submission = await TestSubmission.findOne({ assignmentId, userId })
       .populate({
         path: "testId",
         select: "title questions"
       });
 
-    if (!submission) {
-      return res.status(404).json({ message: "Submission not found" });
-    }
-
-    // Get the assignment to check the deadline
-    const assignment = await Assignment.findById(assignmentId);
-    if (!assignment) {
-      return res.status(404).json({ message: "Assignment not found" });
-    }
-
-    // Merge responses with questions for display
-    const questionsWithResponses = submission.testId.questions.map(question => {
-      const response = submission.responses.find(
-        r => r.questionId.toString() === question._id.toString()
-      );
-      
-      return {
-        ...question.toObject(),
-        selectedOption: response?.selectedOption || null,
-        textAnswer: response?.textAnswer || null,
-        isCorrect: submission.mentorReviewed ? response?.isCorrect : false,
-        points: submission.mentorReviewed ? response?.points : 0,
-        autoGraded: response?.autoGraded || false
-      };
-    });
-
     // Check if the assignment deadline has passed
     const currentTime = new Date();
     const assignmentDeadline = assignment.deadline;
 
-    // Debug logging
-    console.log(`Current time: ${currentTime}`);
-    console.log(`Assignment deadline: ${assignmentDeadline}`);
-    console.log(`Submission mentorReviewed: ${submission.mentorReviewed}`);
-    console.log(`Current time >= deadline: ${currentTime >= assignmentDeadline}`);
-
     // Determine if results should be shown
-    const showResults = submission.mentorReviewed && currentTime >= assignmentDeadline;
-    console.log(`Show results: ${showResults}`);
+    const showResults = (!submission || submission.mentorReviewed) && currentTime >= assignmentDeadline;
 
-    // Return the appropriate response based on whether results should be shown
-    if (showResults) {
-      // Return full results with scores when deadline has passed and submission is reviewed
-      res.json({
-        test: {
-          _id: submission.testId._id,
-          title: submission.testId.title,
-          questions: questionsWithResponses
-        },
-        submission: {
-          _id: submission._id,
-          totalScore: submission.totalScore,
-          maxScore: submission.maxScore,
-          submittedAt: submission.submittedAt,
-          timeSpent: submission.timeSpent,
-          mentorReviewed: submission.mentorReviewed,
-          mentorScore: submission.mentorScore,
-          mentorFeedback: submission.mentorFeedback,
-          reviewStatus: submission.reviewStatus,
-          finalScore: submission.mentorScore || submission.totalScore,
-          permissions: submission.permissions
-        },
-        showResults: true
+    if (submission) {
+      // Merge responses with questions for display
+      const questionsWithResponses = submission.testId.questions.map(question => {
+        const response = submission.responses.find(
+          r => r.questionId.toString() === question._id.toString()
+        );
+        
+        return {
+          ...question.toObject(),
+          selectedOption: response?.selectedOption || null,
+          textAnswer: response?.textAnswer || null,
+          isCorrect: submission.mentorReviewed ? response?.isCorrect : false,
+          points: submission.mentorReviewed ? response?.points : 0,
+          autoGraded: response?.autoGraded || false
+        };
       });
+
+      // Return the appropriate response based on whether results should be shown
+      if (showResults) {
+        // Return full results with scores when deadline has passed and submission is reviewed
+        res.json({
+          test: {
+            _id: submission.testId._id,
+            title: submission.testId.title,
+            questions: questionsWithResponses
+          },
+          submission: {
+            _id: submission._id,
+            totalScore: submission.totalScore,
+            maxScore: submission.maxScore,
+            submittedAt: submission.submittedAt,
+            timeSpent: submission.timeSpent,
+            mentorReviewed: submission.mentorReviewed,
+            mentorScore: submission.mentorScore,
+            mentorFeedback: submission.mentorFeedback,
+            reviewStatus: submission.reviewStatus,
+            finalScore: submission.mentorScore || submission.totalScore,
+            permissions: submission.permissions
+          },
+          showResults: true
+        });
+      } else {
+          // Calculate remaining time until results are available
+          const remainingTime = Math.max(0, assignmentDeadline - currentTime);
+          const remainingMinutes = Math.floor((remainingTime / 1000) / 60);
+          const remainingSeconds = Math.floor((remainingTime / 1000) % 60);
+          const remainingTimeString = `${remainingMinutes} minutes and ${remainingSeconds} seconds`;
+
+        res.json({
+          test: {
+            _id: submission.testId._id,
+            title: submission.testId.title,
+            questions: questionsWithResponses.map(q => ({
+              _id: q._id,
+              text: q.text,
+              kind: q.kind,
+              options: q.options,
+              guidelines: q.guidelines,
+              points: q.points,
+              selectedOption: q.selectedOption,
+              textAnswer: q.textAnswer,
+              // Hide correctness, points, and answer until results can be shown
+              isCorrect: false,
+              points: 0,
+              answer: null  // Hide the correct answer
+            }))
+          },
+          submission: {
+            _id: submission._id,
+            totalScore: null,
+            maxScore: null,
+            submittedAt: submission.submittedAt,
+            timeSpent: submission.timeSpent,
+            mentorReviewed: submission.mentorReviewed,
+            mentorScore: null,
+            mentorFeedback: null,
+            reviewStatus: submission.reviewStatus,
+            finalScore: null,
+            permissions: submission.permissions
+          },
+          showResults: false,
+          message: `Results available after ${remainingTimeString}`
+        });
+      }
     } else {
-        // Calculate remaining time until results are available
-        const remainingTime = Math.max(0, assignmentDeadline - currentTime);
-        const remainingMinutes = Math.floor((remainingTime / 1000) / 60);
-        const remainingSeconds = Math.floor((remainingTime / 1000) % 60);
-        const remainingTimeString = `${remainingMinutes} minutes and ${remainingSeconds} seconds`;
+      // No submission found - return test questions with correct answers
+      const questionsWithPlaceholders = assignment.testId.questions.map(question => ({
+        ...question.toObject(),
+        selectedOption: null,
+        textAnswer: null,
+        isCorrect: false,
+        points: 0,
+        autoGraded: false
+      }));
 
       res.json({
         test: {
-          _id: submission.testId._id,
-          title: submission.testId.title,
-          questions: questionsWithResponses.map(q => ({
+          _id: assignment.testId._id,
+          title: assignment.testId.title,
+          questions: showResults ? questionsWithPlaceholders : questionsWithPlaceholders.map(q => ({
             _id: q._id,
             text: q.text,
             kind: q.kind,
@@ -267,24 +322,26 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
             // Hide correctness, points, and answer until results can be shown
             isCorrect: false,
             points: 0,
-            answer: null  // Hide the correct answer
+            answer: null
           }))
         },
         submission: {
-          _id: submission._id,
-          totalScore: null,
-          maxScore: null,
-          submittedAt: submission.submittedAt,
-          timeSpent: submission.timeSpent,
-          mentorReviewed: submission.mentorReviewed,
+          _id: null,
+          totalScore: 0,
+          maxScore: assignment.testId.questions.reduce((sum, q) => sum + q.points, 0),
+          submittedAt: null,
+          timeSpent: 0,
+          mentorReviewed: false,
           mentorScore: null,
           mentorFeedback: null,
-          reviewStatus: submission.reviewStatus,
-          finalScore: null,
-          permissions: submission.permissions
+          reviewStatus: "Not Submitted",
+          finalScore: 0,
+          permissions: null
         },
-        showResults: false,
-        message: `Results available after ${remainingTimeString}`
+        showResults: showResults,
+        message: showResults ? 
+          "Test Completion Status\nThis test has been assessed immediately upon submission.\n\nNo test submission data is available as the test was not fully completed." :
+          "Test not submitted yet. Results will be available after the deadline."
       });
     }
   } catch (error) {

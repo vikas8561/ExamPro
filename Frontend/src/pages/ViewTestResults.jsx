@@ -87,6 +87,9 @@ const ViewTestResults = () => {
     );
   }
 
+  // Check if this is a case where no submission was made but we want to show questions
+  const hasNoSubmission = !submission._id;
+
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6">
       <div className="max-w-4xl mx-auto">

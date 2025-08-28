@@ -68,6 +68,28 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
   }
 });
 
+router.get("/check-expiration/:id", authenticateToken, async (req, res, next) => {
+  try {
+    const assignment = await Assignment.findById(req.params.id);
+    
+    if (!assignment) {
+      return res.status(404).json({ message: "Assignment not found" });
+    }
+
+    const now = new Date();
+    const endTime = new Date(assignment.startTime);
+    endTime.setMinutes(endTime.getMinutes() + assignment.duration);
+
+    if (now > endTime) {
+      return res.status(400).json({ message: "Test time has expired." });
+    }
+
+    res.status(200).json({ message: "Test is still active." });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Create assignment (admin only)
 router.post("/", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {

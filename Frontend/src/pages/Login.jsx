@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -7,6 +7,15 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    // Check for session expired message in URL
+    const message = searchParams.get('message');
+    if (message === 'session_expired') {
+      setError('Your session has expired due to a new login from another device or browser.');
+    }
+  }, [searchParams]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -40,6 +49,8 @@ export default function Login() {
         } else {
           setError('Invalid user role');
         }
+      } else if (response.status === 403 && data.message === 'Invalid or expired session') {
+        setError('You have been logged out from another session. Please login again.');
       } else {
         setError(data.message || 'Invalid email or password');
       }
@@ -96,12 +107,6 @@ export default function Login() {
             {loading ? 'Logging in...' : 'Login'}
           </button>
         </form>
-        
-        <div className="mt-4 text-center">
-          <p className="text-sm text-gray-400">
-            Use your database credentials to login
-          </p>
-        </div>
       </div>
     </div>
   );
