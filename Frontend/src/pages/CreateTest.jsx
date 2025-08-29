@@ -153,13 +153,16 @@ export default function CreateTest() {
 
       // Check if assignment is enabled
       if (assignmentOptions.assignToAll) {
+        // Convert local datetime string to ISO string with timezone offset
+        const startTimeISO = new Date(assignmentOptions.startTime).toISOString();
+
         if (assignmentMode === "all") {
           await apiRequest("/assignments/assign-all", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ 
               testId: createdTest._id, 
-              startTime: assignmentOptions.startTime,
+              startTime: startTimeISO,
               duration: parseInt(assignmentOptions.duration)
             })
           });
@@ -170,7 +173,7 @@ export default function CreateTest() {
             body: JSON.stringify({ 
               testId: createdTest._id, 
               studentIds: selectedStudents,
-              startTime: assignmentOptions.startTime,
+              startTime: startTimeISO,
               duration: parseInt(assignmentOptions.duration)
             })
           });
