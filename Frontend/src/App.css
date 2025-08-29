@@ -15,3 +15,1038 @@ button:disabled,
 [role="button"]:disabled {
   cursor: not-allowed;
 }
+
+/* ===== LOGIN PAGE RESPONSIVE STYLES ===== */
+
+/* Mobile Styles (up to 768px) */
+@media (max-width: 768px) {
+  /* Login container adjustments */
+  .min-h-screen {
+    min-height: 100vh;
+    padding: 1rem;
+  }
+  
+  /* Login form container */
+  .bg-slate-800.p-8.rounded-lg.shadow-lg.w-full.max-w-md.border.border-slate-700 {
+    padding: 1.5rem;
+    margin: 0.5rem;
+    max-width: 100%;
+    width: calc(100% - 1rem);
+  }
+  
+  /* Login title */
+  .text-2xl.font-bold.text-white.mb-6.text-center {
+    font-size: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  
+  /* Form spacing */
+  .space-y-4 > div {
+    margin-bottom: 1rem;
+  }
+  
+  /* Input fields */
+  .w-full.px-3.py-2.bg-slate-700.border.border-slate-600.rounded-md.text-white.placeholder-gray-400.focus\\:outline-none.focus\\:ring-2.focus\\:ring-blue-500 {
+    padding: 0.75rem;
+    font-size: 16px; /* Prevents zoom on iOS */
+  }
+  
+  /* Labels */
+  .block.text-sm.font-medium.text-gray-300.mb-2 {
+    font-size: 0.875rem;
+    margin-bottom: 0.5rem;
+  }
+  
+  /* Error message */
+  .text-red-400.text-sm.text-center {
+    font-size: 0.875rem;
+    padding: 0.5rem;
+  }
+  
+  /* Login button */
+  .w-full.mt-1.bg-white.hover\\:bg-gray-100.disabled\\:bg-gray-200.text-black.font-bold.py-2.px-4.rounded-md.transition.duration-300.cursor-pointer {
+    padding: 0.875rem;
+    font-size: 1rem;
+    margin-top: 1rem;
+  }
+}
+
+/* Tablet Styles (769px to 1024px) */
+@media (min-width: 769px) and (max-width: 1024px) {
+  /* Login container adjustments */
+  .min-h-screen {
+    min-height: 100vh;
+    padding: 2rem;
+  }
+  
+  /* Login form container */
+  .bg-slate-800.p-8.rounded-lg.shadow-lg.w-full.max-w-md.border.border-slate-700 {
+    padding: 2rem;
+    max-width: 450px;
+    width: 100%;
+  }
+  
+  /* Login title */
+  .text-2xl.font-bold.text-white.mb-6.text-center {
+    font-size: 1.75rem;
+    margin-bottom: 2rem;
+  }
+  
+  /* Form spacing */
+  .space-y-4 > div {
+    margin-bottom: 1.25rem;
+  }
+  
+  /* Input fields */
+  .w-full.px-3.py-2.bg-slate-700.border.border-slate-600.rounded-md.text-white.placeholder-gray-400.focus\\:outline-none.focus\\:ring-2.focus\\:ring-blue-500 {
+    padding: 0.875rem;
+    font-size: 16px;
+  }
+  
+  /* Labels */
+  .block.text-sm.font-medium.text-gray-300.mb-2 {
+    font-size: 0.9rem;
+    margin-bottom: 0.625rem;
+  }
+  
+  /* Error message */
+  .text-red-400.text-sm.text-center {
+    font-size: 0.9rem;
+    padding: 0.75rem;
+  }
+  
+  /* Login button */
+  .w-full.mt-1.bg-white.hover\\:bg-gray-100.disabled\\:bg-gray-200.text-black.font-bold.py-2.px-4.rounded-md.transition.duration-300.cursor-pointer {
+    padding: 1rem;
+    font-size: 1.1rem;
+    margin-top: 1.25rem;
+  }
+}
+
+/* Landscape Mobile Styles (for better UX on mobile landscape) */
+@media (max-width: 768px) and (orientation: landscape) {
+  .min-h-screen {
+    padding: 0.5rem;
+  }
+  
+  .bg-slate-800.p-8.rounded-lg.shadow-lg.w-full.max-w-md.border.border-slate-700 {
+    padding: 1rem;
+    margin: 0.25rem;
+  }
+  
+  .text-2xl.font-bold.text-white.mb-6.text-center {
+    font-size: 1.25rem;
+    margin-bottom: 1rem;
+  }
+  
+  .space-y-4 > div {
+    margin-bottom: 0.75rem;
+  }
+  
+  .w-full.px-3.py-2.bg-slate-700.border.border-slate-600.rounded-md.text-white.placeholder-gray-400.focus\\:outline-none.focus\\:ring-2.focus\\:ring-blue-500 {
+    padding: 0.625rem;
+  }
+  
+  .w-full.mt-1.bg-white.hover\\:bg-gray-100.disabled\\:bg-gray-200.text-black.font-bold.py-2.px-4.rounded-md.transition.duration-300.cursor-pointer {
+    padding: 0.75rem;
+    margin-top: 0.75rem;
+  }
+}
+
+/* ===== ADMIN PANEL RESPONSIVE STYLES ===== */
+
+/* Mobile Styles for Admin Panel (up to 768px) */
+@media (max-width: 768px) {
+  /* Admin layout container */
+  .min-h-screen.bg-slate-900.text-white.flex {
+    flex-direction: column;
+  }
+  
+  /* Main content area */
+  .min-h-screen.bg-slate-900.text-white.flex > main {
+    flex: 1;
+    width: 100%;
+    overflow-x: hidden;
+  }
+  
+  /* Mobile header */
+  .lg\\:hidden.bg-slate-800.p-4.border-b.border-slate-700 {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+  }
+  
+  /* Hamburger button */
+  .lg\\:hidden.bg-slate-800.p-4.border-b.border-slate-700 button {
+    transition: all 0.2s ease;
+  }
+  
+  .lg\\:hidden.bg-slate-800.p-4.border-b.border-slate-700 button:hover {
+    background-color: rgba(148, 163, 184, 0.3);
+  }
+  
+  /* Sidebar overlay */
+  .fixed.inset-0.bg-black.bg-opacity-50.z-40.lg\\:hidden {
+    backdrop-filter: blur(2px);
+  }
+  
+  /* Sidebar container */
+  .fixed.lg\\:static.inset-y-0.left-0.z-50.w-64.h-screen.bg-slate-800.text-slate-100.p-5.flex.flex-col {
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+  }
+  
+  /* Sidebar close button */
+  .lg\\:hidden.p-2.hover\\:bg-slate-700.rounded-md {
+    transition: all 0.2s ease;
+  }
+  
+  /* Navigation items */
+  .space-y-2 > a {
+    transition: all 0.2s ease;
+  }
+  
+  /* Main content padding for mobile */
+  .min-h-screen.bg-slate-900.text-white.flex > main > div {
+    padding: 1rem;
+  }
+}
+
+/* Tablet Styles for Admin Panel (769px to 1024px) */
+@media (min-width: 769px) and (max-width: 1024px) {
+  /* Admin layout container */
+  .min-h-screen.bg-slate-900.text-white.flex {
+    flex-direction: row;
+  }
+  
+  /* Sidebar adjustments for tablet */
+  .fixed.lg\\:static.inset-y-0.left-0.z-50.w-64.h-screen.bg-slate-800.text-slate-100.p-5.flex.flex-col {
+    width: 240px;
+  }
+  
+  /* Main content area */
+  .min-h-screen.bg-slate-900.text-white.flex > main {
+    flex: 1;
+    overflow-x: auto;
+  }
+  
+  /* Navigation items spacing */
+  .space-y-2 > a {
+    padding: 0.75rem 1rem;
+    font-size: 0.95rem;
+  }
+  
+  /* Sidebar title */
+  .text-xl.font-bold {
+    font-size: 1.1rem;
+  }
+  
+  /* Main content padding for tablet */
+  .min-h-screen.bg-slate-900.text-white.flex > main > div {
+    padding: 1.5rem;
+  }
+}
+
+/* Large Tablet and Small Desktop (1025px to 1280px) */
+@media (min-width: 1025px) and (max-width: 1280px) {
+  /* Sidebar width adjustment */
+  .fixed.lg\\:static.inset-y-0.left-0.z-50.w-64.h-screen.bg-slate-800.text-slate-100.p-5.flex.flex-col {
+    width: 260px;
+  }
+  
+  /* Main content padding */
+  .min-h-screen.bg-slate-900.text-white.flex > main > div {
+    padding: 2rem;
+  }
+}
+
+/* Landscape Mobile Styles for Admin Panel */
+@media (max-width: 768px) and (orientation: landscape) {
+  /* Reduce header height in landscape */
+  .lg\\:hidden.bg-slate-800.p-4.border-b.border-slate-700 {
+    padding: 0.75rem 1rem;
+  }
+  
+  /* Adjust sidebar height */
+  .fixed.lg\\:static.inset-y-0.left-0.z-50.w-64.h-screen.bg-slate-800.text-slate-100.p-5.flex.flex-col {
+    height: 100vh;
+    max-height: 100vh;
+  }
+  
+  /* Reduce navigation spacing */
+  .space-y-2 > a {
+    padding: 0.5rem 0.75rem;
+  }
+  
+  /* Reduce title margin */
+  .text-xl.font-bold.mb-8 {
+    margin-bottom: 1rem;
+  }
+}
+
+/* ===== ADMIN DASHBOARD RESPONSIVE STYLES ===== */
+
+/* Mobile Styles for Dashboard (up to 768px) */
+@media (max-width: 768px) {
+  /* Dashboard container */
+  .p-6 {
+    padding: 1rem;
+  }
+  
+  /* Dashboard title */
+  .text-3xl.font-bold.mb-6 {
+    font-size: 1.75rem;
+    margin-bottom: 1.5rem;
+  }
+  
+  /* Stats grid - single column on mobile */
+  .grid.grid-cols-1.md\\:grid-cols-3.gap-6.mb-10 {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+  
+  /* Stats cards */
+  .rounded-xl.border.border-slate-700.bg-slate-800.p-6 {
+    padding: 1.25rem;
+  }
+  
+  /* Stats card text */
+  .rounded-xl.border.border-slate-700.bg-slate-800.p-6 p.text-slate-300 {
+    font-size: 0.875rem;
+  }
+  
+  .rounded-xl.border.border-slate-700.bg-slate-800.p-6 p.text-3xl.font-bold.mt-2 {
+    font-size: 2rem;
+    margin-top: 0.5rem;
+  }
+  
+  /* Quick Actions section */
+  .mb-6 {
+    margin-bottom: 1.5rem;
+  }
+  
+  .text-xl.font-semibold.mb-3 {
+    font-size: 1.125rem;
+    margin-bottom: 1rem;
+  }
+  
+  /* Quick Actions buttons - stack vertically on mobile */
+  .flex.gap-3 {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .flex.gap-3 > a {
+    text-align: center;
+    padding: 0.875rem 1rem;
+    font-size: 0.95rem;
+  }
+  
+  /* Recent Tests section */
+  .mt-6 {
+    margin-top: 1.5rem;
+  }
+  
+  .text-xl.font-semibold.mb-3 {
+    font-size: 1.125rem;
+    margin-bottom: 1rem;
+  }
+  
+  /* Table container */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden {
+    border-radius: 0.5rem;
+  }
+  
+  /* Table header */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden table thead th {
+    padding: 0.75rem 0.5rem;
+    font-size: 0.875rem;
+  }
+  
+  /* Table body */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden table tbody td {
+    padding: 0.75rem 0.5rem;
+    font-size: 0.875rem;
+  }
+  
+  /* Table scroll height */
+  .max-h-72.overflow-y-auto {
+    max-height: 16rem;
+  }
+  
+  /* Status pill adjustments */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden .px-2.py-1.rounded-full.text-xs.font-medium {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+  }
+}
+
+/* Tablet Styles for Dashboard (769px to 1024px) */
+@media (min-width: 769px) and (max-width: 1024px) {
+  /* Dashboard container */
+  .p-6 {
+    padding: 1.5rem;
+  }
+  
+  /* Dashboard title */
+  .text-3xl.font-bold.mb-6 {
+    font-size: 2.25rem;
+    margin-bottom: 2rem;
+  }
+  
+  /* Stats grid - 2 columns on tablet */
+  .grid.grid-cols-1.md\\:grid-cols-3.gap-6.mb-10 {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+    margin-bottom: 2.5rem;
+  }
+  
+  /* Stats cards */
+  .rounded-xl.border.border-slate-700.bg-slate-800.p-6 {
+    padding: 1.5rem;
+  }
+  
+  /* Stats card text */
+  .rounded-xl.border.border-slate-700.bg-slate-800.p-6 p.text-slate-300 {
+    font-size: 0.95rem;
+  }
+  
+  .rounded-xl.border.border-slate-700.bg-slate-800.p-6 p.text-3xl.font-bold.mt-2 {
+    font-size: 2.25rem;
+    margin-top: 0.75rem;
+  }
+  
+  /* Quick Actions section */
+  .mb-6 {
+    margin-bottom: 2rem;
+  }
+  
+  .text-xl.font-semibold.mb-3 {
+    font-size: 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+  
+  /* Quick Actions buttons */
+  .flex.gap-3 > a {
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+  }
+  
+  /* Recent Tests section */
+  .mt-6 {
+    margin-top: 2rem;
+  }
+  
+  .text-xl.font-semibold.mb-3 {
+    font-size: 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+  
+  /* Table header */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden table thead th {
+    padding: 1rem 0.75rem;
+    font-size: 0.95rem;
+  }
+  
+  /* Table body */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden table tbody td {
+    padding: 1rem 0.75rem;
+    font-size: 0.95rem;
+  }
+  
+  /* Table scroll height */
+  .max-h-72.overflow-y-auto {
+    max-height: 20rem;
+  }
+}
+
+/* Large Tablet and Small Desktop (1025px to 1280px) */
+@media (min-width: 1025px) and (max-width: 1280px) {
+  /* Dashboard container */
+  .p-6 {
+    padding: 2rem;
+  }
+  
+  /* Stats grid - 3 columns on larger screens */
+  .grid.grid-cols-1.md\\:grid-cols-3.gap-6.mb-10 {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2rem;
+    margin-bottom: 3rem;
+  }
+  
+  /* Stats cards */
+  .rounded-xl.border.border-slate-700.bg-slate-800.p-6 {
+    padding: 2rem;
+  }
+  
+  /* Quick Actions buttons */
+  .flex.gap-3 > a {
+    padding: 0.875rem 2rem;
+    font-size: 1.05rem;
+  }
+  
+  /* Table scroll height */
+  .max-h-72.overflow-y-auto {
+    max-height: 24rem;
+  }
+}
+
+/* Landscape Mobile Styles for Dashboard */
+@media (max-width: 768px) and (orientation: landscape) {
+  /* Dashboard container */
+  .p-6 {
+    padding: 0.75rem;
+  }
+  
+  /* Dashboard title */
+  .text-3xl.font-bold.mb-6 {
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+  }
+  
+  /* Stats grid */
+  .grid.grid-cols-1.md\\:grid-cols-3.gap-6.mb-10 {
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+  }
+  
+  /* Stats cards */
+  .rounded-xl.border.border-slate-700.bg-slate-800.p-6 {
+    padding: 1rem;
+  }
+  
+  /* Quick Actions section */
+  .mb-6 {
+    margin-bottom: 1rem;
+  }
+  
+  .text-xl.font-semibold.mb-3 {
+    font-size: 1rem;
+    margin-bottom: 0.75rem;
+  }
+  
+  /* Quick Actions buttons */
+  .flex.gap-3 {
+    gap: 0.5rem;
+  }
+  
+  .flex.gap-3 > a {
+    padding: 0.625rem 0.875rem;
+    font-size: 0.875rem;
+  }
+  
+  /* Recent Tests section */
+  .mt-6 {
+    margin-top: 1rem;
+  }
+  
+  .text-xl.font-semibold.mb-3 {
+    font-size: 1rem;
+    margin-bottom: 0.75rem;
+  }
+  
+  /* Table scroll height */
+  .max-h-72.overflow-y-auto {
+    max-height: 12rem;
+  }
+  
+  /* Table cells */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden table thead th,
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden table tbody td {
+    padding: 0.5rem 0.375rem;
+    font-size: 0.8rem;
+  }
+}
+
+/* ===== ADMIN TESTS PAGE RESPONSIVE STYLES ===== */
+
+/* Mobile Styles for Tests Page (up to 768px) */
+@media (max-width: 768px) {
+  /* Tests page container */
+  .p-6.h-screen.flex.flex-col {
+    padding: 1rem;
+    height: calc(100vh - 4rem);
+  }
+  
+  /* Tests page header */
+  .flex.justify-between.items-center.mb-6 {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  
+  /* Tests title */
+  .text-3xl.font-bold {
+    font-size: 1.75rem;
+  }
+  
+  /* Create Test button */
+  .bg-white.hover\\:bg-gray-100.px-4.py-2.rounded-md.text-black {
+    width: 100%;
+    text-align: center;
+    padding: 0.875rem 1rem;
+    font-size: 0.95rem;
+  }
+  
+  /* Table container */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden.flex-grow {
+    border-radius: 0.5rem;
+  }
+  
+  /* Table header */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden table thead th {
+    padding: 0.75rem 0.5rem;
+    font-size: 0.875rem;
+  }
+  
+  /* Table body */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden table tbody td {
+    padding: 0.75rem 0.5rem;
+    font-size: 0.875rem;
+  }
+  
+  /* Actions column - stack buttons vertically */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden table tbody td.flex.gap-3 {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden table tbody td.flex.gap-3 button {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8rem;
+    border-radius: 0.25rem;
+    text-align: center;
+  }
+  
+  /* Status pill adjustments */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden .px-2.py-1.rounded-full.text-xs.font-medium {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+  }
+  
+  /* Assignment Modal - Mobile */
+  .bg-white.p-6.rounded-lg.max-w-2xl.w-full.max-h-\\[80vh\\].overflow-y-auto {
+    margin: 1rem;
+    max-width: calc(100% - 2rem);
+    max-height: calc(100vh - 2rem);
+    padding: 1.25rem;
+  }
+  
+  /* Modal title */
+  .text-lg.font-semibold.mb-4 {
+    font-size: 1.125rem;
+    margin-bottom: 1.25rem;
+  }
+  
+  /* Assignment mode selection */
+  .flex.gap-4 {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  /* Form inputs */
+  .w-full.p-2.border.border-gray-300.rounded {
+    padding: 0.75rem;
+    font-size: 16px;
+  }
+  
+  /* Search and selection controls */
+  .flex.gap-2.mb-3 {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .flex.gap-2.mb-3 button {
+    padding: 0.625rem 1rem;
+    font-size: 0.875rem;
+  }
+  
+  /* Students list */
+  .border.border-gray-300.rounded.max-h-48.overflow-y-auto {
+    max-height: 12rem;
+  }
+  
+  /* Student selection items */
+  .flex.items-center.p-3.border-b.border-gray-200.last\\:border-b-0.hover\\:bg-gray-50 {
+    padding: 0.75rem;
+  }
+  
+  /* Modal buttons */
+  .flex.gap-3.justify-end {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .flex.gap-3.justify-end button {
+    width: 100%;
+    padding: 0.875rem 1rem;
+    font-size: 0.95rem;
+  }
+}
+
+/* Tablet Styles for Tests Page (769px to 1024px) */
+@media (min-width: 769px) and (max-width: 1024px) {
+  /* Tests page container */
+  .p-6.h-screen.flex.flex-col {
+    padding: 1.5rem;
+  }
+  
+  /* Tests page header */
+  .flex.justify-between.items-center.mb-6 {
+    margin-bottom: 2rem;
+  }
+  
+  /* Tests title */
+  .text-3xl.font-bold {
+    font-size: 2.25rem;
+  }
+  
+  /* Create Test button */
+  .bg-white.hover\\:bg-gray-100.px-4.py-2.rounded-md.text-black {
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+  }
+  
+  /* Table header */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden table thead th {
+    padding: 1rem 0.75rem;
+    font-size: 0.95rem;
+  }
+  
+  /* Table body */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden table tbody td {
+    padding: 1rem 0.75rem;
+    font-size: 0.95rem;
+  }
+  
+  /* Actions column */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden table tbody td.flex.gap-3 button {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+  }
+  
+  /* Assignment Modal - Tablet */
+  .bg-white.p-6.rounded-lg.max-w-2xl.w-full.max-h-\\[80vh\\].overflow-y-auto {
+    padding: 2rem;
+    max-width: 90%;
+  }
+  
+  /* Modal title */
+  .text-lg.font-semibold.mb-4 {
+    font-size: 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+  
+  /* Form inputs */
+  .w-full.p-2.border.border-gray-300.rounded {
+    padding: 0.875rem;
+  }
+  
+  /* Students list */
+  .border.border-gray-300.rounded.max-h-48.overflow-y-auto {
+    max-height: 16rem;
+  }
+  
+  /* Modal buttons */
+  .flex.gap-3.justify-end button {
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+  }
+}
+
+/* Large Tablet and Small Desktop (1025px to 1280px) */
+@media (min-width: 1025px) and (max-width: 1280px) {
+  /* Tests page container */
+  .p-6.h-screen.flex.flex-col {
+    padding: 2rem;
+  }
+  
+  /* Tests title */
+  .text-3xl.font-bold {
+    font-size: 2.5rem;
+  }
+  
+  /* Create Test button */
+  .bg-white.hover\\:bg-gray-100.px-4.py-2.rounded-md.text-black {
+    padding: 0.875rem 2rem;
+    font-size: 1.05rem;
+  }
+  
+  /* Assignment Modal - Large screens */
+  .bg-white.p-6.rounded-lg.max-w-2xl.w-full.max-h-\\[80vh\\].overflow-y-auto {
+    padding: 2.5rem;
+    max-width: 800px;
+  }
+  
+  /* Students list */
+  .border.border-gray-300.rounded.max-h-48.overflow-y-auto {
+    max-height: 20rem;
+  }
+}
+
+/* Landscape Mobile Styles for Tests Page */
+@media (max-width: 768px) and (orientation: landscape) {
+  /* Tests page container */
+  .p-6.h-screen.flex.flex-col {
+    padding: 0.75rem;
+    height: calc(100vh - 3rem);
+  }
+  
+  /* Tests page header */
+  .flex.justify-between.items-center.mb-6 {
+    margin-bottom: 1rem;
+  }
+  
+  /* Tests title */
+  .text-3xl.font-bold {
+    font-size: 1.5rem;
+  }
+  
+  /* Create Test button */
+  .bg-white.hover\\:bg-gray-100.px-4.py-2.rounded-md.text-black {
+    padding: 0.625rem 0.875rem;
+    font-size: 0.875rem;
+  }
+  
+  /* Table header */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden table thead th {
+    padding: 0.5rem 0.375rem;
+    font-size: 0.8rem;
+  }
+  
+  /* Table body */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden table tbody td {
+    padding: 0.5rem 0.375rem;
+    font-size: 0.8rem;
+  }
+  
+  /* Actions column */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden table tbody td.flex.gap-3 {
+    gap: 0.25rem;
+  }
+  
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden table tbody td.flex.gap-3 button {
+    padding: 0.375rem 0.5rem;
+    font-size: 0.75rem;
+  }
+  
+  /* Assignment Modal - Landscape */
+  .fixed.inset-0.bg-black.bg-opacity-50.flex.items-center.justify-center.z-50 .bg-white.p-6.rounded-lg.max-w-2xl.w-full.max-h-\\[80vh\\].overflow-y-auto {
+    margin: 0.5rem;
+    max-width: calc(100% - 1rem);
+    max-height: calc(100vh - 1rem);
+    padding: 1rem;
+  }
+  
+  /* Modal title */
+  .fixed.inset-0.bg-black.bg-opacity-50.flex.items-center.justify-center.z-50 .text-lg.font-semibold.mb-4 {
+    font-size: 1rem;
+    margin-bottom: 1rem;
+  }
+  
+  /* Students list */
+  .fixed.inset-0.bg-black.bg-opacity-50.flex.items-center.justify-center.z-50 .border.border-gray-300.rounded.max-h-48.overflow-y-auto {
+    max-height: 8rem;
+  }
+  
+  /* Student selection items */
+  .fixed.inset-0.bg-black.bg-opacity-50.flex.items-center.justify-center.z-50 .flex.items-center.p-3.border-b.border-gray-200.last\\:border-b-0.hover\\:bg-gray-50 {
+    padding: 0.5rem;
+  }
+  
+  /* Modal buttons */
+  .fixed.inset-0.bg-black.bg-opacity-50.flex.items-center.justify-center.z-50 .flex.gap-3.justify-end button {
+    padding: 0.625rem 0.875rem;
+    font-size: 0.875rem;
+  }
+}
+
+/* ===== ADMIN USERS PAGE RESPONSIVE STYLES ===== */
+
+/* Mobile Styles for Users Page (up to 768px) */
+@media (max-width: 768px) {
+  /* Users page container */
+  .p-6 {
+    padding: 1rem;
+  }
+  
+  /* Users page header */
+  .flex.justify-between.items-center.mb-6 {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  
+  /* Users title */
+  .text-3xl.font-bold {
+    font-size: 1.75rem;
+  }
+  
+  /* Add User button */
+  .bg-white.text-black.hover\\:bg-gray-200.px-4.py-2.rounded-md.cursor-pointer {
+    width: 100%;
+    text-align: center;
+    padding: 0.875rem 1rem;
+    font-size: 0.95rem;
+  }
+  
+  /* Quick Add/Edit form */
+  .rounded-lg.border.border-slate-700.bg-slate-800.p-4.mb-6.grid.md\\:grid-cols-3.gap-5 {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    padding: 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+  
+  /* Form inputs */
+  .p-2.rounded.bg-slate-900.border.border-slate-700 {
+    padding: 0.75rem;
+    font-size: 16px;
+  }
+  
+  /* Bulk Upload Section */
+  .mb-3 {
+    margin-bottom: 1.5rem;
+  }
+  
+  /* Search section */
+  .block.text-slate-300.mb-2 {
+    font-size: 0.875rem;
+    margin-bottom: 0.75rem;
+  }
+  
+  /* Search input */
+  .w-full.p-3.rounded-md.bg-slate-800.border.border-slate-700 {
+    padding: 0.75rem;
+    font-size: 16px;
+  }
+  
+  /* Table container */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden {
+    border-radius: 0.5rem;
+  }
+  
+  /* Table header */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden table thead th {
+    padding: 0.75rem 0.5rem;
+    font-size: 0.875rem;
+  }
+  
+  /* Table body */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden table tbody td {
+    padding: 0.75rem 0.5rem;
+    font-size: 0.875rem;
+  }
+  
+  /* Actions column - stack buttons vertically */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden table tbody td.flex.gap-3 {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden table tbody td.flex.gap-3 button {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8rem;
+    border-radius: 0.25rem;
+    text-align: center;
+  }
+  
+  /* Status pill adjustments */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden .px-2.py-1.rounded-full.text-xs.font-medium {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+  }
+  
+  /* Table scroll height */
+  .max-h-96.overflow-y-auto {
+    max-height: 20rem;
+  }
+  
+  /* Email text color */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden table tbody td.text-blue-400 {
+    font-size: 0.875rem;
+  }
+}
+
+/* Tablet Styles for Users Page (769px to 1024px) */
+@media (min-width: 769px) and (max-width: 1024px) {
+  /* Users page container */
+  .p-6 {
+    padding: 1.5rem;
+  }
+  
+  /* Users page header */
+  .flex.justify-between.items-center.mb-6 {
+    margin-bottom: 2rem;
+  }
+  
+  /* Users title */
+  .text-3xl.font-bold {
+    font-size: 2.25rem;
+  }
+  
+  /* Add User button */
+  .bg-white.text-black.hover\\:bg-gray-200.px-4.py-2.rounded-md.cursor-pointer {
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+  }
+  
+  /* Quick Add/Edit form */
+  .rounded-lg.border.border-slate-700.bg-slate-800.p-4.mb-6.grid.md\\:grid-cols-3.gap-5 {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.25rem;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+  }
+  
+  /* Form inputs */
+  .p-2.rounded.bg-slate-900.border.border-slate-700 {
+    padding: 0.875rem;
+  }
+  
+  /* Bulk Upload Section */
+  .mb-3 {
+    margin-bottom: 2rem;
+  }
+  
+  /* Search section */
+  .block.text-slate-300.mb-2 {
+    font-size: 0.95rem;
+    margin-bottom: 1rem;
+  }
+  
+  /* Search input */
+  .w-full.p-3.rounded-md.bg-slate-800.border.border-slate-700 {
+    padding: 0.875rem;
+  }
+  
+  /* Table header */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden table thead th {
+    padding: 1rem 0.75rem;
+    font-size: 0.95rem;
+  }
+  
+  /* Table body */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden table tbody td {
+    padding: 1rem 0.75rem;
+    font-size: 0.95rem;
+  }
+  
+  /* Actions column */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden table tbody td.flex.gap-3 button {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+  }
+  
+  /* Table scroll height */
+  .max-h-96.overflow-y-auto {
+    max-height: 24rem;
+  }
+  
+  /* Email text color */
+  .rounded-xl.border.border-slate-700.bg-slate-800.overflow-hidden table tbody td.text-blue-400 {
+    font-size: 0.95rem;
+  }
+}

@@ -1,9 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 
-const Item = ({ to, icon, children }) => (
+const Item = ({ to, icon, children, onClick }) => (
   <NavLink
     to={to}
+    onClick={onClick}
     className={({ isActive }) =>
       `flex items-center gap-3 px-3 py-2 rounded-md hover:bg-slate-700/60 ${
         isActive ? "bg-slate-700" : ""
@@ -15,7 +16,7 @@ const Item = ({ to, icon, children }) => (
   </NavLink>
 );
 
-export default function Sidebar() {
+export default function Sidebar({ isOpen, onToggle }) {
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -23,32 +24,66 @@ export default function Sidebar() {
     navigate('/login');
   };
 
+  const handleNavClick = () => {
+    // Close sidebar on mobile when nav item is clicked
+    if (window.innerWidth <= 768 && onToggle) {
+      onToggle();
+    }
+  };
+
   return (
-    <aside className="w-64 h-screen bg-slate-800 text-slate-100 p-5 flex flex-col">
-      <h1 className="text-xl font-bold mb-8">Proctoring App</h1>
+    <>
+      {/* Mobile Overlay */}
+      {isOpen && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+          onClick={onToggle}
+        />
+      )}
+      
+      {/* Sidebar */}
+      <aside className={`
+        fixed lg:static inset-y-0 left-0 z-50 w-64 h-screen bg-slate-800 text-slate-100 p-5 flex flex-col
+        transform transition-transform duration-300 ease-in-out
+        ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+      `}>
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-xl font-bold">Proctoring App</h1>
+          {/* Mobile Close Button */}
+          <button 
+            onClick={onToggle}
+            className="lg:hidden p-2 hover:bg-slate-700 rounded-md"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
 
-      <nav className="space-y-2">
-        <Item to="/admin" icon={"🏠"}>Dashboard</Item>
-        <Item to="/admin/tests" icon={"📄"}>Tests</Item>
-        <Item to="/admin/users" icon={"👥"}>Users</Item>
-        <Item to="/admin/assignments" icon={"📌"}>Assignments</Item>
-        <Item to="/admin/reviews" icon={"✔️"}>Reviews</Item>
-      </nav>
+        <nav className="space-y-2">
+          <Item to="/admin" icon={"🏠"} onClick={handleNavClick}>Dashboard</Item>
+          <Item to="/admin/tests" icon={"📄"} onClick={handleNavClick}>Tests</Item>
+          <Item to="/admin/users" icon={"👥"} onClick={handleNavClick}>Users</Item>
+          <Item to="/admin/assignments" icon={"📌"} onClick={handleNavClick}>Assignments</Item>
+          <Item to="/admin/reviews" icon={"✔️"} onClick={handleNavClick}>Reviews</Item>
+        </nav>
 
-      <div className="mt-auto space-y-2">
-        <NavLink
-          to="/admin/tests/create"
-          className="inline-block text-center text-black bg-white hover:bg-white-700 transition px-4 py-2 rounded-md w-full cursor-pointer"
-        >
-          New Test
-        </NavLink>
-        <button
-          onClick={handleLogout}
-          className="w-full text-center bg-red-600 hover:bg-red-700 transition px-4 py-2 rounded-md cursor-pointer"
-        >
-          Logout
-        </button>
-      </div>
-    </aside>
+        <div className="mt-auto space-y-2">
+          <NavLink
+            to="/admin/tests/create"
+            onClick={handleNavClick}
+            className="inline-block text-center text-black bg-white hover:bg-white-700 transition px-4 py-2 rounded-md w-full cursor-pointer"
+          >
+            New Test
+          </NavLink>
+          <button
+            onClick={handleLogout}
+            className="w-full text-center bg-red-600 hover:bg-red-700 transition px-4 py-2 rounded-md cursor-pointer"
+          >
+            Logout
+          </button>
+        </div>
+      </aside>
+    </>
   );
 }
