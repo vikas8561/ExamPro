@@ -35,7 +35,7 @@ const StudentSidebar = () => {
 
       <button
         onClick={handleLogout}
-        className="mt-auto flex items-center gap-3 px-3 py-2 rounded-md bg-red-600 hover:bg-red-700 w-full text-white"
+        className="mt-auto flex items-center gap-3 px-3 py-2 rounded-md bg-red-600 hover:bg-red-700 w-full text-white cursor-pointer"
       >
         <LogOut size={22} /> Logout
       </button>
