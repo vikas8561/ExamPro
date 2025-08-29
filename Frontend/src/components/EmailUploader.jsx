@@ -70,7 +70,7 @@ const EmailUploader = ({ onUploadComplete }) => {
             type="file"
             accept=".csv,.json"
             onChange={handleFileChange}
-            className="w-full p-2 rounded bg-slate-900 border border-slate-700"
+            className="w-full p-2 rounded bg-slate-900 border border-slate-700 cursor-pointer"
             required
           />
           <p className="text-sm text-slate-400 mt-1">
@@ -81,7 +81,7 @@ const EmailUploader = ({ onUploadComplete }) => {
         <button
           type="submit"
           disabled={isUploading}
-          className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 px-4 py-2 rounded-md text-white"
+          className="bg-white text-black hover:bg-gray-200 disabled:bg-gray-400 px-4 py-2 rounded-md cursor-pointer"
         >
           {isUploading ? "Uploading..." : "Upload Users"}
         </button>

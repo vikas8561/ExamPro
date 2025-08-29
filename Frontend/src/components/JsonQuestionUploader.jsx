@@ -69,12 +69,12 @@ const JsonQuestionUploader = ({ onQuestionsLoaded }) => {
         <label className="block mb-2 text-sm text-slate-300">
           Upload JSON file with questions:
         </label>
-        <input
-          type="file"
-          accept=".json"
-          onChange={handleFileUpload}
-          className="w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-slate-600 file:text-white hover:file:bg-slate-500"
-        />
+          <input
+            type="file"
+            accept=".json"
+            onChange={handleFileUpload}
+            className="w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-slate-600 file:text-white hover:file:bg-slate-500 cursor-pointer"
+          />
       </div>
 
       {loading && (

@@ -106,7 +106,7 @@ export default function Users() {
         <h2 className="text-3xl font-bold">Users</h2>
         <button
           onClick={submit}
-          className="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-md"
+          className="bg-white text-black hover:bg-gray-200 px-4 py-2 rounded-md cursor-pointer"
         >
           {editing ? "Save User" : "Add User"}
         </button>
@@ -195,13 +195,13 @@ export default function Users() {
                           // status: u.status,
                         });
                       }}
-                      className="text-blue-400"
+                      className="text-blue-400 cursor-pointer"
                     >
                       Edit
                     </button>
                     <button
                       onClick={() => deleteUser(u._id)}
-                      className="text-rose-400"
+                      className="text-rose-400 cursor-pointer"
                     >
                       Delete
                     </button>

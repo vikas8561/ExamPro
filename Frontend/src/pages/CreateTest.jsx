@@ -353,14 +353,14 @@ export default function CreateTest() {
                         <button
                           type="button"
                           onClick={selectAllStudents}
-                          className="px-3 py-2 bg-blue-600 text-white rounded text-sm"
+                          className="px-3 py-2 bg-blue-600 text-white rounded text-sm cursor-pointer"
                         >
                           Select All
                         </button>
                         <button
                           type="button"
                           onClick={clearAllSelections}
-                          className="px-3 py-2 bg-gray-600 text-white rounded text-sm"
+                          className="px-3 py-2 bg-gray-600 text-white rounded text-sm cursor-pointer"
                         >
                           Clear All
                         </button>
@@ -406,14 +406,14 @@ export default function CreateTest() {
                     <button
                       type="button"
                       onClick={() => addQuestion("mcq")}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md"
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md cursor-pointer"
                     >
                       Add MCQ
                     </button>
                     <button
                       type="button"
                       onClick={() => addQuestion("theoretical")}
-                      className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-md"
+                      className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-md cursor-pointer"
                     >
                       Add Theory
                     </button>
@@ -423,7 +423,7 @@ export default function CreateTest() {
                   <button
                     type="button"
                     onClick={() => addQuestion(form.type)}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md"
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md cursor-pointer"
                   >
                     Add Question
                   </button>
@@ -439,7 +439,7 @@ export default function CreateTest() {
                     <button
                       type="button"
                       onClick={() => removeQuestion(question.id)}
-                      className="text-red-400 hover:text-red-300"
+                      className="text-red-400 hover:text-red-300 cursor-pointer"
                     >
                       Remove
                     </button>
@@ -517,7 +517,7 @@ export default function CreateTest() {
             <button
               type="submit"
               disabled={loading}
-              className="px-6 py-3 bg-white text-black font-semibold rounded-md hover:bg-gray-100 disabled:opacity-50"
+              className="px-6 py-3 bg-white text-black font-semibold rounded-md hover:bg-gray-100 disabled:opacity-50 cursor-pointer"
             >
               {loading ? "Creating..." : "Create Test"}
             </button>

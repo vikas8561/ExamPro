@@ -520,7 +520,7 @@ const TakeTest = () => {
             <button
               onClick={requestPermissions}
               disabled={permissionsGranted}
-              className="bg-blue-600 hover:bg-blue-700 disabled:bg-green-600 disabled:cursor-not-allowed text-white px-8 py-3 rounded-md font-semibold"
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-green-600 disabled:cursor-not-allowed text-white px-8 py-3 rounded-md font-semibold cursor-pointer"
             >
               {permissionsGranted ? "All Permissions Granted ✓" : "Request Permissions"}
             </button>
@@ -636,7 +636,7 @@ const TakeTest = () => {
                   <button
                     key={q._id}
                     onClick={() => setCurrentQuestion(index)}
-                    className={`w-8 h-8 rounded-md text-sm font-medium ${
+                    className={`w-8 h-8 rounded-md text-sm font-medium cursor-pointer ${
                       currentQuestion === index
                         ? 'bg-blue-600 text-white'
                         : answers[q._id]
@@ -665,7 +665,7 @@ const TakeTest = () => {
                 <button
                   onClick={handlePreviousQuestion}
                   disabled={currentQuestion === 0}
-                  className="w-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md"
+                  className="w-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
                 >
                   Previous
                 </button>
@@ -673,14 +673,14 @@ const TakeTest = () => {
                 <button
                   onClick={handleNextQuestion}
                   disabled={currentQuestion === test.questions.length - 1}
-                  className="w-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md"
+                  className="w-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
                 >
                   Next
                 </button>
 
                 <button
                   onClick={submitTest}
-                  className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-md font-semibold"
+                  className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-md font-semibold cursor-pointer"
                 >
                   Submit Test
                 </button>

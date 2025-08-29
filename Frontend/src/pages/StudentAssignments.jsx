@@ -237,7 +237,7 @@ const handleStartTest = async (assignmentId) => {
                   {assignment.status === "Assigned" && isTestAvailable(assignment.startTime, assignment.duration) && (
                     <button
                       onClick={() => handleStartTest(assignment._id)}
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md font-semibold transition-colors"
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md font-semibold transition-colors cursor-pointer"
                     >
                       Start Test
                     </button>
@@ -254,19 +254,19 @@ const handleStartTest = async (assignmentId) => {
 
                   {assignment.status === "In Progress" && (
                     isDeadlinePassed(assignment.startTime, assignment.duration) ? (
-                      <button
-                        onClick={() => navigate(`/student/view-test/${assignment._id}`)}
-                        className="w-full bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-md font-semibold transition-colors"
-                      >
-                        View Results
-                      </button>
+                    <button
+                      onClick={() => navigate(`/student/view-test/${assignment._id}`)}
+                      className="w-full bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-md font-semibold transition-colors cursor-pointer"
+                    >
+                      View Results
+                    </button>
                     ) : (
-                      <button
-                        onClick={() => navigate(`/student/take-test/${assignment._id}`)}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md font-semibold transition-colors"
-                      >
-                        Continue Test
-                      </button>
+                    <button
+                      onClick={() => navigate(`/student/take-test/${assignment._id}`)}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md font-semibold transition-colors cursor-pointer"
+                    >
+                      Continue Test
+                    </button>
                     )
                   )}
 
@@ -280,12 +280,12 @@ const handleStartTest = async (assignmentId) => {
                           View Results
                         </button>
                       ) : (
-                        <button
-                          onClick={() => navigate(`/student/view-test/${assignment._id}`)}
-                          className="w-full bg-yellow-600 hover:bg-yellow-700 text-white py-2 px-4 rounded-md font-semibold transition-colors"
-                        >
-                          View Submission
-                        </button>
+                    <button
+                      onClick={() => navigate(`/student/view-test/${assignment._id}`)}
+                      className="w-full bg-yellow-600 hover:bg-yellow-700 text-white py-2 px-4 rounded-md font-semibold transition-colors cursor-pointer"
+                    >
+                      View Submission
+                    </button>
                       )
                     ) : (
                       <button

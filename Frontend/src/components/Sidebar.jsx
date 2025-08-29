@@ -38,13 +38,13 @@ export default function Sidebar() {
       <div className="mt-auto space-y-2">
         <NavLink
           to="/admin/tests/create"
-          className="inline-block text-center text-black bg-white hover:bg-white-700 transition px-4 py-2 rounded-md w-full"
+          className="inline-block text-center text-black bg-white hover:bg-white-700 transition px-4 py-2 rounded-md w-full cursor-pointer"
         >
           New Test
         </NavLink>
         <button
           onClick={handleLogout}
-          className="w-full text-center bg-red-600 hover:bg-red-700 transition px-4 py-2 rounded-md"
+          className="w-full text-center bg-red-600 hover:bg-red-700 transition px-4 py-2 rounded-md cursor-pointer"
         >
           Logout
         </button>

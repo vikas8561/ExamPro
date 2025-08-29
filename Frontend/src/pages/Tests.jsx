@@ -198,7 +198,7 @@ export default function Tests() {
                 <td className="p-4 flex gap-3">
                   <button
                     onClick={() => nav(`/admin/tests/create?id=${t._id}`)}
-                    className="text-blue-400"
+                    className="text-blue-400 cursor-pointer"
                   >
                     Edit
                   </button>
@@ -223,7 +223,7 @@ export default function Tests() {
                   </button>
                   <button
                     onClick={() => deleteTest(t._id)}
-                    className="text-rose-400"
+                    className="text-rose-400 cursor-pointer"
                   >
                     Delete
                   </button>

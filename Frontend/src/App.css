@@ -1,1 +1,17 @@
 @import "tailwindcss";
+
+/* Global cursor pointer for all interactive elements */
+button,
+a,
+[role="button"],
+input[type="submit"],
+input[type="button"] {
+  cursor: pointer;
+}
+
+/* Ensure links maintain their default cursor behavior when disabled */
+a:disabled,
+button:disabled,
+[role="button"]:disabled {
+  cursor: not-allowed;
+}
