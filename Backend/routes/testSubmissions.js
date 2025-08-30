@@ -63,7 +63,13 @@ router.post("/", authenticateToken, async (req, res, next) => {
     let maxScore = 0;
     const processedResponses = [];
 
-    assignment.testId.questions.forEach(question => {
+    // Safety check for questions array
+    if (!assignmentWithTest.testId.questions || !Array.isArray(assignmentWithTest.testId.questions)) {
+      console.error("Questions array is missing or invalid:", assignmentWithTest.testId.questions);
+      return res.status(500).json({ message: "Test questions data is invalid" });
+    }
+
+    assignmentWithTest.testId.questions.forEach(question => {
       maxScore += question.points;
       
       const userResponse = responses.find(r => r.questionId === question._id.toString());
@@ -106,7 +112,7 @@ router.post("/", authenticateToken, async (req, res, next) => {
     // Create or update submission with permission data
     const submissionData = {
       assignmentId,
-      testId: assignment.testId._id,
+      testId: assignmentWithTest.testId._id,
       userId,
       responses: processedResponses,
       totalScore,
@@ -167,6 +173,7 @@ router.post("/", authenticateToken, async (req, res, next) => {
       message: "Test submitted successfully"
     });
   } catch (error) {
+    console.error("Error in POST /api/test-submissions:", error.message, error.stack);
     next(error);
   }
 });

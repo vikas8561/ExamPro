@@ -12,7 +12,7 @@ import StudentDashboard from "./pages/StudentDashboard";
 import StudentAssignments from "./pages/StudentAssignments";
 import StudentResults from "./pages/StudentResults";
 import TakeTest from "./pages/TakeTest";
-import StudentLayout from "./components/StudentLayout";
+import StudentSidebar from "./components/StudentSidebar";
 import MentorLayout from "./components/MentorLayout";
 import MentorAssignments from "./pages/MentorAssignments";
 import MentorDashboard from "./pages/MentorDashboard";
@@ -77,10 +77,31 @@ const AdminLayout = () => {
 
 // Student Layout Component with routes
 const StudentRoutes = () => {
+  const [sidebarOpen, setSidebarOpen] = React.useState(false);
+
+  const toggleSidebar = () => {
+    setSidebarOpen(!sidebarOpen);
+  };
+
   return (
     <div className="min-h-screen bg-slate-900 text-white flex">
-      <StudentLayout />
+      <StudentSidebar isOpen={sidebarOpen} onToggle={toggleSidebar} />
       <main className="flex-1">
+        {/* Mobile Header with Hamburger */}
+        <div className="lg:hidden bg-slate-800 p-4 border-b border-slate-700">
+          <div className="flex items-center justify-between">
+            <h1 className="text-lg font-bold">Student Portal</h1>
+            <button
+              onClick={toggleSidebar}
+              className="p-2 hover:bg-slate-700 rounded-md"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        
         <Routes>
           <Route path="/" element={<StudentDashboard />} />
           <Route path="/assignments" element={<StudentAssignments />} />

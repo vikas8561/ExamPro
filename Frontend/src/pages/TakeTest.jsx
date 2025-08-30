@@ -384,7 +384,7 @@ const TakeTest = () => {
       const submissionData = {
         assignmentId,
         responses: test.questions.map(question => ({
-          questionId: question._id,
+          questionId: question._id.toString(),
           selectedOption: answers[question._id] && typeof answers[question._id] === 'string' ? answers[question._id] : undefined,
           textAnswer: answers[question._id] && typeof answers[question._id] !== 'string' ? answers[question._id] : undefined
         })),
