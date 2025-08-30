@@ -1050,3 +1050,89 @@ button:disabled,
     font-size: 0.95rem;
   }
 }
+
+/* ===== STUDENT DASHBOARD TABLE SCROLL STYLES ===== */
+
+/* Student table container styles */
+.student-table-container {
+  position: relative;
+}
+
+.student-table-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.3) rgba(30, 41, 59, 0.1);
+}
+
+/* Webkit browsers (Chrome, Safari, Edge) */
+.student-table-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.student-table-scroll::-webkit-scrollbar-track {
+  background: rgba(30, 41, 59, 0.1);
+  border-radius: 4px;
+}
+
+.student-table-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 4px;
+}
+
+.student-table-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.5);
+}
+
+/* Firefox */
+.student-table-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.3) rgba(30, 41, 59, 0.1);
+}
+
+/* Enhanced scroll indicators */
+.student-table-scroll::before,
+.student-table-scroll::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 20px;
+  pointer-events: none;
+  z-index: 5;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.student-table-scroll::before {
+  top: 0;
+  background: linear-gradient(to bottom, rgba(30, 41, 59, 0.8), transparent);
+}
+
+.student-table-scroll::after {
+  bottom: 0;
+  background: linear-gradient(to top, rgba(30, 41, 59, 0.8), transparent);
+}
+
+.student-table-scroll.scroll-top::before,
+.student-table-scroll.scroll-bottom::after {
+  opacity: 1;
+}
+
+/* Responsive height adjustments for student tables */
+@media (max-width: 768px) {
+  .student-table-scroll {
+    max-height: 16rem !important;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+  .student-table-scroll {
+    max-height: 20rem !important;
+  }
+}
+
+@media (min-width: 1025px) {
+  .student-table-scroll {
+    max-height: 24rem !important;
+  }
+}

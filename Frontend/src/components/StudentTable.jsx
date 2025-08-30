@@ -10,8 +10,8 @@ const StudentTable = ({ type, data }) => {
   }
 
   return (
-    <div className="bg-slate-800 rounded-lg overflow-hidden">
-      <div className="max-h-96 overflow-y-auto">
+    <div className="bg-slate-800 rounded-lg overflow-hidden student-table-container">
+      <div className="max-h-96 overflow-y-auto scroll-smooth student-table-scroll">
         <table className="w-full">
           <thead className="bg-slate-700 sticky top-0 z-10">
             <tr>
