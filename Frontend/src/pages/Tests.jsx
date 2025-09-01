@@ -180,6 +180,7 @@ export default function Tests() {
             <thead>
               <tr className="text-left text-slate-300 border-b border-slate-700 sticky top-0 bg-slate-800 z-10">
                 <th className="p-4">Title</th>
+                <th className="p-4">Subject</th>
                 <th className="p-4">Type</th>
                 <th className="p-4">Status</th>
                 <th className="p-4">Time</th>
@@ -190,6 +191,7 @@ export default function Tests() {
             {tests.map((t) => (
               <tr key={t._id} className="border-b border-slate-700">
                 <td className="p-4">{t.title}</td>
+                <td className="p-4">{t.subject || "N/A"}</td>
                 <td className="p-4 capitalize">{t.type}</td>
                 <td className="p-4">
                   <StatusPill label={t.status} />
@@ -232,7 +234,7 @@ export default function Tests() {
             ))}
             {tests.length === 0 && (
               <tr>
-                <td colSpan="5" className="p-4 text-center text-slate-400">
+                <td colSpan="6" className="p-4 text-center text-slate-400">
                   No tests found.
                 </td>
               </tr>

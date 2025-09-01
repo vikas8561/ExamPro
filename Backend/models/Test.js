@@ -20,6 +20,7 @@ const QuestionSchema = new mongoose.Schema(
 const TestSchema = new mongoose.Schema(
   {
     title: { type: String, required: true, trim: true },
+    subject: { type: String, default: "" },
     type: { type: String, enum: ["mcq", "theoretical", "mixed"], default: "mixed" },
     instructions: { type: String, default: "" },
     timeLimit: { type: Number, default: 30, min: 1 },

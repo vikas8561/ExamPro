@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import apiRequest from "../services/api";
 import JsonQuestionUploader from "../components/JsonQuestionUploader";
 
@@ -18,8 +18,13 @@ const emptyQuestion = (kind) => ({
 });
 
 export default function CreateTest() {
+  const [searchParams] = useSearchParams();
+  const editId = searchParams.get('id');
+  const isEdit = !!editId;
+
   const [form, setForm] = useState({
     title: "",
+    subject: "",
     type: "mixed",
     instructions: "",
     timeLimit: 30,
@@ -35,7 +40,56 @@ export default function CreateTest() {
   const [searchQuery, setSearchQuery] = useState("");
   const [assignmentMode, setAssignmentMode] = useState("all"); // "all" or "manual"
   const [loading, setLoading] = useState(false);
+  const [subjects, setSubjects] = useState([]);
+  const [showSubjectModal, setShowSubjectModal] = useState(false);
+  const [newSubjectName, setNewSubjectName] = useState("");
+  const [newSubjectDescription, setNewSubjectDescription] = useState("");
   const nav = useNavigate();
+
+  // Fetch subjects on component mount
+  useEffect(() => {
+    fetchSubjects();
+  }, []);
+
+  // Fetch test data if editing
+  useEffect(() => {
+    if (isEdit) {
+      fetchTestData();
+    }
+  }, [isEdit, editId]);
+
+  const fetchTestData = async () => {
+    try {
+      setLoading(true);
+      const test = await apiRequest(`/tests/${editId}`);
+      setForm({
+        title: test.title,
+        subject: test.subject || "",
+        type: test.type,
+        instructions: test.instructions,
+        timeLimit: test.timeLimit,
+        questions: test.questions.map(q => ({
+          id: crypto.randomUUID(),
+          kind: q.kind,
+          text: q.text,
+          points: q.points,
+          ...(q.kind === "mcq" && {
+            options: q.options.map(opt => opt.text),
+            answer: q.answer
+          }),
+          ...(q.kind === "theoretical" && {
+            guidelines: q.guidelines
+          })
+        }))
+      });
+    } catch (error) {
+      console.error("Error fetching test:", error);
+      alert("Error loading test data");
+      nav("/admin/tests");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Fetch students when manual assignment mode is selected
   useEffect(() => {
@@ -122,6 +176,40 @@ export default function CreateTest() {
     }));
   };
 
+  const fetchSubjects = async () => {
+    try {
+      const data = await apiRequest("/subjects");
+      setSubjects(data.subjects || []);
+    } catch (error) {
+      console.error("Error fetching subjects:", error);
+    }
+  };
+
+  const handleAddSubject = async () => {
+    if (!newSubjectName.trim()) {
+      alert("Subject name is required");
+      return;
+    }
+
+    try {
+      const newSubject = await apiRequest("/subjects", {
+        method: "POST",
+        body: JSON.stringify({
+          name: newSubjectName.trim(),
+          description: newSubjectDescription.trim()
+        })
+      });
+
+      setSubjects(prev => [...prev, newSubject]);
+      setForm(prev => ({ ...prev, subject: newSubject.name }));
+      setNewSubjectName("");
+      setNewSubjectDescription("");
+      setShowSubjectModal(false);
+    } catch (error) {
+      alert(error.message || "Error adding subject");
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -129,6 +217,7 @@ export default function CreateTest() {
     try {
       const payload = {
         title: form.title.trim(),
+        subject: form.subject.trim(),
         type: form.type,
         instructions: form.instructions,
         timeLimit: Number(form.timeLimit),
@@ -146,43 +235,52 @@ export default function CreateTest() {
         }))
       };
 
-      const createdTest = await apiRequest("/tests", {
-        method: "POST",
-        body: JSON.stringify(payload)
-      });
+      if (isEdit) {
+        // Update existing test
+        await apiRequest(`/tests/${editId}`, {
+          method: "PUT",
+          body: JSON.stringify(payload)
+        });
+      } else {
+        // Create new test
+        const createdTest = await apiRequest("/tests", {
+          method: "POST",
+          body: JSON.stringify(payload)
+        });
 
-      // Check if assignment is enabled
-      if (assignmentOptions.assignToAll) {
-        // Convert local datetime string to ISO string with timezone offset
-        const startTimeISO = new Date(assignmentOptions.startTime).toISOString();
+        // Check if assignment is enabled
+        if (assignmentOptions.assignToAll) {
+          // Convert local datetime string to ISO string with timezone offset
+          const startTimeISO = new Date(assignmentOptions.startTime).toISOString();
 
-        if (assignmentMode === "all") {
-          await apiRequest("/assignments/assign-all", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-              testId: createdTest._id, 
-              startTime: startTimeISO,
-              duration: parseInt(assignmentOptions.duration)
-            })
-          });
-        } else if (assignmentMode === "manual" && selectedStudents.length > 0) {
-          await apiRequest("/assignments/assign-manual", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-              testId: createdTest._id, 
-              studentIds: selectedStudents,
-              startTime: startTimeISO,
-              duration: parseInt(assignmentOptions.duration)
-            })
-          });
+          if (assignmentMode === "all") {
+            await apiRequest("/assignments/assign-all", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                testId: createdTest._id,
+                startTime: startTimeISO,
+                duration: parseInt(assignmentOptions.duration)
+              })
+            });
+          } else if (assignmentMode === "manual" && selectedStudents.length > 0) {
+            await apiRequest("/assignments/assign-manual", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                testId: createdTest._id,
+                studentIds: selectedStudents,
+                startTime: startTimeISO,
+                duration: parseInt(assignmentOptions.duration)
+              })
+            });
+          }
         }
       }
 
       nav("/admin/tests");
     } catch (error) {
-      alert(error.message || "Error creating test");
+      alert(error.message || `Error ${isEdit ? 'updating' : 'creating'} test`);
     } finally {
       setLoading(false);
     }
@@ -191,7 +289,7 @@ export default function CreateTest() {
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8">Create New Test</h1>
+        <h1 className="text-3xl font-bold mb-8">{isEdit ? "Edit Test" : "Create New Test"}</h1>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Basic Test Info */}
@@ -208,6 +306,31 @@ export default function CreateTest() {
                   className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
                   required
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Subject *</label>
+                <div className="flex gap-2 items-center">
+                  <select
+                    value={form.subject}
+                    onChange={(e) => setForm(prev => ({ ...prev, subject: e.target.value }))}
+                    className="flex-1 p-3 bg-slate-700 border border-slate-600 rounded-md"
+                    required
+                  >
+                    <option value="" disabled>Select a subject</option>
+                    {subjects.map(subject => (
+                      <option key={subject._id} value={subject.name}>{subject.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setShowSubjectModal(true)}
+                    className="px-3 py-2 bg-blue-600 rounded text-white text-sm"
+                    title="Add Subject"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -519,11 +642,66 @@ export default function CreateTest() {
               disabled={loading}
               className="px-6 py-3 bg-white text-black font-semibold rounded-md hover:bg-gray-100 disabled:opacity-50 cursor-pointer"
             >
-              {loading ? "Creating..." : "Create Test"}
+              {loading ? (isEdit ? "Updating..." : "Creating...") : (isEdit ? "Update Test" : "Create Test")}
             </button>
           </div>
         </form>
       </div>
+
+      {/* Add Subject Modal */}
+      {showSubjectModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-slate-800 p-6 rounded-lg w-full max-w-md">
+            <h3 className="text-xl font-semibold mb-4">Add New Subject</h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Subject Name *</label>
+                <input
+                  type="text"
+                  value={newSubjectName}
+                  onChange={(e) => setNewSubjectName(e.target.value)}
+                  className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
+                  placeholder="e.g., Mathematics, Physics"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Description (Optional)</label>
+                <textarea
+                  value={newSubjectDescription}
+                  onChange={(e) => setNewSubjectDescription(e.target.value)}
+                  rows={3}
+                  className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
+                  placeholder="Brief description of the subject..."
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSubjectModal(false);
+                  setNewSubjectName("");
+                  setNewSubjectDescription("");
+                }}
+                className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleAddSubject}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                Add Subject
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

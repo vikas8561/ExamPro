@@ -41,7 +41,7 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
 // Create new test (admin only)
 router.post("/", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
-    const { title, type, instructions, timeLimit, questions } = req.body;
+    const { title, subject, type, instructions, timeLimit, questions } = req.body;
 
     if (!title) {
       return res.status(400).json({ message: "Test title is required" });
@@ -49,6 +49,7 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
 
     const test = await Test.create({
       title: title.trim(),
+      subject: subject || "",
       type: type || "mixed",
       instructions: instructions || "",
       timeLimit: Number(timeLimit || 30),
@@ -68,10 +69,11 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
 // Update test (admin only)
 router.put("/:id", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
-    const { title, type, instructions, timeLimit, questions, status } = req.body;
+    const { title, subject, type, instructions, timeLimit, questions, status } = req.body;
 
     const updateData = {};
     if (title) updateData.title = title.trim();
+    if (subject !== undefined) updateData.subject = subject;
     if (type) updateData.type = type;
     if (instructions !== undefined) updateData.instructions = instructions;
     if (timeLimit) updateData.timeLimit = Number(timeLimit);

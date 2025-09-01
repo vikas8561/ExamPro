@@ -64,8 +64,6 @@ export default function Sidebar({ isOpen, onToggle }) {
           <Item to="/admin" icon={"🏠"} onClick={handleNavClick}>Dashboard</Item>
           <Item to="/admin/tests" icon={"📄"} onClick={handleNavClick}>Tests</Item>
           <Item to="/admin/users" icon={"👥"} onClick={handleNavClick}>Users</Item>
-          <Item to="/admin/assignments" icon={"📌"} onClick={handleNavClick}>Assignments</Item>
-          <Item to="/admin/reviews" icon={"✔️"} onClick={handleNavClick}>Reviews</Item>
         </nav>
 
         <div className="mt-auto space-y-2">

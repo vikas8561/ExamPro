@@ -4,8 +4,7 @@ import Sidebar from "./components/Sidebar";
 import Dashboard from "./pages/Dashboard";
 import Tests from "./pages/Tests";
 import Users from "./pages/Users";
-import Assignments from "./pages/Assignments";
-import Reviews from "./pages/Reviews";
+
 import CreateTest from "./pages/CreateTest";
 import Login from "./pages/Login";
 import StudentDashboard from "./pages/StudentDashboard";
@@ -66,8 +65,6 @@ const AdminLayout = () => {
           <Route path="/tests" element={<Tests />} />
           <Route path="/tests/create" element={<CreateTest />} />
           <Route path="/users" element={<Users />} />
-          <Route path="/assignments" element={<Assignments />} />
-          <Route path="/reviews" element={<Reviews />} />
           <Route path="*" element={<div className="p-6">Not Found</div>} />
         </Routes>
       </main>
