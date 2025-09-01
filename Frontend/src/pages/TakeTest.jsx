@@ -83,35 +83,25 @@ const TakeTest = () => {
     };
   }, [testStarted, timeRemaining]);
 
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        const newViolationCount = violationCount + 1;
-        setViolationCount(newViolationCount);
-        
-        const violation = {
-          timestamp: new Date(),
-          violationType: "tab_switch",
-          details: `Tab switched - violation ${newViolationCount}`,
-          tabCount: newViolationCount
-        };
-        setViolations(prev => [...prev, violation]);
-
-        if (newViolationCount === 1 || newViolationCount === 2) {
-          setShowResumeModal(true);
-        } else if (newViolationCount >= 3) {
-          alert("Test cancelled due to multiple tab violations (3+ violations detected).");
-          submitTest(true);
-        }
+  const requestFullscreen = async () => {
+    try {
+      if (document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+        console.log("Fullscreen mode activated");
+      } else if (document.documentElement.webkitRequestFullscreen) { // Safari
+        await document.documentElement.webkitRequestFullscreen();
+        console.log("Fullscreen mode activated (Safari)");
+      } else if (document.documentElement.msRequestFullscreen) { // IE/Edge
+        await document.documentElement.msRequestFullscreen();
+        console.log("Fullscreen mode activated (IE/Edge)");
+      } else {
+        console.warn("Fullscreen API not supported in this browser");
       }
-    };
-
-    window.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      window.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [violationCount]);
+    } catch (error) {
+      console.error("Failed to enter fullscreen mode:", error);
+      // Continue with test even if fullscreen fails
+    }
+  };
 
   const checkCameraPermission = async () => {
     try {
@@ -146,6 +136,82 @@ const TakeTest = () => {
     }
   };
 
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        const newViolationCount = violationCount + 1;
+        setViolationCount(newViolationCount);
+
+        const violation = {
+          timestamp: new Date(),
+          violationType: "tab_switch",
+          details: `Tab switched - violation ${newViolationCount}`,
+          tabCount: newViolationCount
+        };
+        setViolations(prev => [...prev, violation]);
+
+        if (newViolationCount === 1 || newViolationCount === 2) {
+          setShowResumeModal(true);
+        } else if (newViolationCount >= 3) {
+          alert("Test cancelled due to multiple tab violations (3+ violations detected).");
+          submitTest(true);
+        }
+      }
+    };
+
+    window.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [violationCount]);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isFullscreen = !!(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.msFullscreenElement
+      );
+
+      if (!isFullscreen && testStarted) {
+        console.log("Fullscreen mode exited - treating as violation");
+        const newViolationCount = violationCount + 1;
+        setViolationCount(newViolationCount);
+
+        const violation = {
+          timestamp: new Date(),
+          violationType: "fullscreen_exit",
+          details: `Fullscreen exited - violation ${newViolationCount}`,
+          tabCount: newViolationCount
+        };
+        setViolations(prev => [...prev, violation]);
+
+        if (newViolationCount === 1 || newViolationCount === 2) {
+          setShowResumeModal(true);
+          // Attempt to re-enter fullscreen mode
+          setTimeout(() => {
+            requestFullscreen();
+          }, 1000);
+        } else if (newViolationCount >= 3) {
+          alert("Test cancelled due to multiple violations (3+ violations detected).");
+          submitTest(true);
+        }
+      }
+    };
+
+    // Add event listeners for fullscreen changes
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('msfullscreenchange', handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('msfullscreenchange', handleFullscreenChange);
+    };
+  }, [testStarted, violationCount]);
+
   const requestPermissions = async () => {
     await checkCameraPermission();
     await checkMicrophonePermission();
@@ -158,6 +224,9 @@ const TakeTest = () => {
     ) {
       setPermissionsGranted(true);
       setShowPermissionModal(false);
+
+      // Request fullscreen mode after permissions are granted
+      await requestFullscreen();
 
       if (!testStarted && !startRequestMade.current) {
         startRequestMade.current = true;
@@ -377,6 +446,10 @@ const TakeTest = () => {
 
   const handleResumeTest = () => {
     setShowResumeModal(false);
+    // Immediately return to fullscreen mode when resuming
+    setTimeout(() => {
+      requestFullscreen();
+    }, 100); // Small delay to ensure modal is closed
   };
 
   const submitTest = async (cancelledDueToViolation = false) => {
