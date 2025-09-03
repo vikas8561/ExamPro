@@ -75,12 +75,29 @@ const CountdownTimer = ({ startTime, onTimerComplete }) => {
 
 const StudentAssignments = () => {
   const [assignments, setAssignments] = useState([]);
+  const [subjects, setSubjects] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [mentorFilter, setMentorFilter] = useState('all');
   const navigate = useNavigate();
 
   useEffect(() => {
     fetchAssignments();
+    fetchSubjects();
   }, []);
+
+  const fetchSubjects = async () => {
+    try {
+      const data = await apiRequest("/subjects/public");
+      setSubjects(data.subjects || []);
+    } catch (error) {
+      console.error("Error fetching subjects:", error);
+      // Fallback to extracting subjects from assignments if API fails
+      setSubjects([]);
+    }
+  };
 
   const fetchAssignments = async () => {
     try {
@@ -139,18 +156,45 @@ const StudentAssignments = () => {
     }
   };
 
-const handleStartTest = async (assignmentId) => {
+  const handleStartTest = async (assignmentId) => {
     try {
       const response = await apiRequest(`/assignments/${assignmentId}/start`, {
         method: "POST"
       });
-      
+
       // Navigate to take test page
       navigate(`/student/take-test/${assignmentId}`);
     } catch (error) {
       alert(error.message || "Failed to start test");
     }
   };
+
+  const filteredAssignments = assignments.filter((assignment) => {
+    // Status filter
+    if (statusFilter !== 'all' && assignment.status !== statusFilter) {
+      return false;
+    }
+
+    // Type filter
+    if (typeFilter !== 'all' && assignment.testId?.type !== typeFilter) {
+      return false;
+    }
+
+    // Subject filter
+    if (mentorFilter !== 'all' && assignment.testId?.subject !== mentorFilter) {
+      return false;
+    }
+
+    // Search filter
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    return (
+      (assignment.testId?.title || '').toLowerCase().includes(term) ||
+      (assignment.testId?.type || '').toLowerCase().includes(term) ||
+      (assignment.mentorId?.name || '').toLowerCase().includes(term) ||
+      assignment.status.toLowerCase().includes(term)
+    );
+  });
 
   if (loading) {
     return (
@@ -165,16 +209,148 @@ const handleStartTest = async (assignmentId) => {
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6">
       <div className="max-w-6xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8">My Test Assignments</h1>
+        {/* Header Section with Gradient Background */}
+        <div className="sticky top-0 z-50 relative mb-8">
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 via-purple-600/10 to-indigo-600/10 rounded-2xl blur-xl"></div>
+          <div className="relative bg-slate-800/95 backdrop-blur-md border border-slate-700/50 rounded-2xl p-6 shadow-2xl">
+            {/* Title and Stats Row */}
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6 gap-4">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl shadow-lg">
+                  <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
+                    Tests
+                  </h1>
+                  <p className="text-slate-400 text-sm mt-1">
+                    {assignments.length} total assignments • {filteredAssignments.length} showing
+                  </p>
+                </div>
+              </div>
+
+              {/* Search Bar */}
+              <div className="relative max-w-md w-full lg:w-80">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Search tests..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-12 pr-12 py-3 bg-black-700/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-300 hover:bg-slate-700/70 hover:border-slate-500/50 backdrop-blur-sm"
+                />
+                {searchTerm && (
+                  <button
+                    onClick={() => setSearchTerm('')}
+                    className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-white transition-colors duration-200"
+                  >
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Filter Section */}
+            <div className="border-t border-slate-700/50 pt-6">
+              <div className="flex flex-wrap gap-4 items-center">
+                {/* Status Filter */}
+                <div className="flex items-center gap-3 bg-slate-700/30 rounded-lg px-4 py-2 hover:bg-slate-700/50 transition-colors duration-200">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
+                    <label className="text-sm font-medium text-slate-300">Status:</label>
+                  </div>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="bg-transparent border-none text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 rounded-md px-2 py-1 transition-all duration-200"
+                  >
+                    <option value="all" className="bg-slate-700">All Status</option>
+                    <option value="Assigned" className="bg-slate-700">Assigned</option>
+                    <option value="In Progress" className="bg-slate-700">In Progress</option>
+                    <option value="Completed" className="bg-slate-700">Completed</option>
+                    <option value="Overdue" className="bg-slate-700">Overdue</option>
+                  </select>
+                </div>
+
+                {/* Type Filter */}
+                <div className="flex items-center gap-3 bg-slate-700/30 rounded-lg px-4 py-2 hover:bg-slate-700/50 transition-colors duration-200">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+                    <label className="text-sm font-medium text-slate-300">Type:</label>
+                  </div>
+                  <select
+                    value={typeFilter}
+                    onChange={(e) => setTypeFilter(e.target.value)}
+                    className="bg-transparent border-none text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 rounded-md px-2 py-1 transition-all duration-200"
+                  >
+                    <option value="all" className="bg-slate-700">All Types</option>
+                    <option value="Quiz" className="bg-slate-700">Quiz</option>
+                    <option value="Exam" className="bg-slate-700">Exam</option>
+                    <option value="Practice" className="bg-slate-700">Practice</option>
+                  </select>
+                </div>
+
+                {/* Subject Filter */}
+                <div className="flex items-center gap-3 bg-slate-700/30 rounded-lg px-4 py-2 hover:bg-slate-700/50 transition-colors duration-200">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
+                    <label className="text-sm font-medium text-slate-300">Subject:</label>
+                  </div>
+                  <select
+                    value={mentorFilter}
+                    onChange={(e) => setMentorFilter(e.target.value)}
+                    className="bg-transparent border-none text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 rounded-md px-2 py-1 transition-all duration-200"
+                  >
+                    <option value="all" className="bg-slate-700">All Subjects</option>
+                    {subjects.map(subject => (
+                      <option key={subject._id} value={subject.name} className="bg-slate-700">{subject.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Clear Filters Button */}
+                {(statusFilter !== 'all' || typeFilter !== 'all' || mentorFilter !== 'all' || searchTerm) && (
+                  <button
+                    onClick={() => {
+                      setStatusFilter('all');
+                      setTypeFilter('all');
+                      setMentorFilter('all');
+                      setSearchTerm('');
+                    }}
+                    className="flex items-center gap-2 bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Clear Filters
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
 
         {assignments.length === 0 ? (
           <div className="text-center py-12">
             <div className="text-2xl text-slate-400 mb-4">No assignments found</div>
             <p className="text-slate-500">You don't have any test assignments yet.</p>
           </div>
+        ) : filteredAssignments.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="text-2xl text-slate-400 mb-4">No assignments match your search</div>
+            <p className="text-slate-500">Try adjusting your search terms.</p>
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {assignments.map((assignment) => (
+            {filteredAssignments.map((assignment) => (
               <div key={assignment._id} className="bg-slate-800 rounded-lg p-6 border border-slate-700">
                 <div className="flex justify-between items-start mb-4">
                   <h3 className="text-xl font-semibold text-white">

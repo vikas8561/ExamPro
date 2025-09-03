@@ -3,6 +3,19 @@ const router = express.Router();
 const Subject = require("../models/Subject");
 const { authenticateToken, requireRole } = require("../middleware/auth");
 
+// Get all subjects (public - for students to use in filters)
+router.get("/public", async (req, res, next) => {
+  try {
+    const subjects = await Subject.find({})
+      .select("name description")
+      .sort({ name: 1 });
+
+    res.json({ subjects });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Get all subjects (admin only)
 router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
