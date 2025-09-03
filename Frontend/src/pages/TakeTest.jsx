@@ -26,6 +26,7 @@ const TakeTest = () => {
   const [stream, setStream] = useState(null);
   const [isVideoActive, setIsVideoActive] = useState(false);
   const videoRef = useRef(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     const checkExistingTest = async () => {
@@ -103,6 +104,26 @@ const TakeTest = () => {
     }
   };
 
+  const exitFullscreen = async () => {
+    try {
+      if (document.exitFullscreen) {
+        await document.exitFullscreen();
+        console.log("Fullscreen mode exited");
+      } else if (document.webkitExitFullscreen) { // Safari
+        await document.webkitExitFullscreen();
+        console.log("Fullscreen mode exited (Safari)");
+      } else if (document.msExitFullscreen) { // IE/Edge
+        await document.msExitFullscreen();
+        console.log("Fullscreen mode exited (IE/Edge)");
+      } else {
+        console.warn("Fullscreen API not supported in this browser");
+      }
+    } catch (error) {
+      console.error("Failed to exit fullscreen mode:", error);
+      // Continue with navigation even if fullscreen exit fails
+    }
+  };
+
   const checkCameraPermission = async () => {
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -174,7 +195,7 @@ const TakeTest = () => {
         document.msFullscreenElement
       );
 
-      if (!isFullscreen && testStarted) {
+      if (!isFullscreen && testStarted && !isSubmitting) {
         console.log("Fullscreen mode exited - treating as violation");
         const newViolationCount = violationCount + 1;
         setViolationCount(newViolationCount);
@@ -210,7 +231,7 @@ const TakeTest = () => {
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
       document.removeEventListener('msfullscreenchange', handleFullscreenChange);
     };
-  }, [testStarted, violationCount]);
+  }, [testStarted, violationCount, isSubmitting]);
 
   const requestPermissions = async () => {
     await checkCameraPermission();
@@ -453,6 +474,7 @@ const TakeTest = () => {
   };
 
   const submitTest = async (cancelledDueToViolation = false) => {
+    setIsSubmitting(true);
     try {
       const submissionData = {
         assignmentId,
@@ -501,10 +523,15 @@ const TakeTest = () => {
         body: safeJSONStringify(submissionData)
       });
 
+      // Exit fullscreen mode before navigating
+      await exitFullscreen();
+
+      setIsSubmitting(false);
       navigate(`/student/assignments`);
     } catch (error) {
       console.error("Test submission failed:", error);
       alert(error.message || "Failed to submit test");
+      setIsSubmitting(false);
       navigate("/student/assignments");
     }
   };
