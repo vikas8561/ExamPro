@@ -53,7 +53,7 @@ const UpcomingTests = ({ data }) => {
       });
 
       if (response.message === "Test started successfully" || response.alreadyStarted) {
-        navigate(`/take-test/${assignmentId}`);
+        navigate(`/student/take-test/${assignmentId}`);
       } else {
         alert(response.message);
       }

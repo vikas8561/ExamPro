@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from "react";
 import UpcomingTests from "../components/UpcomingTests";
+import RecentActivity from "../components/RecentActivity";
 import apiRequest from "../services/api";
 
 const StudentDashboard = () => {
   const [assignedTests, setAssignedTests] = useState([]);
   const [completedTests, setCompletedTests] = useState([]);
+  const [recentActivities, setRecentActivities] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchStudentData();
+    fetchRecentActivity();
   }, []);
 
   const fetchStudentData = async () => {
@@ -26,10 +29,21 @@ const StudentDashboard = () => {
 
       setAssignedTests(assignedTestsData);
       setCompletedTests(completedTestsData);
+      setLoading(false);
     } catch (error) {
       console.error("Error fetching student data:", error);
-    } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchRecentActivity = async () => {
+    try {
+      const activities = await apiRequest("/assignments/student/recent-activity");
+      console.log("Recent activities fetched:", activities);
+      setRecentActivities(activities);
+    } catch (error) {
+      console.error("Error fetching recent activity:", error);
+      setRecentActivities([]);
     }
   };
 
@@ -57,6 +71,9 @@ const StudentDashboard = () => {
 
       <h3 className="text-xl font-semibold mb-3">Upcoming Tests</h3>
       <UpcomingTests data={upcomingTests} />
+
+      <h3 className="text-xl font-semibold mb-3 mt-8">Recent Activity</h3>
+      <RecentActivity data={recentActivities} />
     </div>
   );
 };

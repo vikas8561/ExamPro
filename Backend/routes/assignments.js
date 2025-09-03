@@ -45,6 +45,94 @@ router.get("/student", authenticateToken, async (req, res, next) => {
   }
 });
 
+// Get recent activity for current student
+router.get("/student/recent-activity", authenticateToken, async (req, res, next) => {
+  try {
+    if (req.user.role !== "Student") {
+      return res.status(403).json({ message: "Access denied. Student access only." });
+    }
+
+    const userId = req.user.userId;
+    console.log("Fetching recent activity for user:", userId);
+    const activities = [];
+
+    // Get recently completed tests
+    const completedTests = await Assignment.find({
+      userId,
+      status: "Completed"
+    })
+    .populate("testId", "title")
+    .sort({ completedAt: -1 })
+    .limit(3);
+
+    console.log("Completed tests found:", completedTests.length);
+    completedTests.forEach(test => {
+      console.log("Completed test:", test.testId?.title, "completedAt:", test.completedAt);
+      activities.push({
+        type: "completed",
+        testId: test.testId,
+        testTitle: test.testId.title,
+        timestamp: test.completedAt || test.updatedAt,
+        message: `Completed test: ${test.testId.title}`
+      });
+    });
+
+    // Get recently started tests
+    const startedTests = await Assignment.find({
+      userId,
+      status: "In Progress",
+      startedAt: { $exists: true }
+    })
+    .populate("testId", "title")
+    .sort({ startedAt: -1 })
+    .limit(2);
+
+    console.log("Started tests found:", startedTests.length);
+    startedTests.forEach(test => {
+      console.log("Started test:", test.testId?.title, "startedAt:", test.startedAt);
+      activities.push({
+        type: "started",
+        testId: test.testId,
+        testTitle: test.testId.title,
+        timestamp: test.startedAt,
+        message: `Started test: ${test.testId.title}`
+      });
+    });
+
+    // Get recently assigned tests
+    const assignedTests = await Assignment.find({
+      userId,
+      status: "Assigned"
+    })
+    .populate("testId", "title")
+    .sort({ createdAt: -1 })
+    .limit(2);
+
+    console.log("Assigned tests found:", assignedTests.length);
+    assignedTests.forEach(test => {
+      console.log("Assigned test:", test.testId?.title, "createdAt:", test.createdAt);
+      activities.push({
+        type: "assigned",
+        testId: test.testId,
+        testTitle: test.testId.title,
+        timestamp: test.createdAt,
+        message: `Assigned test: ${test.testId.title}`
+      });
+    });
+
+    // Sort all activities by timestamp (most recent first)
+    activities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    // Return only the most recent 7 activities
+    const recentActivities = activities.slice(0, 7);
+    console.log("Final activities to return:", recentActivities.length, recentActivities);
+
+    res.json(recentActivities);
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Get assignment by ID
 router.get("/:id", authenticateToken, async (req, res, next) => {
   try {
