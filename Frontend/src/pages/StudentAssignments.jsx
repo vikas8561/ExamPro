@@ -80,7 +80,7 @@ const StudentAssignments = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
-  const [mentorFilter, setMentorFilter] = useState('all');
+  const [subjectFilter, setSubjectFilter] = useState('all');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -181,7 +181,7 @@ const StudentAssignments = () => {
     }
 
     // Subject filter
-    if (mentorFilter !== 'all' && assignment.testId?.subject !== mentorFilter) {
+    if (subjectFilter !== 'all' && assignment.testId?.subject !== subjectFilter) {
       return false;
     }
 
@@ -305,8 +305,8 @@ const StudentAssignments = () => {
                     <label className="text-sm font-medium text-slate-300">Subject:</label>
                   </div>
                   <select
-                    value={mentorFilter}
-                    onChange={(e) => setMentorFilter(e.target.value)}
+                    value={subjectFilter}
+                    onChange={(e) => setSubjectFilter(e.target.value)}
                     className="bg-transparent border-none text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 rounded-md px-2 py-1 transition-all duration-200"
                   >
                     <option value="all" className="bg-slate-700">All Subjects</option>
@@ -317,12 +317,12 @@ const StudentAssignments = () => {
                 </div>
 
                 {/* Clear Filters Button */}
-                {(statusFilter !== 'all' || typeFilter !== 'all' || mentorFilter !== 'all' || searchTerm) && (
+                {(statusFilter !== 'all' || typeFilter !== 'all' || subjectFilter !== 'all' || searchTerm) && (
                   <button
                     onClick={() => {
                       setStatusFilter('all');
                       setTypeFilter('all');
-                      setMentorFilter('all');
+                      setSubjectFilter('all');
                       setSearchTerm('');
                     }}
                     className="flex items-center gap-2 bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl"

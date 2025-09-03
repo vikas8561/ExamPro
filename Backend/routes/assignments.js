@@ -35,7 +35,7 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     }
 
     const assignments = await Assignment.find({ userId: req.user.userId })
-      .populate("testId", "title type instructions timeLimit questions")
+      .populate("testId", "title type instructions timeLimit questions subject")
       .populate("mentorId", "name email")
       .sort({ deadline: 1 });
 
@@ -203,7 +203,7 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
     });
 
     const populatedAssignment = await Assignment.findById(assignment._id)
-      .populate("testId", "title type instructions timeLimit")
+      .populate("testId", "title type instructions timeLimit subject")
       .populate("userId", "name email")
       .populate("mentorId", "name email");
 
