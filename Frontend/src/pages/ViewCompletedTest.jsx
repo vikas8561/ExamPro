@@ -69,7 +69,42 @@ const ViewCompletedTest = () => {
   }
   if (!testData) return <div className="text-center mt-10">No test data available.</div>;
 
-  const { test, submission } = testData;
+  const { test, submission, showResults, message } = testData;
+
+  // Check if results should be shown
+  if (!showResults) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white p-6">
+        <div className="max-w-4xl mx-auto">
+          <button
+            onClick={() => navigate(-1)}
+            className="flex items-center gap-2 text-blue-400 hover:text-blue-300 mb-6 font-medium"
+          >
+            <ChevronLeftIcon className="h-5 w-5" />
+            Back
+          </button>
+
+          <h2 className="text-3xl font-bold text-white mb-6">{test.title}</h2>
+
+          <div className="bg-slate-800 shadow-lg rounded-xl p-8 border border-slate-700 text-center">
+            <h3 className="text-2xl font-bold text-yellow-400 mb-4">Results Not Available Yet</h3>
+            <p className="text-slate-300 mb-4">
+              {message || "The test results will be available after the deadline has passed."}
+            </p>
+            <p className="text-slate-400 mb-6">
+              Your answers have been submitted and recorded. Results including correctness and scores will be available after the assignment deadline.
+            </p>
+            <button
+              onClick={() => navigate('/student/assignments')}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md font-semibold"
+            >
+              Back to Assignments
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6">
