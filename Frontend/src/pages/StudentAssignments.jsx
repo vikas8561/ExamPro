@@ -194,6 +194,27 @@ const StudentAssignments = () => {
       (assignment.mentorId?.name || '').toLowerCase().includes(term) ||
       assignment.status.toLowerCase().includes(term)
     );
+  }).sort((a, b) => {
+    // Sort so that currently assigned tests appear first, then by date (newest first)
+    // Currently assigned means status "Assigned" or "In Progress" and test is active (not past deadline)
+    const isActive = (assignment) => {
+      if (!assignment.startTime || !assignment.duration) return false;
+      const now = new Date();
+      const start = new Date(assignment.startTime);
+      const end = new Date(start.getTime() + assignment.duration * 60000);
+      return now >= start && now <= end;
+    };
+
+    const aActive = (a.status === "Assigned" || a.status === "In Progress") && isActive(a);
+    const bActive = (b.status === "Assigned" || b.status === "In Progress") && isActive(b);
+
+    if (aActive && !bActive) return -1;
+    if (!aActive && bActive) return 1;
+
+    // If both active or both not active, sort by startTime descending (newest first)
+    const aStart = new Date(a.startTime || 0);
+    const bStart = new Date(b.startTime || 0);
+    return bStart - aStart;
   });
 
   if (loading) {
