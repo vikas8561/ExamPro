@@ -254,7 +254,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
             mentorScore: submission.mentorScore,
             mentorFeedback: submission.mentorFeedback,
             reviewStatus: submission.reviewStatus,
-            finalScore: submission.mentorScore || submission.totalScore,
+            finalScore: submission.mentorScore || (submission.maxScore ? Math.round((submission.totalScore / submission.maxScore) * 100) : 0),
             permissions: submission.permissions
           },
           showResults: true
@@ -429,7 +429,7 @@ router.get("/stats/:testId", authenticateToken, requireRole("admin"), async (req
     let totalScore = 0;
 
     submissions.forEach(submission => {
-      const score = submission.mentorReviewed ? submission.mentorScore : submission.totalScore;
+      const score = submission.mentorReviewed ? submission.mentorScore : (submission.maxScore ? Math.round((submission.totalScore / submission.maxScore) * 100) : 0);
       totalScore += score;
 
       if (score > stats.highestScore) stats.highestScore = score;

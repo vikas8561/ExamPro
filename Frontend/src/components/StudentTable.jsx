@@ -41,13 +41,13 @@ const StudentTable = ({ type, data }) => {
                   <>
                     <td className="p-4">
                       <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        (item.mentorScore || item.score || 0) >= 70 
+                        (item.mentorScore !== null ? item.mentorScore : (item.maxScore ? Math.round((item.totalScore / item.maxScore) * 100) : 0)) >= 70
                           ? 'bg-green-900/50 text-green-300'
-                          : (item.mentorScore || item.score || 0) >= 50
+                          : (item.mentorScore !== null ? item.mentorScore : (item.maxScore ? Math.round((item.totalScore / item.maxScore) * 100) : 0)) >= 50
                           ? 'bg-yellow-900/50 text-yellow-300'
                           : 'bg-red-900/50 text-red-300'
                       }`}>
-                        {item.mentorScore || item.score || 0}%
+                        {item.mentorScore !== null ? item.mentorScore : (item.maxScore ? Math.round((item.totalScore / item.maxScore) * 100) : 0)}%
                       </span>
                     </td>
                     <td className="p-4 text-slate-400">

@@ -90,13 +90,20 @@ const ViewCompletedTest = () => {
           <div className="space-y-2">
             <p className="text-lg">
               <span className="font-medium text-slate-300">Your Score:</span>{" "}
-              <span className="text-2xl font-bold text-blue-400">{submission.totalScore}</span>{" "}
-              <span className="text-slate-400">/ {submission.maxScore}</span>
+              <span className="text-2xl font-bold text-blue-400">
+                {submission.mentorScore !== null ? submission.mentorScore : submission.totalScore}
+              </span>{" "}
+              <span className="text-slate-400">
+                {submission.mentorScore !== null ? '%' : `/ ${submission.maxScore}`}
+              </span>
             </p>
             <p className="text-lg">
               <span className="font-medium text-slate-300">Percentage:</span>{" "}
               <span className="text-2xl font-bold text-green-400">
-                {submission.maxScore ? Math.round((submission.totalScore / submission.maxScore) * 100) : 0}%
+                {submission.mentorScore !== null
+                  ? submission.mentorScore
+                  : (submission.maxScore ? Math.round((submission.totalScore / submission.maxScore) * 100) : 0)
+                }%
               </span>
             </p>
             <p className="text-slate-400">
