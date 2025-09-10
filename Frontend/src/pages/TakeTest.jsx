@@ -579,7 +579,7 @@ const TakeTest = () => {
   };
 
   const handleTimeUp = async () => {
-    await submitTest();
+    await submitTest(false, true); // cancelledDueToViolation=false, autoSubmit=true
     alert("Time is up! Your test has been submitted automatically.");
   };
 
@@ -591,7 +591,7 @@ const TakeTest = () => {
     }, 100); // Small delay to ensure modal is closed
   };
 
-  const submitTest = async (cancelledDueToViolation = false) => {
+  const submitTest = async (cancelledDueToViolation = false, autoSubmit = false) => {
     setIsSubmitting(true);
     try {
       const submissionData = {
@@ -629,6 +629,7 @@ const TakeTest = () => {
           tabCount: Number(violation.tabCount),
         })),
         cancelledDueToViolation: cancelledDueToViolation || violationCount >= 3,
+        autoSubmit,
         permissions: {
           camera: String(cameraPermission),
           microphone: String(microphonePermission),

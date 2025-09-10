@@ -8,7 +8,7 @@ const { authenticateToken, requireRole } = require("../middleware/auth");
 // Submit test results
 router.post("/", authenticateToken, async (req, res, next) => {
   try {
-    const { assignmentId, responses, timeSpent, permissions } = req.body;
+    const { assignmentId, responses, timeSpent, permissions, tabViolationCount, tabViolations, cancelledDueToViolation, autoSubmit } = req.body;
     const userId = req.user.userId;
 
     if (!assignmentId || !responses) {
@@ -122,7 +122,12 @@ router.post("/", authenticateToken, async (req, res, next) => {
       // Mark as immediately reviewed for automatic assessment
       mentorReviewed: true,
       reviewStatus: "Reviewed",
-      reviewedAt: new Date()
+      reviewedAt: new Date(),
+      // Add violation and auto-submit data
+      tabViolationCount: tabViolationCount || 0,
+      tabViolations: tabViolations || [],
+      cancelledDueToViolation: cancelledDueToViolation || false,
+      autoSubmit: autoSubmit || false
     };
 
     // Add permission data if provided

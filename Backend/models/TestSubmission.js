@@ -82,6 +82,10 @@ const TestSubmissionSchema = new mongoose.Schema({
   cancelledDueToViolation: {
     type: Boolean,
     default: false
+  },
+  autoSubmit: {
+    type: Boolean,
+    default: false
   }
 }, { timestamps: true });
 
