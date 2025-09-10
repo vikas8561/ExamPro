@@ -654,7 +654,19 @@ const TakeTest = () => {
             <h1 className="text-2xl font-bold">{test.title}</h1>
             <p className="text-slate-400">Question {currentQuestion + 1} of {test.questions.length}</p>
           </div>
-          
+
+          {isVideoActive && (
+            <div className="flex-shrink-0">
+              <video
+                ref={videoRef}
+                autoPlay
+                muted
+                playsInline
+                className="w-40 h-auto rounded-lg border border-slate-600"
+              />
+            </div>
+          )}
+
           <div className="text-right">
             <div className="text-2xl font-mono bg-red-600 px-4 py-2 rounded-md">
               {formatTime(timeRemaining)}
@@ -731,7 +743,7 @@ const TakeTest = () => {
             <div className="bg-slate-800 rounded-lg p-6">
               <h3 className="font-semibold mb-4">Navigation</h3>
               
-              <div className="grid grid-cols-5 gap-2 mb-6">
+              <div className="grid grid-cols-5 gap-2 mb-6" style={{ maxHeight: '21vh', overflowY: 'auto' }}>
                 {test.questions.map((q, index) => (
                   <button
                     key={q._id}
@@ -749,18 +761,6 @@ const TakeTest = () => {
                 ))}
               </div>
 
-              {isVideoActive && (
-                <div className="mb-4">
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    muted
-                    playsInline
-                    className="w-full h-auto rounded-lg border border-slate-600"
-                  />
-                </div>
-              )}
-              
               <div className="space-y-3">
                 <button
                   onClick={handlePreviousQuestion}
