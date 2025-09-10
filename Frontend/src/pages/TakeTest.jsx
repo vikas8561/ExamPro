@@ -22,6 +22,7 @@ const TakeTest = () => {
   const startRequestMade = useRef(false);
   const [violationCount, setViolationCount] = useState(0);
   const [showResumeModal, setShowResumeModal] = useState(false);
+  const [showSubmitConfirmModal, setShowSubmitConfirmModal] = useState(false);
   const [violations, setViolations] = useState([]);
   const [stream, setStream] = useState(null);
   const [isVideoActive, setIsVideoActive] = useState(false);
@@ -508,9 +509,9 @@ const TakeTest = () => {
             }
             seen.add(value);
           }
-          if (value && typeof value === 'object' && 
-              (value instanceof HTMLElement || 
-               value instanceof Event || 
+          if (value && typeof value === 'object' &&
+              (value instanceof HTMLElement ||
+               value instanceof Event ||
                value.nodeType !== undefined)) {
             return "[DOM Element]";
           }
@@ -534,6 +535,29 @@ const TakeTest = () => {
       setIsSubmitting(false);
       navigate("/student/assignments");
     }
+  };
+
+  const handleSubmitClick = () => {
+    const isFullscreen = !!(
+      document.fullscreenElement ||
+      document.webkitFullscreenElement ||
+      document.msFullscreenElement
+    );
+
+    if (isFullscreen) {
+      setShowSubmitConfirmModal(true);
+    } else {
+      alert("Please return to fullscreen mode to submit the test.");
+    }
+  };
+
+  const handleConfirmSubmit = () => {
+    setShowSubmitConfirmModal(false);
+    submitTest();
+  };
+
+  const handleCancelSubmit = () => {
+    setShowSubmitConfirmModal(false);
   };
 
   const formatTime = (seconds) => {
@@ -779,7 +803,7 @@ const TakeTest = () => {
                 </button>
 
                 <button
-                  onClick={submitTest}
+                  onClick={handleSubmitClick}
                   className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-md font-semibold cursor-pointer"
                 >
                   Submit Test
@@ -807,13 +831,13 @@ const TakeTest = () => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-slate-800 rounded-lg p-6 max-w-md w-full">
             <h2 className="text-xl font-bold mb-4 text-red-400">⚠️ Tab Switch Detected</h2>
-            
+
             <div className="mb-6">
               <p className="text-slate-300 mb-2">
                 You have switched tabs/windows {violationCount} time(s) during this test.
               </p>
               <p className="text-slate-400 text-sm">
-                {violationCount === 1 ? 
+                {violationCount === 1 ?
                   "First warning: Please remain focused on the test." :
                   "Second warning: This is your final warning."
                 }
@@ -826,6 +850,29 @@ const TakeTest = () => {
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-md font-medium"
               >
                 Resume Exam
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSubmitConfirmModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-lg p-8 max-w-md w-full text-center">
+            <h2 className="text-2xl font-bold mb-6 text-white">Confirm Submission</h2>
+            <p className="mb-8 text-white text-lg">Do you want to submit the test?</p>
+            <div className="flex justify-center gap-6">
+              <button
+                onClick={handleConfirmSubmit}
+                className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-md font-semibold"
+              >
+                Confirm
+              </button>
+              <button
+                onClick={handleCancelSubmit}
+                className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-md font-semibold"
+              >
+                Cancel
               </button>
             </div>
           </div>
