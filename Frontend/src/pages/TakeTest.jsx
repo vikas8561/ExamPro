@@ -448,7 +448,13 @@ const TakeTest = () => {
           const existingAnswers = {};
           answersData.forEach((response) => {
             if (response.selectedOption) {
-              existingAnswers[response.questionId] = response.selectedOption;
+              const question = assignmentData.testId.questions.find(q => q._id.toString() === response.questionId);
+              if (question && question.options) {
+                const index = question.options.findIndex(opt => opt.text === response.selectedOption);
+                if (index !== -1) {
+                  existingAnswers[response.questionId] = index;
+                }
+              }
             } else if (response.textAnswer) {
               existingAnswers[response.questionId] = response.textAnswer;
             }
@@ -504,31 +510,59 @@ const TakeTest = () => {
     }
   };
 
-  const handleAnswerChange = async (questionId, answer) => {
-    setAnswers((prev) => ({
-      ...prev,
-      [questionId]: answer,
-    }));
+  const handleAnswerChange = async (questionId, answerValue) => {
+    const question = test.questions.find(q => q._id === questionId);
+    let selectedOption = undefined;
+    let textAnswer = undefined;
+    let hasAnswer = false;
+
+    if (question.kind === "mcq") {
+      // For MCQ, answerValue is the index (number)
+      if (answerValue !== undefined && answerValue !== null && answerValue !== "") {
+        selectedOption = question.options[answerValue].text;
+        hasAnswer = true;
+      }
+      setAnswers((prev) => ({
+        ...prev,
+        [questionId]: answerValue,
+      }));
+    } else if (question.kind === "theoretical") {
+      // For theoretical, answerValue is the text (string)
+      if (answerValue && answerValue.trim() !== "") {
+        textAnswer = answerValue;
+        hasAnswer = true;
+      }
+      setAnswers((prev) => ({
+        ...prev,
+        [questionId]: answerValue,
+      }));
+    }
 
     // Update question status to 'answered' when answer is provided
     setQuestionStatuses((prev) => ({
       ...prev,
-      [questionId]: answer ? "answered" : "not-answered",
+      [questionId]: hasAnswer ? "answered" : "not-answered",
     }));
 
-    try {
-      await apiRequest("/answers", {
-        method: "POST",
-        body: JSON.stringify({
-          assignmentId,
-          questionId,
-          selectedOption: typeof answer === "string" ? answer : undefined,
-          textAnswer: typeof answer === "string" ? undefined : answer,
-        }),
-      });
-      console.log("Answer saved successfully for question:", questionId);
-    } catch (error) {
-      console.error("Failed to save answer:", error);
+    // Only save to backend if there's an actual answer
+    if (hasAnswer) {
+      console.log("Saving answer for question:", questionId, "selectedOption:", selectedOption, "textAnswer:", textAnswer);
+      try {
+        await apiRequest("/answers", {
+          method: "POST",
+          body: JSON.stringify({
+            assignmentId,
+            questionId,
+            selectedOption,
+            textAnswer,
+          }),
+        });
+        console.log("Answer saved successfully for question:", questionId);
+      } catch (error) {
+        console.error("Failed to save answer:", error);
+      }
+    } else {
+      console.log("Not saving answer for question:", questionId, "hasAnswer:", hasAnswer, "answerValue:", answerValue);
     }
   };
 
@@ -562,17 +596,27 @@ const TakeTest = () => {
     try {
       const submissionData = {
         assignmentId,
-        responses: test.questions.map((question) => ({
-          questionId: question._id.toString(),
-          selectedOption:
-            answers[question._id] && typeof answers[question._id] === "string"
-              ? answers[question._id]
-              : undefined,
-          textAnswer:
-            answers[question._id] && typeof answers[question._id] !== "string"
-              ? answers[question._id]
-              : undefined,
-        })),
+        responses: test.questions.map((question) => {
+          const answer = answers[question._id];
+          let selectedOption = undefined;
+          let textAnswer = undefined;
+
+          if (answer !== undefined) {
+            if (question.kind === "mcq" && typeof answer === "number") {
+              // For MCQ, answer is index, map to option text
+              selectedOption = question.options[answer].text;
+            } else if (question.kind === "theoretical" && typeof answer === "string") {
+              // For theoretical, answer is text
+              textAnswer = answer;
+            }
+          }
+
+          return {
+            questionId: question._id.toString(),
+            selectedOption,
+            textAnswer,
+          };
+        }),
         timeSpent,
         tabViolationCount: violationCount,
         tabViolations: violations.map((violation) => ({
@@ -884,7 +928,7 @@ const TakeTest = () => {
                     <label
                       key={index}
                       className={`flex items-center p-4 rounded-lg cursor-pointer transition-colors ${
-                        answers[question._id] === option.text
+                        answers[question._id] === index
                           ? "bg-blue-600 text-white"
                           : "bg-slate-700 hover:bg-slate-600"
                       }`}
@@ -892,10 +936,10 @@ const TakeTest = () => {
                       <input
                         type="radio"
                         name={`question-${question._id}`}
-                        value={option.text}
-                        checked={answers[question._id] === option.text}
+                        value={index}
+                        checked={answers[question._id] === index}
                         onChange={() =>
-                          handleAnswerChange(question._id, option.text)
+                          handleAnswerChange(question._id, index)
                         }
                         className="mr-3"
                       />
