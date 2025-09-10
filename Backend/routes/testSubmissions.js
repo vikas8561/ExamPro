@@ -220,8 +220,11 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
     const currentTime = new Date();
     const assignmentDeadline = assignment.deadline;
 
+    // Add a small buffer (1 second) to handle timing precision issues
+    const deadlineWithBuffer = new Date(assignmentDeadline.getTime() + 1000);
+
     // Determine if results should be shown
-    const showResults = (!submission || submission.mentorReviewed) && currentTime >= assignmentDeadline;
+    const showResults = (!submission || submission.mentorReviewed) && currentTime >= deadlineWithBuffer;
 
     if (submission) {
       // Merge responses with questions for display
