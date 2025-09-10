@@ -81,6 +81,7 @@ const StudentAssignments = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const [subjectFilter, setSubjectFilter] = useState('all');
+  const [showFilters, setShowFilters] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -252,110 +253,128 @@ const StudentAssignments = () => {
                 </div>
               </div>
 
-              {/* Search Bar */}
-              <div className="relative max-w-md w-full lg:w-80">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </div>
-                <input
-                  type="text"
-                  placeholder="Search tests..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-12 pr-12 py-3 bg-black-700/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-300 hover:bg-slate-700/70 hover:border-slate-500/50 backdrop-blur-sm"
-                />
-                {searchTerm && (
-                  <button
-                    onClick={() => setSearchTerm('')}
-                    className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-white transition-colors duration-200"
-                  >
-                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              {/* Search Bar and Filter Button */}
+              <div className="flex items-center gap-3">
+                <div className="relative max-w-md w-full lg:w-80">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
-                  </button>
-                )}
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Search tests..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-12 pr-12 py-3 bg-black-700/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-300 hover:bg-slate-700/70 hover:border-slate-500/50 backdrop-blur-sm"
+                  />
+                  {searchTerm && (
+                    <button
+                      onClick={() => setSearchTerm('')}
+                      className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-white transition-colors duration-200"
+                    >
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter Button */}
+                <button
+                  onClick={() => setShowFilters(!showFilters)}
+                  className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-4 py-3 rounded-xl font-medium transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                  </svg>
+                  Filter
+                  <svg className={`h-4 w-4 transition-transform duration-200 ${showFilters ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
               </div>
             </div>
 
             {/* Filter Section */}
-            <div className="border-t border-slate-700/50 pt-6">
-              <div className="flex flex-wrap gap-4 items-center">
-                {/* Status Filter */}
-                <div className="flex items-center gap-3 bg-slate-700/30 rounded-lg px-4 py-2 hover:bg-slate-700/50 transition-colors duration-200">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
-                    <label className="text-sm font-medium text-slate-300">Status:</label>
+            {showFilters && (
+              <div className="border-t border-slate-700/50 pt-6">
+                <div className="flex flex-wrap gap-4 items-center">
+                  {/* Status Filter */}
+                  <div className="flex items-center gap-3 bg-slate-700/30 rounded-lg px-4 py-2 hover:bg-slate-700/50 transition-colors duration-200">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
+                      <label className="text-sm font-medium text-slate-300">Status:</label>
+                    </div>
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                      className="bg-transparent border-none text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 rounded-md px-2 py-1 transition-all duration-200"
+                    >
+                      <option value="all" className="bg-slate-700">All Status</option>
+                      <option value="Assigned" className="bg-slate-700">Assigned</option>
+                      <option value="In Progress" className="bg-slate-700">In Progress</option>
+                      <option value="Completed" className="bg-slate-700">Completed</option>
+                      <option value="Overdue" className="bg-slate-700">Overdue</option>
+                    </select>
                   </div>
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    className="bg-transparent border-none text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 rounded-md px-2 py-1 transition-all duration-200"
-                  >
-                    <option value="all" className="bg-slate-700">All Status</option>
-                    <option value="Assigned" className="bg-slate-700">Assigned</option>
-                    <option value="In Progress" className="bg-slate-700">In Progress</option>
-                    <option value="Completed" className="bg-slate-700">Completed</option>
-                    <option value="Overdue" className="bg-slate-700">Overdue</option>
-                  </select>
-                </div>
 
-                {/* Type Filter */}
-                <div className="flex items-center gap-3 bg-slate-700/30 rounded-lg px-4 py-2 hover:bg-slate-700/50 transition-colors duration-200">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-                    <label className="text-sm font-medium text-slate-300">Type:</label>
+                  {/* Type Filter */}
+                  <div className="flex items-center gap-3 bg-slate-700/30 rounded-lg px-4 py-2 hover:bg-slate-700/50 transition-colors duration-200">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+                      <label className="text-sm font-medium text-slate-300">Type:</label>
+                    </div>
+                    <select
+                      value={typeFilter}
+                      onChange={(e) => setTypeFilter(e.target.value)}
+                      className="bg-transparent border-none text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 rounded-md px-2 py-1 transition-all duration-200"
+                    >
+                      <option value="all" className="bg-slate-700">All Types</option>
+                      <option value="Quiz" className="bg-slate-700">Quiz</option>
+                      <option value="Exam" className="bg-slate-700">Exam</option>
+                      <option value="Practice" className="bg-slate-700">Practice</option>
+                    </select>
                   </div>
-                  <select
-                    value={typeFilter}
-                    onChange={(e) => setTypeFilter(e.target.value)}
-                    className="bg-transparent border-none text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 rounded-md px-2 py-1 transition-all duration-200"
-                  >
-                    <option value="all" className="bg-slate-700">All Types</option>
-                    <option value="Quiz" className="bg-slate-700">Quiz</option>
-                    <option value="Exam" className="bg-slate-700">Exam</option>
-                    <option value="Practice" className="bg-slate-700">Practice</option>
-                  </select>
-                </div>
 
-                {/* Subject Filter */}
-                <div className="flex items-center gap-3 bg-slate-700/30 rounded-lg px-4 py-2 hover:bg-slate-700/50 transition-colors duration-200">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
-                    <label className="text-sm font-medium text-slate-300">Subject:</label>
+                  {/* Subject Filter */}
+                  <div className="flex items-center gap-3 bg-slate-700/30 rounded-lg px-4 py-2 hover:bg-slate-700/50 transition-colors duration-200">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
+                      <label className="text-sm font-medium text-slate-300">Subject:</label>
+                    </div>
+                    <select
+                      value={subjectFilter}
+                      onChange={(e) => setSubjectFilter(e.target.value)}
+                      className="bg-transparent border-none text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 rounded-md px-2 py-1 transition-all duration-200"
+                    >
+                      <option value="all" className="bg-slate-700">All Subjects</option>
+                      {subjects.map(subject => (
+                        <option key={subject._id} value={subject.name} className="bg-slate-700">{subject.name}</option>
+                      ))}
+                    </select>
                   </div>
-                  <select
-                    value={subjectFilter}
-                    onChange={(e) => setSubjectFilter(e.target.value)}
-                    className="bg-transparent border-none text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 rounded-md px-2 py-1 transition-all duration-200"
-                  >
-                    <option value="all" className="bg-slate-700">All Subjects</option>
-                    {subjects.map(subject => (
-                      <option key={subject._id} value={subject.name} className="bg-slate-700">{subject.name}</option>
-                    ))}
-                  </select>
-                </div>
 
-                {/* Clear Filters Button */}
-                {(statusFilter !== 'all' || typeFilter !== 'all' || subjectFilter !== 'all' || searchTerm) && (
-                  <button
-                    onClick={() => {
-                      setStatusFilter('all');
-                      setTypeFilter('all');
-                      setSubjectFilter('all');
-                      setSearchTerm('');
-                    }}
-                    className="flex items-center gap-2 bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl"
-                  >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                    Clear Filters
-                  </button>
-                )}
+                  {/* Clear Filters Button */}
+                  {(statusFilter !== 'all' || typeFilter !== 'all' || subjectFilter !== 'all' || searchTerm) && (
+                    <button
+                      onClick={() => {
+                        setStatusFilter('all');
+                        setTypeFilter('all');
+                        setSubjectFilter('all');
+                        setSearchTerm('');
+                      }}
+                      className="flex items-center gap-2 bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl"
+                    >
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                      Clear Filters
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 
