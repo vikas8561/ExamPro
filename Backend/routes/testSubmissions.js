@@ -260,7 +260,11 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
             mentorFeedback: submission.mentorFeedback,
             reviewStatus: submission.reviewStatus,
             finalScore: submission.mentorScore || (submission.maxScore ? Math.round((submission.totalScore / submission.maxScore) * 100) : 0),
-            permissions: submission.permissions
+            permissions: submission.permissions,
+            tabViolationCount: submission.tabViolationCount,
+            tabViolations: submission.tabViolations,
+            cancelledDueToViolation: submission.cancelledDueToViolation,
+            autoSubmit: submission.autoSubmit
           },
           showResults: true
         });
@@ -301,7 +305,11 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
             mentorFeedback: null,
             reviewStatus: submission.reviewStatus,
             finalScore: null,
-            permissions: submission.permissions
+            permissions: submission.permissions,
+            tabViolationCount: submission.tabViolationCount,
+            tabViolations: submission.tabViolations,
+            cancelledDueToViolation: submission.cancelledDueToViolation,
+            autoSubmit: submission.autoSubmit
           },
           showResults: false,
           message: `Results available after ${remainingTimeString}`
