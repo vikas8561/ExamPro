@@ -342,6 +342,12 @@ const TakeTest = () => {
       setLoading(true);
       console.log(`Starting test for assignment ID: ${assignmentId}`);
 
+      // Fetch current server time and browser timezone
+      const timeResponse = await apiRequest("/time");
+      const serverTime = new Date(timeResponse.serverTime);
+      const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      console.log("[startTest] Server time:", serverTime.toISOString(), "Browser timezone:", browserTimeZone);
+
       const response = await apiRequest(`/assignments/${assignmentId}/start`, {
         method: "POST",
       });
@@ -373,7 +379,7 @@ const TakeTest = () => {
       const timeLimitMinutes = response.test.timeLimit;
       const totalSeconds = timeLimitMinutes * 60;
       const testStartTime = new Date(response.assignment.startTime);
-      const currentTime = new Date();
+      const currentTime = serverTime; // Use server time instead of client time
       const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
       const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
 
@@ -404,6 +410,12 @@ const TakeTest = () => {
         `[TakeTest] Loading existing test data for assignment: ${assignmentId}`
       );
 
+      // Fetch current server time and browser timezone
+      const timeResponse = await apiRequest("/time");
+      const serverTime = new Date(timeResponse.serverTime);
+      const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      console.log("[loadExistingTestData] Server time:", serverTime.toISOString(), "Browser timezone:", browserTimeZone);
+
       const assignmentData = await apiRequest(`/assignments/${assignmentId}`);
       console.log(`[TakeTest] Assignment data loaded:`, assignmentData);
       setAssignment(assignmentData);
@@ -411,7 +423,7 @@ const TakeTest = () => {
       const timeLimitMinutes = assignmentData.testId.timeLimit;
       const totalSeconds = timeLimitMinutes * 60;
       const testStartTime = new Date(assignmentData.startTime);
-      const currentTime = new Date();
+      const currentTime = serverTime; // Use server time instead of client time
       const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
       const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
 

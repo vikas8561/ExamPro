@@ -23,6 +23,7 @@ app.use("/api/answers", require("./routes/answers"));
 app.use("/api/mentor", require("./routes/mentor"));
 app.use("/api/debug", require("./routes/debug"));
 app.use("/api/subjects", require("./routes/subjects"));
+app.use("/api/time", require("./routes/time"));
 
 // Error handler
 // eslint-disable-next-line no-unused-vars
