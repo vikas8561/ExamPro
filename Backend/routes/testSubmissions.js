@@ -209,11 +209,32 @@ router.post("/", authenticateToken, async (req, res, next) => {
 router.get("/student", authenticateToken, async (req, res, next) => {
   try {
     const userId = req.user.userId;
+    const currentTime = new Date();
+
+    // Get all submissions for the user
     const submissions = await TestSubmission.find({ userId })
       .populate("assignmentId")
       .populate("testId", "title questions");
 
-    res.json(submissions);
+    // Filter submissions to only include those where the deadline has passed
+    const filteredSubmissions = submissions.filter(submission => {
+      const assignment = submission.assignmentId;
+      if (!assignment) return false;
+
+      let deadline = assignment.deadline;
+      if (!deadline) {
+        // Calculate deadline from startTime + duration if not set
+        deadline = new Date(assignment.startTime);
+        deadline.setMinutes(deadline.getMinutes() + (assignment.duration || 0));
+      }
+
+      // Add buffer to handle timing precision issues
+      const deadlineWithBuffer = new Date(deadline.getTime() + 5000);
+
+      return currentTime >= deadlineWithBuffer;
+    });
+
+    res.json(filteredSubmissions);
   } catch (error) {
     next(error);
   }
@@ -272,8 +293,8 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
     console.log('Current time >= deadline with buffer:', currentTime >= deadlineWithBuffer);
 
     // Determine if results should be shown
-    // Adjust showResults to allow showing results immediately after auto submission
-    const showResults = (!submission || submission.mentorReviewed || submission?.autoSubmit) && currentTime >= deadlineWithBuffer;
+    // Only show results after the deadline has passed
+    const showResults = currentTime >= deadlineWithBuffer;
 
     console.log('Show results:', showResults);
     console.log('================================');

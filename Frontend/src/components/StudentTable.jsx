@@ -40,15 +40,16 @@ const StudentTable = ({ type, data }) => {
                 {type === "completed" && (
                   <>
                     <td className="p-4">
-                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        (item.mentorScore !== null ? item.mentorScore : (item.maxScore ? Math.round((item.totalScore / item.maxScore) * 100) : 0)) >= 70
-                          ? 'bg-green-900/50 text-green-300'
-                          : (item.mentorScore !== null ? item.mentorScore : (item.maxScore ? Math.round((item.totalScore / item.maxScore) * 100) : 0)) >= 50
-                          ? 'bg-yellow-900/50 text-yellow-300'
-                          : 'bg-red-900/50 text-red-300'
-                      }`}>
-                        {item.mentorScore !== null ? item.mentorScore : (item.maxScore ? Math.round((item.totalScore / item.maxScore) * 100) : 0)}%
-                      </span>
+                    {(() => {
+                      const currentTime = new Date();
+                      const assignmentDeadline = item.assignmentId?.deadline ? new Date(item.assignmentId.deadline) : null;
+                      if (assignmentDeadline && currentTime < assignmentDeadline) {
+                        return <span className="px-3 py-1 rounded-full text-sm font-medium bg-gray-900/50 text-gray-300">Hidden until deadline</span>;
+                      }
+                      const score = item.mentorScore !== null ? item.mentorScore : (item.maxScore ? Math.round((item.totalScore / item.maxScore) * 100) : 0);
+                      const colorClass = score >= 70 ? 'bg-green-900/50 text-green-300' : score >= 50 ? 'bg-yellow-900/50 text-yellow-300' : 'bg-red-900/50 text-red-300';
+                      return <span className={`px-3 py-1 rounded-full text-sm font-medium ${colorClass}`}>{score}%</span>;
+                    })()}
                     </td>
                     <td className="p-4 text-slate-400">
                       {item.mentorFeedback || item.feedback || "No feedback yet"}
