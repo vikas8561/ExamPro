@@ -23,6 +23,20 @@ const io = new Server(server, {
   }
 });
 
+// Routes
+app.get("/", (req, res) => res.json({ ok: true, name: "ExamPro API (CJS)" }));
+app.use("/api/tests", require("./routes/tests"));
+app.use("/api/assignments", require("./routes/assignments"));
+app.use("/api/users", require("./routes/users"));
+app.use("/api/reviews", require("./routes/reviews"));
+app.use("/api/auth", require("./routes/auth"));
+app.use("/api/test-submissions", require("./routes/testSubmissions"));
+app.use("/api/answers", require("./routes/answers"));
+app.use("/api/mentor", require("./routes/mentor"));
+app.use("/api/debug", require("./routes/debug"));
+app.use("/api/subjects", require("./routes/subjects"));
+app.use("/api/time", require("./routes/time"));
+
 // Make io available to routes
 app.set('io', io);
 
@@ -39,6 +53,16 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
   });
+});
+
+// Error handler
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error(err);
+  if (err.name === "ValidationError") {
+    return res.status(400).json({ message: err.message });
+  }
+  res.status(500).json({ message: "Server error" });
 });
 
 const PORT = process.env.PORT || 4000;
