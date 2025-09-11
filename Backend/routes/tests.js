@@ -41,7 +41,7 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
 // Create new test (admin only)
 router.post("/", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
-    const { title, subject, type, instructions, timeLimit, questions } = req.body;
+    const { title, subject, type, instructions, timeLimit, negativeMarkingPercent, questions } = req.body;
 
     if (!title) {
       return res.status(400).json({ message: "Test title is required" });
@@ -53,6 +53,7 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
       type: type || "mixed",
       instructions: instructions || "",
       timeLimit: Number(timeLimit || 30),
+      negativeMarkingPercent: Number(negativeMarkingPercent || 0),
       questions: Array.isArray(questions) ? questions : [],
       createdBy: req.user.userId
     });
@@ -69,7 +70,7 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
 // Update test (admin only)
 router.put("/:id", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
-    const { title, subject, type, instructions, timeLimit, questions, status } = req.body;
+    const { title, subject, type, instructions, timeLimit, negativeMarkingPercent, questions, status } = req.body;
 
     const updateData = {};
     if (title) updateData.title = title.trim();
@@ -77,6 +78,7 @@ router.put("/:id", authenticateToken, requireRole("admin"), async (req, res, nex
     if (type) updateData.type = type;
     if (instructions !== undefined) updateData.instructions = instructions;
     if (timeLimit) updateData.timeLimit = Number(timeLimit);
+    if (negativeMarkingPercent !== undefined) updateData.negativeMarkingPercent = Number(negativeMarkingPercent);
     if (questions) updateData.questions = questions;
     if (status) updateData.status = status;
 

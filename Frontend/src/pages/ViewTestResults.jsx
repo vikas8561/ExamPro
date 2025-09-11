@@ -18,11 +18,16 @@ const ViewTestResults = () => {
       // First fetch the assignment to check the deadline
       const assignmentData = await apiRequest(`/assignments/${assignmentId}`);
       setAssignment(assignmentData);
-      
+
       // Then fetch the results
       const resultsData = await apiRequest(`/test-submissions/assignment/${assignmentId}`);
       setResults(resultsData);
       console.log("Results Data:", resultsData); // Log the results data
+      console.log("Test negativeMarkingPercent:", resultsData?.test?.negativeMarkingPercent);
+      console.log("Submission finalMarks:", resultsData?.submission?.finalMarks);
+      console.log("Submission correctCount:", resultsData?.submission?.correctCount);
+      console.log("Submission incorrectCount:", resultsData?.submission?.incorrectCount);
+      console.log("Submission notAnsweredCount:", resultsData?.submission?.notAnsweredCount);
     } catch (error) {
       console.error("Error fetching data:", error);
       alert("Failed to load test data");
