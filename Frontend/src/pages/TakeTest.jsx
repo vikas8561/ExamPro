@@ -983,7 +983,7 @@ const TakeTest = () => {
                   )}
 
                   {question.examples && question.examples.length > 0 && (
-                    <div className="bg-slate-700 p-4 rounded-lg mb-4">
+                    <div className="bg-slate-700 p-4 rounded-lg mb-4 max-h-64 overflow-y-auto">
                       <h4 className="font-semibold text-slate-300 mb-2">Examples:</h4>
                       {question.examples.map((example, idx) => (
                         <div key={idx} className="mb-3 p-3 bg-slate-600 rounded">
