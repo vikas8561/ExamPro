@@ -218,8 +218,9 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
       .populate("userId", "name email")
       .populate("mentorId", "name email");
 
-    // Emit real-time update to all connected clients
+    // Emit real-time update to specific student
     const io = req.app.get('io');
+    console.log(`Emitting assignmentCreated to user ${userId}`);
     io.to(userId.toString()).emit('assignmentCreated', {
       userId: userId,
       assignment: populatedAssignment
@@ -381,10 +382,10 @@ router.post("/assign-all", authenticateToken, requireRole("admin"), async (req, 
 
     await Promise.all(assignments);
 
-    // Emit real-time update to all connected clients for each assignment
+    // Emit real-time update to specific student for each assignment
     const io = req.app.get('io');
     assignments.forEach(assignment => {
-      io.emit('assignmentCreated', {
+      io.to(assignment.userId.toString()).emit('assignmentCreated', {
         userId: assignment.userId.toString(),
         assignment: assignment
       });
@@ -473,10 +474,10 @@ router.post("/assign-manual", authenticateToken, requireRole("admin"), async (re
 
     await Promise.all(assignments);
 
-    // Emit real-time update to all connected clients for each assignment
+    // Emit real-time update to specific student for each assignment
     const io = req.app.get('io');
     assignments.forEach(assignment => {
-      io.emit('assignmentCreated', {
+      io.to(assignment.userId.toString()).emit('assignmentCreated', {
         userId: assignment.userId.toString(),
         assignment: assignment
       });

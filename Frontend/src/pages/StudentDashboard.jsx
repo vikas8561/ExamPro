@@ -53,7 +53,9 @@ const StudentDashboard = () => {
 
   const getCurrentUserId = () => {
     // Assuming userId is stored in localStorage
-    return localStorage.getItem("userId");
+    const userId = localStorage.getItem("userId");
+    console.log("Current userId from localStorage:", userId);
+    return userId;
   };
 
   const fetchStudentData = async () => {
