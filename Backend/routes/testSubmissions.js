@@ -24,10 +24,15 @@ router.post("/", authenticateToken, async (req, res, next) => {
 
     // Check if test time has expired
     const now = new Date();
-    const endTime = new Date(assignment.startTime);
-    endTime.setMinutes(endTime.getMinutes() + assignment.duration);
-    
-    if (now > endTime) {
+    let endTime = assignment.deadline;
+    if (!endTime) {
+      endTime = new Date(assignment.startTime);
+      endTime.setMinutes(endTime.getMinutes() + assignment.duration);
+    }
+    // Add buffer to avoid timing issues
+    const endTimeWithBuffer = new Date(endTime.getTime() + 5000);
+
+    if (now > endTimeWithBuffer) {
       return res.status(400).json({ message: "Test time has expired. Please contact your instructor." });
     }
 
