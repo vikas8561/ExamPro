@@ -218,7 +218,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
 
     // Check if the assignment deadline has passed
     const currentTime = new Date();
-    const assignmentDeadline = assignment.deadline;
+    let assignmentDeadline = assignment.deadline;
 
     console.log('=== DEBUGGING DEADLINE LOGIC ===');
     console.log('Current time:', currentTime.toISOString());
@@ -237,6 +237,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
         calculatedDeadline.setMinutes(calculatedDeadline.getMinutes() + assignment.duration);
         assignment.deadline = calculatedDeadline;
         await assignment.save();
+        assignmentDeadline = calculatedDeadline; // Update local variable as well
         console.log('Calculated and saved deadline:', calculatedDeadline.toISOString());
       }
     }
@@ -248,7 +249,8 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
     console.log('Current time >= deadline with buffer:', currentTime >= deadlineWithBuffer);
 
     // Determine if results should be shown
-    const showResults = (!submission || submission.mentorReviewed) && currentTime >= deadlineWithBuffer;
+    // Adjust showResults to allow showing results immediately after auto submission
+    const showResults = (!submission || submission.mentorReviewed || submission?.autoSubmit) && currentTime >= deadlineWithBuffer;
 
     console.log('Show results:', showResults);
     console.log('================================');
