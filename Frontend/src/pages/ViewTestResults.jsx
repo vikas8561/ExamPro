@@ -102,31 +102,53 @@ const ViewTestResults = () => {
 
         {/* Score Summary */}
         <div className="bg-slate-800 rounded-lg p-6 mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 text-center mb-6">
             {showResults ? (
               <>
                 <div>
-<div className="text-2xl font-bold text-blue-400">{finalScore} / {submission.maxScore}</div>
+                  <div className="text-2xl font-bold text-blue-400">{finalScore} / {submission.maxScore}</div>
                   <div className="text-slate-400">Final Score</div>
                 </div>
                 <div>
-<div className="text-2xl font-bold text-green-400">{submission.totalScore} / {submission.maxScore}</div>
-                  <div className="text-slate-400">Auto Score</div>
+                  <div className="text-2xl font-bold text-green-400">{submission.finalMarks || submission.totalScore} / {submission.maxScore}</div>
+                  <div className="text-slate-400">Marks After Negative Marking</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-purple-400">
+                    {Math.floor((submission.timeSpent || 0) / 60)}m {(submission.timeSpent || 0) % 60}s
+                  </div>
+                  <div className="text-slate-400">Time Spent</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-orange-400">{test.negativeMarkingPercent * 100}%</div>
+                  <div className="text-slate-400">Negative Marking</div>
                 </div>
               </>
             ) : (
-              <div className="md:col-span-2">
+              <div className="md:col-span-3">
                 <div className="text-2xl font-bold text-yellow-400">Pending Mentor Review</div>
                 <div className="text-slate-400">Your test has been submitted and is awaiting mentor evaluation</div>
               </div>
             )}
-            <div>
-              <div className="text-2xl font-bold text-purple-400">
-                {Math.floor((submission.timeSpent || 0) / 60)}m {(submission.timeSpent || 0) % 60}s
-              </div>
-              <div className="text-slate-400">Time Spent</div>
-            </div>
           </div>
+
+          {/* Question Statistics */}
+          {showResults && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center border-t border-slate-700 pt-6">
+              <div>
+                <div className="text-xl font-bold text-green-400">{submission.correctCount || 0}</div>
+                <div className="text-slate-400">Correct Answers</div>
+              </div>
+              <div>
+                <div className="text-xl font-bold text-red-400">{submission.incorrectCount || 0}</div>
+                <div className="text-slate-400">Incorrect Answers</div>
+              </div>
+              <div>
+                <div className="text-xl font-bold text-yellow-400">{submission.notAnsweredCount || 0}</div>
+                <div className="text-slate-400">Not Answered</div>
+              </div>
+            </div>
+          )}
 
           {/* Permission Status */}
           {submission.permissions && (
@@ -202,6 +224,11 @@ const ViewTestResults = () => {
                   {showResults && (
                     <div className="bg-slate-700 px-3 py-1 rounded-md text-sm">
                       {response?.points || 0}/{question.points} points
+                      {response?.points < 0 && (
+                        <span className="text-red-400 ml-2">
+                          (Negative marking: -{question.points * test.negativeMarkingPercent})
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>

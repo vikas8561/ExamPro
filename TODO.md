@@ -1,38 +1,19 @@
-# TODO: Automatic Refresh Verification and Improvement
+# Test Results Enhancement - Negative Marking Implementation
 
-## Overview
-Verify and improve the automatic refresh implementation for the student portal when assignments are created using Socket.IO.
+## Backend Changes
+- [x] Update testSubmissions.js to populate negativeMarkingPercent in GET endpoint
+- [x] Add correctCount, incorrectCount, notAnsweredCount calculation and response
+- [x] Add finalMarks field to show marks after negative marking deduction
+- [x] Include negativeMarkingPercent in test response object
 
-## Current Implementation Status
-- [x] Socket.IO server setup in Backend/server.js
-- [x] Event emission in Backend/routes/assignments.js
-- [x] Socket.IO client connection in Frontend/src/pages/StudentDashboard.jsx
-- [x] Event listening and data refresh in StudentDashboard.jsx
-- [x] Error handling and connection status indicators added
-- [x] Fallback polling mechanism added
-- [x] UserId storage and retrieval verified (stored in Login.jsx, retrieved in StudentDashboard.jsx)
+## Frontend Changes
+- [x] Update ViewTestResults.jsx to display negative marking percentage
+- [x] Add question statistics (correct, incorrect, not answered counts)
+- [x] Display final marks after negative marking deduction
+- [x] Show negative marking deduction details for incorrect MCQ answers
 
-## Steps to Verify and Improve
-- [x] Verify Socket.IO server configuration and CORS settings
-- [x] Check environment variables for API URL consistency
-- [ ] Fix socket connection URL mismatch between API and socket
-- [ ] Test socket connection and room joining
-- [ ] Verify event emission on assignment creation
-- [ ] Test automatic refresh functionality
-- [ ] Add error handling and connection status indicators
-- [ ] Add fallback mechanisms for failed connections
-- [ ] Improve logging for debugging
+## Testing
+- [x] Skipped testing as per user request
 
-## Files to Review/Edit
-- Backend/server.js: Socket.IO server setup
-- Backend/routes/assignments.js: Event emission
-- Frontend/src/pages/StudentDashboard.jsx: Socket.IO client
-- Environment variables: VITE_API_URL, FRONTEND_URL
-
-## Testing Steps
-- Start backend server
-- Start frontend development server
-- Login as admin and create/assign a test
-- Login as student in another browser
-- Verify student dashboard updates automatically
-- Check browser console for socket connection logs
+## Documentation
+- [x] Implementation completed with comprehensive negative marking display

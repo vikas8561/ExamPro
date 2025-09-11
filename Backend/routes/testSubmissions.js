@@ -40,7 +40,7 @@ router.post("/", authenticateToken, async (req, res, next) => {
 
     // Get assignment with test populated for scoring
     const assignmentWithTest = await Assignment.findById(assignmentId)
-      .populate("testId", "questions");
+      .populate("testId", "questions negativeMarkingPercent");
     
     if (!assignmentWithTest.testId) {
       return res.status(404).json({ message: "Test not found" });
@@ -68,7 +68,11 @@ router.post("/", authenticateToken, async (req, res, next) => {
     // Calculate score
     let totalScore = 0;
     let maxScore = 0;
+    let correctCount = 0;
+    let incorrectCount = 0;
+    let notAnsweredCount = 0;
     const processedResponses = [];
+    const negativeMarkingPercent = assignmentWithTest.testId.negativeMarkingPercent || 0;
 
     // Safety check for questions array
     if (!assignmentWithTest.testId.questions || !Array.isArray(assignmentWithTest.testId.questions)) {
@@ -78,9 +82,10 @@ router.post("/", authenticateToken, async (req, res, next) => {
 
     assignmentWithTest.testId.questions.forEach(question => {
       maxScore += question.points;
-      
+
       const userResponse = responses.find(r => r.questionId === question._id.toString());
       if (!userResponse) {
+        notAnsweredCount++;
         processedResponses.push({
           questionId: question._id,
           selectedOption: null,
@@ -97,11 +102,19 @@ router.post("/", authenticateToken, async (req, res, next) => {
 
       if (question.kind === "mcq") {
         isCorrect = userResponse.selectedOption === question.answer;
-        points = isCorrect ? question.points : 0;
+        if (isCorrect) {
+          points = question.points;
+          correctCount++;
+        } else {
+          // Apply negative marking for incorrect MCQ answers
+          points = -(question.points * negativeMarkingPercent);
+          incorrectCount++;
+        }
       } else {
         // Theoretical questions are not auto-graded
         isCorrect = false;
         points = 0;
+        notAnsweredCount++; // Count theoretical as not answered for now
       }
 
       totalScore += points;
@@ -115,6 +128,9 @@ router.post("/", authenticateToken, async (req, res, next) => {
         autoGraded: question.kind === "mcq"
       });
     });
+
+    // Ensure total score doesn't go below 0
+    totalScore = Math.max(0, totalScore);
 
     // Create or update submission with permission data
     const submissionData = {
@@ -211,7 +227,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
 
     // Get the assignment to check the deadline and test details
     const assignment = await Assignment.findById(assignmentId)
-      .populate("testId", "title questions");
+      .populate("testId", "title questions negativeMarkingPercent");
     
     if (!assignment) {
       return res.status(404).json({ message: "Assignment not found" });
@@ -279,6 +295,21 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
         };
       });
 
+      // Calculate correct/incorrect counts from responses
+      let correctCount = 0;
+      let incorrectCount = 0;
+      let notAnsweredCount = 0;
+
+      submission.responses.forEach(response => {
+        if (response.isCorrect) {
+          correctCount++;
+        } else if (response.selectedOption && !response.isCorrect) {
+          incorrectCount++;
+        } else if (!response.selectedOption) {
+          notAnsweredCount++;
+        }
+      });
+
       // Return the appropriate response based on whether results should be shown
       if (showResults) {
         // Return full results with scores when deadline has passed and submission is reviewed
@@ -286,7 +317,8 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
           test: {
             _id: submission.testId._id,
             title: submission.testId.title,
-            questions: questionsWithResponses
+            questions: questionsWithResponses,
+            negativeMarkingPercent: assignment.testId.negativeMarkingPercent || 0
           },
           submission: {
             _id: submission._id,
@@ -299,6 +331,10 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
             mentorFeedback: submission.mentorFeedback,
             reviewStatus: submission.reviewStatus,
             finalScore: submission.mentorScore || (submission.maxScore ? Math.round((submission.totalScore / submission.maxScore) * 100) : 0),
+            finalMarks: submission.totalScore, // Final marks after negative marking deduction
+            correctCount,
+            incorrectCount,
+            notAnsweredCount,
             permissions: submission.permissions,
             tabViolationCount: submission.tabViolationCount,
             tabViolations: submission.tabViolations,
