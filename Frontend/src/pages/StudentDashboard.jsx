@@ -9,21 +9,49 @@ const StudentDashboard = () => {
   const [completedTests, setCompletedTests] = useState([]);
   const [recentActivities, setRecentActivities] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [socketConnected, setSocketConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState(null);
 
   useEffect(() => {
     fetchStudentData();
     fetchRecentActivity();
 
-    // Setup Socket.IO client
-    const socket = io(import.meta.env.VITE_API_URL || "http://localhost:4000");
+    // Setup Socket.IO client - use the same base URL as API
+    const API_BASE_URL = 'https://exampro-yilv.onrender.com/api';
+    const socketUrl = API_BASE_URL.replace('/api', ''); // Remove /api to get base URL
+    const socket = io(socketUrl);
 
     socket.on("connect", () => {
       console.log("Connected to socket server:", socket.id);
+      setSocketConnected(true);
+      setConnectionError(null);
       // Join room with userId for targeted events
       const userId = getCurrentUserId();
       if (userId) {
         socket.emit('join', userId);
         console.log("Joined room:", userId);
+      }
+    });
+
+    socket.on("connect_error", (error) => {
+      console.error("Socket connection error:", error);
+      setSocketConnected(false);
+      setConnectionError("Failed to connect to real-time server. Using fallback polling.");
+      // Fallback: poll for updates every 30 seconds
+      const pollInterval = setInterval(() => {
+        fetchStudentData();
+        fetchRecentActivity();
+      }, 30000);
+      // Store interval ID for cleanup
+      socket.pollInterval = pollInterval;
+    });
+
+    socket.on("disconnect", (reason) => {
+      console.log("Disconnected from socket server:", reason);
+      setSocketConnected(false);
+      // Clear fallback polling if it exists
+      if (socket.pollInterval) {
+        clearInterval(socket.pollInterval);
       }
     });
 
@@ -39,10 +67,6 @@ const StudentDashboard = () => {
     // Debug: log all events to verify connection
     socket.onAny((event, ...args) => {
       console.log(`Socket event received: ${event}`, args);
-    });
-
-    socket.on("disconnect", () => {
-      console.log("Disconnected from socket server");
     });
 
     // Cleanup on unmount
@@ -100,6 +124,22 @@ const StudentDashboard = () => {
   return (
     <div className="p-6">
       <h2 className="text-3xl font-bold mb-6">Student Dashboard</h2>
+
+      {/* Connection Status Indicator */}
+      <div className="mb-4">
+        <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm ${
+          socketConnected
+            ? 'bg-green-100 text-green-800'
+            : connectionError
+              ? 'bg-red-100 text-red-800'
+              : 'bg-yellow-100 text-yellow-800'
+        }`}>
+          <div className={`w-2 h-2 rounded-full mr-2 ${
+            socketConnected ? 'bg-green-500' : 'bg-red-500'
+          }`}></div>
+          {socketConnected ? 'Real-time connected' : connectionError ? 'Connection error - using polling' : 'Connecting...'}
+        </div>
+      </div>
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">

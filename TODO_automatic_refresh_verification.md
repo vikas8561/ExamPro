@@ -8,14 +8,11 @@ Verify and improve the automatic refresh implementation for the student portal w
 - [x] Event emission in Backend/routes/assignments.js
 - [x] Socket.IO client connection in Frontend/src/pages/StudentDashboard.jsx
 - [x] Event listening and data refresh in StudentDashboard.jsx
-- [x] Error handling and connection status indicators added
-- [x] Fallback polling mechanism added
-- [x] UserId storage and retrieval verified (stored in Login.jsx, retrieved in StudentDashboard.jsx)
 
 ## Steps to Verify and Improve
-- [x] Verify Socket.IO server configuration and CORS settings
-- [x] Check environment variables for API URL consistency
-- [ ] Fix socket connection URL mismatch between API and socket
+- [ ] Verify Socket.IO server configuration and CORS settings
+- [ ] Check environment variables for API URL consistency
+- [ ] Verify userId storage and retrieval in localStorage
 - [ ] Test socket connection and room joining
 - [ ] Verify event emission on assignment creation
 - [ ] Test automatic refresh functionality
