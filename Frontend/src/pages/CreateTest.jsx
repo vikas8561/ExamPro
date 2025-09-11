@@ -28,6 +28,7 @@ export default function CreateTest() {
     type: "mixed",
     instructions: "",
     timeLimit: 30,
+    negativeMarkingPercent: 0,
     questions: [emptyQuestion("mcq")]
   });
   const [assignmentOptions, setAssignmentOptions] = useState({
@@ -68,6 +69,7 @@ export default function CreateTest() {
         type: test.type,
         instructions: test.instructions,
         timeLimit: test.timeLimit,
+        negativeMarkingPercent: test.negativeMarkingPercent || 0,
         questions: test.questions.map(q => ({
           id: crypto.randomUUID(),
           kind: q.kind,
@@ -221,6 +223,7 @@ export default function CreateTest() {
         type: form.type,
         instructions: form.instructions,
         timeLimit: Number(form.timeLimit),
+        negativeMarkingPercent: Number(form.negativeMarkingPercent),
         questions: form.questions.map(q => ({
           kind: q.kind,
           text: q.text,
@@ -355,6 +358,21 @@ export default function CreateTest() {
                   onChange={(e) => setForm(prev => ({ ...prev, timeLimit: e.target.value }))}
                   className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Negative Marking (%)</label>
+                <select
+                  value={form.negativeMarkingPercent}
+                  onChange={(e) => setForm(prev => ({ ...prev, negativeMarkingPercent: Number(e.target.value) }))}
+                  className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
+                >
+                  <option value={0}>No Negative Marking</option>
+                  <option value={0.25}>25%</option>
+                  <option value={0.5}>50%</option>
+                  <option value={0.75}>75%</option>
+                  <option value={1}>100%</option>
+                </select>
               </div>
             </div>
 
