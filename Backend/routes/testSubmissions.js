@@ -91,7 +91,12 @@ router.post("/", authenticateToken, async (req, res, next) => {
       maxScore += question.points;
 
       const userResponse = responses.find(r => r.questionId === question._id.toString());
-      if (!userResponse) {
+
+      // Check if response exists and has actual content
+      const hasResponse = userResponse && (userResponse.selectedOption !== null && userResponse.selectedOption !== undefined) ||
+                         (userResponse && userResponse.textAnswer !== null && userResponse.textAnswer !== undefined && userResponse.textAnswer.trim() !== "");
+
+      if (!hasResponse) {
         notAnsweredCount++;
         processedResponses.push({
           questionId: question._id,
@@ -117,11 +122,16 @@ router.post("/", authenticateToken, async (req, res, next) => {
           points = -(question.points * negativeMarkingPercent);
           incorrectCount++;
         }
-      } else {
+      } else if (question.kind === "theoretical") {
         // Theoretical questions are not auto-graded
         isCorrect = false;
         points = 0;
-        notAnsweredCount++; // Count theoretical as not answered for now
+        // For theoretical questions, if they have a response, count as answered
+        if (userResponse.textAnswer && userResponse.textAnswer.trim() !== "") {
+          // Don't increment notAnsweredCount for theoretical with answers
+        } else {
+          notAnsweredCount++;
+        }
       }
 
       totalScore += points;
@@ -136,8 +146,7 @@ router.post("/", authenticateToken, async (req, res, next) => {
       });
     });
 
-    // Ensure total score doesn't go below 0
-    totalScore = Math.max(0, totalScore);
+
 
     // Create or update submission with permission data
     const submissionData = {
@@ -338,9 +347,10 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
       submission.responses.forEach(response => {
         if (response.isCorrect) {
           correctCount++;
-        } else if (response.selectedOption && !response.isCorrect) {
+        } else if ((response.selectedOption !== null && response.selectedOption !== undefined) && !response.isCorrect) {
           incorrectCount++;
-        } else if (!response.selectedOption) {
+        } else if ((response.selectedOption === null || response.selectedOption === undefined) &&
+                   (response.textAnswer === null || response.textAnswer === undefined || response.textAnswer.trim() === "")) {
           notAnsweredCount++;
         }
       });
