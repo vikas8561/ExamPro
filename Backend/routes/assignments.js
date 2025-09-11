@@ -159,16 +159,21 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
 router.get("/check-expiration/:id", authenticateToken, async (req, res, next) => {
   try {
     const assignment = await Assignment.findById(req.params.id);
-    
+
     if (!assignment) {
       return res.status(404).json({ message: "Assignment not found" });
     }
 
     const now = new Date();
-    const endTime = new Date(assignment.startTime);
-    endTime.setMinutes(endTime.getMinutes() + assignment.duration);
+    let endTime = assignment.deadline;
+    if (!endTime) {
+      endTime = new Date(assignment.startTime);
+      endTime.setMinutes(endTime.getMinutes() + assignment.duration);
+    }
+    // Add buffer to avoid timing issues
+    const endTimeWithBuffer = new Date(endTime.getTime() + 5000);
 
-    if (now > endTime) {
+    if (now > endTimeWithBuffer) {
       return res.status(400).json({ message: "Test time has expired." });
     }
 

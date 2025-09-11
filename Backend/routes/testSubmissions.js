@@ -22,18 +22,20 @@ router.post("/", authenticateToken, async (req, res, next) => {
       return res.status(404).json({ message: "Assignment not found" });
     }
 
-    // Check if test time has expired
-    const now = new Date();
-    let endTime = assignment.deadline;
-    if (!endTime) {
-      endTime = new Date(assignment.startTime);
-      endTime.setMinutes(endTime.getMinutes() + assignment.duration);
-    }
-    // Add buffer to avoid timing issues
-    const endTimeWithBuffer = new Date(endTime.getTime() + 5000);
+    // Check if test time has expired (skip for auto-submit)
+    if (!autoSubmit) {
+      const now = new Date();
+      let endTime = assignment.deadline;
+      if (!endTime) {
+        endTime = new Date(assignment.startTime);
+        endTime.setMinutes(endTime.getMinutes() + assignment.duration);
+      }
+      // Add buffer to avoid timing issues
+      const endTimeWithBuffer = new Date(endTime.getTime() + 5000);
 
-    if (now > endTimeWithBuffer) {
-      return res.status(400).json({ message: "Test time has expired. Please contact your instructor." });
+      if (now > endTimeWithBuffer) {
+        return res.status(400).json({ message: "Test time has expired. Please contact your instructor." });
+      }
     }
 
     // Get assignment with test populated for scoring

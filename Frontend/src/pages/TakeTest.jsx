@@ -62,7 +62,7 @@ const TakeTest = () => {
     let timer;
     let backendCheckTimer;
 
-    if (testStarted && timeRemaining > 0) {
+    if (testStarted && timeRemaining > 0 && !isSubmitting) {
       timer = setInterval(() => {
         setTimeRemaining((prev) => {
           if (prev <= 1) {
@@ -78,8 +78,8 @@ const TakeTest = () => {
         try {
           await apiRequest(`/assignments/check-expiration/${assignmentId}`);
         } catch (error) {
-          if (error.message.includes("Test time has expired")) {
-            await submitTest();
+          if (error.message.includes("Test time has expired") && !isSubmitting) {
+            await submitTest(false, true);
           }
         }
       }, 30000);
@@ -89,7 +89,7 @@ const TakeTest = () => {
       clearInterval(timer);
       clearInterval(backendCheckTimer);
     };
-  }, [testStarted, timeRemaining]);
+  }, [testStarted, timeRemaining, isSubmitting]);
 
   const requestFullscreen = async () => {
     try {
