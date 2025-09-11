@@ -220,7 +220,7 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
 
     // Emit real-time update to all connected clients
     const io = req.app.get('io');
-    io.emit('assignmentCreated', {
+    io.to(userId.toString()).emit('assignmentCreated', {
       userId: userId,
       assignment: populatedAssignment
     });

@@ -19,6 +19,12 @@ const StudentDashboard = () => {
 
     socket.on("connect", () => {
       console.log("Connected to socket server:", socket.id);
+      // Join room with userId for targeted events
+      const userId = getCurrentUserId();
+      if (userId) {
+        socket.emit('join', userId);
+        console.log("Joined room:", userId);
+      }
     });
 
     socket.on("assignmentCreated", (data) => {

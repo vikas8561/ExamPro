@@ -10,7 +10,7 @@ Implement real-time updates using Socket.IO so that when admin creates and assig
 - [x] Emit events in Backend/routes/assignments.js when assignments are created
 - [x] Connect to Socket.IO in Frontend/src/pages/StudentDashboard.jsx
 - [x] Listen for assignment events and refresh data
-- [ ] Test the implementation by creating/assigning tests
+- [x] Test the implementation by creating/assigning tests (skipped by user)
 
 ## Files to Edit
 - Backend/package.json: Add socket.io
