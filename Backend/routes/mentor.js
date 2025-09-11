@@ -50,7 +50,14 @@ router.get("/assignments", authenticateToken, async (req, res) => {
     const mentorId = req.user.userId;
     
     const assignments = await Assignment.find({ mentorId })
-      .populate("testId", "title type instructions timeLimit questions")
+      .populate({
+        path: "testId",
+        select: "title type instructions timeLimit questions",
+        populate: {
+          path: "questions",
+          select: "kind text options answer guidelines examples points"
+        }
+      })
       .populate("userId", "name email")
       .sort({ createdAt: -1 });
 

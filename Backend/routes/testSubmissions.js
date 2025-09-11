@@ -40,7 +40,14 @@ router.post("/", authenticateToken, async (req, res, next) => {
 
     // Get assignment with test populated for scoring
     const assignmentWithTest = await Assignment.findById(assignmentId)
-      .populate("testId", "questions negativeMarkingPercent");
+      .populate({
+        path: "testId",
+        select: "questions negativeMarkingPercent",
+        populate: {
+          path: "questions",
+          select: "kind text options answer guidelines examples points"
+        }
+      });
     
     if (!assignmentWithTest.testId) {
       return res.status(404).json({ message: "Test not found" });
@@ -214,7 +221,14 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     // Get all submissions for the user
     const submissions = await TestSubmission.find({ userId })
       .populate("assignmentId")
-      .populate("testId", "title questions");
+      .populate({
+        path: "testId",
+        select: "title questions",
+        populate: {
+          path: "questions",
+          select: "kind text options answer guidelines examples points"
+        }
+      });
 
     // Filter submissions to only include those where the deadline has passed
     const filteredSubmissions = submissions.filter(submission => {

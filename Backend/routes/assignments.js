@@ -35,7 +35,14 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     }
 
     const assignments = await Assignment.find({ userId: req.user.userId })
-      .populate("testId", "title type instructions timeLimit questions subject")
+      .populate({
+        path: "testId",
+        select: "title type instructions timeLimit questions subject",
+        populate: {
+          path: "questions",
+          select: "kind text options answer guidelines examples points"
+        }
+      })
       .populate("mentorId", "name email")
       .sort({ deadline: 1 });
 
@@ -53,7 +60,14 @@ router.get("/student", authenticateToken, async (req, res, next) => {
         await assignment.save();
 
         // Re-populate after save
-        await assignment.populate("testId", "title type instructions timeLimit questions subject");
+        await assignment.populate({
+          path: "testId",
+          select: "title type instructions timeLimit questions subject",
+          populate: {
+            path: "questions",
+            select: "kind text options answer guidelines examples points"
+          }
+        });
         await assignment.populate("mentorId", "name email");
       }
     }
@@ -156,7 +170,14 @@ router.get("/student/recent-activity", authenticateToken, async (req, res, next)
 router.get("/:id", authenticateToken, async (req, res, next) => {
   try {
     const assignment = await Assignment.findById(req.params.id)
-      .populate("testId", "title type instructions timeLimit questions")
+      .populate({
+        path: "testId",
+        select: "title type instructions timeLimit questions",
+        populate: {
+          path: "questions",
+          select: "kind text options answer guidelines examples points"
+        }
+      })
       .populate("userId", "name email")
       .populate("mentorId", "name email");
 
@@ -280,7 +301,14 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
 router.post("/:id/start", authenticateToken, async (req, res, next) => {
   try {
     const assignment = await Assignment.findById(req.params.id)
-      .populate("testId", "title type instructions timeLimit questions");
+      .populate({
+        path: "testId",
+        select: "title type instructions timeLimit questions",
+        populate: {
+          path: "questions",
+          select: "kind text options answer guidelines examples points"
+        }
+      });
 
     if (!assignment) {
       return res.status(404).json({ message: "Assignment not found" });

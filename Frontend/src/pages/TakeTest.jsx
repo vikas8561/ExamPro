@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import apiRequest from "../services/api";
+import Editor from '@monaco-editor/react';
 
 const TakeTest = () => {
   const [timeRemaining, setTimeRemaining] = useState(0);
@@ -971,7 +972,7 @@ const TakeTest = () => {
               )}
 
               {question.kind === "theoretical" && (
-                <div>
+                <>
                   {question.guidelines && (
                     <div className="bg-slate-700 p-4 rounded-lg mb-4">
                       <h4 className="font-semibold text-slate-300 mb-2">
@@ -980,15 +981,38 @@ const TakeTest = () => {
                       <p className="text-slate-400">{question.guidelines}</p>
                     </div>
                   )}
-                  <textarea
+
+                  {question.examples && question.examples.length > 0 && (
+                    <div className="bg-slate-700 p-4 rounded-lg mb-4">
+                      <h4 className="font-semibold text-slate-300 mb-2">Examples:</h4>
+                      {question.examples.map((example, idx) => (
+                        <div key={idx} className="mb-3 p-3 bg-slate-600 rounded">
+                          <div className="mb-1 font-semibold text-slate-300">Input:</div>
+                          <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">{example.input}</pre>
+                          <div className="mt-2 mb-1 font-semibold text-slate-300">Output:</div>
+                          <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">{example.output}</pre>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <Editor
+                    height="200px"
+                    defaultLanguage="plaintext"
                     value={answers[question._id] || ""}
-                    onChange={(e) =>
-                      handleAnswerChange(question._id, e.target.value)
-                    }
-                    placeholder="Write your answer here..."
-                    className="w-full h-48 p-4 bg-slate-700 border border-slate-600 rounded-lg text-white resize-none focus:outline-none focus:border-blue-500"
+                    onChange={(value) => handleAnswerChange(question._id, value)}
+                    theme="vs-dark"
+                    options={{
+                      minimap: { enabled: false },
+                      fontSize: 14,
+                      lineNumbers: "off",
+                      automaticLayout: true,
+                      scrollBeyondLastLine: false,
+                      wordWrap: "on",
+                      padding: { top: 16, bottom: 16 },
+                    }}
                   />
-                </div>
+                </>
               )}
             </div>
           </div>

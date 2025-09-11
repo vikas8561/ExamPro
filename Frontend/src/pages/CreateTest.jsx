@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import apiRequest from "../services/api";
 import JsonQuestionUploader from "../components/JsonQuestionUploader";
+import Editor from '@monaco-editor/react';
 
 const emptyQuestion = (kind) => ({
   id: crypto.randomUUID(),
@@ -13,7 +14,8 @@ const emptyQuestion = (kind) => ({
     answer: ""
   }),
   ...(kind === "theoretical" && {
-    guidelines: ""
+    guidelines: "",
+    examples: []
   })
 });
 
@@ -80,7 +82,8 @@ export default function CreateTest() {
             answer: q.answer
           }),
           ...(q.kind === "theoretical" && {
-            guidelines: q.guidelines
+            guidelines: q.guidelines,
+            examples: q.examples || []
           })
         }))
       });
@@ -162,10 +165,48 @@ export default function CreateTest() {
   const updateOption = (questionId, index, value) => {
     setForm(prev => ({
       ...prev,
-      questions: prev.questions.map(q => 
+      questions: prev.questions.map(q =>
         q.id === questionId ? {
           ...q,
           options: q.options.map((opt, i) => i === index ? value : opt)
+        } : q
+      )
+    }));
+  };
+
+  const addExample = (questionId) => {
+    setForm(prev => ({
+      ...prev,
+      questions: prev.questions.map(q =>
+        q.id === questionId ? {
+          ...q,
+          examples: [...(q.examples || []), { input: "", output: "" }]
+        } : q
+      )
+    }));
+  };
+
+  const removeExample = (questionId, exampleIndex) => {
+    setForm(prev => ({
+      ...prev,
+      questions: prev.questions.map(q =>
+        q.id === questionId ? {
+          ...q,
+          examples: q.examples.filter((_, i) => i !== exampleIndex)
+        } : q
+      )
+    }));
+  };
+
+  const updateExample = (questionId, exampleIndex, field, value) => {
+    setForm(prev => ({
+      ...prev,
+      questions: prev.questions.map(q =>
+        q.id === questionId ? {
+          ...q,
+          examples: q.examples.map((ex, i) =>
+            i === exampleIndex ? { ...ex, [field]: value } : ex
+          )
         } : q
       )
     }));
@@ -233,7 +274,8 @@ export default function CreateTest() {
             answer: q.answer
           }),
           ...(q.kind === "theoretical" && {
-            guidelines: q.guidelines
+            guidelines: q.guidelines,
+            examples: q.examples || []
           })
         }))
       };
@@ -637,16 +679,86 @@ export default function CreateTest() {
                   )}
 
                   {question.kind === "theoretical" && (
-                    <div>
-                      <label className="block text-sm font-medium mb-2">Guidelines (Optional)</label>
-                      <textarea
-                        value={question.guidelines}
-                        onChange={(e) => updateQuestion(question.id, "guidelines", e.target.value)}
-                        className="w-full p-3 bg-slate-600 border border-slate-500 rounded-md"
-                        rows={2}
-                        placeholder="Guidelines for evaluating this question..."
-                      />
-                    </div>
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Guidelines (Optional)</label>
+                        <Editor
+                          height="200px"
+                          defaultLanguage="plaintext"
+                          value={question.guidelines || ""}
+                          onChange={(value) => updateQuestion(question.id, "guidelines", value || "")}
+                          theme="vs-dark"
+                          options={{
+                            minimap: { enabled: false },
+                            fontSize: 14,
+                            lineNumbers: 'off',
+                            scrollBeyondLastLine: false,
+                            automaticLayout: true,
+                            wordWrap: 'on',
+                            padding: { top: 16, bottom: 16 },
+                            placeholder: "Enter evaluation guidelines for this question..."
+                          }}
+                        />
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between items-center mb-2">
+                          <label className="block text-sm font-medium">Examples (Optional)</label>
+                          <button
+                            type="button"
+                            onClick={() => addExample(question.id)}
+                            className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm rounded cursor-pointer"
+                          >
+                            Add Example
+                          </button>
+                        </div>
+
+                        {(question.examples || []).map((example, exIndex) => (
+                          <div key={exIndex} className="bg-slate-600 p-3 rounded mb-2">
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="text-sm font-medium">Example {exIndex + 1}</span>
+                              <button
+                                type="button"
+                                onClick={() => removeExample(question.id, exIndex)}
+                                className="text-red-400 hover:text-red-300 text-sm cursor-pointer"
+                              >
+                                Remove
+                              </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-xs font-medium mb-1 text-gray-300">Input</label>
+                                <textarea
+                                  value={example.input}
+                                  onChange={(e) => updateExample(question.id, exIndex, "input", e.target.value)}
+                                  className="w-full p-2 bg-slate-500 border border-slate-400 rounded text-sm"
+                                  rows={2}
+                                  placeholder="Enter input example..."
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-medium mb-1 text-gray-300">Output</label>
+                                <textarea
+                                  value={example.output}
+                                  onChange={(e) => updateExample(question.id, exIndex, "output", e.target.value)}
+                                  className="w-full p-2 bg-slate-500 border border-slate-400 rounded text-sm"
+                                  rows={2}
+                                  placeholder="Enter expected output..."
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+
+                        {(question.examples || []).length === 0 && (
+                          <div className="text-center text-gray-400 text-sm py-4">
+                            No examples added yet. Click "Add Example" to add input/output examples.
+                          </div>
+                        )}
+                      </div>
+                    </>
                   )}
                 </div>
               </div>

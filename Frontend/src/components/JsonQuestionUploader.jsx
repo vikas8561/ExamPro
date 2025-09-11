@@ -46,6 +46,7 @@ const JsonQuestionUploader = ({ onQuestionsLoaded }) => {
             text: q.text,
             options: q.kind === 'mcq' ? q.options : undefined,
             answer: q.kind === 'mcq' ? q.answer : undefined,
+            examples: q.kind === 'theoretical' ? q.examples || [] : undefined,
             points: q.points || 1
           };
         });
@@ -102,6 +103,12 @@ const JsonQuestionUploader = ({ onQuestionsLoaded }) => {
     {
       "kind": "theoretical",
       "text": "Explain the concept of photosynthesis.",
+      "examples": [
+        {
+          "input": "Photosynthesis equation",
+          "output": "6CO2 + 6H2O → C6H12O6 + 6O2"
+        }
+      ],
       "points": 5
     }
   ]

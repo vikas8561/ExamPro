@@ -5,6 +5,14 @@ const OptionSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const ExampleSchema = new mongoose.Schema(
+  {
+    input: { type: String, default: "" },
+    output: { type: String, default: "" }
+  },
+  { _id: false }
+);
+
 const QuestionSchema = new mongoose.Schema(
   {
     kind: { type: String, enum: ["mcq", "theoretical"], required: true },
@@ -12,6 +20,7 @@ const QuestionSchema = new mongoose.Schema(
     options: { type: [OptionSchema], default: undefined },
     answer: { type: String, default: "" },
     guidelines: { type: String, default: "" },
+    examples: { type: [ExampleSchema], default: [] },
     points: { type: Number, default: 1, min: 0 },
   },
   { _id: true }
