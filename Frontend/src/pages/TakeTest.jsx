@@ -546,14 +546,28 @@ const TakeTest = () => {
 
     // Only save to backend if there's an actual answer
     if (hasAnswer) {
-      console.log("Saving answer for question:", questionId, "selectedOption:", selectedOption, "textAnswer:", textAnswer);
+      // Sanitize selectedOption to extract plain text from HTML if needed
+      let sanitizedSelectedOption = selectedOption;
+      if (typeof selectedOption === "object" && selectedOption !== null) {
+        sanitizedSelectedOption = String(selectedOption);
+      }
+
+      // If selectedOption contains HTML, extract plain text
+      if (typeof sanitizedSelectedOption === "string" && sanitizedSelectedOption.includes("<")) {
+        // Create a temporary DOM element to extract text content
+        const tempDiv = document.createElement("div");
+        tempDiv.innerHTML = sanitizedSelectedOption;
+        sanitizedSelectedOption = tempDiv.textContent || tempDiv.innerText || sanitizedSelectedOption;
+      }
+
+      console.log("Saving answer for question:", questionId, "selectedOption:", sanitizedSelectedOption, "textAnswer:", textAnswer);
       try {
         await apiRequest("/answers", {
           method: "POST",
           body: JSON.stringify({
             assignmentId,
             questionId,
-            selectedOption,
+            selectedOption: sanitizedSelectedOption,
             textAnswer,
           }),
         });
