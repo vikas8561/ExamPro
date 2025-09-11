@@ -242,8 +242,8 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
       }
     }
 
-    // Add a small buffer (1 second) to handle timing precision issues
-    const deadlineWithBuffer = new Date(assignmentDeadline.getTime() + 1000);
+    // Add a small buffer (5 seconds) to handle timing precision issues
+    const deadlineWithBuffer = new Date(assignmentDeadline.getTime() + 5000);
 
     console.log('Deadline with buffer:', deadlineWithBuffer.toISOString());
     console.log('Current time >= deadline with buffer:', currentTime >= deadlineWithBuffer);

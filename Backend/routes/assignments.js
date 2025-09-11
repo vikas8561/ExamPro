@@ -349,8 +349,14 @@ router.post("/assign-all", authenticateToken, requireRole("admin"), async (req, 
           duration: Number(duration),
           status: "Assigned"
         });
-        
-        assignments.push(assignment.save());
+
+        // Explicitly calculate and save deadline
+        const deadline = new Date(assignment.startTime);
+        deadline.setMinutes(deadline.getMinutes() + assignment.duration);
+        assignment.deadline = deadline;
+        await assignment.save();
+
+        assignments.push(assignment);
       }
     }
 
@@ -426,8 +432,14 @@ router.post("/assign-manual", authenticateToken, requireRole("admin"), async (re
           duration: Number(duration),
           status: "Assigned"
         });
-        
-        assignments.push(assignment.save());
+
+        // Explicitly calculate and save deadline
+        const deadline = new Date(assignment.startTime);
+        deadline.setMinutes(deadline.getMinutes() + assignment.duration);
+        assignment.deadline = deadline;
+        await assignment.save();
+
+        assignments.push(assignment);
       }
     }
 
