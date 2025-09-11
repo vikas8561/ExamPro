@@ -202,6 +202,12 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
       status: "Assigned"
     });
 
+    // Explicitly calculate and save deadline
+    const deadline = new Date(assignment.startTime);
+    deadline.setMinutes(deadline.getMinutes() + assignment.duration);
+    assignment.deadline = deadline;
+    await assignment.save();
+
     const populatedAssignment = await Assignment.findById(assignment._id)
       .populate("testId", "title type instructions timeLimit subject")
       .populate("userId", "name email")
@@ -260,6 +266,14 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
     // Start the test
     assignment.status = "In Progress";
     assignment.startedAt = new Date();
+
+    // Explicitly calculate and save deadline if not set
+    if (!assignment.deadline) {
+      const deadline = new Date(assignment.startTime);
+      deadline.setMinutes(deadline.getMinutes() + assignment.duration);
+      assignment.deadline = deadline;
+    }
+
     await assignment.save();
 
     res.json({
