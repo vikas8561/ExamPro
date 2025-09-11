@@ -39,6 +39,25 @@ router.get("/student", authenticateToken, async (req, res, next) => {
       .populate("mentorId", "name email")
       .sort({ deadline: 1 });
 
+    // Auto-start logic for assignments where duration == timeLimit
+    const now = new Date();
+    for (const assignment of assignments) {
+      if (assignment.status === "Assigned" &&
+          assignment.duration === assignment.testId.timeLimit &&
+          now >= new Date(assignment.startTime) &&
+          now <= new Date(assignment.deadline)) {
+
+        console.log(`Auto-starting assignment ${assignment._id} for user ${req.user.userId}`);
+        assignment.status = "In Progress";
+        assignment.startedAt = new Date();
+        await assignment.save();
+
+        // Re-populate after save
+        await assignment.populate("testId", "title type instructions timeLimit questions subject");
+        await assignment.populate("mentorId", "name email");
+      }
+    }
+
     res.json(assignments);
   } catch (error) {
     next(error);
@@ -158,13 +177,16 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
 
 router.get("/check-expiration/:id", authenticateToken, async (req, res, next) => {
   try {
-    const assignment = await Assignment.findById(req.params.id);
+    const assignment = await Assignment.findById(req.params.id)
+      .populate("testId", "timeLimit");
 
     if (!assignment) {
       return res.status(404).json({ message: "Assignment not found" });
     }
 
     const now = new Date();
+
+    // Check availability window (assignment duration)
     let endTime = assignment.deadline;
     if (!endTime) {
       endTime = new Date(assignment.startTime);
@@ -174,7 +196,17 @@ router.get("/check-expiration/:id", authenticateToken, async (req, res, next) =>
     const endTimeWithBuffer = new Date(endTime.getTime() + 5000);
 
     if (now > endTimeWithBuffer) {
-      return res.status(400).json({ message: "Test time has expired." });
+      return res.status(400).json({ message: "Test availability window has expired." });
+    }
+
+    // Check test time limit if test has started
+    if (assignment.startedAt && assignment.testId?.timeLimit) {
+      const testEndTime = new Date(assignment.startedAt.getTime() + assignment.testId.timeLimit * 60000);
+      const testEndTimeWithBuffer = new Date(testEndTime.getTime() + 5000);
+
+      if (now > testEndTimeWithBuffer) {
+        return res.status(400).json({ message: "Test time limit has expired." });
+      }
     }
 
     res.status(200).json({ message: "Test is still active." });
@@ -190,6 +222,19 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
 
     if (!testId || !userId || !startTime || !duration) {
       return res.status(400).json({ message: "testId, userId, startTime, and duration are required" });
+    }
+
+    // Get test to validate timeLimit
+    const test = await Test.findById(testId);
+    if (!test) {
+      return res.status(404).json({ message: "Test not found" });
+    }
+
+    // Validate duration >= timeLimit
+    if (Number(duration) < test.timeLimit) {
+      return res.status(400).json({
+        message: `Duration (${duration} minutes) must be greater than or equal to test time limit (${test.timeLimit} minutes)`
+      });
     }
 
     // Check if assignment already exists
@@ -337,6 +382,19 @@ router.post("/assign-all", authenticateToken, requireRole("admin"), async (req, 
       return res.status(400).json({ message: "testId, startTime, and duration are required" });
     }
 
+    // Get test to validate timeLimit
+    const test = await Test.findById(testId);
+    if (!test) {
+      return res.status(404).json({ message: "Test not found" });
+    }
+
+    // Validate duration >= timeLimit
+    if (Number(duration) < test.timeLimit) {
+      return res.status(400).json({
+        message: `Duration (${duration} minutes) must be greater than or equal to test time limit (${test.timeLimit} minutes)`
+      });
+    }
+
     // Get all students
     const students = await User.find({ role: "Student" });
 
@@ -406,38 +464,51 @@ router.post("/assign-manual", authenticateToken, requireRole("admin"), async (re
     const { testId, studentIds, startTime, duration, mentorId } = req.body;
 
     if (!testId || !studentIds || !startTime || !duration) {
-      return res.status(400).json({ 
-        message: "testId, studentIds, startTime, and duration are required" 
+      return res.status(400).json({
+        message: "testId, studentIds, startTime, and duration are required"
       });
     }
 
     if (!Array.isArray(studentIds) || studentIds.length === 0) {
-      return res.status(400).json({ 
-        message: "studentIds must be a non-empty array" 
+      return res.status(400).json({
+        message: "studentIds must be a non-empty array"
+      });
+    }
+
+    // Get test to validate timeLimit
+    const test = await Test.findById(testId);
+    if (!test) {
+      return res.status(404).json({ message: "Test not found" });
+    }
+
+    // Validate duration >= timeLimit
+    if (Number(duration) < test.timeLimit) {
+      return res.status(400).json({
+        message: `Duration (${duration} minutes) must be greater than or equal to test time limit (${test.timeLimit} minutes)`
       });
     }
 
     // Validate that all student IDs are valid and correspond to actual students
-    const students = await User.find({ 
-      _id: { $in: studentIds }, 
-      role: "Student" 
+    const students = await User.find({
+      _id: { $in: studentIds },
+      role: "Student"
     });
 
     if (students.length !== studentIds.length) {
       const validStudentIds = students.map(student => student._id.toString());
       const invalidStudentIds = studentIds.filter(id => !validStudentIds.includes(id));
-      
-      return res.status(400).json({ 
+
+      return res.status(400).json({
         message: "Some student IDs are invalid or not students",
-        invalidStudentIds 
+        invalidStudentIds
       });
     }
 
     // Create assignments for selected students
     const assignments = [];
-    const existingAssignments = await Assignment.find({ 
-      testId, 
-      userId: { $in: studentIds } 
+    const existingAssignments = await Assignment.find({
+      testId,
+      userId: { $in: studentIds }
     });
 
     for (const studentId of studentIds) {
@@ -466,9 +537,9 @@ router.post("/assign-manual", authenticateToken, requireRole("admin"), async (re
     }
 
     if (assignments.length === 0) {
-      return res.status(200).json({ 
-        message: "All selected students already have this assignment", 
-        assignedCount: 0 
+      return res.status(200).json({
+        message: "All selected students already have this assignment",
+        assignedCount: 0
       });
     }
 

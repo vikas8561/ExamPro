@@ -376,9 +376,12 @@ const TakeTest = () => {
       });
       setQuestionStatuses(initialStatuses);
 
-      const timeLimitMinutes = response.test.timeLimit;
-      const totalSeconds = timeLimitMinutes * 60;
-      const testStartTime = new Date(response.assignment.startTime);
+      const assignmentDuration = response.assignment.duration;
+      const testTimeLimit = response.test.timeLimit;
+
+      // Always use test.timeLimit as timer duration
+      const totalSeconds = testTimeLimit * 60;
+      const testStartTime = new Date(response.assignment.startedAt || response.assignment.startTime);
       const currentTime = serverTime; // Use server time instead of client time
       const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
       const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
@@ -420,15 +423,18 @@ const TakeTest = () => {
       console.log(`[TakeTest] Assignment data loaded:`, assignmentData);
       setAssignment(assignmentData);
 
-      const timeLimitMinutes = assignmentData.testId.timeLimit;
-      const totalSeconds = timeLimitMinutes * 60;
-      const testStartTime = new Date(assignmentData.startTime);
+      const assignmentDuration = assignmentData.duration;
+      const testTimeLimit = assignmentData.testId.timeLimit;
+
+      // Always use test.timeLimit as timer duration
+      const totalSeconds = testTimeLimit * 60;
+      const testStartTime = new Date(assignmentData.startedAt || assignmentData.startTime);
       const currentTime = serverTime; // Use server time instead of client time
       const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
       const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
 
       console.log(
-        `[TakeTest] Time calculation - Limit: ${timeLimitMinutes}m, Elapsed: ${elapsedSeconds}s, Remaining: ${remainingSeconds}s`
+        `[TakeTest] Time calculation - Assignment Duration: ${assignmentDuration}m, Test Limit: ${testTimeLimit}m, Elapsed: ${elapsedSeconds}s, Remaining: ${remainingSeconds}s`
       );
 
       let answersData = [];
