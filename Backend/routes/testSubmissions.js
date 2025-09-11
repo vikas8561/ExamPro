@@ -220,11 +220,38 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
     const currentTime = new Date();
     const assignmentDeadline = assignment.deadline;
 
+    console.log('=== DEBUGGING DEADLINE LOGIC ===');
+    console.log('Current time:', currentTime.toISOString());
+    console.log('Assignment deadline:', assignmentDeadline);
+    console.log('Assignment startTime:', assignment.startTime);
+    console.log('Assignment duration:', assignment.duration);
+    console.log('Submission exists:', !!submission);
+    console.log('Submission mentorReviewed:', submission?.mentorReviewed);
+
+    // Check if deadline is valid
+    if (!assignmentDeadline) {
+      console.log('ERROR: Assignment deadline is null/undefined');
+      // If deadline is not set, calculate it from startTime + duration
+      if (assignment.startTime && assignment.duration) {
+        const calculatedDeadline = new Date(assignment.startTime);
+        calculatedDeadline.setMinutes(calculatedDeadline.getMinutes() + assignment.duration);
+        assignment.deadline = calculatedDeadline;
+        await assignment.save();
+        console.log('Calculated and saved deadline:', calculatedDeadline.toISOString());
+      }
+    }
+
     // Add a small buffer (1 second) to handle timing precision issues
     const deadlineWithBuffer = new Date(assignmentDeadline.getTime() + 1000);
 
+    console.log('Deadline with buffer:', deadlineWithBuffer.toISOString());
+    console.log('Current time >= deadline with buffer:', currentTime >= deadlineWithBuffer);
+
     // Determine if results should be shown
     const showResults = (!submission || submission.mentorReviewed) && currentTime >= deadlineWithBuffer;
+
+    console.log('Show results:', showResults);
+    console.log('================================');
 
     if (submission) {
       // Merge responses with questions for display
