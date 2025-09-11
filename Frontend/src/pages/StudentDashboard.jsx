@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import UpcomingTests from "../components/UpcomingTests";
 import RecentActivity from "../components/RecentActivity";
 import apiRequest from "../services/api";
+import { io } from "socket.io-client";
 
 const StudentDashboard = () => {
   const [assignedTests, setAssignedTests] = useState([]);
@@ -12,7 +13,42 @@ const StudentDashboard = () => {
   useEffect(() => {
     fetchStudentData();
     fetchRecentActivity();
+
+    // Setup Socket.IO client
+    const socket = io(import.meta.env.VITE_API_URL || "http://localhost:4000");
+
+    socket.on("connect", () => {
+      console.log("Connected to socket server:", socket.id);
+    });
+
+    socket.on("assignmentCreated", (data) => {
+      console.log("Received assignmentCreated event:", data);
+      if (data.userId === getCurrentUserId()) {
+        // Refresh student data and recent activity
+        fetchStudentData();
+        fetchRecentActivity();
+      }
+    });
+
+    // Debug: log all events to verify connection
+    socket.onAny((event, ...args) => {
+      console.log(`Socket event received: ${event}`, args);
+    });
+
+    socket.on("disconnect", () => {
+      console.log("Disconnected from socket server");
+    });
+
+    // Cleanup on unmount
+    return () => {
+      socket.disconnect();
+    };
   }, []);
+
+  const getCurrentUserId = () => {
+    // Assuming userId is stored in localStorage
+    return localStorage.getItem("userId");
+  };
 
   const fetchStudentData = async () => {
     try {

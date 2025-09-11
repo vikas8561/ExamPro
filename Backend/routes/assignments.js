@@ -218,6 +218,13 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
       .populate("userId", "name email")
       .populate("mentorId", "name email");
 
+    // Emit real-time update to all connected clients
+    const io = req.app.get('io');
+    io.emit('assignmentCreated', {
+      userId: userId,
+      assignment: populatedAssignment
+    });
+
     res.status(201).json(populatedAssignment);
   } catch (error) {
     next(error);
@@ -331,7 +338,7 @@ router.post("/assign-all", authenticateToken, requireRole("admin"), async (req, 
 
     // Get all students
     const students = await User.find({ role: "Student" });
-    
+
     if (!students.length) {
       return res.status(404).json({ message: "No students found" });
     }
@@ -366,17 +373,26 @@ router.post("/assign-all", authenticateToken, requireRole("admin"), async (req, 
     }
 
     if (assignments.length === 0) {
-      return res.status(200).json({ 
-        message: "All students already have this assignment", 
-        assignedCount: 0 
+      return res.status(200).json({
+        message: "All students already have this assignment",
+        assignedCount: 0
       });
     }
 
     await Promise.all(assignments);
 
-    res.status(201).json({ 
-      message: `Successfully assigned to ${assignments.length} students`, 
-      assignedCount: assignments.length 
+    // Emit real-time update to all connected clients for each assignment
+    const io = req.app.get('io');
+    assignments.forEach(assignment => {
+      io.emit('assignmentCreated', {
+        userId: assignment.userId.toString(),
+        assignment: assignment
+      });
+    });
+
+    res.status(201).json({
+      message: `Successfully assigned to ${assignments.length} students`,
+      assignedCount: assignments.length
     });
   } catch (error) {
     next(error);
@@ -457,9 +473,18 @@ router.post("/assign-manual", authenticateToken, requireRole("admin"), async (re
 
     await Promise.all(assignments);
 
-    res.status(201).json({ 
-      message: `Successfully assigned to ${assignments.length} students`, 
-      assignedCount: assignments.length 
+    // Emit real-time update to all connected clients for each assignment
+    const io = req.app.get('io');
+    assignments.forEach(assignment => {
+      io.emit('assignmentCreated', {
+        userId: assignment.userId.toString(),
+        assignment: assignment
+      });
+    });
+
+    res.status(201).json({
+      message: `Successfully assigned to ${assignments.length} students`,
+      assignedCount: assignments.length
     });
   } catch (error) {
     next(error);
