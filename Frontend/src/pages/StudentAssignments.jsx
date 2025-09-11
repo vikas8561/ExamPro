@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { io } from "socket.io-client";
 import apiRequest from "../services/api";
 
 // Custom Countdown Timer Component
@@ -87,6 +88,55 @@ const StudentAssignments = () => {
   useEffect(() => {
     fetchAssignments();
     fetchSubjects();
+
+    // Setup Socket.IO client - use the same base URL as API
+    const API_BASE_URL = 'https://cg-test-app.onrender.com/api';
+    const socketUrl = API_BASE_URL.replace('/api', ''); // Remove /api to get base URL
+    const socket = io(socketUrl);
+
+    socket.on("connect", () => {
+      console.log("Connected to socket server:", socket.id);
+      // Join room with userId for targeted events
+      const userId = localStorage.getItem("userId");
+      if (userId) {
+        socket.emit('join', userId);
+        console.log("Joined room:", userId);
+      }
+    });
+
+    socket.on("connect_error", (error) => {
+      console.error("Socket connection error:", error);
+      // Fallback: poll for updates every 30 seconds
+      const pollInterval = setInterval(() => {
+        fetchAssignments();
+      }, 30000);
+      // Store interval ID for cleanup
+      socket.pollInterval = pollInterval;
+    });
+
+    socket.on("disconnect", (reason) => {
+      console.log("Disconnected from socket server:", reason);
+      // Clear fallback polling if it exists
+      if (socket.pollInterval) {
+        clearInterval(socket.pollInterval);
+      }
+    });
+
+    socket.on("assignmentCreated", (data) => {
+      console.log("Received assignmentCreated event:", data);
+      // Refresh assignments data
+      fetchAssignments();
+    });
+
+    // Debug: log all events to verify connection
+    socket.onAny((event, ...args) => {
+      console.log(`Socket event received: ${event}`, args);
+    });
+
+    // Cleanup on unmount
+    return () => {
+      socket.disconnect();
+    };
   }, []);
 
   const fetchSubjects = async () => {

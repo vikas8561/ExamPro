@@ -17,7 +17,7 @@ const StudentDashboard = () => {
     fetchRecentActivity();
 
     // Setup Socket.IO client - use the same base URL as API
-    const API_BASE_URL = 'https://exampro-yilv.onrender.com/api';
+    const API_BASE_URL = 'https://cg-test-app.onrender.com/api';
     const socketUrl = API_BASE_URL.replace('/api', ''); // Remove /api to get base URL
     const socket = io(socketUrl);
 

@@ -8,7 +8,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://exampro-yilv.onrender.com',
+        target: 'https://cg-test-app.onrender.com',
         changeOrigin: true,
         secure: false,
       }

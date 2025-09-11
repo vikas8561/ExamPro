@@ -1,5 +1,5 @@
 // API service with authentication
-const API_BASE_URL = 'https://exampro-yilv.onrender.com/api';
+const API_BASE_URL = 'https://cg-test-app.onrender.com/api';
 
 // Get auth token from localStorage
 const getAuthToken = () => {
