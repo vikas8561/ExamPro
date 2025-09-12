@@ -169,19 +169,24 @@ router.post("/forgot-password", async (req, res) => {
       subject: mailOptions.subject
     });
 
-    transporter.sendMail(mailOptions, (error, info) => {
-      if (error) {
-        console.error('Error sending reset email:', error);
-        return res.status(500).json({ message: 'Failed to send reset email', error: error.message });
-      } else {
-        console.log('Reset email sent successfully:', info.response);
-        return res.json({
-          message: "Password reset verification sent",
-          verificationSentTo: verificationEmail,
-          resetToken: resetToken // For testing purposes
-        });
-      }
-    });
+    try {
+      await transporter.sendMail(mailOptions);
+      console.log('Reset email sent successfully');
+      return res.json({
+        message: "Password reset verification sent",
+        verificationSentTo: verificationEmail,
+        resetToken: resetToken // For testing purposes
+      });
+    } catch (emailError) {
+      console.error('Error sending reset email:', emailError);
+      // Don't fail the request if email fails, but log it
+      // In production, you might want to queue emails or use a service
+      return res.status(500).json({
+        message: 'Password reset initiated but email failed to send',
+        error: emailError.message,
+        resetToken: resetToken // For testing purposes
+      });
+    }
   } catch (err) {
     console.error('Unexpected error in forgot-password:', err);
     res.status(500).json({ message: err.message, stack: err.stack });
