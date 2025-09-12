@@ -71,6 +71,11 @@ const ViewCompletedTest = () => {
 
   const { test, submission, showResults, message } = testData;
 
+  const correctCount = test.questions.filter(q => q.isCorrect).length;
+  const incorrectCount = test.questions.filter(q => q.selectedOption && !q.isCorrect).length;
+  const notAnsweredCount = test.questions.filter(q => !q.selectedOption).length;
+  const totalQuestions = test.questions.length;
+
   // Check if results should be shown
   if (!showResults) {
     return (
@@ -122,29 +127,27 @@ const ViewCompletedTest = () => {
         {/* Score Summary */}
         <div className="bg-slate-800 shadow-lg rounded-xl p-6 mb-8 border border-slate-700">
           <h3 className="text-xl font-semibold text-white mb-4">Test Results</h3>
-          <div className="space-y-2">
-            <p className="text-lg">
-              <span className="font-medium text-slate-300">Your Score:</span>{" "}
-              <span className="text-2xl font-bold text-blue-400">
-                {submission.mentorScore !== null ? submission.mentorScore : submission.totalScore}
-              </span>{" "}
-              <span className="text-slate-400">
-                {submission.mentorScore !== null ? '%' : `/ ${submission.maxScore}`}
-              </span>
-            </p>
-            <p className="text-lg">
-              <span className="font-medium text-slate-300">Percentage:</span>{" "}
-              <span className="text-2xl font-bold text-green-400">
-                {submission.mentorScore !== null
-                  ? submission.mentorScore
-                  : (submission.maxScore ? Math.round((submission.totalScore / submission.maxScore) * 100) : 0)
-                }%
-              </span>
-            </p>
-            <p className="text-slate-400">
-              <span className="font-medium">Submitted At:</span>{" "}
-              <span className="text-slate-300">{new Date(submission.submittedAt).toLocaleString()}</span>
-            </p>
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 text-center">
+            <div>
+              <div className="text-2xl font-bold text-blue-400">{totalQuestions}</div>
+              <div className="text-slate-400">Total Questions</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-green-400">{correctCount}</div>
+              <div className="text-slate-400">Correct Answers</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-red-400">{incorrectCount}</div>
+              <div className="text-slate-400">Incorrect Answers</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-yellow-400">{notAnsweredCount}</div>
+              <div className="text-slate-400">Not Answered</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-white">{submission.totalScore}</div>
+              <div className="text-slate-400">Final Score</div>
+            </div>
           </div>
         </div>
 

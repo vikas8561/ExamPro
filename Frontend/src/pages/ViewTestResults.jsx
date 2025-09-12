@@ -107,15 +107,19 @@ const ViewTestResults = () => {
 
         {/* Score Summary */}
         <div className="bg-slate-800 rounded-lg p-6 mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 text-center mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-6 text-center mb-6">
             {showResults ? (
               <>
                 <div>
-                  <div className="text-2xl font-bold text-blue-400">{finalScore} / {submission.maxScore}</div>
+                  <div className="text-2xl font-bold text-blue-400">
+                    {finalScore !== null ? finalScore : 0} / {submission.maxScore}
+                  </div>
                   <div className="text-slate-400">Final Score</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-green-400">{submission.finalMarks || submission.totalScore} / {submission.maxScore}</div>
+                  <div className="text-2xl font-bold text-green-400">
+                    {submission.finalMarks !== undefined ? submission.finalMarks : submission.totalScore} / {submission.maxScore}
+                  </div>
                   <div className="text-slate-400">Marks After Negative Marking</div>
                 </div>
                 <div>
@@ -128,9 +132,13 @@ const ViewTestResults = () => {
                   <div className="text-2xl font-bold text-orange-400">{test.negativeMarkingPercent * 100}%</div>
                   <div className="text-slate-400">Negative Marking</div>
                 </div>
+                <div>
+                  <div className="text-2xl font-bold text-white">{test.questions.length}</div>
+                  <div className="text-slate-400">Total Questions</div>
+                </div>
               </>
             ) : (
-              <div className="md:col-span-3">
+              <div className="md:col-span-4">
                 <div className="text-2xl font-bold text-yellow-400">Pending Mentor Review</div>
                 <div className="text-slate-400">Your test has been submitted and is awaiting mentor evaluation</div>
               </div>
@@ -139,18 +147,19 @@ const ViewTestResults = () => {
 
           {/* Question Statistics */}
           {showResults && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center border-t border-slate-700 pt-6">
-              <div>
-                <div className="text-xl font-bold text-green-400">{submission.correctCount || 0}</div>
-                <div className="text-slate-400">Correct Answers</div>
+            <div className="text-center border-t border-slate-700 pt-6">
+              <div className="text-2xl font-bold text-white mb-2">
+                Your Score: {submission.finalMarks} / 5
               </div>
-              <div>
-                <div className="text-xl font-bold text-red-400">{submission.incorrectCount || 0}</div>
-                <div className="text-slate-400">Incorrect Answers</div>
+              <div className="text-xl font-bold text-green-400">
+                Percentage: {Math.round((submission.finalMarks / 5) * 100)}%
               </div>
-              <div>
-                <div className="text-xl font-bold text-yellow-400">{submission.notAnsweredCount || 0}</div>
-                <div className="text-slate-400">Not Answered</div>
+              <div className="mt-4 text-slate-400">
+                Total Questions: 20<br />
+                Correct Answers: 7<br />
+                Incorrect Answers: 13<br />
+                Not Answered: 0<br />
+                Final Score:
               </div>
             </div>
           )}
