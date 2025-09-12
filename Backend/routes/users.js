@@ -16,11 +16,20 @@ router.get("/", async (req, res) => {
 // Create a new user
 router.post("/", async (req, res) => {
   try {
-    const { name, email, role } = req.body;
+    const { name, email, role, studentCategory } = req.body;
 
     // Validate required fields
     if (!name || !email) {
       return res.status(400).json({ message: "Name and email are required" });
+    }
+
+    // Validate student category for students
+    if (role === "Student" && !studentCategory) {
+      return res.status(400).json({ message: "Student category (RU/SU) is required for students" });
+    }
+
+    if (role === "Student" && !["RU", "SU"].includes(studentCategory)) {
+      return res.status(400).json({ message: "Student category must be either RU or SU" });
     }
 
     // Validate email format
@@ -38,7 +47,12 @@ router.post("/", async (req, res) => {
     // Plain password (not hashed)
     const password = "12345";
 
-    const newUser = new User({ name, email, password, role });
+    const userData = { name, email, password, role };
+    if (role === "Student") {
+      userData.studentCategory = studentCategory;
+    }
+
+    const newUser = new User(userData);
     const savedUser = await newUser.save();
 
     // Send response (don't send password)
@@ -56,12 +70,21 @@ router.post("/", async (req, res) => {
 // Update a user
 router.put("/:id", async (req, res) => {
   try {
-    const { name, email, role } = req.body;
+    const { name, email, role, studentCategory } = req.body;
     const userId = req.params.id;
 
     // Validate required fields
     if (!name || !email) {
       return res.status(400).json({ message: "Name and email are required" });
+    }
+
+    // Validate student category for students
+    if (role === "Student" && !studentCategory) {
+      return res.status(400).json({ message: "Student category (RU/SU) is required for students" });
+    }
+
+    if (role === "Student" && !["RU", "SU"].includes(studentCategory)) {
+      return res.status(400).json({ message: "Student category must be either RU or SU" });
     }
 
     // Validate email format
@@ -76,9 +99,14 @@ router.put("/:id", async (req, res) => {
       return res.status(400).json({ message: "Email already exists" });
     }
 
+    const updateData = { name, email, role };
+    if (role === "Student") {
+      updateData.studentCategory = studentCategory;
+    }
+
     const updatedUser = await User.findByIdAndUpdate(
       userId,
-      { name, email, role },
+      updateData,
       { new: true, runValidators: true }
     ).select("-password");
 
@@ -112,9 +140,18 @@ const upload = multer({ dest: "uploads/" }); // Temporary storage for uploaded f
 // Bulk upload users
 router.post("/bulk", upload.single("file"), async (req, res) => {
   try {
-    const { role } = req.body;
+    const { role, studentCategory } = req.body;
     const usersData = [];
     const fileType = req.file.mimetype;
+
+    // Validate student category for students
+    if (role === "Student" && !studentCategory) {
+      return res.status(400).json({ message: "Student category (RU/SU) is required for bulk student upload" });
+    }
+
+    if (role === "Student" && !["RU", "SU"].includes(studentCategory)) {
+      return res.status(400).json({ message: "Student category must be either RU or SU" });
+    }
 
     if (fileType === "application/json") {
       const jsonData = JSON.parse(fs.readFileSync(req.file.path, 'utf8'));
@@ -123,7 +160,7 @@ router.post("/bulk", upload.single("file"), async (req, res) => {
           usersData.push({ name: item.name, email: item.email });
         }
       });
-      
+
       // Process JSON users
       const results = [];
       for (const userData of usersData) {
@@ -144,33 +181,39 @@ router.post("/bulk", upload.single("file"), async (req, res) => {
 
           // Create new user
           const password = "12345";
-          const newUser = new User({ 
-            name: userData.name, 
-            email: userData.email, 
-            password, 
-            role 
-          });
-          await newUser.save();
-          results.push({ 
-            email: userData.email, 
+          const userDataObj = {
             name: userData.name,
-            status: "success", 
-            message: "User created successfully" 
+            email: userData.email,
+            password,
+            role
+          };
+
+          if (role === "Student") {
+            userDataObj.studentCategory = studentCategory;
+          }
+
+          const newUser = new User(userDataObj);
+          await newUser.save();
+          results.push({
+            email: userData.email,
+            name: userData.name,
+            status: "success",
+            message: "User created successfully"
           });
         } catch (error) {
-          results.push({ 
-            email: userData.email, 
+          results.push({
+            email: userData.email,
             name: userData.name,
-            status: "failed", 
-            message: error.message 
+            status: "failed",
+            message: error.message
           });
         }
       }
-      
+
       // Clean up uploaded file
       fs.unlinkSync(req.file.path);
       res.status(201).json({ message: "Bulk upload completed", results });
-      
+
     } else if (fileType === "text/csv") {
       const results = [];
       fs.createReadStream(req.file.path)
@@ -199,29 +242,35 @@ router.post("/bulk", upload.single("file"), async (req, res) => {
 
               // Create new user
               const password = "12345";
-              const newUser = new User({ 
-                name: userData.name, 
-                email: userData.email, 
-                password, 
-                role 
-              });
-              await newUser.save();
-              results.push({ 
-                email: userData.email, 
+              const userDataObj = {
                 name: userData.name,
-                status: "success", 
-                message: "User created successfully" 
+                email: userData.email,
+                password,
+                role
+              };
+
+              if (role === "Student") {
+                userDataObj.studentCategory = studentCategory;
+              }
+
+              const newUser = new User(userDataObj);
+              await newUser.save();
+              results.push({
+                email: userData.email,
+                name: userData.name,
+                status: "success",
+                message: "User created successfully"
               });
             } catch (error) {
-              results.push({ 
-                email: userData.email, 
+              results.push({
+                email: userData.email,
                 name: userData.name,
-                status: "failed", 
-                message: error.message 
+                status: "failed",
+                message: error.message
               });
             }
           }
-          
+
           // Clean up uploaded file
           fs.unlinkSync(req.file.path);
           res.status(201).json({ message: "Bulk upload completed", results });

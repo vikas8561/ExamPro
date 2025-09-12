@@ -621,14 +621,11 @@ router.post("/assign-ru", authenticateToken, requireRole("admin"), async (req, r
       });
     }
 
-    // Get RU students (students not in SU email range)
-    const students = await User.find({
+    // Get RU students (students with studentCategory = "RU")
+    const ruStudents = await User.find({
       role: "Student",
-      email: { $not: /^student\d+@gmail\.com$/ }
+      studentCategory: "RU"
     });
-
-    // Also filter out SU students programmatically to be safe
-    const ruStudents = students.filter(student => !isSUStudent(student.email));
 
     if (!ruStudents.length) {
       return res.status(404).json({ message: "No RU students found" });
@@ -712,14 +709,11 @@ router.post("/assign-su", authenticateToken, requireRole("admin"), async (req, r
       });
     }
 
-    // Get SU students (students in SU email range)
-    const students = await User.find({
+    // Get SU students (students with studentCategory = "SU")
+    const suStudents = await User.find({
       role: "Student",
-      email: /^student\d+@gmail\.com$/
+      studentCategory: "SU"
     });
-
-    // Filter to ensure they are within the range 1-123
-    const suStudents = students.filter(student => isSUStudent(student.email));
 
     if (!suStudents.length) {
       return res.status(404).json({ message: "No SU students found" });
