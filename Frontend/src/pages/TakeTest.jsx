@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import apiRequest from "../services/api";
-import Editor from '@monaco-editor/react';
+import Editor from "@monaco-editor/react";
 
 const TakeTest = () => {
   const [timeRemaining, setTimeRemaining] = useState(0);
@@ -79,7 +79,10 @@ const TakeTest = () => {
         try {
           await apiRequest(`/assignments/check-expiration/${assignmentId}`);
         } catch (error) {
-          if (error.message.includes("Test time has expired") && !isSubmitting) {
+          if (
+            error.message.includes("Test time has expired") &&
+            !isSubmitting
+          ) {
             await submitTest(false, true);
           }
         }
@@ -257,6 +260,66 @@ const TakeTest = () => {
     };
   }, [testStarted, violationCount, isSubmitting]);
 
+  useEffect(() => {
+    if (!testStarted) return;
+
+    const handleKeyDown = (e) => {
+      // Block all keys including Windows/Meta key and Esc
+      if (
+        e.key === "Meta" ||
+        e.key === "MetaLeft" ||
+        e.key === "MetaRight" ||
+        e.keyCode === 91 || // Legacy: Left Windows/Command key
+        e.keyCode === 92 || // Legacy: Right Windows key
+        e.keyCode === 93 || // Legacy: Context menu key
+        e.key === "Escape" ||
+        e.keyCode === 27 || // Legacy: Escape
+        e.ctrlKey ||
+        e.altKey ||
+        e.shiftKey ||
+        e.key.length === 1 || // any printable character
+        e.key === "F5" ||
+        (e.ctrlKey && e.key.toLowerCase() === "r") || // Ctrl+R
+        (e.ctrlKey && e.key.toLowerCase() === "w") || // Ctrl+W
+        (e.ctrlKey && e.key.toLowerCase() === "t") // Ctrl+T
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [testStarted]);
+
+  useEffect(() => {
+    if (!testStarted) return;
+
+    const handleKeyUp = (e) => {
+      // Block all keys including Windows/Meta key and Esc
+      if (
+        e.key === "Meta" || // Windows key / Command key
+        e.key === "Escape" ||
+        e.ctrlKey ||
+        e.altKey ||
+        e.shiftKey ||
+        e.key.length === 1 // any printable character
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
+    window.addEventListener("keyup", handleKeyUp);
+
+    return () => {
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [testStarted]);
+
   const requestPermissions = async () => {
     await checkCameraPermission();
     await checkMicrophonePermission();
@@ -347,7 +410,12 @@ const TakeTest = () => {
       const timeResponse = await apiRequest("/time");
       const serverTime = new Date(timeResponse.serverTime);
       const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      console.log("[startTest] Server time:", serverTime.toISOString(), "Browser timezone:", browserTimeZone);
+      console.log(
+        "[startTest] Server time:",
+        serverTime.toISOString(),
+        "Browser timezone:",
+        browserTimeZone
+      );
 
       const response = await apiRequest(`/assignments/${assignmentId}/start`, {
         method: "POST",
@@ -382,7 +450,9 @@ const TakeTest = () => {
 
       // Always use test.timeLimit as timer duration
       const totalSeconds = testTimeLimit * 60;
-      const testStartTime = new Date(response.assignment.startedAt || response.assignment.startTime);
+      const testStartTime = new Date(
+        response.assignment.startedAt || response.assignment.startTime
+      );
       const currentTime = serverTime; // Use server time instead of client time
       const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
       const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
@@ -418,7 +488,12 @@ const TakeTest = () => {
       const timeResponse = await apiRequest("/time");
       const serverTime = new Date(timeResponse.serverTime);
       const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      console.log("[loadExistingTestData] Server time:", serverTime.toISOString(), "Browser timezone:", browserTimeZone);
+      console.log(
+        "[loadExistingTestData] Server time:",
+        serverTime.toISOString(),
+        "Browser timezone:",
+        browserTimeZone
+      );
 
       const assignmentData = await apiRequest(`/assignments/${assignmentId}`);
       console.log(`[TakeTest] Assignment data loaded:`, assignmentData);
@@ -429,7 +504,9 @@ const TakeTest = () => {
 
       // Always use test.timeLimit as timer duration
       const totalSeconds = testTimeLimit * 60;
-      const testStartTime = new Date(assignmentData.startedAt || assignmentData.startTime);
+      const testStartTime = new Date(
+        assignmentData.startedAt || assignmentData.startTime
+      );
       const currentTime = serverTime; // Use server time instead of client time
       const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
       const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
@@ -455,9 +532,13 @@ const TakeTest = () => {
           const existingAnswers = {};
           answersData.forEach((response) => {
             if (response.selectedOption) {
-              const question = assignmentData.testId.questions.find(q => q._id.toString() === response.questionId);
+              const question = assignmentData.testId.questions.find(
+                (q) => q._id.toString() === response.questionId
+              );
               if (question && question.options) {
-                const index = question.options.findIndex(opt => opt.text === response.selectedOption);
+                const index = question.options.findIndex(
+                  (opt) => opt.text === response.selectedOption
+                );
                 if (index !== -1) {
                   existingAnswers[response.questionId] = index;
                 }
@@ -518,14 +599,18 @@ const TakeTest = () => {
   };
 
   const handleAnswerChange = async (questionId, answerValue) => {
-    const question = test.questions.find(q => q._id === questionId);
+    const question = test.questions.find((q) => q._id === questionId);
     let selectedOption = undefined;
     let textAnswer = undefined;
     let hasAnswer = false;
 
     if (question.kind === "mcq") {
       // For MCQ, answerValue is the index (number)
-      if (answerValue !== undefined && answerValue !== null && answerValue !== "") {
+      if (
+        answerValue !== undefined &&
+        answerValue !== null &&
+        answerValue !== ""
+      ) {
         selectedOption = question.options[answerValue].text;
         hasAnswer = true;
       }
@@ -560,14 +645,25 @@ const TakeTest = () => {
       }
 
       // If selectedOption contains HTML, extract plain text
-      if (typeof sanitizedSelectedOption === "string" && sanitizedSelectedOption.includes("<")) {
+      if (
+        typeof sanitizedSelectedOption === "string" &&
+        sanitizedSelectedOption.includes("<")
+      ) {
         // Create a temporary DOM element to extract text content
         const tempDiv = document.createElement("div");
         tempDiv.innerHTML = sanitizedSelectedOption;
-        sanitizedSelectedOption = tempDiv.textContent || tempDiv.innerText || sanitizedSelectedOption;
+        sanitizedSelectedOption =
+          tempDiv.textContent || tempDiv.innerText || sanitizedSelectedOption;
       }
 
-      console.log("Saving answer for question:", questionId, "selectedOption:", sanitizedSelectedOption, "textAnswer:", textAnswer);
+      console.log(
+        "Saving answer for question:",
+        questionId,
+        "selectedOption:",
+        sanitizedSelectedOption,
+        "textAnswer:",
+        textAnswer
+      );
       try {
         await apiRequest("/answers", {
           method: "POST",
@@ -583,7 +679,14 @@ const TakeTest = () => {
         console.error("Failed to save answer:", error);
       }
     } else {
-      console.log("Not saving answer for question:", questionId, "hasAnswer:", hasAnswer, "answerValue:", answerValue);
+      console.log(
+        "Not saving answer for question:",
+        questionId,
+        "hasAnswer:",
+        hasAnswer,
+        "answerValue:",
+        answerValue
+      );
     }
   };
 
@@ -612,7 +715,10 @@ const TakeTest = () => {
     }, 100); // Small delay to ensure modal is closed
   };
 
-  const submitTest = async (cancelledDueToViolation = false, autoSubmit = false) => {
+  const submitTest = async (
+    cancelledDueToViolation = false,
+    autoSubmit = false
+  ) => {
     setIsSubmitting(true);
     try {
       const submissionData = {
@@ -626,7 +732,10 @@ const TakeTest = () => {
             if (question.kind === "mcq" && typeof answer === "number") {
               // For MCQ, answer is index, map to option text
               selectedOption = question.options[answer].text;
-            } else if (question.kind === "theoretical" && typeof answer === "string") {
+            } else if (
+              question.kind === "theoretical" &&
+              typeof answer === "string"
+            ) {
               // For theoretical, answer is text
               textAnswer = answer;
             }
@@ -931,9 +1040,12 @@ const TakeTest = () => {
                       if (currentStatus === "mark-for-review") {
                         // When unmarking, check if question has an answer
                         const answer = answers[question._id];
-                        const hasAnswer = question.kind === "mcq"
-                          ? (answer !== undefined && answer !== null && answer !== "")
-                          : (answer && answer.trim() !== "");
+                        const hasAnswer =
+                          question.kind === "mcq"
+                            ? answer !== undefined &&
+                              answer !== null &&
+                              answer !== ""
+                            : answer && answer.trim() !== "";
 
                         newStatus = hasAnswer ? "answered" : "not-answered";
                       } else {
@@ -961,9 +1073,7 @@ const TakeTest = () => {
                   </div>
                 </div>
               </div>
-              <h3 className="text-xl font-semibold mb-6">
-                {question.text}
-              </h3>
+              <h3 className="text-xl font-semibold mb-6">{question.text}</h3>
 
               {question.kind === "mcq" && (
                 <div className="space-y-3">
@@ -981,9 +1091,7 @@ const TakeTest = () => {
                         name={`question-${question._id}`}
                         value={index}
                         checked={answers[question._id] === index}
-                        onChange={() =>
-                          handleAnswerChange(question._id, index)
-                        }
+                        onChange={() => handleAnswerChange(question._id, index)}
                         className="mr-3"
                       />
                       <span>{option.text}</span>
@@ -1005,13 +1113,26 @@ const TakeTest = () => {
 
                   {question.examples && question.examples.length > 0 && (
                     <div className="bg-slate-700 p-4 rounded-lg mb-4 max-h-64 overflow-y-auto">
-                      <h4 className="font-semibold text-slate-300 mb-2">Examples:</h4>
+                      <h4 className="font-semibold text-slate-300 mb-2">
+                        Examples:
+                      </h4>
                       {question.examples.map((example, idx) => (
-                        <div key={idx} className="mb-3 p-3 bg-slate-600 rounded">
-                          <div className="mb-1 font-semibold text-slate-300">Input:</div>
-                          <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">{example.input}</pre>
-                          <div className="mt-2 mb-1 font-semibold text-slate-300">Output:</div>
-                          <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">{example.output}</pre>
+                        <div
+                          key={idx}
+                          className="mb-3 p-3 bg-slate-600 rounded"
+                        >
+                          <div className="mb-1 font-semibold text-slate-300">
+                            Input:
+                          </div>
+                          <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
+                            {example.input}
+                          </pre>
+                          <div className="mt-2 mb-1 font-semibold text-slate-300">
+                            Output:
+                          </div>
+                          <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
+                            {example.output}
+                          </pre>
                         </div>
                       ))}
                     </div>
@@ -1021,7 +1142,9 @@ const TakeTest = () => {
                     height="200px"
                     defaultLanguage="plaintext"
                     value={answers[question._id] || ""}
-                    onChange={(value) => handleAnswerChange(question._id, value)}
+                    onChange={(value) =>
+                      handleAnswerChange(question._id, value)
+                    }
                     theme="vs-dark"
                     options={{
                       minimap: { enabled: false },
@@ -1098,7 +1221,11 @@ const TakeTest = () => {
                       test.questions.filter((q) => {
                         const answer = answers[q._id];
                         if (q.kind === "mcq") {
-                          return answer !== undefined && answer !== null && answer !== "";
+                          return (
+                            answer !== undefined &&
+                            answer !== null &&
+                            answer !== ""
+                          );
                         } else if (q.kind === "theoretical") {
                           return answer && answer.trim() !== "";
                         }
@@ -1116,7 +1243,11 @@ const TakeTest = () => {
                         (test.questions.filter((q) => {
                           const answer = answers[q._id];
                           if (q.kind === "mcq") {
-                            return answer !== undefined && answer !== null && answer !== "";
+                            return (
+                              answer !== undefined &&
+                              answer !== null &&
+                              answer !== ""
+                            );
                           } else if (q.kind === "theoretical") {
                             return answer && answer.trim() !== "";
                           }
