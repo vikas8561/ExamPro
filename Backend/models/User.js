@@ -14,7 +14,7 @@ const userSchema = new mongoose.Schema(
     studentCategory: {
       type: String,
       enum: ["RU", "SU"],
-      default: "RU",
+      default: "SU",
       required: function() {
         return this.role === "Student";
       }

@@ -9,7 +9,7 @@ export default function Users() {
     name: "",
     email: "",
     role: "Student",
-    studentCategory: "RU",
+    studentCategory: "SU",
     // status: "Active",
   });
   const [editing, setEditing] = useState(null);
@@ -32,9 +32,11 @@ export default function Users() {
 
       if (studentCategoryFilter !== "All") {
         filteredUsers = filteredUsers.filter(u => {
-          // Only filter students by category, show all non-students
-          if (u.role !== "Student") return true;
-          return u.studentCategory === studentCategoryFilter;
+          // Only show students when filtering by category
+          if (u.role !== "Student") return false;
+          // Handle cases where studentCategory might be undefined/null (default to SU)
+          const category = u.studentCategory || "SU";
+          return category === studentCategoryFilter;
         });
       }
 
@@ -232,7 +234,7 @@ export default function Users() {
                           name: u.name,
                           email: u.email,
                           role: u.role,
-                          studentCategory: u.studentCategory || "RU",
+                          studentCategory: u.studentCategory || "SU",
                           // status: u.status,
                         });
                       }}
