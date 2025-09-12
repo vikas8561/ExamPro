@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -109,12 +109,12 @@ export default function Login() {
         </form>
 
         <div className="mt-4 text-center">
-          <a
-            href="/forgot-password"
+          <Link
+            to="/forgot-password"
             className="text-blue-400 hover:text-blue-300 text-sm underline"
           >
             Forgot Password?
-          </a>
+          </Link>
         </div>
       </div>
     </div>

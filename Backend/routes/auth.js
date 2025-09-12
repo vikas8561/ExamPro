@@ -203,9 +203,17 @@ router.post("/reset-password", async (req, res) => {
       return res.status(400).json({ message: "Invalid or expired reset token" });
     }
 
+    // Prepare update object
+    const updateObj = {
+      resetPasswordToken: undefined,
+      resetPasswordExpires: undefined,
+      pendingPassword: undefined,
+      pendingEmail: undefined,
+    };
+
     // Apply pending changes
     if (user.pendingPassword) {
-      user.password = user.pendingPassword;
+      updateObj.password = user.pendingPassword;
     }
 
     if (user.pendingEmail && user.pendingEmail !== user.email) {
@@ -214,16 +222,11 @@ router.post("/reset-password", async (req, res) => {
       if (existingUser && existingUser._id.toString() !== user._id.toString()) {
         return res.status(400).json({ message: "New email is already in use" });
       }
-      user.email = user.pendingEmail;
+      updateObj.email = user.pendingEmail;
     }
 
-    // Clear reset token and pending changes
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpires = undefined;
-    user.pendingPassword = undefined;
-    user.pendingEmail = undefined;
-
-    await user.save();
+    // Update user using updateOne to avoid pre-save hook double-hashing
+    await User.updateOne({ _id: user._id }, { $set: updateObj });
 
     res.json({ message: "Password and email updated successfully" });
   } catch (err) {
