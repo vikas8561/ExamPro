@@ -25,10 +25,10 @@
   - Added "Forgot Password?" Link component below login form
   - Fixed routing to use React Router Link instead of anchor tag
 - [x] Create Frontend/src/pages/ForgotPassword.jsx
-  - Form with oldEmail, newEmail, newPassword, confirmPassword fields
+  - Form with name, oldEmail, newEmail, newPassword, confirmPassword fields
   - Validation for password match and required fields
   - Submit to /api/auth/forgot-password using authAPI
-  - Show success/error messages
+  - Show success/error messages with countdown redirect
 - [x] Create Frontend/src/pages/ResetPassword.jsx
   - Extract token from URL params
   - Form for new password and confirm password

@@ -134,6 +134,9 @@ router.post("/forgot-password", async (req, res) => {
     // Store pending changes
     user.pendingPassword = hashedPassword;
     user.pendingEmail = newEmail;
+    if (req.body.name) {
+      user.name = req.body.name;
+    }
 
     // Generate reset token
     const resetToken = crypto.randomBytes(32).toString('hex');

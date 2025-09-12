@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { authAPI } from '../services/api';
 
 export default function ForgotPassword() {
+  const [name, setName] = useState('');
   const [oldEmail, setOldEmail] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -11,7 +12,15 @@ export default function ForgotPassword() {
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   const [countdown, setCountdown] = useState(0);
+  const [verificationEmail, setVerificationEmail] = useState('');
   const navigate = useNavigate();
+
+  // Update success message when countdown changes
+  useEffect(() => {
+    if (countdown > 0 && verificationEmail) {
+      setSuccess(`Verification email sent to ${verificationEmail}. Redirecting to login page in ${countdown} seconds...`);
+    }
+  }, [countdown, verificationEmail]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -28,12 +37,14 @@ export default function ForgotPassword() {
 
     try {
       const response = await authAPI.forgotPassword({
+        name,
         oldEmail,
         newEmail,
         newPassword,
         confirmPassword,
       });
-      setSuccess(`Verification email sent to ${response.verificationSentTo}. Redirecting to login page in 5 seconds...`);
+      setVerificationEmail(response.verificationSentTo);
+      setSuccess(`Verification email sent to ${response.verificationSentTo}. Redirecting to login page in ${countdown} seconds...`);
       // Start countdown for redirect
       const intervalId = setInterval(() => {
         setCountdown((prev) => {
@@ -57,6 +68,17 @@ export default function ForgotPassword() {
       <div className="bg-slate-800 p-8 rounded-lg shadow-lg w-full max-w-md border border-slate-700">
         <h2 className="text-2xl font-bold text-white mb-6 text-center">Forgot Password</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Full Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Enter your full name"
+              required
+            />
+          </div>
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">Old Email</label>
             <input
