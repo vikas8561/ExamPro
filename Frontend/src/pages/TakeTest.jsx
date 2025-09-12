@@ -926,10 +926,21 @@ const TakeTest = () => {
                   <button
                     onClick={() => {
                       const currentStatus = questionStatuses[question._id];
-                      const newStatus =
-                        currentStatus === "mark-for-review"
-                          ? "not-answered"
-                          : "mark-for-review";
+                      let newStatus;
+
+                      if (currentStatus === "mark-for-review") {
+                        // When unmarking, check if question has an answer
+                        const answer = answers[question._id];
+                        const hasAnswer = question.kind === "mcq"
+                          ? (answer !== undefined && answer !== null && answer !== "")
+                          : (answer && answer.trim() !== "");
+
+                        newStatus = hasAnswer ? "answered" : "not-answered";
+                      } else {
+                        // When marking for review, set to mark-for-review
+                        newStatus = "mark-for-review";
+                      }
+
                       setQuestionStatuses((prev) => ({
                         ...prev,
                         [question._id]: newStatus,
@@ -1084,9 +1095,15 @@ const TakeTest = () => {
                   <span>Answered</span>
                   <span>
                     {
-                      Object.values(questionStatuses).filter(
-                        (status) => status === "answered"
-                      ).length
+                      test.questions.filter((q) => {
+                        const answer = answers[q._id];
+                        if (q.kind === "mcq") {
+                          return answer !== undefined && answer !== null && answer !== "";
+                        } else if (q.kind === "theoretical") {
+                          return answer && answer.trim() !== "";
+                        }
+                        return false;
+                      }).length
                     }
                     /{test.questions.length}
                   </span>
@@ -1096,9 +1113,15 @@ const TakeTest = () => {
                     className="bg-blue-600 h-2 rounded-full transition-all"
                     style={{
                       width: `${
-                        (Object.values(questionStatuses).filter(
-                          (status) => status === "answered"
-                        ).length /
+                        (test.questions.filter((q) => {
+                          const answer = answers[q._id];
+                          if (q.kind === "mcq") {
+                            return answer !== undefined && answer !== null && answer !== "";
+                          } else if (q.kind === "theoretical") {
+                            return answer && answer.trim() !== "";
+                          }
+                          return false;
+                        }).length /
                           test.questions.length) *
                         100
                       }%`,

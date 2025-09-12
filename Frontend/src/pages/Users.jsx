@@ -24,7 +24,18 @@ export default function Users() {
 
   useEffect(fetchUsers, []);
 
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (!event.target.closest('.filter-dropdown')) {
+        setIsFilterOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const [studentCategoryFilter, setStudentCategoryFilter] = useState("All");
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   const filtered = useMemo(
     () => {
@@ -191,17 +202,31 @@ export default function Users() {
             className="w-full p-3 rounded-md bg-slate-800 border border-slate-700"
           />
         </div>
-        <div>
-          <label className="block text-slate-300 mb-2">Filter by Student Category</label>
-          <select
-            value={studentCategoryFilter}
-            onChange={(e) => setStudentCategoryFilter(e.target.value)}
-            className="p-2 rounded bg-slate-900 border border-slate-700"
+        <div className="relative filter-dropdown">
+          <label className="block text-slate-300 mb-2">Filter</label>
+          <button
+            onClick={() => setIsFilterOpen(!isFilterOpen)}
+            className="w-full p-3 rounded-md bg-slate-900 border border-slate-700 text-left flex justify-between items-center"
           >
-            <option value="All">All</option>
-            <option value="RU">RU</option>
-            <option value="SU">SU</option>
-          </select>
+            <span>{studentCategoryFilter}</span>
+            <span className={`transform transition-transform ${isFilterOpen ? 'rotate-180' : ''}`}>▼</span>
+          </button>
+          {isFilterOpen && (
+            <div className="absolute top-full mt-1 w-full bg-slate-900 border border-slate-700 rounded shadow-lg z-50">
+              {['All', 'RU', 'SU'].map(option => (
+                <div
+                  key={option}
+                  onClick={() => {
+                    setStudentCategoryFilter(option);
+                    setIsFilterOpen(false);
+                  }}
+                  className="p-2 hover:bg-slate-700 cursor-pointer"
+                >
+                  {option}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
