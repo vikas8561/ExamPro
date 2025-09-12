@@ -11,7 +11,7 @@ export default function Tests() {
   const [startTime, setStartTime] = useState("");
   const [duration, setDuration] = useState("");
   const [assigning, setAssigning] = useState(false);
-  const [assignmentMode, setAssignmentMode] = useState("all"); // "all" or "manual"
+  const [assignmentMode, setAssignmentMode] = useState("all"); // "all", "manual", "ru", "su"
   const [selectedStudents, setSelectedStudents] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const nav = useNavigate();
@@ -99,6 +99,64 @@ export default function Tests() {
     } catch (err) {
       console.error("Error assigning test:", err);
       alert("Failed to assign test to students");
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  // Assign test to RU students
+  const assignTestToRU = async () => {
+    if (!selectedTest || !startTime || !duration) return;
+
+    setAssigning(true);
+    try {
+      await apiRequest("/assignments/assign-ru", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          testId: selectedTest,
+          startTime: new Date(startTime).toISOString(),
+          duration: parseInt(duration)
+        }),
+      });
+
+      alert("Test assigned to RU students successfully!");
+      setShowAssignModal(false);
+      setSelectedTest(null);
+      setStartTime("");
+      setDuration("");
+    } catch (err) {
+      console.error("Error assigning test to RU students:", err);
+      alert("Failed to assign test to RU students");
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  // Assign test to SU students
+  const assignTestToSU = async () => {
+    if (!selectedTest || !startTime || !duration) return;
+
+    setAssigning(true);
+    try {
+      await apiRequest("/assignments/assign-su", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          testId: selectedTest,
+          startTime: new Date(startTime).toISOString(),
+          duration: parseInt(duration)
+        }),
+      });
+
+      alert("Test assigned to SU students successfully!");
+      setShowAssignModal(false);
+      setSelectedTest(null);
+      setStartTime("");
+      setDuration("");
+    } catch (err) {
+      console.error("Error assigning test to SU students:", err);
+      alert("Failed to assign test to SU students");
     } finally {
       setAssigning(false);
     }
@@ -255,7 +313,7 @@ export default function Tests() {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Assignment Mode
               </label>
-              <div className="flex gap-4">
+              <div className="flex gap-4 flex-wrap">
                 <label className="flex items-center">
                   <input
                     type="radio"
@@ -265,6 +323,26 @@ export default function Tests() {
                     className="mr-2"
                   />
                   Assign to All Students
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    value="ru"
+                    checked={assignmentMode === "ru"}
+                    onChange={() => setAssignmentMode("ru")}
+                    className="mr-2"
+                  />
+                  Assign to RU Students
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    value="su"
+                    checked={assignmentMode === "su"}
+                    onChange={() => setAssignmentMode("su")}
+                    className="mr-2"
+                  />
+                  Assign to SU Students
                 </label>
                 <label className="flex items-center">
                   <input
@@ -380,20 +458,29 @@ export default function Tests() {
                 Cancel
               </button>
               <button
-                onClick={assignmentMode === "all" ? assignTestToAll : assignTestToSelected}
+                onClick={() => {
+                  if (assignmentMode === "all") assignTestToAll();
+                  else if (assignmentMode === "ru") assignTestToRU();
+                  else if (assignmentMode === "su") assignTestToSU();
+                  else if (assignmentMode === "manual") assignTestToSelected();
+                }}
                 disabled={
-                  !startTime || 
-                  !duration || 
-                  assigning || 
+                  !startTime ||
+                  !duration ||
+                  assigning ||
                   (assignmentMode === "manual" && selectedStudents.length === 0)
                 }
                 className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
               >
-                {assigning 
-                  ? "Assigning..." 
-                  : assignmentMode === "all" 
-                    ? "Assign to All" 
-                    : `Assign to ${selectedStudents.length} Students`
+                {assigning
+                  ? "Assigning..."
+                  : assignmentMode === "all"
+                    ? "Assign to All"
+                    : assignmentMode === "ru"
+                      ? "Assign to RU Students"
+                      : assignmentMode === "su"
+                        ? "Assign to SU Students"
+                        : `Assign to ${selectedStudents.length} Students`
                 }
               </button>
             </div>
