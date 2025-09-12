@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authAPI } from '../services/api';
 
@@ -10,6 +10,7 @@ export default function ForgotPassword() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const [countdown, setCountdown] = useState(0);
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -17,6 +18,7 @@ export default function ForgotPassword() {
     setError('');
     setSuccess('');
     setLoading(true);
+    setCountdown(5);
 
     if (newPassword !== confirmPassword) {
       setError('Passwords do not match');
@@ -31,9 +33,18 @@ export default function ForgotPassword() {
         newPassword,
         confirmPassword,
       });
-      setSuccess(`Verification email sent to ${response.verificationSentTo}`);
-      // Optionally navigate to reset password page or show instructions
-      // navigate('/reset-password');
+      setSuccess(`Verification email sent to ${response.verificationSentTo}. Redirecting to login page in 5 seconds...`);
+      // Start countdown for redirect
+      const intervalId = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(intervalId);
+            navigate('/login');
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
     } catch (err) {
       setError(err.message || 'Failed to send password reset email');
     } finally {
