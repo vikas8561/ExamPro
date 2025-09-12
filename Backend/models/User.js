@@ -12,6 +12,10 @@ const userSchema = new mongoose.Schema(
       default: "Student",
     },
     activeSessions: [{ type: String }], // Array to store active session tokens
+    resetPasswordToken: { type: String },
+    resetPasswordExpires: { type: Date },
+    pendingPassword: { type: String }, // Temporary storage for new password
+    pendingEmail: { type: String }, // Temporary storage for new email
     // status: {
     //   type: String,
     //   enum: ["Active", "Inactive"],

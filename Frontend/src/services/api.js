@@ -119,12 +119,46 @@ export const authAPI = {
       },
       body: JSON.stringify(credentials),
     });
-    
+
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.message);
     }
-    
+
+    return response.json();
+  },
+
+  forgotPassword: async (forgotPasswordData) => {
+    const response = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(forgotPasswordData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message);
+    }
+
+    return response.json();
+  },
+
+  resetPassword: async (resetData) => {
+    const response = await fetch(`${API_BASE_URL}/auth/reset-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(resetData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message);
+    }
+
     return response.json();
   },
 };

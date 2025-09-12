@@ -7,6 +7,8 @@ import Users from "./pages/Users";
 
 import CreateTest from "./pages/CreateTest";
 import Login from "./pages/Login";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import StudentDashboard from "./pages/StudentDashboard";
 import StudentAssignments from "./pages/StudentAssignments";
 import StudentResults from "./pages/StudentResults";
@@ -140,15 +142,17 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
-      
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+
       {/* Admin Routes */}
-      <Route 
-        path="/admin/*" 
+      <Route
+        path="/admin/*"
         element={
           <ProtectedRoute allowedRoles={['Admin']}>
             <AdminLayout />
           </ProtectedRoute>
-        } 
+        }
       />
       
       {/* Mentor Routes */}
