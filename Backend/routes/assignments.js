@@ -591,6 +591,196 @@ router.post("/assign-manual", authenticateToken, requireRole("admin"), async (re
   }
 });
 
+// Helper function to check if email is SU student (student1@gmail.com to student123@gmail.com)
+const isSUStudent = (email) => {
+  const match = email.match(/^student(\d+)@gmail\.com$/);
+  if (!match) return false;
+  const num = parseInt(match[1], 10);
+  return num >= 1 && num <= 123;
+};
+
+// Assign test to RU students (admin only)
+router.post("/assign-ru", authenticateToken, requireRole("admin"), async (req, res, next) => {
+  try {
+    const { testId, startTime, duration, mentorId } = req.body;
+
+    if (!testId || !startTime || !duration) {
+      return res.status(400).json({ message: "testId, startTime, and duration are required" });
+    }
+
+    // Get test to validate timeLimit
+    const test = await Test.findById(testId);
+    if (!test) {
+      return res.status(404).json({ message: "Test not found" });
+    }
+
+    // Validate duration >= timeLimit
+    if (Number(duration) < test.timeLimit) {
+      return res.status(400).json({
+        message: `Duration (${duration} minutes) must be greater than or equal to test time limit (${test.timeLimit} minutes)`
+      });
+    }
+
+    // Get RU students (students not in SU email range)
+    const students = await User.find({
+      role: "Student",
+      email: { $not: /^student\d+@gmail\.com$/ }
+    });
+
+    // Also filter out SU students programmatically to be safe
+    const ruStudents = students.filter(student => !isSUStudent(student.email));
+
+    if (!ruStudents.length) {
+      return res.status(404).json({ message: "No RU students found" });
+    }
+
+    // Create assignments for RU students
+    const assignments = [];
+    const existingAssignments = await Assignment.find({ testId });
+
+    for (const student of ruStudents) {
+      const existingAssignment = existingAssignments.find(
+        assignment => assignment.userId.toString() === student._id.toString()
+      );
+
+      if (!existingAssignment) {
+        const assignment = new Assignment({
+          testId,
+          userId: student._id,
+          mentorId: mentorId || null,
+          startTime: new Date(startTime),
+          duration: Number(duration),
+          status: "Assigned"
+        });
+
+        // Explicitly calculate and save deadline
+        const deadline = new Date(assignment.startTime);
+        deadline.setMinutes(deadline.getMinutes() + assignment.duration);
+        assignment.deadline = deadline;
+        await assignment.save();
+
+        assignments.push(assignment);
+      }
+    }
+
+    if (assignments.length === 0) {
+      return res.status(200).json({
+        message: "All RU students already have this assignment",
+        assignedCount: 0
+      });
+    }
+
+    await Promise.all(assignments);
+
+    // Emit real-time update to specific student for each assignment
+    const io = req.app.get('io');
+    assignments.forEach(assignment => {
+      io.to(assignment.userId.toString()).emit('assignmentCreated', {
+        userId: assignment.userId.toString(),
+        assignment: assignment
+      });
+    });
+
+    res.status(201).json({
+      message: `Successfully assigned to ${assignments.length} RU students`,
+      assignedCount: assignments.length
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Assign test to SU students (admin only)
+router.post("/assign-su", authenticateToken, requireRole("admin"), async (req, res, next) => {
+  try {
+    const { testId, startTime, duration, mentorId } = req.body;
+
+    if (!testId || !startTime || !duration) {
+      return res.status(400).json({ message: "testId, startTime, and duration are required" });
+    }
+
+    // Get test to validate timeLimit
+    const test = await Test.findById(testId);
+    if (!test) {
+      return res.status(404).json({ message: "Test not found" });
+    }
+
+    // Validate duration >= timeLimit
+    if (Number(duration) < test.timeLimit) {
+      return res.status(400).json({
+        message: `Duration (${duration} minutes) must be greater than or equal to test time limit (${test.timeLimit} minutes)`
+      });
+    }
+
+    // Get SU students (students in SU email range)
+    const students = await User.find({
+      role: "Student",
+      email: /^student\d+@gmail\.com$/
+    });
+
+    // Filter to ensure they are within the range 1-123
+    const suStudents = students.filter(student => isSUStudent(student.email));
+
+    if (!suStudents.length) {
+      return res.status(404).json({ message: "No SU students found" });
+    }
+
+    // Create assignments for SU students
+    const assignments = [];
+    const existingAssignments = await Assignment.find({ testId });
+
+    for (const student of suStudents) {
+      const existingAssignment = existingAssignments.find(
+        assignment => assignment.userId.toString() === student._id.toString()
+      );
+
+      if (!existingAssignment) {
+        const assignment = new Assignment({
+          testId,
+          userId: student._id,
+          mentorId: mentorId || null,
+          startTime: new Date(startTime),
+          duration: Number(duration),
+          status: "Assigned"
+        });
+
+        // Explicitly calculate and save deadline
+        const deadline = new Date(assignment.startTime);
+        deadline.setMinutes(deadline.getMinutes() + assignment.duration);
+        assignment.deadline = deadline;
+        await assignment.save();
+
+        assignments.push(assignment);
+      }
+    }
+
+    if (assignments.length === 0) {
+      return res.status(200).json({
+        message: "All SU students already have this assignment",
+        assignedCount: 0
+      });
+    }
+
+    await Promise.all(assignments);
+
+    // Emit real-time update to specific student for each assignment
+    const io = req.app.get('io');
+    assignments.forEach(assignment => {
+      io.to(assignment.userId.toString()).emit('assignmentCreated', {
+        userId: assignment.userId.toString(),
+        assignment: assignment
+      });
+    });
+
+    res.status(201).json({
+      message: `Successfully assigned to ${assignments.length} SU students`,
+      assignedCount: assignments.length
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Get available mentors (admin only)
 router.get("/mentors/available", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {

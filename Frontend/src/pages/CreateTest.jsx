@@ -41,7 +41,7 @@ export default function CreateTest() {
   const [students, setStudents] = useState([]);
   const [selectedStudents, setSelectedStudents] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [assignmentMode, setAssignmentMode] = useState("all"); // "all" or "manual"
+  const [assignmentMode, setAssignmentMode] = useState("all"); // "all", "manual", "ru", "su"
   const [loading, setLoading] = useState(false);
   const [subjects, setSubjects] = useState([]);
   const [showSubjectModal, setShowSubjectModal] = useState(false);
@@ -319,6 +319,26 @@ export default function CreateTest() {
                 duration: parseInt(assignmentOptions.duration)
               })
             });
+          } else if (assignmentMode === "ru") {
+            await apiRequest("/assignments/assign-ru", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                testId: createdTest._id,
+                startTime: startTimeISO,
+                duration: parseInt(assignmentOptions.duration)
+              })
+            });
+          } else if (assignmentMode === "su") {
+            await apiRequest("/assignments/assign-su", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                testId: createdTest._id,
+                startTime: startTimeISO,
+                duration: parseInt(assignmentOptions.duration)
+              })
+            });
           }
         }
       }
@@ -461,7 +481,7 @@ export default function CreateTest() {
                     <label className="block text-sm font-medium text-gray-300 mb-2">
                       Assignment Mode
                     </label>
-                    <div className="flex gap-4">
+                    <div className="grid grid-cols-2 gap-4">
                       <label className="flex items-center">
                         <input
                           type="radio"
@@ -481,6 +501,26 @@ export default function CreateTest() {
                           className="mr-2"
                         />
                         Assign to Specific Students
+                      </label>
+                      <label className="flex items-center">
+                        <input
+                          type="radio"
+                          value="ru"
+                          checked={assignmentMode === "ru"}
+                          onChange={() => setAssignmentMode("ru")}
+                          className="mr-2"
+                        />
+                        Assign to RU Students
+                      </label>
+                      <label className="flex items-center">
+                        <input
+                          type="radio"
+                          value="su"
+                          checked={assignmentMode === "su"}
+                          onChange={() => setAssignmentMode("su")}
+                          className="mr-2"
+                        />
+                        Assign to SU Students
                       </label>
                     </div>
                   </div>
