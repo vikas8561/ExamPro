@@ -9,6 +9,7 @@ export default function Users() {
     name: "",
     email: "",
     role: "Student",
+    studentCategory: "RU",
     // status: "Active",
   });
   const [editing, setEditing] = useState(null);
@@ -88,6 +89,7 @@ export default function Users() {
       name: "",
       email: "",
       role: "Student",
+      studentCategory: "RU",
       // status: "Active",
     });
   };
@@ -139,6 +141,17 @@ export default function Users() {
           <option value="Mentor">Mentor</option>
           <option value="Admin">Admin</option>
         </select>
+
+        {form.role === "Student" && (
+          <select
+            value={form.studentCategory}
+            onChange={(e) => setForm((f) => ({ ...f, studentCategory: e.target.value }))}
+            className="p-2 rounded bg-slate-900 border border-slate-700"
+          >
+            <option value="RU">RU</option>
+            <option value="SU">SU</option>
+          </select>
+        )}
 
         {/* <select
           value={form.status}
@@ -192,6 +205,7 @@ export default function Users() {
                           name: u.name,
                           email: u.email,
                           role: u.role,
+                          studentCategory: u.studentCategory || "RU",
                           // status: u.status,
                         });
                       }}

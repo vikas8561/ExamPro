@@ -3,6 +3,7 @@ import React, { useState } from "react";
 const EmailUploader = ({ onUploadComplete }) => {
   const [file, setFile] = useState(null);
   const [role, setRole] = useState("Student");
+  const [studentCategory, setStudentCategory] = useState("RU");
   const [isUploading, setIsUploading] = useState(false);
   const [uploadResults, setUploadResults] = useState(null);
 
@@ -21,6 +22,9 @@ const EmailUploader = ({ onUploadComplete }) => {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("role", role);
+    if (role === "Student") {
+      formData.append("studentCategory", studentCategory);
+    }
 
     try {
       const response = await fetch("http://localhost:4000/api/users/bulk", {
@@ -63,6 +67,20 @@ const EmailUploader = ({ onUploadComplete }) => {
             <option value="Admin">Admin</option>
           </select>
         </div>
+
+        {role === "Student" && (
+          <div>
+            <label className="block text-slate-300 mb-2">Student Category</label>
+            <select
+              value={studentCategory}
+              onChange={(e) => setStudentCategory(e.target.value)}
+              className="w-full p-2 rounded bg-slate-900 border border-slate-700"
+            >
+              <option value="RU">RU</option>
+              <option value="SU">SU</option>
+            </select>
+          </div>
+        )}
 
         <div>
           <label className="block text-slate-300 mb-2">Upload File (CSV or JSON)</label>
