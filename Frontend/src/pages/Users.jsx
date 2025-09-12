@@ -24,12 +24,25 @@ export default function Users() {
 
   useEffect(fetchUsers, []);
 
+  const [studentCategoryFilter, setStudentCategoryFilter] = useState("All");
+
   const filtered = useMemo(
-    () =>
-      users.filter((u) =>
+    () => {
+      let filteredUsers = users;
+
+      if (studentCategoryFilter !== "All") {
+        filteredUsers = filteredUsers.filter(u => {
+          // Only filter students by category, show all non-students
+          if (u.role !== "Student") return true;
+          return u.studentCategory === studentCategoryFilter;
+        });
+      }
+
+      return filteredUsers.filter((u) =>
         (u.name + u.email).toLowerCase().includes(q.toLowerCase())
-      ),
-    [q, users]
+      );
+    },
+    [q, users, studentCategoryFilter]
   );
 
   const submit = () => {
@@ -166,14 +179,28 @@ export default function Users() {
       {/* Bulk Upload Section */}
       <EmailUploader onUploadComplete={fetchUsers} />
 
-      <div className="mb-3">
-        <label className="block text-slate-300 mb-2">Search Users</label>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search by name or email"
-          className="w-full p-3 rounded-md bg-slate-800 border border-slate-700"
-        />
+      <div className="mb-3 flex items-center gap-4">
+        <div className="flex-1">
+          <label className="block text-slate-300 mb-2">Search Users</label>
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search by name or email"
+            className="w-full p-3 rounded-md bg-slate-800 border border-slate-700"
+          />
+        </div>
+        <div>
+          <label className="block text-slate-300 mb-2">Filter by Student Category</label>
+          <select
+            value={studentCategoryFilter}
+            onChange={(e) => setStudentCategoryFilter(e.target.value)}
+            className="p-2 rounded bg-slate-900 border border-slate-700"
+          >
+            <option value="All">All</option>
+            <option value="RU">RU</option>
+            <option value="SU">SU</option>
+          </select>
+        </div>
       </div>
 
       <div className="rounded-xl border border-slate-700 bg-slate-800 overflow-hidden">
