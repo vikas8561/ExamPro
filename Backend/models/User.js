@@ -14,10 +14,7 @@ const userSchema = new mongoose.Schema(
     studentCategory: {
       type: String,
       enum: ["RU", "SU"],
-      default: "SU",
-      required: function() {
-        return this.role === "Student";
-      }
+      default: "RU",
     },
     activeSessions: [{ type: String }], // Array to store active session tokens
     resetPasswordToken: { type: String },

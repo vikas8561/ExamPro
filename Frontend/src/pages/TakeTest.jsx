@@ -889,7 +889,7 @@ const TakeTest = () => {
           )}
 
           <div className="text-right">
-            <div className="text-2xl font-mono bg-red-600 px-4 py-2 rounded-md">
+            <div className="text-2xl font-mono bg-slate-700 px-4 py-2 rounded-md text-white">
               {formatTime(timeRemaining)}
             </div>
             <div className="text-sm text-slate-400 mt-1">Time Remaining</div>
@@ -906,16 +906,23 @@ const TakeTest = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
             <div className="bg-slate-800 rounded-lg p-6">
-              <div className="flex justify-between items-start mb-6">
-                <div>
-                  <span className="text-sm text-slate-400">
-                    Question {currentQuestion + 1}
-                  </span>
-                  <h3 className="text-xl font-semibold mt-1">
-                    {question.text}
-                  </h3>
-                </div>
+              <div className="flex items-center gap-3 mb-4 justify-between">
+                <span className="text-sm text-slate-400">
+                  Question {currentQuestion + 1}
+                </span>
                 <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      if (question.kind === "mcq") {
+                        handleAnswerChange(question._id, undefined);
+                      } else if (question.kind === "theoretical") {
+                        handleAnswerChange(question._id, "");
+                      }
+                    }}
+                    className="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded-md text-sm font-medium cursor-pointer transition-colors"
+                  >
+                    Clear Response
+                  </button>
                   <button
                     onClick={() => {
                       const currentStatus = questionStatuses[question._id];
@@ -930,7 +937,7 @@ const TakeTest = () => {
                     }}
                     className={`px-3 py-1 rounded-md text-sm font-medium cursor-pointer transition-colors ${
                       questionStatuses[question._id] === "mark-for-review"
-                        ? "bg-yellow-600 text-black hover:bg-yellow-700"
+                        ? "bg-orange-600 text-white hover:bg-orange-700"
                         : "bg-slate-700 hover:bg-slate-600"
                     }`}
                   >
@@ -943,6 +950,9 @@ const TakeTest = () => {
                   </div>
                 </div>
               </div>
+              <h3 className="text-xl font-semibold mb-6">
+                {question.text}
+              </h3>
 
               {question.kind === "mcq" && (
                 <div className="space-y-3">
