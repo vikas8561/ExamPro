@@ -264,27 +264,26 @@ const TakeTest = () => {
     if (!testStarted) return;
 
     const handleKeyDown = (e) => {
-      // Block all keys including Windows/Meta key and Esc
-      if (
-        e.key === "Meta" ||
-        e.key === "MetaLeft" ||
-        e.key === "MetaRight" ||
-        e.keyCode === 91 || // Legacy: Left Windows/Command key
-        e.keyCode === 92 || // Legacy: Right Windows key
-        e.keyCode === 93 || // Legacy: Context menu key
-        e.key === "Escape" ||
-        e.keyCode === 27 || // Legacy: Escape
-        e.ctrlKey ||
-        e.altKey ||
-        e.shiftKey ||
-        e.key.length === 1 || // any printable character
-        e.key === "F5" ||
-        (e.ctrlKey && e.key.toLowerCase() === "r") || // Ctrl+R
-        (e.ctrlKey && e.key.toLowerCase() === "w") || // Ctrl+W
-        (e.ctrlKey && e.key.toLowerCase() === "t") // Ctrl+T
-      ) {
-        e.preventDefault();
-        e.stopPropagation();
+      const isInEditor = e.target.closest('.monaco-editor');
+      if (!isInEditor) {
+        // Outside editor, block all keys except Tab
+        if (e.key !== "Tab" && e.keyCode !== 9) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      } else {
+        // In editor, block shortcuts
+        const isFKey = (e.key && /^F\d+$/i.test(e.key) && parseInt(e.key.slice(1)) >= 1 && parseInt(e.key.slice(1)) <= 12) ||
+                         (e.keyCode >= 112 && e.keyCode <= 123);
+        if (
+          e.ctrlKey ||
+          e.altKey ||
+          e.key === "Tab" || e.keyCode === 9 ||
+          isFKey
+        ) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
       }
     };
 
@@ -299,14 +298,14 @@ const TakeTest = () => {
     if (!testStarted) return;
 
     const handleKeyUp = (e) => {
-      // Block all keys including Windows/Meta key and Esc
+      // Block only Ctrl + any key, Alt + any key, Tab, F1-F12 keys
+      const isFKey = (e.key && /^F\d+$/i.test(e.key) && parseInt(e.key.slice(1)) >= 1 && parseInt(e.key.slice(1)) <= 12) ||
+                     (e.keyCode >= 112 && e.keyCode <= 123);
       if (
-        e.key === "Meta" || // Windows key / Command key
-        e.key === "Escape" ||
         e.ctrlKey ||
         e.altKey ||
-        e.shiftKey ||
-        e.key.length === 1 // any printable character
+        e.key === "Tab" || e.keyCode === 9 ||
+        isFKey
       ) {
         e.preventDefault();
         e.stopPropagation();
@@ -822,6 +821,7 @@ const TakeTest = () => {
   };
 
   const handleConfirmSubmit = () => {
+    setIsSubmitting(true);
     setShowSubmitConfirmModal(false);
     submitTest();
   };
@@ -975,7 +975,19 @@ const TakeTest = () => {
   const question = test.questions[currentQuestion];
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white p-6">
+    <>
+      <style>
+        {`
+          .scrollbar-hide {
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+          }
+          .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+          }
+        `}
+      </style>
+      <div className="min-h-screen bg-slate-900 text-white p-6">
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-8 p-4 bg-slate-800 rounded-lg">
           <div>
@@ -1012,22 +1024,16 @@ const TakeTest = () => {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">
-            <div className="bg-slate-800 rounded-lg p-6">
+          {question.kind === "theoretical" ? (
+            <div className="grid grid-cols-1 lg:grid-cols-[45%_45%_7%] gap-4.5" style={{ height: '70vh' }}>
+              <div className="bg-slate-800 rounded-lg p-6 overflow-y-auto h-full">
               <div className="flex items-center gap-3 mb-4 justify-between">
                 <span className="text-sm text-slate-400">
                   Question {currentQuestion + 1}
                 </span>
                 <div className="flex items-center gap-3">
                   <button
-                    onClick={() => {
-                      if (question.kind === "mcq") {
-                        handleAnswerChange(question._id, undefined);
-                      } else if (question.kind === "theoretical") {
-                        handleAnswerChange(question._id, "");
-                      }
-                    }}
+                    onClick={() => handleAnswerChange(question._id, "")}
                     className="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded-md text-sm font-medium cursor-pointer transition-colors"
                   >
                     Clear Response
@@ -1038,18 +1044,10 @@ const TakeTest = () => {
                       let newStatus;
 
                       if (currentStatus === "mark-for-review") {
-                        // When unmarking, check if question has an answer
                         const answer = answers[question._id];
-                        const hasAnswer =
-                          question.kind === "mcq"
-                            ? answer !== undefined &&
-                              answer !== null &&
-                              answer !== ""
-                            : answer && answer.trim() !== "";
-
+                        const hasAnswer = answer && answer.trim() !== "";
                         newStatus = hasAnswer ? "answered" : "not-answered";
                       } else {
-                        // When marking for review, set to mark-for-review
                         newStatus = "mark-for-review";
                       }
 
@@ -1075,172 +1073,311 @@ const TakeTest = () => {
               </div>
               <h3 className="text-xl font-semibold mb-6">{question.text}</h3>
 
-              {question.kind === "mcq" && (
-                <div className="space-y-3">
-                  {question.options?.map((option, index) => (
-                    <label
-                      key={index}
-                      className={`flex items-center p-4 rounded-lg cursor-pointer transition-colors ${
-                        answers[question._id] === index
-                          ? "bg-blue-600 text-white"
-                          : "bg-slate-700 hover:bg-slate-600"
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name={`question-${question._id}`}
-                        value={index}
-                        checked={answers[question._id] === index}
-                        onChange={() => handleAnswerChange(question._id, index)}
-                        className="mr-3"
-                      />
-                      <span>{option.text}</span>
-                    </label>
+              {question.guidelines && (
+              <div className="bg-slate-700 p-4 rounded-lg mb-4 scrollbar-hide" style={{overflowY: 'auto'}}>
+                <h4 className="font-semibold text-slate-300 mb-2">
+                  Guidelines:
+                </h4>
+                <p className="text-slate-400">{question.guidelines}</p>
+              </div>
+              )}
+
+              {question.examples && question.examples.length > 0 && (
+              <div className="bg-slate-700 p-4 rounded-lg mb-4 scrollbar-hide" style={{maxHeight: '16rem', overflowY: 'auto'}}>
+                <div>
+                  {question.examples.map((example, idx) => (
+                    <div key={idx} className="mb-3 p-3 bg-slate-600 rounded">
+                      <div className="mb-1 font-semibold text-slate-300">Example {idx + 1}:</div>
+                      <div className="mb-1 font-semibold text-slate-300">Input:</div>
+                      <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
+                        {example.input}
+                      </pre>
+                      <div className="mt-2 mb-1 font-semibold text-slate-300">Output:</div>
+                      <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
+                        {example.output}
+                      </pre>
+                    </div>
                   ))}
                 </div>
-              )}
-
-              {question.kind === "theoretical" && (
-                <>
-                  {question.guidelines && (
-                    <div className="bg-slate-700 p-4 rounded-lg mb-4">
-                      <h4 className="font-semibold text-slate-300 mb-2">
-                        Guidelines:
-                      </h4>
-                      <p className="text-slate-400">{question.guidelines}</p>
-                    </div>
-                  )}
-
-                  {question.examples && question.examples.length > 0 && (
-                    <div className="bg-slate-700 p-4 rounded-lg mb-4 max-h-64 overflow-y-auto">
-                      <h4 className="font-semibold text-slate-300 mb-2">
-                        Examples:
-                      </h4>
-                      {question.examples.map((example, idx) => (
-                        <div
-                          key={idx}
-                          className="mb-3 p-3 bg-slate-600 rounded"
-                        >
-                          <div className="mb-1 font-semibold text-slate-300">
-                            Input:
-                          </div>
-                          <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
-                            {example.input}
-                          </pre>
-                          <div className="mt-2 mb-1 font-semibold text-slate-300">
-                            Output:
-                          </div>
-                          <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
-                            {example.output}
-                          </pre>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <Editor
-                    height="200px"
-                    defaultLanguage="plaintext"
-                    value={answers[question._id] || ""}
-                    onChange={(value) =>
-                      handleAnswerChange(question._id, value)
-                    }
-                    theme="vs-dark"
-                    options={{
-                      minimap: { enabled: false },
-                      fontSize: 14,
-                      lineNumbers: "off",
-                      automaticLayout: true,
-                      scrollBeyondLastLine: false,
-                      wordWrap: "on",
-                      padding: { top: 16, bottom: 16 },
-                    }}
-                  />
-                </>
+              </div>
               )}
             </div>
-          </div>
 
-          <div className="lg:col-span-1">
-            <div className="bg-slate-800 rounded-lg p-6">
-              <h3 className="font-semibold mb-4">Navigation</h3>
-
-              <div
-                className="grid grid-cols-5 gap-2 mb-6"
-                style={{ maxHeight: "21vh", overflowY: "auto" }}
-              >
+            <div className="bg-slate-800 rounded-lg p-6 flex flex-col gap-2 max-h-[calc(100vh-160px)] overflow-y-auto scrollbar-hide order-last" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              <div className="flex flex-col gap-2 overflow-y-auto scrollbar-hide">
                 {test.questions.map((q, index) => (
                   <button
                     key={q._id}
                     onClick={() => setCurrentQuestion(index)}
-                    className={`w-8 h-8 rounded-md text-sm font-medium cursor-pointer ${
+                  className={`w-8 min-w-[40px] h-12 rounded-md text-sm font-semibold cursor-pointer transition-all duration-200 hover:scale-105 border-2 ${
                       currentQuestion === index
-                        ? "bg-blue-600 text-white"
+                        ? "bg-blue-600 text-white border-blue-400 shadow-lg"
                         : questionStatuses[q._id] === "answered"
-                        ? "bg-green-600 text-white"
+                        ? "bg-green-600 text-white border-green-400 hover:border-green-300"
                         : questionStatuses[q._id] === "mark-for-review"
-                        ? "bg-yellow-600 text-black"
-                        : "bg-slate-700 hover:bg-slate-600"
+                        ? "bg-yellow-600 text-black border-yellow-400 hover:border-yellow-300"
+                        : "bg-slate-700 hover:bg-slate-600 border-slate-600 hover:border-slate-500"
                     }`}
                   >
                     {index + 1}
                   </button>
                 ))}
               </div>
+            </div>
 
-              <div className="space-y-3">
+            <div className="bg-slate-800 rounded-lg p-6 flex flex-col" style={{ height: '70vh' }}>
+              <div className="flex-1">
+                <Editor
+                  height="100%"
+                  defaultLanguage="plaintext"
+                  value={answers[question._id] || ""}
+                  onChange={(value) => handleAnswerChange(question._id, value)}
+                  theme="vs-dark"
+                  options={{
+                    minimap: { enabled: false },
+                    fontSize: 14,
+                    lineNumbers: "off",
+                    automaticLayout: true,
+                    scrollBeyondLastLine: false,
+                    wordWrap: "on",
+                    padding: { top: 16, bottom: 16 },
+                  }}
+                />
+              </div>
+              <div className="flex justify-between mt-4 gap-4">
                 <button
                   onClick={handlePreviousQuestion}
                   disabled={currentQuestion === 0}
-                  className="w-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
+                  className="flex-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
                 >
                   Previous
                 </button>
-
                 <button
                   onClick={handleNextQuestion}
                   disabled={currentQuestion === test.questions.length - 1}
-                  className="w-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
+                  className="flex-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
                 >
                   Next
                 </button>
-
                 <button
                   onClick={handleSubmitClick}
-                  className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-md font-semibold cursor-pointer"
+                  disabled={isSubmitting}
+                  className={`flex-1 ${isSubmitting ? 'bg-gray-600 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} text-white py-2 rounded-md font-semibold ${!isSubmitting ? 'cursor-pointer' : ''}`}
                 >
-                  Submit Test
+                  {isSubmitting ? 'Submitting Test...' : 'Submit Test'}
                 </button>
               </div>
-
-              <div className="mt-6 pt-4 border-t border-slate-700">
-                <div className="flex justify-between text-sm text-slate-400 mb-2">
-                  <span>Answered</span>
-                  <span>
-                    {
-                      test.questions.filter((q) => {
-                        const answer = answers[q._id];
-                        if (q.kind === "mcq") {
-                          return (
-                            answer !== undefined &&
-                            answer !== null &&
-                            answer !== ""
-                          );
-                        } else if (q.kind === "theoretical") {
-                          return answer && answer.trim() !== "";
-                        }
-                        return false;
-                      }).length
-                    }
-                    /{test.questions.length}
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <div className="bg-slate-800 rounded-lg p-6">
+                <div className="flex items-center gap-3 mb-4 justify-between">
+                  <span className="text-sm text-slate-400">
+                    Question {currentQuestion + 1}
                   </span>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => {
+                        if (question.kind === "mcq") {
+                          handleAnswerChange(question._id, undefined);
+                        } else if (question.kind === "theoretical") {
+                          handleAnswerChange(question._id, "");
+                        }
+                      }}
+                      className="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded-md text-sm font-medium cursor-pointer transition-colors"
+                    >
+                      Clear Response
+                    </button>
+                    <button
+                      onClick={() => {
+                        const currentStatus = questionStatuses[question._id];
+                        let newStatus;
+
+                        if (currentStatus === "mark-for-review") {
+                          // When unmarking, check if question has an answer
+                          const answer = answers[question._id];
+                          const hasAnswer =
+                            question.kind === "mcq"
+                              ? answer !== undefined &&
+                                answer !== null &&
+                                answer !== ""
+                              : answer && answer.trim() !== "";
+
+                          newStatus = hasAnswer ? "answered" : "not-answered";
+                        } else {
+                          // When marking for review, set to mark-for-review
+                          newStatus = "mark-for-review";
+                        }
+
+                        setQuestionStatuses((prev) => ({
+                          ...prev,
+                          [question._id]: newStatus,
+                        }));
+                      }}
+                      className={`px-3 py-1 rounded-md text-sm font-medium cursor-pointer transition-colors ${
+                        questionStatuses[question._id] === "mark-for-review"
+                          ? "bg-orange-600 text-white hover:bg-orange-700"
+                          : "bg-slate-700 hover:bg-slate-600"
+                      }`}
+                    >
+                      {questionStatuses[question._id] === "mark-for-review"
+                        ? "Unmark Review"
+                        : "Mark for Review"}
+                    </button>
+                    <div className="bg-slate-700 px-3 py-1 rounded-md text-sm">
+                      {question.points} point{question.points !== 1 ? "s" : ""}
+                    </div>
+                  </div>
                 </div>
-                <div className="w-full bg-slate-700 rounded-full h-2">
-                  <div
-                    className="bg-blue-600 h-2 rounded-full transition-all"
-                    style={{
-                      width: `${
-                        (test.questions.filter((q) => {
+                <h3 className="text-xl font-semibold mb-6">{question.text}</h3>
+
+                {question.kind === "mcq" && (
+                  <div className="space-y-3">
+                    {question.options?.map((option, index) => (
+                      <label
+                        key={index}
+                        className={`flex items-center p-4 rounded-lg cursor-pointer transition-colors ${
+                          answers[question._id] === index
+                            ? "bg-blue-600 text-white"
+                            : "bg-slate-700 hover:bg-slate-600"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name={`question-${question._id}`}
+                          value={index}
+                          checked={answers[question._id] === index}
+                          onChange={() => handleAnswerChange(question._id, index)}
+                          className="mr-3"
+                        />
+                        <span>{option.text}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+
+                {question.kind === "theoretical" && (
+                  <>
+                    {question.guidelines && (
+                      <div className="bg-slate-700 p-4 rounded-lg mb-4">
+                        <h4 className="font-semibold text-slate-300 mb-2">
+                          Guidelines:
+                        </h4>
+                        <p className="text-slate-400">{question.guidelines}</p>
+                      </div>
+                    )}
+
+                    {question.examples && question.examples.length > 0 && (
+                <div className="bg-slate-700 p-4 rounded-lg mb-4 max-h-64 overflow-y-auto scrollbar-hide">
+                  {question.examples.map((example, idx) => (
+                    <div
+                      key={idx}
+                      className="mb-3 p-3 bg-slate-600 rounded"
+                    >
+                      <div className="mb-1 font-semibold text-slate-300">
+                        Example {idx + 1}:
+                      </div>
+                      <div className="mb-1 font-semibold text-slate-300">
+                        Input:
+                      </div>
+                      <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
+                        {example.input}
+                      </pre>
+                      <div className="mt-2 mb-1 font-semibold text-slate-300">
+                        Output:
+                      </div>
+                      <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
+                        {example.output}
+                      </pre>
+                    </div>
+                  ))}
+                </div>
+                    )}
+
+                    <Editor
+                      height="200px"
+                      defaultLanguage="plaintext"
+                      value={answers[question._id] || ""}
+                      onChange={(value) =>
+                        handleAnswerChange(question._id, value)
+                      }
+                      theme="vs-dark"
+                      options={{
+                        minimap: { enabled: false },
+                        fontSize: 14,
+                        lineNumbers: "off",
+                        automaticLayout: true,
+                        scrollBeyondLastLine: false,
+                        wordWrap: "on",
+                        padding: { top: 16, bottom: 16 },
+                      }}
+                    />
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="lg:col-span-1">
+              <div className="bg-slate-800 rounded-lg p-6">
+                <h3 className="font-semibold mb-4">Navigation</h3>
+
+                <div
+                  className="grid grid-cols-5 gap-2 mb-6 scrollbar-hide"
+                  style={{ maxHeight: "21vh", overflowY: "auto" }}
+                >
+                  {test.questions.map((q, index) => (
+                    <button
+                      key={q._id}
+                      onClick={() => setCurrentQuestion(index)}
+                      className={`w-8 h-8 rounded-lg text-sm font-semibold cursor-pointer transition-all duration-200 hover:scale-105 border-2 ${
+                        currentQuestion === index
+                          ? "bg-blue-600 text-white border-blue-400 shadow-lg"
+                          : questionStatuses[q._id] === "answered"
+                          ? "bg-green-600 text-white border-green-400 hover:border-green-300"
+                          : questionStatuses[q._id] === "mark-for-review"
+                          ? "bg-yellow-600 text-black border-yellow-400 hover:border-yellow-300"
+                          : "bg-slate-700 hover:bg-slate-600 border-slate-600 hover:border-slate-500"
+                      }`}
+                    >
+                      {index + 1}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="space-y-3">
+                  <button
+                    onClick={handlePreviousQuestion}
+                    disabled={currentQuestion === 0}
+                    className="w-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
+                  >
+                    Previous
+                  </button>
+
+                  <button
+                    onClick={handleNextQuestion}
+                    disabled={currentQuestion === test.questions.length - 1}
+                    className="w-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
+                  >
+                    Next
+                  </button>
+
+                  <button
+                    onClick={handleSubmitClick}
+                    disabled={isSubmitting}
+                    className={`w-full ${isSubmitting ? 'bg-gray-600 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} text-white py-2 rounded-md font-semibold ${!isSubmitting ? 'cursor-pointer' : ''}`}
+                  >
+                    {isSubmitting ? 'Submitting Test...' : 'Submit Test'}
+                  </button>
+                </div>
+
+                <div className="mt-6 pt-4 border-t border-slate-700">
+                  <div className="flex justify-between text-sm text-slate-400 mb-2">
+                    <span>Answered</span>
+                    <span>
+                      {
+                        test.questions.filter((q) => {
                           const answer = answers[q._id];
                           if (q.kind === "mcq") {
                             return (
@@ -1252,17 +1389,40 @@ const TakeTest = () => {
                             return answer && answer.trim() !== "";
                           }
                           return false;
-                        }).length /
-                          test.questions.length) *
-                        100
-                      }%`,
-                    }}
-                  ></div>
+                        }).length
+                      }
+                      /{test.questions.length}
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-700 rounded-full h-2">
+                    <div
+                      className="bg-blue-600 h-2 rounded-full transition-all"
+                      style={{
+                        width: `${
+                          (test.questions.filter((q) => {
+                            const answer = answers[q._id];
+                            if (q.kind === "mcq") {
+                              return (
+                                answer !== undefined &&
+                                answer !== null &&
+                                answer !== ""
+                              );
+                            } else if (q.kind === "theoretical") {
+                              return answer && answer.trim() !== "";
+                            }
+                            return false;
+                          }).length /
+                            test.questions.length) *
+                          100
+                        }%`,
+                      }}
+                    ></div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       {showResumeModal && (
@@ -1308,9 +1468,10 @@ const TakeTest = () => {
             <div className="flex justify-center gap-6">
               <button
                 onClick={handleConfirmSubmit}
-                className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-md font-semibold"
+                disabled={isSubmitting}
+                className={`px-6 py-3 rounded-md font-semibold ${isSubmitting ? 'bg-gray-600 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} text-white`}
               >
-                Confirm
+                {isSubmitting ? 'Submitting...' : 'Confirm'}
               </button>
               <button
                 onClick={handleCancelSubmit}
@@ -1323,7 +1484,7 @@ const TakeTest = () => {
         </div>
       )}
     </div>
-  );
+  </>);
 };
 
 export default TakeTest;
