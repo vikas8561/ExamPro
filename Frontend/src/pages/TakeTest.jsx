@@ -603,31 +603,31 @@ const TakeTest = () => {
     let textAnswer = undefined;
     let hasAnswer = false;
 
-    if (question.kind === "mcq") {
-      // For MCQ, answerValue is the index (number)
-      if (
-        answerValue !== undefined &&
-        answerValue !== null &&
-        answerValue !== ""
-      ) {
-        selectedOption = question.options[answerValue].text;
-        hasAnswer = true;
-      }
-      setAnswers((prev) => ({
-        ...prev,
-        [questionId]: answerValue,
-      }));
-    } else if (question.kind === "theoretical") {
-      // For theoretical, answerValue is the text (string)
-      if (answerValue && answerValue.trim() !== "") {
-        textAnswer = answerValue;
-        hasAnswer = true;
-      }
-      setAnswers((prev) => ({
-        ...prev,
-        [questionId]: answerValue,
-      }));
-    }
+          if (question.kind === "mcq") {
+            // For MCQ, answerValue is the index (number)
+            if (
+              answerValue !== undefined &&
+              answerValue !== null &&
+              answerValue !== ""
+            ) {
+              selectedOption = question.options[answerValue].text;
+              hasAnswer = true;
+            }
+            setAnswers((prev) => ({
+              ...prev,
+              [questionId]: answerValue,
+            }));
+          } else if (question.kind === "theory") {
+            // For theory, answerValue is the text (string)
+            if (answerValue && answerValue.trim() !== "") {
+              textAnswer = answerValue;
+              hasAnswer = true;
+            }
+            setAnswers((prev) => ({
+              ...prev,
+              [questionId]: answerValue,
+            }));
+          }
 
     // Update question status to 'answered' when answer is provided
     setQuestionStatuses((prev) => ({
@@ -732,10 +732,10 @@ const TakeTest = () => {
               // For MCQ, answer is index, map to option text
               selectedOption = question.options[answer].text;
             } else if (
-              question.kind === "theoretical" &&
+              question.kind === "theory" &&
               typeof answer === "string"
             ) {
-              // For theoretical, answer is text
+              // For theory, answer is text
               textAnswer = answer;
             }
           }
@@ -1024,7 +1024,7 @@ const TakeTest = () => {
           </div>
         )}
 
-          {question.kind === "theoretical" ? (
+          {question.kind === "theory" ? (
             <div className="grid grid-cols-1 lg:grid-cols-[45%_45%_7%] gap-4.5" style={{ height: '70vh' }}>
               <div className="bg-slate-800 rounded-lg p-6 overflow-y-auto h-full">
               <div className="flex items-center gap-3 mb-4 justify-between">
@@ -1182,7 +1182,7 @@ const TakeTest = () => {
                       onClick={() => {
                         if (question.kind === "mcq") {
                           handleAnswerChange(question._id, undefined);
-                        } else if (question.kind === "theoretical") {
+                        } else if (question.kind === "theory") {
                           handleAnswerChange(question._id, "");
                         }
                       }}
@@ -1258,7 +1258,7 @@ const TakeTest = () => {
                   </div>
                 )}
 
-                {question.kind === "theoretical" && (
+                {question.kind === "theory" && (
                   <>
                     {question.guidelines && (
                       <div className="bg-slate-700 p-4 rounded-lg mb-4">
@@ -1385,7 +1385,7 @@ const TakeTest = () => {
                               answer !== null &&
                               answer !== ""
                             );
-                          } else if (q.kind === "theoretical") {
+                          } else if (q.kind === "theory") {
                             return answer && answer.trim() !== "";
                           }
                           return false;
@@ -1407,7 +1407,7 @@ const TakeTest = () => {
                                 answer !== null &&
                                 answer !== ""
                               );
-                            } else if (q.kind === "theoretical") {
+                            } else if (q.kind === "theory") {
                               return answer && answer.trim() !== "";
                             }
                             return false;

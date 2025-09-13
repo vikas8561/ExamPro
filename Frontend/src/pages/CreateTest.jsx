@@ -13,7 +13,15 @@ const emptyQuestion = (kind) => ({
     options: ["", "", "", ""],
     answer: ""
   }),
-  ...(kind === "theoretical" && {
+  ...(kind === "msq" && {
+    options: ["", "", "", ""],
+    answers: []
+  }),
+  ...(kind === "theory" && {
+    guidelines: "",
+    examples: []
+  }),
+  ...(kind === "coding" && {
     guidelines: "",
     examples: []
   })
@@ -81,7 +89,16 @@ export default function CreateTest() {
             options: q.options.map(opt => opt.text),
             answer: q.answer
           }),
-          ...(q.kind === "theoretical" && {
+          ...(q.kind === "msq" && {
+            options: q.options.map(opt => opt.text),
+            answers: q.answers || []
+          }),
+
+          ...(q.kind === "coding" && {
+            guidelines: q.guidelines,
+            examples: q.examples || []
+          }),
+          ...(q.kind === "theory" && {
             guidelines: q.guidelines,
             examples: q.examples || []
           })
@@ -273,7 +290,16 @@ export default function CreateTest() {
             options: q.options.map(opt => ({ text: opt })),
             answer: q.answer
           }),
-          ...(q.kind === "theoretical" && {
+          ...(q.kind === "msq" && {
+            options: q.options.map(opt => ({ text: opt })),
+            answers: q.answers || []
+          }),
+
+          ...(q.kind === "coding" && {
+            guidelines: q.guidelines,
+            examples: q.examples || []
+          }),
+          ...(q.kind === "theory" && {
             guidelines: q.guidelines,
             examples: q.examples || []
           })
@@ -405,9 +431,11 @@ export default function CreateTest() {
                   onChange={(e) => setForm(prev => ({ ...prev, type: e.target.value }))}
                   className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
                 >
-                  <option value="mixed">Mixed (MCQ + Theory)</option>
+                  <option value="mixed">Mixed (All Types)</option>
                   <option value="mcq">MCQ Only</option>
-                  <option value="theoretical">Theory Only</option>
+                  <option value="msq">MSQ Only</option>
+                  <option value="coding">Coding Only</option>
+                  <option value="theoretical">Theoretical Only</option>
                 </select>
               </div>
 
@@ -623,7 +651,7 @@ export default function CreateTest() {
           <div className="bg-slate-800 p-6 rounded-lg">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-semibold">Questions</h2>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 {form.type === "mixed" && (
                   <>
                     <button
@@ -635,10 +663,25 @@ export default function CreateTest() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => addQuestion("theoretical")}
-                      className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-md cursor-pointer"
+                      onClick={() => addQuestion("msq")}
+                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-md cursor-pointer"
                     >
-                      Add Theory
+                      Add MSQ
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => addQuestion("coding")}
+                      className="px-4 py-2 bg-orange-600 hover:bg-orange-700 rounded-md cursor-pointer"
+                    >
+                      Add Coding
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => addQuestion("theoretical")}
+                      className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-md cursor-pointer"
+                    >
+                      Add Theoretical
                     </button>
                   </>
                 )}
@@ -718,8 +761,135 @@ export default function CreateTest() {
                     </>
                   )}
 
-                  {question.kind === "theoretical" && (
+                  {question.kind === "msq" && (
                     <>
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Options</label>
+                        {question.options.map((option, optIndex) => (
+                          <div key={optIndex} className="flex items-center mb-2">
+                            <input
+                              type="checkbox"
+                              checked={question.answers?.includes(option) || false}
+                              onChange={(e) => {
+                                const currentAnswers = question.answers || [];
+                                const newAnswers = currentAnswers.includes(option)
+                                  ? currentAnswers.filter(ans => ans !== option)
+                                  : [...currentAnswers, option];
+                                updateQuestion(question.id, "answers", newAnswers);
+                              }}
+                              className="mr-3"
+                            />
+                            <input
+                              type="text"
+                              value={option}
+                              onChange={(e) => updateOption(question.id, optIndex, e.target.value)}
+                              className="flex-1 p-2 bg-slate-600 border border-slate-500 rounded-md"
+                              placeholder={`Option ${optIndex + 1}`}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+
+
+                  {question.kind === "coding" && (
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Guidelines (Optional)</label>
+                        <Editor
+                          height="200px"
+                          defaultLanguage="plaintext"
+                          value={question.guidelines || ""}
+                          onChange={(value) => updateQuestion(question.id, "guidelines", value || "")}
+                          theme="vs-dark"
+                          options={{
+                            minimap: { enabled: false },
+                            fontSize: 14,
+                            lineNumbers: 'off',
+                            scrollBeyondLastLine: false,
+                            automaticLayout: true,
+                            wordWrap: 'on',
+                            padding: { top: 16, bottom: 16 },
+                            placeholder: "Enter evaluation guidelines for this coding question..."
+                          }}
+                        />
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between items-center mb-2">
+                          <label className="block text-sm font-medium">Examples (Optional)</label>
+                          <button
+                            type="button"
+                            onClick={() => addExample(question.id)}
+                            className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm rounded cursor-pointer"
+                          >
+                            Add Example
+                          </button>
+                        </div>
+
+                        {(question.examples || []).map((example, exIndex) => (
+                          <div key={exIndex} className="bg-slate-600 p-3 rounded mb-2">
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="text-sm font-medium">Example {exIndex + 1}</span>
+                              <button
+                                type="button"
+                                onClick={() => removeExample(question.id, exIndex)}
+                                className="text-red-400 hover:text-red-300 text-sm cursor-pointer"
+                              >
+                                Remove
+                              </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-xs font-medium mb-1 text-gray-300">Input</label>
+                                <textarea
+                                  value={example.input}
+                                  onChange={(e) => updateExample(question.id, exIndex, "input", e.target.value)}
+                                  className="w-full p-2 bg-slate-500 border border-slate-400 rounded text-sm"
+                                  rows={2}
+                                  placeholder="Enter input example..."
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-medium mb-1 text-gray-300">Output</label>
+                                <textarea
+                                  value={example.output}
+                                  onChange={(e) => updateExample(question.id, exIndex, "output", e.target.value)}
+                                  className="w-full p-2 bg-slate-500 border border-slate-400 rounded text-sm"
+                                  rows={2}
+                                  placeholder="Enter expected output..."
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+
+                        {(question.examples || []).length === 0 && (
+                          <div className="text-center text-gray-400 text-sm py-4">
+                            No examples added yet. Click "Add Example" to add input/output examples.
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {question.kind === "theory" && (
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Answer</label>
+                        <textarea
+                          value={question.answer || ""}
+                          onChange={(e) => updateQuestion(question.id, "answer", e.target.value)}
+                          className="w-full p-3 bg-slate-600 border border-slate-500 rounded-md"
+                          rows={3}
+                          placeholder="Enter answer here..."
+                          required
+                        />
+                      </div>
                       <div>
                         <label className="block text-sm font-medium mb-2">Guidelines (Optional)</label>
                         <Editor
