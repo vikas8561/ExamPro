@@ -45,7 +45,7 @@ router.post("/", authenticateToken, async (req, res, next) => {
         select: "questions negativeMarkingPercent",
         populate: {
           path: "questions",
-          select: "kind text options answer guidelines examples points"
+          select: "kind text options answer answers guidelines examples points"
         }
       });
     
@@ -256,7 +256,7 @@ router.get("/student", authenticateToken, async (req, res, next) => {
         select: "title questions",
         populate: {
           path: "questions",
-          select: "kind text options answer guidelines examples points"
+          select: "kind text options answer answers guidelines examples points"
         }
       });
 

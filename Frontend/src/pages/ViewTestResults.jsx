@@ -219,20 +219,27 @@ const ViewTestResults = () => {
           <h2 className="text-2xl font-bold mb-4">
             {showResults ? "Question Review" : "Your Submission"}
           </h2>
-          
+
+          {console.log("Rendering questions:", test.questions)}
           {test.questions.map((question, index) => {
-            const response = submission.responses?.find(r => 
+            const response = submission.responses?.find(r =>
               r.questionId === question._id.toString()
             );
 
             const isCorrect = response?.isCorrect;
             const correctAnswer = question.answer;
 
+            // Debug logging for all questions
+            console.log(`Question ${index + 1}:`, question);
+            console.log(`Question kind: ${question.kind}`);
+            console.log(`Question answers:`, question.answers);
+            console.log(`Question response:`, response);
+
             return (
               <div key={question._id} className="bg-slate-800 rounded-lg p-6">
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <span className="text-sm text-slate-400">Question {index + 1}</span>
+                    <span className="text-sm text-slate-400">Question {index + 1} ({question.kind})</span>
                     <h3 className="text-lg font-semibold mt-1">{question.text}</h3>
                   </div>
                   {showResults && (
@@ -281,15 +288,74 @@ const ViewTestResults = () => {
                         </div>
                       </div>
                     ))}
-                    
+
                     <div className="text-sm text-slate-400 mt-4">
                       Your answer: <span className="text-white">{response?.selectedOption || "Not answered"}</span>
                     </div>
                   </div>
                 )}
 
+                {/* MSQ Review */}
+                {question.kind === "msq" && (
+                  <div className="space-y-3">
+                    <div className="text-sm text-slate-400">Options:</div>
+                    {question.options?.map((option, optIndex) => {
+                      const isCorrect = showResults && question.answers?.includes(option.text);
+                      const userSelected = response?.selectedOption ? response.selectedOption.split(',').map(s => s.trim()).includes(option.text) : false;
+
+                      return (
+                        <div
+                          key={optIndex}
+                          className={`p-3 rounded-md ${
+                            showResults && isCorrect
+                              ? 'bg-green-900/50 border border-green-700'
+                              : showResults && userSelected && !isCorrect
+                              ? 'bg-red-900/50 border border-red-700'
+                              : userSelected
+                              ? 'bg-blue-900/50 border border-blue-700'
+                              : 'bg-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center">
+                            {showResults && isCorrect && (
+                              <span className="text-green-400 mr-2">✓</span>
+                            )}
+                            {showResults && userSelected && !isCorrect && (
+                              <span className="text-red-400 mr-2">✗</span>
+                            )}
+                            {!showResults && userSelected && (
+                              <span className="text-blue-400 mr-2">✓</span>
+                            )}
+                            <span>{option.text}</span>
+                            {showResults && isCorrect && (
+                              <span className="ml-auto text-green-400 text-sm">Correct Answer</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    <div className="text-sm text-slate-400 mt-4">
+                      Your answer: <span className="text-white">
+                        {response?.selectedOption ? response.selectedOption.split(',').map(s => s.trim()).join(', ') : "Not answered"}
+                      </span>
+                    </div>
+
+                    {/* Debug info for MSQ */}
+                    <div className="text-xs text-yellow-400 mt-2">
+                      Debug - Response found: {response ? 'Yes' : 'No'}, Selected: {response?.selectedOption || 'None'}, Answers: {question.answers ? question.answers.join(', ') : 'None'}
+                    </div>
+
+                    {showResults && question.answers && question.answers.length > 0 && (
+                      <div className="text-sm text-slate-400 mt-2">
+                        Correct answer: <span className="text-green-400">{question.answers.join(', ')}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Theoretical Review */}
-                {question.kind === "theoretical" && (
+                {question.kind === "theory" && (
                   <div>
                     {question.guidelines && (
                       <div className="bg-slate-700 p-4 rounded-lg mb-4">
