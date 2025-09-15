@@ -459,7 +459,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
           r => r.questionId.toString() === question._id.toString()
         );
 
-        return {
+        const mergedQuestion = {
           ...question.toObject(),
           selectedOption: response?.selectedOption || null,
           textAnswer: response?.textAnswer || null,
@@ -468,6 +468,13 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
           autoGraded: response?.autoGraded || false,
           geminiFeedback: response?.geminiFeedback || null
         };
+
+        // Debug logging for theory/coding questions
+        if (question.kind === "theoretical" || question.kind === "coding") {
+          console.log(`DEBUG: Question ${question._id} - kind: ${question.kind}, geminiFeedback:`, response?.geminiFeedback);
+        }
+
+        return mergedQuestion;
       });
 
       // Calculate correct/incorrect counts from responses

@@ -366,11 +366,12 @@ const ViewTestResults = () => {
                       </div>
                     </div>
 
-                    {(showResults && response?.geminiFeedback) && (
+                    {console.log(`Question ${index + 1} - showResults: ${showResults}, geminiFeedback:`, question.geminiFeedback, "kind:", question.kind, "response:", response)}
+                    {(showResults && (question.kind === "theoretical" || question.kind === "coding") && question.geminiFeedback && question.geminiFeedback.trim() !== "") && (
                       <div className="bg-blue-900/20 p-4 rounded-lg">
                         <h4 className="font-semibold text-blue-300 mb-2">AI Evaluation Feedback:</h4>
                         <p className="text-blue-200">
-                          {response?.geminiFeedback || "No feedback available."}
+                          {question.geminiFeedback || "No feedback available."}
                         </p>
                         <p className="mt-2 text-blue-200">
                           Points Awarded: {response?.points !== undefined ? response.points : "N/A"}
