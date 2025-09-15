@@ -292,7 +292,14 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
 
     // Get the assignment to check the deadline and test details
     const assignment = await Assignment.findById(assignmentId)
-      .populate("testId", "title questions negativeMarkingPercent");
+      .populate({
+        path: "testId",
+        select: "title questions negativeMarkingPercent",
+        populate: {
+          path: "questions",
+          select: "kind text options answer answers guidelines examples points"
+        }
+      });
     
     if (!assignment) {
       return res.status(404).json({ message: "Assignment not found" });
@@ -301,7 +308,11 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
     const submission = await TestSubmission.findOne({ assignmentId, userId })
       .populate({
         path: "testId",
-        select: "title questions"
+        select: "title questions",
+        populate: {
+          path: "questions",
+          select: "kind text options answer answers guidelines examples points"
+        }
       });
 
     // Check if the assignment deadline has passed
