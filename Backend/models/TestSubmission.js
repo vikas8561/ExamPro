@@ -6,7 +6,8 @@ const ResponseSchema = new mongoose.Schema({
   textAnswer: { type: String, default: null },
   isCorrect: { type: Boolean, default: false },
   points: { type: Number, default: 0 },
-  autoGraded: { type: Boolean, default: false }
+  autoGraded: { type: Boolean, default: false },
+  geminiFeedback: { type: String, default: null }
 }, { _id: false });
 
 const TabViolationSchema = new mongoose.Schema({

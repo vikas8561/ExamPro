@@ -264,9 +264,9 @@ const ViewTestResults = () => {
                         className={`p-3 rounded-md ${
                           showResults && option.text === question.answer
                             ? 'bg-green-900/50 border border-green-700'
-                            : showResults && response?.selectedOption === option.text && option.text !== question.answer
+                            : showResults && question.selectedOption === option.text && option.text !== question.answer
                             ? 'bg-red-900/50 border border-red-700'
-                            : response?.selectedOption === option.text
+                            : question.selectedOption === option.text
                             ? 'bg-blue-900/50 border border-blue-700'
                             : 'bg-slate-700'
                         }`}
@@ -275,10 +275,10 @@ const ViewTestResults = () => {
                         {showResults && option.text === question.answer && (
                           <span className="text-green-400 mr-2">✓</span>
                         )}
-                        {showResults && response?.selectedOption === option.text && option.text !== question.answer && (
+                        {showResults && question.selectedOption === option.text && option.text !== question.answer && (
                           <span className="text-red-400 mr-2">✗</span>
                         )}
-                        {!showResults && response?.selectedOption === option.text && (
+                        {!showResults && question.selectedOption === option.text && (
                           <span className="text-blue-400 mr-2">✓</span>
                         )}
                         <span>{option.text}</span>
@@ -290,7 +290,7 @@ const ViewTestResults = () => {
                     ))}
 
                     <div className="text-sm text-slate-400 mt-4">
-                      Your answer: <span className="text-white">{response?.selectedOption || "Not answered"}</span>
+                      Your answer: <span className="text-white">{question.selectedOption || "Not answered"}</span>
                     </div>
                   </div>
                 )}
@@ -301,7 +301,7 @@ const ViewTestResults = () => {
                     <div className="text-sm text-slate-400">Options:</div>
                     {question.options?.map((option, optIndex) => {
                       const isCorrect = showResults && question.answers?.includes(option.text);
-                      const userSelected = response?.selectedOption ? response.selectedOption.split(',').map(s => s.trim()).includes(option.text) : false;
+                      const userSelected = question.selectedOption ? question.selectedOption.split(',').map(s => s.trim()).includes(option.text) : false;
 
                       return (
                         <div
@@ -337,13 +337,8 @@ const ViewTestResults = () => {
 
                     <div className="text-sm text-slate-400 mt-4">
                       Your answer: <span className="text-white">
-                        {response?.selectedOption ? response.selectedOption.split(',').map(s => s.trim()).join(', ') : "Not answered"}
+                        {question.selectedOption && question.selectedOption !== "" ? question.selectedOption.split(',').map(s => s.trim()).join(', ') : "No answer provided"}
                       </span>
-                    </div>
-
-                    {/* Debug info for MSQ */}
-                    <div className="text-xs text-yellow-400 mt-2">
-                      Debug - Response found: {response ? 'Yes' : 'No'}, Selected: {response?.selectedOption || 'None'}, Answers: {question.answers ? question.answers.join(', ') : 'None'}
                     </div>
 
                     {showResults && question.answers && question.answers.length > 0 && (
@@ -355,7 +350,7 @@ const ViewTestResults = () => {
                 )}
 
                 {/* Theoretical Review */}
-                {question.kind === "theory" && (
+                {(question.kind === "theoretical" || question.kind === "coding") && (
                   <div>
                     {question.guidelines && (
                       <div className="bg-slate-700 p-4 rounded-lg mb-4">
@@ -371,13 +366,26 @@ const ViewTestResults = () => {
                       </div>
                     </div>
 
-                    {showResults && submission.mentorReviewed && (
+                    {showResults && (
                       <div className="bg-blue-900/20 p-4 rounded-lg">
+                        <h4 className="font-semibold text-blue-300 mb-2">AI Evaluation Feedback:</h4>
+                        <p className="text-blue-200">
+                          {response?.geminiFeedback || "No feedback available."}
+                        </p>
+                        <p className="mt-2 text-blue-200">
+                          Points Awarded: {response?.points !== undefined ? response.points : "N/A"}
+                        </p>
+                      </div>
+                    )}
+
+                    {showResults && submission.mentorReviewed && submission.mentorFeedback && (
+                      <div className="bg-blue-900/20 p-4 rounded-lg mt-4">
                         <h4 className="font-semibold text-blue-300 mb-2">Mentor Evaluation:</h4>
                         <p className="text-blue-200">
                           This question was manually reviewed by your mentor.
                           {response?.points !== undefined && ` Awarded ${response.points} points.`}
                         </p>
+                        <p className="mt-2 text-blue-200">{submission.mentorFeedback}</p>
                       </div>
                     )}
                   </div>

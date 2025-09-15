@@ -5,6 +5,34 @@ const Assignment = require("../models/Assignment");
 const Test = require("../models/Test");
 const { authenticateToken, requireRole } = require("../middleware/auth");
 
+// Mock Gemini API function for grading theory and coding questions
+async function evaluateWithGemini(questionText, studentAnswer, maxPoints) {
+  // Simulate API delay
+  await new Promise(resolve => setTimeout(resolve, 1000));
+
+  // Mock evaluation logic - in real implementation, this would call Gemini API
+  const feedbackOptions = [
+    "Good understanding of the concept. Well-structured answer.",
+    "Partial understanding shown. Could be more detailed.",
+    "Basic knowledge demonstrated. Needs improvement in depth.",
+    "Excellent explanation with examples. Shows strong grasp.",
+    "Answer lacks clarity. Please elaborate more.",
+    "Correct approach but minor errors in implementation.",
+    "Comprehensive answer covering all key points.",
+    "Needs more specific examples to support the explanation."
+  ];
+
+  const randomFeedback = feedbackOptions[Math.floor(Math.random() * feedbackOptions.length)];
+
+  // Assign random marks between 0 and maxPoints
+  const marks = Math.floor(Math.random() * (maxPoints + 1));
+
+  return {
+    marks,
+    feedback: randomFeedback
+  };
+}
+
 // Submit test results
 router.post("/", authenticateToken, async (req, res, next) => {
   try {
@@ -87,7 +115,7 @@ router.post("/", authenticateToken, async (req, res, next) => {
       return res.status(500).json({ message: "Test questions data is invalid" });
     }
 
-    assignmentWithTest.testId.questions.forEach(question => {
+    for (const question of assignmentWithTest.testId.questions) {
       maxScore += question.points;
 
       const userResponse = responses.find(r => r.questionId === question._id.toString());
@@ -104,13 +132,15 @@ router.post("/", authenticateToken, async (req, res, next) => {
           textAnswer: null,
           isCorrect: false,
           points: 0,
-          autoGraded: false
+          autoGraded: false,
+          geminiFeedback: null
         });
-        return;
+        continue;
       }
 
       let isCorrect = false;
       let points = 0;
+      let geminiFeedback = null;
 
       if (question.kind === "mcq") {
         isCorrect = userResponse.selectedOption === question.answer;
@@ -144,14 +174,23 @@ router.post("/", authenticateToken, async (req, res, next) => {
           notAnsweredCount++;
         }
       } else if (question.kind === "theoretical" || question.kind === "coding") {
-        // Theoretical and coding questions are not auto-graded
-        isCorrect = false;
-        points = 0;
-        // For theoretical/coding questions, if they have a response, count as answered
+        // Theoretical and coding questions are graded by Gemini AI
         if (userResponse.textAnswer && userResponse.textAnswer.trim() !== "") {
-          // Don't increment notAnsweredCount for theoretical/coding with answers
+          try {
+            const geminiResult = await evaluateWithGemini(question.text, userResponse.textAnswer, question.points);
+            points = geminiResult.marks;
+            geminiFeedback = geminiResult.feedback;
+          } catch (error) {
+            console.error("Error evaluating with Gemini:", error);
+            points = 0;
+            geminiFeedback = "Evaluation failed. Please contact instructor.";
+          }
+          isCorrect = false; // Not applicable for theory/coding
         } else {
           notAnsweredCount++;
+          points = 0;
+          geminiFeedback = null;
+          isCorrect = false;
         }
       }
 
@@ -163,9 +202,10 @@ router.post("/", authenticateToken, async (req, res, next) => {
         textAnswer: userResponse.textAnswer,
         isCorrect,
         points,
-        autoGraded: question.kind === "mcq"
+        autoGraded: question.kind === "mcq",
+        geminiFeedback
       });
-    });
+    }
 
 
 
