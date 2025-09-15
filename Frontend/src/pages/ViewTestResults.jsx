@@ -366,7 +366,7 @@ const ViewTestResults = () => {
                       </div>
                     </div>
 
-                    {showResults && (
+                    {(showResults && response?.geminiFeedback) && (
                       <div className="bg-blue-900/20 p-4 rounded-lg">
                         <h4 className="font-semibold text-blue-300 mb-2">AI Evaluation Feedback:</h4>
                         <p className="text-blue-200">
@@ -378,7 +378,7 @@ const ViewTestResults = () => {
                       </div>
                     )}
 
-                    {showResults && submission.mentorReviewed && submission.mentorFeedback && (
+                    {(showResults && submission.mentorReviewed && submission.mentorFeedback) && (
                       <div className="bg-blue-900/20 p-4 rounded-lg mt-4">
                         <h4 className="font-semibold text-blue-300 mb-2">Mentor Evaluation:</h4>
                         <p className="text-blue-200">

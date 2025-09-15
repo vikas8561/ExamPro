@@ -5,32 +5,57 @@ const Assignment = require("../models/Assignment");
 const Test = require("../models/Test");
 const { authenticateToken, requireRole } = require("../middleware/auth");
 
-// Mock Gemini API function for grading theory and coding questions
+// Gemini API function for grading theory and coding questions
 async function evaluateWithGemini(questionText, studentAnswer, maxPoints) {
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  try {
+    // Import required packages at the top of the file
+    const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-  // Mock evaluation logic - in real implementation, this would call Gemini API
-  const feedbackOptions = [
-    "Good understanding of the concept. Well-structured answer.",
-    "Partial understanding shown. Could be more detailed.",
-    "Basic knowledge demonstrated. Needs improvement in depth.",
-    "Excellent explanation with examples. Shows strong grasp.",
-    "Answer lacks clarity. Please elaborate more.",
-    "Correct approach but minor errors in implementation.",
-    "Comprehensive answer covering all key points.",
-    "Needs more specific examples to support the explanation."
-  ];
+    // Initialize Gemini API (add this at the top of the file)
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-  const randomFeedback = feedbackOptions[Math.floor(Math.random() * feedbackOptions.length)];
+    // For now, using mock implementation - replace with actual API call
+    const prompt = `
+      You are an AI evaluator for educational assessments. Evaluate the following student answer for a programming/theory question.
 
-  // Assign random marks between 0 and maxPoints
-  const marks = Math.floor(Math.random() * (maxPoints + 1));
+      Question: ${questionText}
 
-  return {
-    marks,
-    feedback: randomFeedback
-  };
+      Student Answer: ${studentAnswer}
+
+      Maximum Points: ${maxPoints}
+
+      Please provide:
+      1. A score between 0 and ${maxPoints} based on correctness, completeness, and quality
+      2. Constructive feedback explaining the evaluation
+
+      Format your response as JSON:
+      {
+        "score": <number>,
+        "feedback": "<detailed feedback text>"
+      }
+    `;
+
+    // Call Gemini API
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+
+    // Parse the JSON response from Gemini
+    const evaluation = JSON.parse(text);
+
+    return {
+      marks: evaluation.score,
+      feedback: evaluation.feedback
+    };
+
+  } catch (error) {
+    console.error("Error evaluating with Gemini API:", error);
+    return {
+      marks: 0,
+      feedback: "Evaluation failed due to technical error. Please contact instructor."
+    };
+  }
 }
 
 // Submit test results
