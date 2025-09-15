@@ -265,14 +265,11 @@ const TakeTest = () => {
 
     const handleKeyDown = (e) => {
       const isInEditor = e.target.closest('.monaco-editor');
-      if (!isInEditor) {
-        // Outside editor, block all keys except Tab
-        if (e.key !== "Tab" && e.keyCode !== 9) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-      } else {
-        // In editor, block shortcuts
+      const isInTextarea = e.target.tagName === 'TEXTAREA';
+      const isInInput = e.target.tagName === 'INPUT';
+
+      if (isInEditor) {
+        // In Monaco editor, block shortcuts
         const isFKey = (e.key && /^F\d+$/i.test(e.key) && parseInt(e.key.slice(1)) >= 1 && parseInt(e.key.slice(1)) <= 12) ||
                          (e.keyCode >= 112 && e.keyCode <= 123);
         if (
@@ -284,7 +281,14 @@ const TakeTest = () => {
           e.preventDefault();
           e.stopPropagation();
         }
+      } else if (!isInTextarea && !isInInput) {
+        // Outside editor and not in textarea/input, block all keys except Tab
+        if (e.key !== "Tab" && e.keyCode !== 9) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
       }
+      // Allow normal typing in textareas and inputs
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -298,17 +302,23 @@ const TakeTest = () => {
     if (!testStarted) return;
 
     const handleKeyUp = (e) => {
-      // Block only Ctrl + any key, Alt + any key, Tab, F1-F12 keys
-      const isFKey = (e.key && /^F\d+$/i.test(e.key) && parseInt(e.key.slice(1)) >= 1 && parseInt(e.key.slice(1)) <= 12) ||
-                     (e.keyCode >= 112 && e.keyCode <= 123);
-      if (
-        e.ctrlKey ||
-        e.altKey ||
-        e.key === "Tab" || e.keyCode === 9 ||
-        isFKey
-      ) {
-        e.preventDefault();
-        e.stopPropagation();
+      const isInEditor = e.target.closest('.monaco-editor');
+      const isInTextarea = e.target.tagName === 'TEXTAREA';
+      const isInInput = e.target.tagName === 'INPUT';
+
+      // Only block shortcuts in Monaco editor, allow normal typing in textareas and inputs
+      if (isInEditor) {
+        const isFKey = (e.key && /^F\d+$/i.test(e.key) && parseInt(e.key.slice(1)) >= 1 && parseInt(e.key.slice(1)) <= 12) ||
+                       (e.keyCode >= 112 && e.keyCode <= 123);
+        if (
+          e.ctrlKey ||
+          e.altKey ||
+          e.key === "Tab" || e.keyCode === 9 ||
+          isFKey
+        ) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
       }
     };
 
@@ -617,8 +627,18 @@ const TakeTest = () => {
               ...prev,
               [questionId]: answerValue,
             }));
-          } else if (question.kind === "theory") {
-            // For theory, answerValue is the text (string)
+          } else if (question.kind === "msq") {
+            // For MSQ, answerValue is an array of indices
+            if (Array.isArray(answerValue) && answerValue.length > 0) {
+              selectedOption = answerValue.map(idx => question.options[idx].text).join(', ');
+              hasAnswer = true;
+            }
+            setAnswers((prev) => ({
+              ...prev,
+              [questionId]: answerValue,
+            }));
+          } else if (question.kind === "theory" || question.kind === "coding") {
+            // For theory and coding, answerValue is the text (string)
             if (answerValue && answerValue.trim() !== "") {
               textAnswer = answerValue;
               hasAnswer = true;
@@ -731,11 +751,14 @@ const TakeTest = () => {
             if (question.kind === "mcq" && typeof answer === "number") {
               // For MCQ, answer is index, map to option text
               selectedOption = question.options[answer].text;
+            } else if (question.kind === "msq" && Array.isArray(answer)) {
+              // For MSQ, answer is array of indices, map to option texts
+              selectedOption = answer.map(idx => question.options[idx].text).join(', ');
             } else if (
-              question.kind === "theory" &&
+              (question.kind === "theory" || question.kind === "coding") &&
               typeof answer === "string"
             ) {
-              // For theory, answer is text
+              // For theory and coding, answer is text
               textAnswer = answer;
             }
           }
@@ -1127,16 +1150,127 @@ const TakeTest = () => {
 
             <div className="bg-slate-800 rounded-lg p-6 flex flex-col" style={{ height: '70vh' }}>
               <div className="flex-1">
+                <textarea
+                  className="w-full h-full p-4 bg-slate-800 text-white rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none resize-none"
+                  value={answers[question._id] || ""}
+                  onChange={(e) => handleAnswerChange(question._id, e.target.value)}
+                  placeholder="Enter your answer here..."
+                />
+              </div>
+              <div className="flex justify-between mt-4 gap-4">
+                <button
+                  onClick={handlePreviousQuestion}
+                  disabled={currentQuestion === 0}
+                  className="flex-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={handleNextQuestion}
+                  disabled={currentQuestion === test.questions.length - 1}
+                  className="flex-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
+                >
+                  Next
+                </button>
+                <button
+                  onClick={handleSubmitClick}
+                  disabled={isSubmitting}
+                  className={`flex-1 ${isSubmitting ? 'bg-gray-600 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} text-white py-2 rounded-md font-semibold ${!isSubmitting ? 'cursor-pointer' : ''}`}
+                >
+                  {isSubmitting ? 'Submitting Test...' : 'Submit Test'}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : question.kind === "coding" ? (
+          <div className="grid grid-cols-1 lg:grid-cols-[45%_45%_7%] gap-4.5" style={{ height: '70vh' }}>
+            <div className="bg-slate-800 rounded-lg p-6 overflow-y-auto h-full">
+              <div className="flex items-center gap-3 mb-4 justify-between">
+                <span className="text-sm text-slate-400">
+                  Question {currentQuestion + 1}
+                </span>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => handleAnswerChange(question._id, "")}
+                    className="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded-md text-sm font-medium cursor-pointer transition-colors"
+                  >
+                    Clear Response
+                  </button>
+                  <button
+                    onClick={() => {
+                      const currentStatus = questionStatuses[question._id];
+                      let newStatus;
+
+                      if (currentStatus === "mark-for-review") {
+                        const answer = answers[question._id];
+                        const hasAnswer = answer && answer.trim() !== "";
+                        newStatus = hasAnswer ? "answered" : "not-answered";
+                      } else {
+                        newStatus = "mark-for-review";
+                      }
+
+                      setQuestionStatuses((prev) => ({
+                        ...prev,
+                        [question._id]: newStatus,
+                      }));
+                    }}
+                    className={`px-3 py-1 rounded-md text-sm font-medium cursor-pointer transition-colors ${
+                      questionStatuses[question._id] === "mark-for-review"
+                        ? "bg-orange-600 text-white hover:bg-orange-700"
+                        : "bg-slate-700 hover:bg-slate-600"
+                    }`}
+                  >
+                    {questionStatuses[question._id] === "mark-for-review"
+                      ? "Unmark Review"
+                      : "Mark for Review"}
+                  </button>
+                  <div className="bg-slate-700 px-3 py-1 rounded-md text-sm">
+                    {question.points} point{question.points !== 1 ? "s" : ""}
+                  </div>
+                </div>
+              </div>
+              <h3 className="text-xl font-semibold mb-6">{question.text}</h3>
+
+              {question.guidelines && (
+                <div className="bg-slate-700 p-4 rounded-lg mb-4 scrollbar-hide" style={{overflowY: 'auto'}}>
+                  <h4 className="font-semibold text-slate-300 mb-2">
+                    Guidelines:
+                  </h4>
+                  <p className="text-slate-400">{question.guidelines}</p>
+                </div>
+              )}
+
+              {question.examples && question.examples.length > 0 && (
+                <div className="bg-slate-700 p-4 rounded-lg mb-4 scrollbar-hide" style={{maxHeight: '16rem', overflowY: 'auto'}}>
+                  {question.examples.map((example, idx) => (
+                    <div key={idx} className="mb-3 p-3 bg-slate-600 rounded">
+                      <div className="mb-1 font-semibold text-slate-300">Example {idx + 1}:</div>
+                      <div className="mb-1 font-semibold text-slate-300">Input:</div>
+                      <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
+                        {example.input}
+                      </pre>
+                      <div className="mt-2 mb-1 font-semibold text-slate-300">Output:</div>
+                      <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
+                        {example.output}
+                      </pre>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-slate-800 rounded-lg p-6 flex flex-col" style={{ height: '70vh' }}>
+              <div className="flex-1">
                 <Editor
                   height="100%"
-                  defaultLanguage="plaintext"
+                  defaultLanguage={question.language || "javascript"}
                   value={answers[question._id] || ""}
                   onChange={(value) => handleAnswerChange(question._id, value)}
                   theme="vs-dark"
                   options={{
                     minimap: { enabled: false },
                     fontSize: 14,
-                    lineNumbers: "off",
+                    lineNumbers: "on",
                     automaticLayout: true,
                     scrollBeyondLastLine: false,
                     wordWrap: "on",
@@ -1168,6 +1302,28 @@ const TakeTest = () => {
                 </button>
               </div>
             </div>
+
+            <div className="bg-slate-800 rounded-lg p-6 flex flex-col gap-2 max-h-[calc(100vh-160px)] overflow-y-auto scrollbar-hide order-last" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              <div className="flex flex-col gap-2 overflow-y-auto scrollbar-hide">
+                {test.questions.map((q, index) => (
+                  <button
+                    key={q._id}
+                    onClick={() => setCurrentQuestion(index)}
+                    className={`w-8 min-w-[40px] h-12 rounded-md text-sm font-semibold cursor-pointer transition-all duration-200 hover:scale-105 border-2 ${
+                      currentQuestion === index
+                        ? "bg-blue-600 text-white border-blue-400 shadow-lg"
+                        : questionStatuses[q._id] === "answered"
+                        ? "bg-green-600 text-white border-green-400 hover:border-green-300"
+                        : questionStatuses[q._id] === "mark-for-review"
+                        ? "bg-yellow-600 text-black border-yellow-400 hover:border-yellow-300"
+                        : "bg-slate-700 hover:bg-slate-600 border-slate-600 hover:border-slate-500"
+                    }`}
+                  >
+                    {index + 1}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1182,7 +1338,9 @@ const TakeTest = () => {
                       onClick={() => {
                         if (question.kind === "mcq") {
                           handleAnswerChange(question._id, undefined);
-                        } else if (question.kind === "theory") {
+                        } else if (question.kind === "msq") {
+                          handleAnswerChange(question._id, []);
+                        } else if (question.kind === "theory" || question.kind === "coding") {
                           handleAnswerChange(question._id, "");
                         }
                       }}
@@ -1198,12 +1356,14 @@ const TakeTest = () => {
                         if (currentStatus === "mark-for-review") {
                           // When unmarking, check if question has an answer
                           const answer = answers[question._id];
-                          const hasAnswer =
-                            question.kind === "mcq"
-                              ? answer !== undefined &&
-                                answer !== null &&
-                                answer !== ""
-                              : answer && answer.trim() !== "";
+                          let hasAnswer = false;
+                          if (question.kind === "mcq") {
+                            hasAnswer = answer !== undefined && answer !== null && answer !== "";
+                          } else if (question.kind === "msq") {
+                            hasAnswer = Array.isArray(answer) && answer.length > 0;
+                          } else if (question.kind === "theory" || question.kind === "coding") {
+                            hasAnswer = answer && answer.trim() !== "";
+                          }
 
                           newStatus = hasAnswer ? "answered" : "not-answered";
                         } else {
@@ -1258,6 +1418,40 @@ const TakeTest = () => {
                   </div>
                 )}
 
+                {question.kind === "msq" && (
+                  <div className="space-y-3">
+                    {question.options?.map((option, index) => (
+                      <label
+                        key={index}
+                        className={`flex items-center p-4 rounded-lg cursor-pointer transition-colors ${
+                          (answers[question._id] || []).includes(index)
+                            ? "bg-blue-600 text-white"
+                            : "bg-slate-700 hover:bg-slate-600"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          name={`question-${question._id}`}
+                          value={index}
+                          checked={(answers[question._id] || []).includes(index)}
+                          onChange={(e) => {
+                            const currentAnswers = answers[question._id] || [];
+                            let newAnswers;
+                            if (e.target.checked) {
+                              newAnswers = [...currentAnswers, index];
+                            } else {
+                              newAnswers = currentAnswers.filter(ans => ans !== index);
+                            }
+                            handleAnswerChange(question._id, newAnswers);
+                          }}
+                          className="mr-3"
+                        />
+                        <span>{option.text}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+
                 {question.kind === "theory" && (
                   <>
                     {question.guidelines && (
@@ -1296,23 +1490,12 @@ const TakeTest = () => {
                 </div>
                     )}
 
-                    <Editor
-                      height="200px"
-                      defaultLanguage="plaintext"
+                    <textarea
+                      className="w-full p-4 bg-slate-800 text-white rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none resize-none"
+                      style={{ height: "200px" }}
                       value={answers[question._id] || ""}
-                      onChange={(value) =>
-                        handleAnswerChange(question._id, value)
-                      }
-                      theme="vs-dark"
-                      options={{
-                        minimap: { enabled: false },
-                        fontSize: 14,
-                        lineNumbers: "off",
-                        automaticLayout: true,
-                        scrollBeyondLastLine: false,
-                        wordWrap: "on",
-                        padding: { top: 16, bottom: 16 },
-                      }}
+                      onChange={(e) => handleAnswerChange(question._id, e.target.value)}
+                      placeholder="Enter your answer here..."
                     />
                   </>
                 )}

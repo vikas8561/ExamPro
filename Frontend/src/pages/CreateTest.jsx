@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import apiRequest from "../services/api";
 import JsonQuestionUploader from "../components/JsonQuestionUploader";
-import Editor from '@monaco-editor/react';
+import Editor from "@monaco-editor/react";
 
 const emptyQuestion = (kind) => ({
   id: crypto.randomUUID(),
@@ -11,25 +11,25 @@ const emptyQuestion = (kind) => ({
   points: 1,
   ...(kind === "mcq" && {
     options: ["", "", "", ""],
-    answer: ""
+    answer: "",
   }),
   ...(kind === "msq" && {
     options: ["", "", "", ""],
-    answers: []
+    answers: [],
   }),
   ...(kind === "theory" && {
     guidelines: "",
-    examples: []
+    examples: [],
   }),
   ...(kind === "coding" && {
     guidelines: "",
-    examples: []
-  })
+    examples: [],
+  }),
 });
 
 export default function CreateTest() {
   const [searchParams] = useSearchParams();
-  const editId = searchParams.get('id');
+  const editId = searchParams.get("id");
   const isEdit = !!editId;
 
   const [form, setForm] = useState({
@@ -39,12 +39,12 @@ export default function CreateTest() {
     instructions: "",
     timeLimit: 30,
     negativeMarkingPercent: 0,
-    questions: [emptyQuestion("mcq")]
+    questions: [emptyQuestion("mcq")],
   });
   const [assignmentOptions, setAssignmentOptions] = useState({
     assignToAll: false,
     startTime: "",
-    duration: ""
+    duration: "",
   });
   const [students, setStudents] = useState([]);
   const [selectedStudents, setSelectedStudents] = useState([]);
@@ -80,29 +80,29 @@ export default function CreateTest() {
         instructions: test.instructions,
         timeLimit: test.timeLimit,
         negativeMarkingPercent: test.negativeMarkingPercent || 0,
-        questions: test.questions.map(q => ({
+        questions: test.questions.map((q) => ({
           id: crypto.randomUUID(),
-          kind: q.kind,
+          kind: q.kind === "theoretical" ? "theory" : q.kind,
           text: q.text,
           points: q.points,
           ...(q.kind === "mcq" && {
-            options: q.options.map(opt => opt.text),
-            answer: q.answer
+            options: q.options.map((opt) => opt.text),
+            answer: q.answer,
           }),
           ...(q.kind === "msq" && {
-            options: q.options.map(opt => opt.text),
-            answers: q.answers || []
+            options: q.options.map((opt) => opt.text),
+            answers: q.answers || [],
           }),
 
           ...(q.kind === "coding" && {
             guidelines: q.guidelines,
-            examples: q.examples || []
+            examples: q.examples || [],
           }),
           ...(q.kind === "theory" && {
             guidelines: q.guidelines,
-            examples: q.examples || []
-          })
-        }))
+            examples: q.examples || [],
+          }),
+        })),
       });
     } catch (error) {
       console.error("Error fetching test:", error);
@@ -123,7 +123,7 @@ export default function CreateTest() {
   const fetchStudents = async () => {
     try {
       const data = await apiRequest("/users");
-      const studentUsers = data.filter(user => user.role === "Student");
+      const studentUsers = data.filter((user) => user.role === "Student");
       setStudents(studentUsers);
     } catch (err) {
       console.error("Error fetching students:", err);
@@ -132,16 +132,16 @@ export default function CreateTest() {
 
   // Toggle student selection
   const toggleStudentSelection = (studentId) => {
-    setSelectedStudents(prev =>
+    setSelectedStudents((prev) =>
       prev.includes(studentId)
-        ? prev.filter(id => id !== studentId)
+        ? prev.filter((id) => id !== studentId)
         : [...prev, studentId]
     );
   };
 
   // Select all students
   const selectAllStudents = () => {
-    const filteredStudentIds = filteredStudents.map(student => student._id);
+    const filteredStudentIds = filteredStudents.map((student) => student._id);
     setSelectedStudents(filteredStudentIds);
   };
 
@@ -151,88 +151,102 @@ export default function CreateTest() {
   };
 
   // Filter students based on search query
-  const filteredStudents = students.filter(student =>
-    student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    student.email.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredStudents = students.filter(
+    (student) =>
+      student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      student.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const addQuestion = (kind) => {
-    setForm(prev => ({
+    setForm((prev) => ({
       ...prev,
-      questions: [...prev.questions, emptyQuestion(kind)]
+      questions: [...prev.questions, emptyQuestion(kind)],
     }));
   };
 
   const removeQuestion = (id) => {
-    setForm(prev => ({
+    setForm((prev) => ({
       ...prev,
-      questions: prev.questions.filter(q => q.id !== id)
+      questions: prev.questions.filter((q) => q.id !== id),
     }));
   };
 
   const updateQuestion = (id, field, value) => {
-    setForm(prev => ({
+    setForm((prev) => ({
       ...prev,
-      questions: prev.questions.map(q => 
+      questions: prev.questions.map((q) =>
         q.id === id ? { ...q, [field]: value } : q
-      )
+      ),
     }));
   };
 
   const updateOption = (questionId, index, value) => {
-    setForm(prev => ({
+    setForm((prev) => ({
       ...prev,
-      questions: prev.questions.map(q =>
-        q.id === questionId ? {
-          ...q,
-          options: q.options.map((opt, i) => i === index ? value : opt)
-        } : q
-      )
+      questions: prev.questions.map((q) =>
+        q.id === questionId
+          ? {
+              ...q,
+              options: q.options.map((opt, i) => (i === index ? value : opt)),
+            }
+          : q
+      ),
     }));
   };
 
   const addExample = (questionId) => {
-    setForm(prev => ({
+    setForm((prev) => ({
       ...prev,
-      questions: prev.questions.map(q =>
-        q.id === questionId ? {
-          ...q,
-          examples: [...(q.examples || []), { input: "", output: "" }]
-        } : q
-      )
+      questions: prev.questions.map((q) =>
+        q.id === questionId
+          ? {
+              ...q,
+              examples: [...(q.examples || []), { input: "", output: "" }],
+            }
+          : q
+      ),
     }));
   };
 
   const removeExample = (questionId, exampleIndex) => {
-    setForm(prev => ({
+    setForm((prev) => ({
       ...prev,
-      questions: prev.questions.map(q =>
-        q.id === questionId ? {
-          ...q,
-          examples: q.examples.filter((_, i) => i !== exampleIndex)
-        } : q
-      )
+      questions: prev.questions.map((q) =>
+        q.id === questionId
+          ? {
+              ...q,
+              examples: q.examples.filter((_, i) => i !== exampleIndex),
+            }
+          : q
+      ),
     }));
   };
 
   const updateExample = (questionId, exampleIndex, field, value) => {
-    setForm(prev => ({
+    setForm((prev) => ({
       ...prev,
-      questions: prev.questions.map(q =>
-        q.id === questionId ? {
-          ...q,
-          examples: q.examples.map((ex, i) =>
-            i === exampleIndex ? { ...ex, [field]: value } : ex
-          )
-        } : q
-      )
+      questions: prev.questions.map((q) =>
+        q.id === questionId
+          ? {
+              ...q,
+              examples: q.examples.map((ex, i) =>
+                i === exampleIndex ? { ...ex, [field]: value } : ex
+              ),
+            }
+          : q
+      ),
     }));
   };
 
   const handleQuestionsUpload = (uploadedQuestions) => {
-    setForm(prev => ({
+    const normalized = uploadedQuestions.map((q) => ({
+      ...q,
+      kind: q.kind === "theoretical" ? "theory" : q.kind,
+    }));
+
+    setForm((prev) => ({
       ...prev,
-      questions: uploadedQuestions
+      questions: uploadedQuestions,
     }));
   };
 
@@ -256,12 +270,12 @@ export default function CreateTest() {
         method: "POST",
         body: JSON.stringify({
           name: newSubjectName.trim(),
-          description: newSubjectDescription.trim()
-        })
+          description: newSubjectDescription.trim(),
+        }),
       });
 
-      setSubjects(prev => [...prev, newSubject]);
-      setForm(prev => ({ ...prev, subject: newSubject.name }));
+      setSubjects((prev) => [...prev, newSubject]);
+      setForm((prev) => ({ ...prev, subject: newSubject.name }));
       setNewSubjectName("");
       setNewSubjectDescription("");
       setShowSubjectModal(false);
@@ -282,47 +296,49 @@ export default function CreateTest() {
         instructions: form.instructions,
         timeLimit: Number(form.timeLimit),
         negativeMarkingPercent: Number(form.negativeMarkingPercent),
-        questions: form.questions.map(q => ({
+        questions: form.questions.map((q) => ({
           kind: q.kind,
           text: q.text,
           points: Number(q.points),
           ...(q.kind === "mcq" && {
-            options: q.options.map(opt => ({ text: opt })),
-            answer: q.answer
+            options: q.options.map((opt) => ({ text: opt })),
+            answer: q.answer,
           }),
           ...(q.kind === "msq" && {
-            options: q.options.map(opt => ({ text: opt })),
-            answers: q.answers || []
+            options: q.options.map((opt) => ({ text: opt })),
+            answers: q.answers || [],
           }),
 
           ...(q.kind === "coding" && {
             guidelines: q.guidelines,
-            examples: q.examples || []
+            examples: q.examples || [],
           }),
           ...(q.kind === "theory" && {
             guidelines: q.guidelines,
-            examples: q.examples || []
-          })
-        }))
+            examples: q.examples || [],
+          }),
+        })),
       };
 
       if (isEdit) {
         // Update existing test
         await apiRequest(`/tests/${editId}`, {
           method: "PUT",
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
         });
       } else {
         // Create new test
         const createdTest = await apiRequest("/tests", {
           method: "POST",
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
         });
 
         // Check if assignment is enabled
         if (assignmentOptions.assignToAll) {
           // Convert local datetime string to ISO string with timezone offset
-          const startTimeISO = new Date(assignmentOptions.startTime).toISOString();
+          const startTimeISO = new Date(
+            assignmentOptions.startTime
+          ).toISOString();
 
           if (assignmentMode === "all") {
             await apiRequest("/assignments/assign-all", {
@@ -331,10 +347,13 @@ export default function CreateTest() {
               body: JSON.stringify({
                 testId: createdTest._id,
                 startTime: startTimeISO,
-                duration: parseInt(assignmentOptions.duration)
-              })
+                duration: parseInt(assignmentOptions.duration),
+              }),
             });
-          } else if (assignmentMode === "manual" && selectedStudents.length > 0) {
+          } else if (
+            assignmentMode === "manual" &&
+            selectedStudents.length > 0
+          ) {
             await apiRequest("/assignments/assign-manual", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -342,8 +361,8 @@ export default function CreateTest() {
                 testId: createdTest._id,
                 studentIds: selectedStudents,
                 startTime: startTimeISO,
-                duration: parseInt(assignmentOptions.duration)
-              })
+                duration: parseInt(assignmentOptions.duration),
+              }),
             });
           } else if (assignmentMode === "ru") {
             await apiRequest("/assignments/assign-ru", {
@@ -352,8 +371,8 @@ export default function CreateTest() {
               body: JSON.stringify({
                 testId: createdTest._id,
                 startTime: startTimeISO,
-                duration: parseInt(assignmentOptions.duration)
-              })
+                duration: parseInt(assignmentOptions.duration),
+              }),
             });
           } else if (assignmentMode === "su") {
             await apiRequest("/assignments/assign-su", {
@@ -362,8 +381,8 @@ export default function CreateTest() {
               body: JSON.stringify({
                 testId: createdTest._id,
                 startTime: startTimeISO,
-                duration: parseInt(assignmentOptions.duration)
-              })
+                duration: parseInt(assignmentOptions.duration),
+              }),
             });
           }
         }
@@ -371,7 +390,7 @@ export default function CreateTest() {
 
       nav("/admin/tests");
     } catch (error) {
-      alert(error.message || `Error ${isEdit ? 'updating' : 'creating'} test`);
+      alert(error.message || `Error ${isEdit ? "updating" : "creating"} test`);
     } finally {
       setLoading(false);
     }
@@ -380,37 +399,51 @@ export default function CreateTest() {
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8">{isEdit ? "Edit Test" : "Create New Test"}</h1>
+        <h1 className="text-3xl font-bold mb-8">
+          {isEdit ? "Edit Test" : "Create New Test"}
+        </h1>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Basic Test Info */}
           <div className="bg-slate-800 p-6 rounded-lg">
             <h2 className="text-xl font-semibold mb-4">Test Information</h2>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-2">Test Title *</label>
+                <label className="block text-sm font-medium mb-2">
+                  Test Title *
+                </label>
                 <input
                   type="text"
                   value={form.title}
-                  onChange={(e) => setForm(prev => ({ ...prev, title: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, title: e.target.value }))
+                  }
                   className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">Subject *</label>
+                <label className="block text-sm font-medium mb-2">
+                  Subject *
+                </label>
                 <div className="flex gap-2 items-center">
                   <select
                     value={form.subject}
-                    onChange={(e) => setForm(prev => ({ ...prev, subject: e.target.value }))}
+                    onChange={(e) =>
+                      setForm((prev) => ({ ...prev, subject: e.target.value }))
+                    }
                     className="flex-1 p-3 bg-slate-700 border border-slate-600 rounded-md"
                     required
                   >
-                    <option value="" disabled>Select a subject</option>
-                    {subjects.map(subject => (
-                      <option key={subject._id} value={subject.name}>{subject.name}</option>
+                    <option value="" disabled>
+                      Select a subject
+                    </option>
+                    {subjects.map((subject) => (
+                      <option key={subject._id} value={subject.name}>
+                        {subject.name}
+                      </option>
                     ))}
                   </select>
                   <button
@@ -425,36 +458,51 @@ export default function CreateTest() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">Test Type</label>
+                <label className="block text-sm font-medium mb-2">
+                  Test Type
+                </label>
                 <select
                   value={form.type}
-                  onChange={(e) => setForm(prev => ({ ...prev, type: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, type: e.target.value }))
+                  }
                   className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
                 >
                   <option value="mixed">Mixed (All Types)</option>
                   <option value="mcq">MCQ Only</option>
                   <option value="msq">MSQ Only</option>
                   <option value="coding">Coding Only</option>
-                  <option value="theoretical">Theoretical Only</option>
+                  <option value="theory">Theory Only</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">Time Limit (minutes)</label>
+                <label className="block text-sm font-medium mb-2">
+                  Time Limit (minutes)
+                </label>
                 <input
                   type="number"
                   min="1"
                   value={form.timeLimit}
-                  onChange={(e) => setForm(prev => ({ ...prev, timeLimit: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, timeLimit: e.target.value }))
+                  }
                   className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">Negative Marking (%)</label>
+                <label className="block text-sm font-medium mb-2">
+                  Negative Marking (%)
+                </label>
                 <select
                   value={form.negativeMarkingPercent}
-                  onChange={(e) => setForm(prev => ({ ...prev, negativeMarkingPercent: Number(e.target.value) }))}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      negativeMarkingPercent: Number(e.target.value),
+                    }))
+                  }
                   className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
                 >
                   <option value={0}>No Negative Marking</option>
@@ -467,10 +515,14 @@ export default function CreateTest() {
             </div>
 
             <div className="mt-4">
-              <label className="block text-sm font-medium mb-2">Instructions</label>
+              <label className="block text-sm font-medium mb-2">
+                Instructions
+              </label>
               <textarea
                 value={form.instructions}
-                onChange={(e) => setForm(prev => ({ ...prev, instructions: e.target.value }))}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, instructions: e.target.value }))
+                }
                 rows={3}
                 className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
                 placeholder="Enter test instructions..."
@@ -484,17 +536,19 @@ export default function CreateTest() {
           {/* Assignment Options Section */}
           <div className="bg-slate-800 p-6 rounded-lg">
             <h2 className="text-xl font-semibold mb-4">Assignment Options</h2>
-            
+
             <div className="space-y-4">
               <div className="flex items-center">
                 <input
                   type="checkbox"
                   id="assignToAll"
                   checked={assignmentOptions.assignToAll}
-                  onChange={(e) => setAssignmentOptions(prev => ({ 
-                    ...prev, 
-                    assignToAll: e.target.checked 
-                  }))}
+                  onChange={(e) =>
+                    setAssignmentOptions((prev) => ({
+                      ...prev,
+                      assignToAll: e.target.checked,
+                    }))
+                  }
                   className="mr-3 h-4 w-4"
                 />
                 <label htmlFor="assignToAll" className="text-sm font-medium">
@@ -560,10 +614,12 @@ export default function CreateTest() {
                     <input
                       type="datetime-local"
                       value={assignmentOptions.startTime}
-                      onChange={(e) => setAssignmentOptions(prev => ({ 
-                        ...prev, 
-                        startTime: e.target.value 
-                      }))}
+                      onChange={(e) =>
+                        setAssignmentOptions((prev) => ({
+                          ...prev,
+                          startTime: e.target.value,
+                        }))
+                      }
                       className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
                       required
                     />
@@ -575,10 +631,12 @@ export default function CreateTest() {
                     <input
                       type="number"
                       value={assignmentOptions.duration}
-                      onChange={(e) => setAssignmentOptions(prev => ({ 
-                        ...prev, 
-                        duration: e.target.value 
-                      }))}
+                      onChange={(e) =>
+                        setAssignmentOptions((prev) => ({
+                          ...prev,
+                          duration: e.target.value,
+                        }))
+                      }
                       className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
                       min="1"
                       required
@@ -591,7 +649,7 @@ export default function CreateTest() {
                       <label className="block text-sm font-medium text-gray-300 mb-2">
                         Select Students ({selectedStudents.length} selected)
                       </label>
-                      
+
                       {/* Search and Selection Controls */}
                       <div className="flex gap-2 mb-3">
                         <input
@@ -625,16 +683,25 @@ export default function CreateTest() {
                           </div>
                         ) : (
                           filteredStudents.map((student) => (
-                            <label key={student._id} className="flex items-center p-3 border-b border-slate-600 last:border-b-0 hover:bg-slate-600 cursor-pointer">
+                            <label
+                              key={student._id}
+                              className="flex items-center p-3 border-b border-slate-600 last:border-b-0 hover:bg-slate-600 cursor-pointer"
+                            >
                               <input
                                 type="checkbox"
                                 checked={selectedStudents.includes(student._id)}
-                                onChange={() => toggleStudentSelection(student._id)}
+                                onChange={() =>
+                                  toggleStudentSelection(student._id)
+                                }
                                 className="mr-3"
                               />
                               <div>
-                                <div className="font-medium text-white">{student.name}</div>
-                                <div className="text-sm text-gray-400">{student.email}</div>
+                                <div className="font-medium text-white">
+                                  {student.name}
+                                </div>
+                                <div className="text-sm text-gray-400">
+                                  {student.email}
+                                </div>
                               </div>
                             </label>
                           ))
@@ -678,10 +745,10 @@ export default function CreateTest() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => addQuestion("theoretical")}
+                      onClick={() => addQuestion("theory")}
                       className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-md cursor-pointer"
                     >
-                      Add Theoretical
+                      Add Theory
                     </button>
                   </>
                 )}
@@ -698,7 +765,10 @@ export default function CreateTest() {
             </div>
 
             {form.questions.map((question, index) => (
-              <div key={question.id} className="bg-slate-700 p-4 rounded-lg mb-4">
+              <div
+                key={question.id}
+                className="bg-slate-700 p-4 rounded-lg mb-4"
+              >
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="font-semibold">Question {index + 1}</h3>
                   {form.questions.length > 1 && (
@@ -714,10 +784,14 @@ export default function CreateTest() {
 
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium mb-2">Question Text *</label>
+                    <label className="block text-sm font-medium mb-2">
+                      Question Text *
+                    </label>
                     <textarea
                       value={question.text}
-                      onChange={(e) => updateQuestion(question.id, "text", e.target.value)}
+                      onChange={(e) =>
+                        updateQuestion(question.id, "text", e.target.value)
+                      }
                       className="w-full p-3 bg-slate-600 border border-slate-500 rounded-md"
                       rows={2}
                       required
@@ -725,12 +799,16 @@ export default function CreateTest() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium mb-2">Points</label>
+                    <label className="block text-sm font-medium mb-2">
+                      Points
+                    </label>
                     <input
                       type="number"
                       min="1"
                       value={question.points}
-                      onChange={(e) => updateQuestion(question.id, "points", e.target.value)}
+                      onChange={(e) =>
+                        updateQuestion(question.id, "points", e.target.value)
+                      }
                       className="w-full p-3 bg-slate-600 border border-slate-500 rounded-md"
                     />
                   </div>
@@ -738,20 +816,33 @@ export default function CreateTest() {
                   {question.kind === "mcq" && (
                     <>
                       <div>
-                        <label className="block text-sm font-medium mb-2">Options</label>
+                        <label className="block text-sm font-medium mb-2">
+                          Options
+                        </label>
                         {question.options.map((option, optIndex) => (
-                          <div key={optIndex} className="flex items-center mb-2">
+                          <div
+                            key={optIndex}
+                            className="flex items-center mb-2"
+                          >
                             <input
                               type="radio"
                               name={`answer-${question.id}`}
                               checked={question.answer === option}
-                              onChange={() => updateQuestion(question.id, "answer", option)}
+                              onChange={() =>
+                                updateQuestion(question.id, "answer", option)
+                              }
                               className="mr-3"
                             />
                             <input
                               type="text"
                               value={option}
-                              onChange={(e) => updateOption(question.id, optIndex, e.target.value)}
+                              onChange={(e) =>
+                                updateOption(
+                                  question.id,
+                                  optIndex,
+                                  e.target.value
+                                )
+                              }
                               className="flex-1 p-2 bg-slate-600 border border-slate-500 rounded-md"
                               placeholder={`Option ${optIndex + 1}`}
                             />
@@ -764,25 +855,46 @@ export default function CreateTest() {
                   {question.kind === "msq" && (
                     <>
                       <div>
-                        <label className="block text-sm font-medium mb-2">Options</label>
+                        <label className="block text-sm font-medium mb-2">
+                          Options
+                        </label>
                         {question.options.map((option, optIndex) => (
-                          <div key={optIndex} className="flex items-center mb-2">
+                          <div
+                            key={optIndex}
+                            className="flex items-center mb-2"
+                          >
                             <input
                               type="checkbox"
-                              checked={question.answers?.includes(option) || false}
+                              checked={
+                                question.answers?.includes(option) || false
+                              }
                               onChange={(e) => {
                                 const currentAnswers = question.answers || [];
-                                const newAnswers = currentAnswers.includes(option)
-                                  ? currentAnswers.filter(ans => ans !== option)
+                                const newAnswers = currentAnswers.includes(
+                                  option
+                                )
+                                  ? currentAnswers.filter(
+                                      (ans) => ans !== option
+                                    )
                                   : [...currentAnswers, option];
-                                updateQuestion(question.id, "answers", newAnswers);
+                                updateQuestion(
+                                  question.id,
+                                  "answers",
+                                  newAnswers
+                                );
                               }}
                               className="mr-3"
                             />
                             <input
                               type="text"
                               value={option}
-                              onChange={(e) => updateOption(question.id, optIndex, e.target.value)}
+                              onChange={(e) =>
+                                updateOption(
+                                  question.id,
+                                  optIndex,
+                                  e.target.value
+                                )
+                              }
                               className="flex-1 p-2 bg-slate-600 border border-slate-500 rounded-md"
                               placeholder={`Option ${optIndex + 1}`}
                             />
@@ -792,34 +904,43 @@ export default function CreateTest() {
                     </>
                   )}
 
-
-
                   {question.kind === "coding" && (
                     <>
                       <div>
-                        <label className="block text-sm font-medium mb-2">Guidelines (Optional)</label>
+                        <label className="block text-sm font-medium mb-2">
+                          Guidelines (Optional)
+                        </label>
                         <Editor
                           height="200px"
                           defaultLanguage="plaintext"
                           value={question.guidelines || ""}
-                          onChange={(value) => updateQuestion(question.id, "guidelines", value || "")}
+                          onChange={(value) =>
+                            updateQuestion(
+                              question.id,
+                              "guidelines",
+                              value || ""
+                            )
+                          }
                           theme="vs-dark"
                           options={{
                             minimap: { enabled: false },
                             fontSize: 14,
-                            lineNumbers: 'off',
+                            lineNumbers: "off",
                             scrollBeyondLastLine: false,
                             automaticLayout: true,
-                            wordWrap: 'on',
+                            wordWrap: "on",
                             padding: { top: 16, bottom: 16 },
-                            placeholder: "Enter evaluation guidelines for this coding question..."
+                            placeholder:
+                              "Enter evaluation guidelines for this coding question...",
                           }}
                         />
                       </div>
 
                       <div>
                         <div className="flex justify-between items-center mb-2">
-                          <label className="block text-sm font-medium">Examples (Optional)</label>
+                          <label className="block text-sm font-medium">
+                            Examples (Optional)
+                          </label>
                           <button
                             type="button"
                             onClick={() => addExample(question.id)}
@@ -830,12 +951,19 @@ export default function CreateTest() {
                         </div>
 
                         {(question.examples || []).map((example, exIndex) => (
-                          <div key={exIndex} className="bg-slate-600 p-3 rounded mb-2">
+                          <div
+                            key={exIndex}
+                            className="bg-slate-600 p-3 rounded mb-2"
+                          >
                             <div className="flex justify-between items-center mb-2">
-                              <span className="text-sm font-medium">Example {exIndex + 1}</span>
+                              <span className="text-sm font-medium">
+                                Example {exIndex + 1}
+                              </span>
                               <button
                                 type="button"
-                                onClick={() => removeExample(question.id, exIndex)}
+                                onClick={() =>
+                                  removeExample(question.id, exIndex)
+                                }
                                 className="text-red-400 hover:text-red-300 text-sm cursor-pointer"
                               >
                                 Remove
@@ -844,10 +972,19 @@ export default function CreateTest() {
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               <div>
-                                <label className="block text-xs font-medium mb-1 text-gray-300">Input</label>
+                                <label className="block text-xs font-medium mb-1 text-gray-300">
+                                  Input
+                                </label>
                                 <textarea
                                   value={example.input}
-                                  onChange={(e) => updateExample(question.id, exIndex, "input", e.target.value)}
+                                  onChange={(e) =>
+                                    updateExample(
+                                      question.id,
+                                      exIndex,
+                                      "input",
+                                      e.target.value
+                                    )
+                                  }
                                   className="w-full p-2 bg-slate-500 border border-slate-400 rounded text-sm"
                                   rows={2}
                                   placeholder="Enter input example..."
@@ -855,10 +992,19 @@ export default function CreateTest() {
                               </div>
 
                               <div>
-                                <label className="block text-xs font-medium mb-1 text-gray-300">Output</label>
+                                <label className="block text-xs font-medium mb-1 text-gray-300">
+                                  Output
+                                </label>
                                 <textarea
                                   value={example.output}
-                                  onChange={(e) => updateExample(question.id, exIndex, "output", e.target.value)}
+                                  onChange={(e) =>
+                                    updateExample(
+                                      question.id,
+                                      exIndex,
+                                      "output",
+                                      e.target.value
+                                    )
+                                  }
                                   className="w-full p-2 bg-slate-500 border border-slate-400 rounded text-sm"
                                   rows={2}
                                   placeholder="Enter expected output..."
@@ -870,7 +1016,8 @@ export default function CreateTest() {
 
                         {(question.examples || []).length === 0 && (
                           <div className="text-center text-gray-400 text-sm py-4">
-                            No examples added yet. Click "Add Example" to add input/output examples.
+                            No examples added yet. Click "Add Example" to add
+                            input/output examples.
                           </div>
                         )}
                       </div>
@@ -880,10 +1027,18 @@ export default function CreateTest() {
                   {question.kind === "theory" && (
                     <>
                       <div>
-                        <label className="block text-sm font-medium mb-2">Answer</label>
+                        <label className="block text-sm font-medium mb-2">
+                          Answer
+                        </label>
                         <textarea
                           value={question.answer || ""}
-                          onChange={(e) => updateQuestion(question.id, "answer", e.target.value)}
+                          onChange={(e) =>
+                            updateQuestion(
+                              question.id,
+                              "answer",
+                              e.target.value
+                            )
+                          }
                           className="w-full p-3 bg-slate-600 border border-slate-500 rounded-md"
                           rows={3}
                           placeholder="Enter answer here..."
@@ -891,29 +1046,40 @@ export default function CreateTest() {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium mb-2">Guidelines (Optional)</label>
+                        <label className="block text-sm font-medium mb-2">
+                          Guidelines (Optional)
+                        </label>
                         <Editor
                           height="200px"
                           defaultLanguage="plaintext"
                           value={question.guidelines || ""}
-                          onChange={(value) => updateQuestion(question.id, "guidelines", value || "")}
+                          onChange={(value) =>
+                            updateQuestion(
+                              question.id,
+                              "guidelines",
+                              value || ""
+                            )
+                          }
                           theme="vs-dark"
                           options={{
                             minimap: { enabled: false },
                             fontSize: 14,
-                            lineNumbers: 'off',
+                            lineNumbers: "off",
                             scrollBeyondLastLine: false,
                             automaticLayout: true,
-                            wordWrap: 'on',
+                            wordWrap: "on",
                             padding: { top: 16, bottom: 16 },
-                            placeholder: "Enter evaluation guidelines for this question..."
+                            placeholder:
+                              "Enter evaluation guidelines for this question...",
                           }}
                         />
                       </div>
 
                       <div>
                         <div className="flex justify-between items-center mb-2">
-                          <label className="block text-sm font-medium">Examples (Optional)</label>
+                          <label className="block text-sm font-medium">
+                            Examples (Optional)
+                          </label>
                           <button
                             type="button"
                             onClick={() => addExample(question.id)}
@@ -924,12 +1090,19 @@ export default function CreateTest() {
                         </div>
 
                         {(question.examples || []).map((example, exIndex) => (
-                          <div key={exIndex} className="bg-slate-600 p-3 rounded mb-2">
+                          <div
+                            key={exIndex}
+                            className="bg-slate-600 p-3 rounded mb-2"
+                          >
                             <div className="flex justify-between items-center mb-2">
-                              <span className="text-sm font-medium">Example {exIndex + 1}</span>
+                              <span className="text-sm font-medium">
+                                Example {exIndex + 1}
+                              </span>
                               <button
                                 type="button"
-                                onClick={() => removeExample(question.id, exIndex)}
+                                onClick={() =>
+                                  removeExample(question.id, exIndex)
+                                }
                                 className="text-red-400 hover:text-red-300 text-sm cursor-pointer"
                               >
                                 Remove
@@ -938,10 +1111,19 @@ export default function CreateTest() {
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               <div>
-                                <label className="block text-xs font-medium mb-1 text-gray-300">Input</label>
+                                <label className="block text-xs font-medium mb-1 text-gray-300">
+                                  Input
+                                </label>
                                 <textarea
                                   value={example.input}
-                                  onChange={(e) => updateExample(question.id, exIndex, "input", e.target.value)}
+                                  onChange={(e) =>
+                                    updateExample(
+                                      question.id,
+                                      exIndex,
+                                      "input",
+                                      e.target.value
+                                    )
+                                  }
                                   className="w-full p-2 bg-slate-500 border border-slate-400 rounded text-sm"
                                   rows={2}
                                   placeholder="Enter input example..."
@@ -949,10 +1131,19 @@ export default function CreateTest() {
                               </div>
 
                               <div>
-                                <label className="block text-xs font-medium mb-1 text-gray-300">Output</label>
+                                <label className="block text-xs font-medium mb-1 text-gray-300">
+                                  Output
+                                </label>
                                 <textarea
                                   value={example.output}
-                                  onChange={(e) => updateExample(question.id, exIndex, "output", e.target.value)}
+                                  onChange={(e) =>
+                                    updateExample(
+                                      question.id,
+                                      exIndex,
+                                      "output",
+                                      e.target.value
+                                    )
+                                  }
                                   className="w-full p-2 bg-slate-500 border border-slate-400 rounded text-sm"
                                   rows={2}
                                   placeholder="Enter expected output..."
@@ -964,7 +1155,8 @@ export default function CreateTest() {
 
                         {(question.examples || []).length === 0 && (
                           <div className="text-center text-gray-400 text-sm py-4">
-                            No examples added yet. Click "Add Example" to add input/output examples.
+                            No examples added yet. Click "Add Example" to add
+                            input/output examples.
                           </div>
                         )}
                       </div>
@@ -982,7 +1174,13 @@ export default function CreateTest() {
               disabled={loading}
               className="px-6 py-3 bg-white text-black font-semibold rounded-md hover:bg-gray-100 disabled:opacity-50 cursor-pointer"
             >
-              {loading ? (isEdit ? "Updating..." : "Creating...") : (isEdit ? "Update Test" : "Create Test")}
+              {loading
+                ? isEdit
+                  ? "Updating..."
+                  : "Creating..."
+                : isEdit
+                ? "Update Test"
+                : "Create Test"}
             </button>
           </div>
         </form>
@@ -996,7 +1194,9 @@ export default function CreateTest() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-2">Subject Name *</label>
+                <label className="block text-sm font-medium mb-2">
+                  Subject Name *
+                </label>
                 <input
                   type="text"
                   value={newSubjectName}
@@ -1008,7 +1208,9 @@ export default function CreateTest() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">Description (Optional)</label>
+                <label className="block text-sm font-medium mb-2">
+                  Description (Optional)
+                </label>
                 <textarea
                   value={newSubjectDescription}
                   onChange={(e) => setNewSubjectDescription(e.target.value)}
