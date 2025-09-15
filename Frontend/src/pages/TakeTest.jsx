@@ -540,11 +540,23 @@ const TakeTest = () => {
           console.log("[TakeTest] Existing answers found, restoring answers");
           const existingAnswers = {};
           answersData.forEach((response) => {
-            if (response.selectedOption) {
-              const question = assignmentData.testId.questions.find(
-                (q) => q._id.toString() === response.questionId
-              );
-              if (question && question.options) {
+            const question = assignmentData.testId.questions.find(
+              (q) => q._id.toString() === response.questionId
+            );
+
+            if (response.selectedOption && question) {
+              if (question.kind === "msq") {
+                // For MSQ, selectedOption is a comma-separated string, parse it back to indices
+                const selectedTexts = response.selectedOption.split(',').map(text => text.trim());
+                const indices = selectedTexts.map(text => {
+                  return question.options.findIndex(opt => opt.text === text);
+                }).filter(index => index !== -1);
+
+                if (indices.length > 0) {
+                  existingAnswers[response.questionId] = indices;
+                }
+              } else {
+                // For MCQ, find the single index
                 const index = question.options.findIndex(
                   (opt) => opt.text === response.selectedOption
                 );
@@ -1568,7 +1580,9 @@ const TakeTest = () => {
                               answer !== null &&
                               answer !== ""
                             );
-                          } else if (q.kind === "theory") {
+                          } else if (q.kind === "msq") {
+                            return Array.isArray(answer) && answer.length > 0;
+                          } else if (q.kind === "theory" || q.kind === "coding") {
                             return answer && answer.trim() !== "";
                           }
                           return false;
@@ -1590,7 +1604,9 @@ const TakeTest = () => {
                                 answer !== null &&
                                 answer !== ""
                               );
-                            } else if (q.kind === "theory") {
+                            } else if (q.kind === "msq") {
+                              return Array.isArray(answer) && answer.length > 0;
+                            } else if (q.kind === "theory" || q.kind === "coding") {
                               return answer && answer.trim() !== "";
                             }
                             return false;
