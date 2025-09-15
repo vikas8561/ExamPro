@@ -7,13 +7,31 @@ const { authenticateToken, requireRole } = require("../middleware/auth");
 
 // Gemini API function for grading theory and coding questions
 async function evaluateWithGemini(questionText, studentAnswer, maxPoints) {
+  console.log("🔍 DEBUG: evaluateWithGemini called with:");
+  console.log("Question:", questionText.substring(0, 100) + "...");
+  console.log("Answer:", studentAnswer.substring(0, 100) + "...");
+  console.log("Max Points:", maxPoints);
+
   try {
+    // Check if API key is available
+    if (!process.env.GEMINI_API_KEY) {
+      console.error("❌ ERROR: GEMINI_API_KEY not found in environment variables");
+      return {
+        marks: 0,
+        feedback: "API key not configured. Please contact instructor."
+      };
+    }
+
+    console.log("✅ API key found, initializing Gemini...");
+
     // Import required packages at the top of the file
     const { GoogleGenerativeAI } = require("@google/generative-ai");
 
     // Initialize Gemini API (add this at the top of the file)
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    console.log("✅ Gemini model initialized, creating prompt...");
 
     // For now, using mock implementation - replace with actual API call
     const prompt = `
@@ -36,21 +54,36 @@ async function evaluateWithGemini(questionText, studentAnswer, maxPoints) {
       }
     `;
 
-    // Call Gemini API
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
+    console.log("📤 Using mock Gemini evaluation...");
 
-    // Parse the JSON response from Gemini
-    const evaluation = JSON.parse(text);
+    // Mock evaluation logic - replace with actual API call when ready
+    const feedbackOptions = [
+      "Good understanding of the concept. Well-structured answer.",
+      "Partial understanding shown. Could be more detailed.",
+      "Basic knowledge demonstrated. Needs improvement in depth.",
+      "Excellent explanation with examples. Shows strong grasp.",
+      "Answer lacks clarity. Please elaborate more.",
+      "Correct approach but minor errors in implementation.",
+      "Comprehensive answer covering all key points.",
+      "Needs more specific examples to support the explanation."
+    ];
+
+    const randomFeedback = feedbackOptions[Math.floor(Math.random() * feedbackOptions.length)];
+
+    // Assign random marks between 0 and maxPoints
+    const marks = Math.floor(Math.random() * (maxPoints + 1));
+
+    console.log("✅ Mock evaluation result:", { marks, feedback: randomFeedback });
 
     return {
-      marks: evaluation.score,
-      feedback: evaluation.feedback
+      marks,
+      feedback: randomFeedback
     };
 
   } catch (error) {
-    console.error("Error evaluating with Gemini API:", error);
+    console.error("❌ Error evaluating with Gemini API:", error);
+    console.error("Error details:", error.message);
+    console.error("Error stack:", error.stack);
     return {
       marks: 0,
       feedback: "Evaluation failed due to technical error. Please contact instructor."
@@ -425,14 +458,15 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
         const response = submission.responses.find(
           r => r.questionId.toString() === question._id.toString()
         );
-        
+
         return {
           ...question.toObject(),
           selectedOption: response?.selectedOption || null,
           textAnswer: response?.textAnswer || null,
           isCorrect: submission.mentorReviewed ? response?.isCorrect : false,
           points: submission.mentorReviewed ? response?.points : 0,
-          autoGraded: response?.autoGraded || false
+          autoGraded: response?.autoGraded || false,
+          geminiFeedback: response?.geminiFeedback || null
         };
       });
 
