@@ -403,9 +403,10 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
       return res.status(404).json({ message: "Assignment not found" });
     }
 
-    // Check if user is the student or the mentor for this assignment
+    // Check if user is the student for this assignment
     const isStudent = assignment.userId.toString() === userId;
-    const isMentor = assignment.mentorId && assignment.mentorId.toString() === userId;
+    // Allow mentors to view if they are assigned to this assignment or if no mentor is assigned
+    const isMentor = !assignment.mentorId || assignment.mentorId.toString() === userId;
 
     if (!isStudent && !isMentor) {
       return res.status(403).json({ message: "Not authorized to view this submission" });

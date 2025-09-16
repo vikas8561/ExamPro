@@ -9,3 +9,4 @@
 - [x] Fixed frontend to properly fetch and display student submitted answers from correct data source
 - [x] Updated backend to recalculate scores and set isCorrect when fetching submissions
 - [x] Fixed API to allow mentors to view student submissions by assignment ID
+- [x] Fixed 403 Forbidden error by updating mentor authorization logic
