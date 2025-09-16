@@ -13,6 +13,7 @@ const TakeTest = () => {
   const [showPermissionModal, setShowPermissionModal] = useState(true);
   const [otpInput, setOtpInput] = useState("");
   const [otpError, setOtpError] = useState("");
+  const [permissionsAttempted, setPermissionsAttempted] = useState(false);
   const { assignmentId } = useParams();
   const navigate = useNavigate();
   const [test, setTest] = useState(null);
@@ -381,8 +382,6 @@ const TakeTest = () => {
   };
 
   useEffect(() => {
-    requestPermissions();
-
     return () => {
       if (stream) {
         stream.getTracks().forEach((track) => track.stop());
@@ -1012,7 +1011,7 @@ const TakeTest = () => {
               >
                 All Permissions Granted ✓
               </button>
-            ) : (
+            ) : permissionsAttempted ? (
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-2">
@@ -1039,6 +1038,16 @@ const TakeTest = () => {
                   Enter the OTP provided by your instructor to start the test
                 </p>
               </div>
+            ) : (
+              <button
+                onClick={() => {
+                  setPermissionsAttempted(true);
+                  requestPermissions();
+                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-md font-semibold cursor-pointer"
+              >
+                Request Permissions
+              </button>
             )}
           </div>
         </div>
