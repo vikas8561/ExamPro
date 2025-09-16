@@ -17,7 +17,7 @@ const TabViolationSchema = new mongoose.Schema({
   },
   violationType: { 
     type: String, 
-    enum: ["tab_switch", "window_open", "tab_close", "browser_switch"],
+    enum: ["tab_switch", "window_open", "tab_close", "browser_switch", "fullscreen_exit"],
     required: true 
   },
   details: { 
