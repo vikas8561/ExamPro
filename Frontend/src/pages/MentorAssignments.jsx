@@ -7,7 +7,7 @@ export default function MentorAssignments() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [selectedTest, setSelectedTest] = useState(null);
-  const nav = useNavigate();
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchAssignments();
@@ -145,7 +145,7 @@ export default function MentorAssignments() {
                   <td className="p-4 text-slate-200 font-medium">{assignment.score !== undefined ? assignment.score : "N/A"}</td>
                   <td className="p-4 text-center">
                     <button
-                      onClick={() => nav('/mentor/view-test/' + assignment._id)}
+                      onClick={() => navigate(`/mentor/view-test/${assignment._id}`)}
                       className="bg-white text-black px-4 py-2 rounded-lg hover:bg-gray-100 transition-all duration-300 shadow-md hover:shadow-lg transform hover:scale-105 font-semibold"
                     >
                       View Submissions

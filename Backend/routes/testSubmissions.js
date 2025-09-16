@@ -398,12 +398,21 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
           select: "kind text options answer answers guidelines examples points"
         }
       });
-    
+
     if (!assignment) {
       return res.status(404).json({ message: "Assignment not found" });
     }
 
-    const submission = await TestSubmission.findOne({ assignmentId, userId })
+    // Check if user is the student or the mentor for this assignment
+    const isStudent = assignment.userId.toString() === userId;
+    const isMentor = assignment.mentorId && assignment.mentorId.toString() === userId;
+
+    if (!isStudent && !isMentor) {
+      return res.status(403).json({ message: "Not authorized to view this submission" });
+    }
+
+    // Find submission for the student (assignment.userId), not the current user
+    const submission = await TestSubmission.findOne({ assignmentId, userId: assignment.userId })
       .populate({
         path: "testId",
         select: "title questions",
@@ -447,7 +456,6 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
 
     // Determine if results should be shown
     // Show results immediately if user is the mentor for this assignment, otherwise only after deadline
-    const isMentor = assignment.mentorId && assignment.mentorId.toString() === userId;
     const showResults = isMentor || currentTime >= deadlineWithBuffer;
 
     console.log('Show results:', showResults);
