@@ -17,7 +17,7 @@ export default function MentorDashboard() {
   const fetchMentorData = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch("http://localhost:4000/api/mentor/dashboard", {
+      const response = await fetch("https://cg-test-app.onrender.com/api/mentor/dashboard", {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'

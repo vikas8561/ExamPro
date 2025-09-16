@@ -16,7 +16,7 @@ export default function MentorAssignments() {
   const fetchAssignments = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch("http://localhost:4000/api/mentor/assignments", {
+      const response = await fetch("https://cg-test-app.onrender.com/api/mentor/assignments", {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
