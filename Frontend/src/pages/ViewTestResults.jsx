@@ -95,6 +95,13 @@ const ViewTestResults = () => {
   // Check if this is a case where no submission was made but we want to show questions
   const hasNoSubmission = !submission._id;
 
+  console.log("=== VIEW TEST RESULTS DEBUG ===");
+  console.log("Results:", results);
+  console.log("Test:", test);
+  console.log("Submission:", submission);
+  console.log("Show Results:", showResults);
+  console.log("Questions count:", test?.questions?.length);
+
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6">
       <div className="max-w-4xl mx-auto">
