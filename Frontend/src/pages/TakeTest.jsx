@@ -11,9 +11,6 @@ const TakeTest = () => {
   const [microphonePermission, setMicrophonePermission] = useState("prompt");
   const [locationPermission, setLocationPermission] = useState("prompt");
   const [showPermissionModal, setShowPermissionModal] = useState(true);
-  const [otpInput, setOtpInput] = useState("");
-  const [otpError, setOtpError] = useState("");
-  const [permissionsAttempted, setPermissionsAttempted] = useState(false);
   const { assignmentId } = useParams();
   const navigate = useNavigate();
   const [test, setTest] = useState(null);
@@ -43,8 +40,10 @@ const TakeTest = () => {
           );
           if (assignmentData && assignmentData.startedAt) {
             console.log("Existing test found, loading data...");
+            setShowPermissionModal(false);
             await loadExistingTestData();
           } else {
+            setShowPermissionModal(false);
             startRequestMade.current = true;
             startTest();
           }
@@ -53,6 +52,7 @@ const TakeTest = () => {
             "Error checking for existing test, starting new test:",
             error
           );
+          setShowPermissionModal(false);
           startRequestMade.current = true;
           startTest();
         }
@@ -347,29 +347,29 @@ const TakeTest = () => {
     };
   }, [testStarted]);
 
-  const verifyOTP = () => {
-    if (!test || !test.otp) {
-      setOtpError("Test OTP not available");
-      return;
-    }
+  // const verifyOTP = () => {
+  //   if (!test || !test.otp) {
+  //     setOtpError("Test OTP not available");
+  //     return;
+  //   }
 
-    if (otpInput.trim() === test.otp) {
-      setPermissionsGranted(true);
-      setShowPermissionModal(false);
-      setOtpError("");
+  //   if (otpInput.trim() === test.otp) {
+  //     setPermissionsGranted(true);
+  //     setShowPermissionModal(false);
+  //     setOtpError("");
 
-      // Request fullscreen mode after OTP verification
-      setTimeout(async () => {
-        await requestFullscreen();
-        if (!testStarted && !startRequestMade.current) {
-          startRequestMade.current = true;
-          startTest();
-        }
-      }, 100);
-    } else {
-      setOtpError("Invalid OTP. Please try again.");
-    }
-  };
+  //     // Request fullscreen mode after OTP verification
+  //     setTimeout(async () => {
+  //       await requestFullscreen();
+  //       if (!testStarted && !startRequestMade.current) {
+  //         startRequestMade.current = true;
+  //         startTest();
+  //       }
+  //     }, 100);
+  //   } else {
+  //     setOtpError("Invalid OTP. Please try again.");
+  //   }
+  // };
 
   const requestPermissions = async () => {
     await checkCameraPermission();
@@ -468,6 +468,13 @@ const TakeTest = () => {
 
       const response = await apiRequest(`/assignments/${assignmentId}/start`, {
         method: "POST",
+        body: JSON.stringify({
+          permissions: {
+            camera: "granted",
+            microphone: "granted",
+            location: "granted"
+          }
+        }),
       });
       console.log("[startTest] Response:", response);
 
@@ -1037,7 +1044,7 @@ const TakeTest = () => {
                 >
                   Request Permissions
                 </button>
-                {permissionsAttempted && (
+                {/* {permissionsAttempted && (
                   <>
                     <div>
                       <label className="block text-sm font-medium text-slate-300 mb-2">
@@ -1064,7 +1071,7 @@ const TakeTest = () => {
                       Enter the OTP provided by your instructor to start the test
                     </p>
                   </>
-                )}
+                )} */}
               </div>
             )}
           </div>
