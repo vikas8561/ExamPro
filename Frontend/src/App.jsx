@@ -129,6 +129,7 @@ const MentorRoutes = () => {
           <Route path="/" element={<MentorDashboard />} />
           <Route path="/assignments" element={<MentorAssignments />} />
           <Route path="/submissions" element={<MentorSubmissions />} />
+          <Route path="/view-test/:assignmentId" element={<ViewCompletedTest />} />
           <Route path="*" element={<div className="p-6">Not Found</div>} />
         </Routes>
       </main>

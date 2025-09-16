@@ -1,4 +1,5 @@
 - [x] Update MentorAssignments.jsx to remove filter and show all assignments in table
+- [x] Fix duplication in MentorAssignments.jsx by deduplicating tests by testId
 - [x] Update Tests.jsx to display tests in card style instead of table
 - [x] Each card displays Title, Subject, Type, Status, Time, OTP, and Actions
 - [x] Use responsive grid layout with Tailwind CSS
