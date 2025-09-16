@@ -116,47 +116,49 @@ const ViewCompletedTest = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white p-6">
-      <div className="max-w-4xl mx-auto">
-        <button
-          onClick={() => navigate(-1)}
-          className="flex items-center gap-2 text-blue-400 hover:text-blue-300 mb-6 font-medium"
-        >
-          <ChevronLeftIcon className="h-5 w-5" />
-          Back
-        </button>
+    <div className="h-screen bg-slate-900 text-white p-6 overflow-hidden">
+      <div className="max-w-4xl mx-auto h-full flex flex-col">
+        <div className="flex-shrink-0">
+          <button
+            onClick={() => navigate(-1)}
+            className="flex items-center gap-2 text-blue-400 hover:text-blue-300 mb-6 font-medium"
+          >
+            <ChevronLeftIcon className="h-5 w-5" />
+            Back
+          </button>
 
-        <h2 className="text-3xl font-bold text-white mb-6">{test.title}</h2>
+          <h2 className="text-3xl font-bold text-white mb-6">{test.title}</h2>
 
-        {/* Score Summary */}
-        <div className="bg-slate-800 shadow-lg rounded-xl p-6 mb-8 border border-slate-700">
-          <h3 className="text-xl font-semibold text-white mb-4">Test Results</h3>
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 text-center">
-            <div>
-              <div className="text-2xl font-bold text-blue-400">{totalQuestions}</div>
-              <div className="text-slate-400">Total Questions</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-green-400">{correctCount}</div>
-              <div className="text-slate-400">Correct Answers</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-red-400">{incorrectCount}</div>
-              <div className="text-slate-400">Incorrect Answers</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-yellow-400">{notAnsweredCount}</div>
-              <div className="text-slate-400">Not Answered</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-white">{submission.totalScore}</div>
-              <div className="text-slate-400">Final Score</div>
+          {/* Score Summary */}
+          <div className="bg-slate-800 shadow-lg rounded-xl p-6 mb-8 border border-slate-700">
+            <h3 className="text-xl font-semibold text-white mb-4">Test Results</h3>
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 text-center">
+              <div>
+                <div className="text-2xl font-bold text-blue-400">{totalQuestions}</div>
+                <div className="text-slate-400">Total Questions</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-green-400">{correctCount}</div>
+                <div className="text-slate-400">Correct Answers</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-red-400">{incorrectCount}</div>
+                <div className="text-slate-400">Incorrect Answers</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-yellow-400">{notAnsweredCount}</div>
+                <div className="text-slate-400">Not Answered</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-white">{submission.totalScore}</div>
+                <div className="text-slate-400">Final Score</div>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Questions & Answers */}
-        <div>
+        <div className="flex-1 overflow-y-auto">
           <h3 className="text-2xl font-semibold text-white mb-6">Question Analysis</h3>
           <div className="space-y-4">
             {test.questions.map((q, index) => {
