@@ -300,6 +300,8 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
 
 router.post("/:id/start", authenticateToken, async (req, res, next) => {
   try {
+    const { permissions, otp } = req.body;
+
     const assignment = await Assignment.findById(req.params.id)
       .populate({
         path: "testId",
@@ -349,13 +351,43 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
       return res.status(400).json({ message: "Test deadline has passed. The test was available until " + endTime.toLocaleString() });
     }
 
-    // Check if OTP is required (skip if all permissions granted)
-    const hasAllPermissions = req.user.role === "admin" || req.user.role === "Mentor";
-    const requiresOtp = assignment.testId.otp && !hasAllPermissions;
+    // Handle permissions
+    let permissionStatus = "Pending";
+    let hasAllPermissionsGranted = false;
+
+    if (permissions) {
+      const cameraGranted = permissions.cameraGranted || permissions.camera === "granted";
+      const microphoneGranted = permissions.microphoneGranted || permissions.microphone === "granted";
+      const locationGranted = permissions.locationGranted || permissions.location === "granted";
+
+      // Determine permission status
+      if (cameraGranted && microphoneGranted && locationGranted) {
+        permissionStatus = "Granted";
+        hasAllPermissionsGranted = true;
+      } else if (cameraGranted || microphoneGranted || locationGranted) {
+        permissionStatus = "Partially Granted";
+      } else {
+        permissionStatus = "Denied";
+      }
+
+      // Store permissions in assignment
+      assignment.permissions = {
+        cameraGranted,
+        microphoneGranted,
+        locationGranted,
+        permissionRequestedAt: new Date(),
+        permissionStatus
+      };
+    }
+
+    // Check if OTP is required
+    // Skip OTP if user is Admin/Mentor OR if all permissions are granted
+    const hasRolePermissions = req.user.role === "Admin" || req.user.role === "Mentor";
+    const requiresOtp = assignment.testId.otp && !hasRolePermissions && !hasAllPermissionsGranted;
+
+    console.log(`User role: ${req.user.role}, hasRolePermissions: ${hasRolePermissions}, hasAllPermissionsGranted: ${hasAllPermissionsGranted}, test OTP: ${assignment.testId.otp}, requiresOtp: ${requiresOtp}`);
 
     if (requiresOtp) {
-      // OTP verification logic would go here
-      const { otp } = req.body;
       if (!otp) {
         return res.status(400).json({ message: "OTP is required to start this test" });
       }

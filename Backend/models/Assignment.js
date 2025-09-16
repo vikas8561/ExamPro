@@ -1,22 +1,34 @@
 const mongoose = require("mongoose");
 
 const TabViolationSchema = new mongoose.Schema({
-  timestamp: { 
-    type: Date, 
-    default: Date.now 
+  timestamp: {
+    type: Date,
+    default: Date.now
   },
-  violationType: { 
-    type: String, 
+  violationType: {
+    type: String,
     enum: ["tab_switch", "window_open", "tab_close", "browser_switch"],
-    required: true 
+    required: true
   },
-  details: { 
-    type: String, 
-    default: "" 
+  details: {
+    type: String,
+    default: ""
   },
-  tabCount: { 
-    type: Number, 
-    default: 1 
+  tabCount: {
+    type: Number,
+    default: 1
+  }
+}, { _id: false });
+
+const PermissionSchema = new mongoose.Schema({
+  cameraGranted: { type: Boolean, default: false },
+  microphoneGranted: { type: Boolean, default: false },
+  locationGranted: { type: Boolean, default: false },
+  permissionRequestedAt: { type: Date, default: Date.now },
+  permissionStatus: {
+    type: String,
+    enum: ["Pending", "Granted", "Partially Granted", "Denied"],
+    default: "Pending"
   }
 }, { _id: false });
 
@@ -101,7 +113,12 @@ const AssignmentSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  lastViolationAt: Date
+  lastViolationAt: Date,
+  // Permission fields
+  permissions: {
+    type: PermissionSchema,
+    default: null
+  }
 }, { timestamps: true });
 
 // Index for efficient queries
