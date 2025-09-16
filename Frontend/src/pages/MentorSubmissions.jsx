@@ -37,9 +37,18 @@ const MentorSubmissions = () => {
   };
 
   const openStudentProfile = async (student) => {
+    console.log("Opening student profile:", student);
     setSelectedStudent(student);
     await fetchStudentSubmissions(student.userId._id);
   };
+
+  useEffect(() => {
+    if (selectedStudent) {
+      console.log("Selected student data:", selectedStudent);
+      console.log("Selected student responses:", selectedStudent.responses);
+      console.log("Test questions:", selectedStudent.assignmentId?.testId?.questions);
+    }
+  }, [selectedStudent]);
 
   const closeStudentProfile = () => {
     setSelectedStudent(null);

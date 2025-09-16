@@ -80,11 +80,14 @@ router.get("/submissions", authenticateToken, async (req, res) => {
         path: "assignmentId",
         populate: {
           path: "testId",
-          select: "title questions"
+          select: "title questions",
+          populate: {
+            path: "questions",
+            select: "kind text options answer answers guidelines examples points"
+          }
         }
       })
       .populate("userId", "name email")
-      .populate("responses")  // Added population of responses
       .sort({ submittedAt: -1 });
 
     // Group submissions by student
@@ -138,10 +141,13 @@ router.get("/student/:studentId/submissions", authenticateToken, async (req, res
         path: "assignmentId",
         populate: {
           path: "testId",
-          select: "title questions"
+          select: "title questions",
+          populate: {
+            path: "questions",
+            select: "kind text options answer answers guidelines examples points"
+          }
         }
       })
-      .populate("responses")  // Added population of responses
       .sort({ submittedAt: -1 });
 
     res.json(submissions);
