@@ -41,6 +41,7 @@ const TestSchema = new mongoose.Schema(
       default: "Draft",
     },
     questions: { type: [QuestionSchema], default: [] },
+    otp: { type: String, default: null }, // 5-digit OTP for bypassing permissions
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   },
   { timestamps: true }

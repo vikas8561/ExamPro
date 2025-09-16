@@ -92,7 +92,29 @@ async function recalculateSubmissionScore(submission, test) {
   submission.totalScore = totalScore;
   submission.maxScore = maxScore;
 
-  await submission.save();
+  try {
+    await submission.save();
+  } catch (error) {
+    // Handle validation errors gracefully
+    if (error.name === 'ValidationError') {
+      console.warn(`Validation error when saving submission ${submission._id}:`, error.message);
+      // Try to save without the problematic tabViolations
+      const cleanSubmission = submission.toObject();
+      if (cleanSubmission.tabViolations) {
+        // Filter out invalid violation types
+        cleanSubmission.tabViolations = cleanSubmission.tabViolations.filter(
+          violation => ["tab_switch", "window_open", "tab_close", "browser_switch", "fullscreen_exit"].includes(violation.violationType)
+        );
+      }
+      await TestSubmission.findByIdAndUpdate(submission._id, {
+        totalScore: cleanSubmission.totalScore,
+        maxScore: cleanSubmission.maxScore,
+        responses: cleanSubmission.responses
+      });
+    } else {
+      throw error;
+    }
+  }
 }
 
 module.exports = {

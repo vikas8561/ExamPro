@@ -39,6 +39,11 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
   }
 });
 
+// Generate a 5-digit OTP
+function generateOTP() {
+  return Math.floor(10000 + Math.random() * 90000).toString();
+}
+
 // Create new test (admin only)
 router.post("/", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
@@ -56,6 +61,7 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
       timeLimit: Number(timeLimit || 30),
       negativeMarkingPercent: Number(negativeMarkingPercent || 0),
       questions: Array.isArray(questions) ? questions : [],
+      otp: generateOTP(),
       createdBy: req.user.userId
     });
 

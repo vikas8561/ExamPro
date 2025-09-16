@@ -11,6 +11,8 @@ const TakeTest = () => {
   const [microphonePermission, setMicrophonePermission] = useState("prompt");
   const [locationPermission, setLocationPermission] = useState("prompt");
   const [showPermissionModal, setShowPermissionModal] = useState(true);
+  const [otpInput, setOtpInput] = useState("");
+  const [otpError, setOtpError] = useState("");
   const { assignmentId } = useParams();
   const navigate = useNavigate();
   const [test, setTest] = useState(null);
@@ -328,6 +330,30 @@ const TakeTest = () => {
       window.removeEventListener("keyup", handleKeyUp);
     };
   }, [testStarted]);
+
+  const verifyOTP = () => {
+    if (!test || !test.otp) {
+      setOtpError("Test OTP not available");
+      return;
+    }
+
+    if (otpInput.trim() === test.otp) {
+      setPermissionsGranted(true);
+      setShowPermissionModal(false);
+      setOtpError("");
+
+      // Request fullscreen mode after OTP verification
+      setTimeout(async () => {
+        await requestFullscreen();
+        if (!testStarted && !startRequestMade.current) {
+          startRequestMade.current = true;
+          startTest();
+        }
+      }, 100);
+    } else {
+      setOtpError("Invalid OTP. Please try again.");
+    }
+  };
 
   const requestPermissions = async () => {
     await checkCameraPermission();
@@ -978,20 +1004,41 @@ const TakeTest = () => {
           </div>
 
           <div className="text-center">
-            <button
-              onClick={requestPermissions}
-              disabled={permissionsGranted}
-              className="bg-blue-600 hover:bg-blue-700 disabled:bg-green-600 disabled:cursor-not-allowed text-white px-8 py-3 rounded-md font-semibold cursor-pointer"
-            >
-              {permissionsGranted
-                ? "All Permissions Granted ✓"
-                : "Request Permissions"}
-            </button>
-
-            {!permissionsGranted && (
-              <p className="text-slate-400 mt-4 text-sm">
-                All permissions must be granted to start the test
-              </p>
+            {permissionsGranted ? (
+              <button
+                onClick={requestPermissions}
+                disabled={permissionsGranted}
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-green-600 disabled:cursor-not-allowed text-white px-8 py-3 rounded-md font-semibold cursor-pointer"
+              >
+                All Permissions Granted ✓
+              </button>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                    Enter Test OTP
+                  </label>
+                  <input
+                    type="text"
+                    value={otpInput}
+                    onChange={(e) => setOtpInput(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-md text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Enter OTP..."
+                  />
+                  {otpError && (
+                    <p className="text-red-400 text-sm mt-2">{otpError}</p>
+                  )}
+                </div>
+                <button
+                  onClick={verifyOTP}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-md font-semibold cursor-pointer"
+                >
+                  Verify OTP & Start Test
+                </button>
+                <p className="text-slate-400 text-sm">
+                  Enter the OTP provided by your instructor to start the test
+                </p>
+              </div>
             )}
           </div>
         </div>

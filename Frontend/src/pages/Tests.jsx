@@ -242,6 +242,7 @@ export default function Tests() {
                 <th className="p-4">Type</th>
                 <th className="p-4">Status</th>
                 <th className="p-4">Time</th>
+                <th className="p-4">OTP</th>
                 <th className="p-4">Actions</th>
               </tr>
             </thead>
@@ -255,6 +256,7 @@ export default function Tests() {
                   <StatusPill label={t.status} />
                 </td>
                 <td className="p-4">{t.timeLimit} min</td>
+                <td className="p-4">{t.otp}</td>
                 <td className="p-4 flex gap-3">
                   <button
                     onClick={() => nav(`/admin/tests/create?id=${t._id}`)}
@@ -292,7 +294,7 @@ export default function Tests() {
             ))}
             {tests.length === 0 && (
               <tr>
-                <td colSpan="6" className="p-4 text-center text-slate-400">
+                <td colSpan="7" className="p-4 text-center text-slate-400">
                   No tests found.
                 </td>
               </tr>

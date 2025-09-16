@@ -55,6 +55,8 @@ export default function CreateTest() {
   const [showSubjectModal, setShowSubjectModal] = useState(false);
   const [newSubjectName, setNewSubjectName] = useState("");
   const [newSubjectDescription, setNewSubjectDescription] = useState("");
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [createdOtp, setCreatedOtp] = useState("");
   const nav = useNavigate();
 
   // Fetch subjects on component mount
