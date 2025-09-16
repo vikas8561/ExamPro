@@ -388,9 +388,15 @@ export default function CreateTest() {
             });
           }
         }
+
+        // Show OTP modal for new test
+        setCreatedOtp(createdTest.otp);
+        setShowOtpModal(true);
       }
 
-      nav("/admin/tests");
+      if (isEdit) {
+        nav("/admin/tests");
+      }
     } catch (error) {
       alert(error.message || `Error ${isEdit ? "updating" : "creating"} test`);
     } finally {
@@ -1241,6 +1247,42 @@ export default function CreateTest() {
                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
               >
                 Add Subject
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* OTP Modal */}
+      {showOtpModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-slate-800 p-6 rounded-lg w-full max-w-md">
+            <h3 className="text-xl font-semibold mb-4">Test Created Successfully!</h3>
+
+            <div className="text-center mb-6">
+              <p className="text-gray-300 mb-4">
+                Your test has been created. Here's the OTP for bypassing permissions:
+              </p>
+              <div className="bg-slate-700 p-4 rounded-lg">
+                <div className="text-3xl font-mono font-bold text-blue-400 mb-2">
+                  {createdOtp}
+                </div>
+                <p className="text-sm text-gray-400">
+                  Share this OTP with students who need to access the test without assignment.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowOtpModal(false);
+                  nav("/admin/tests");
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                Done
               </button>
             </div>
           </div>
