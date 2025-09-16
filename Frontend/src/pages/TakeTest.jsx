@@ -332,6 +332,21 @@ const TakeTest = () => {
     };
   }, [testStarted]);
 
+  useEffect(() => {
+    if (!testStarted) return;
+
+    const handleContextMenu = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    window.addEventListener("contextmenu", handleContextMenu);
+
+    return () => {
+      window.removeEventListener("contextmenu", handleContextMenu);
+    };
+  }, [testStarted]);
+
   const verifyOTP = () => {
     if (!test || !test.otp) {
       setOtpError("Test OTP not available");
@@ -1011,43 +1026,46 @@ const TakeTest = () => {
               >
                 All Permissions Granted ✓
               </button>
-            ) : permissionsAttempted ? (
+            ) : (
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
-                    Enter Test OTP
-                  </label>
-                  <input
-                    type="text"
-                    value={otpInput}
-                    onChange={(e) => setOtpInput(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-md text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Enter OTP..."
-                  />
-                  {otpError && (
-                    <p className="text-red-400 text-sm mt-2">{otpError}</p>
-                  )}
-                </div>
                 <button
-                  onClick={verifyOTP}
+                  onClick={() => {
+                    setPermissionsAttempted(true);
+                    requestPermissions();
+                  }}
                   className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-md font-semibold cursor-pointer"
                 >
-                  Verify OTP & Start Test
+                  Request Permissions
                 </button>
-                <p className="text-slate-400 text-sm">
-                  Enter the OTP provided by your instructor to start the test
-                </p>
+                {permissionsAttempted && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-2">
+                        Enter Test OTP
+                      </label>
+                      <input
+                        type="text"
+                        value={otpInput}
+                        onChange={(e) => setOtpInput(e.target.value)}
+                        className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-md text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Enter OTP..."
+                      />
+                      {otpError && (
+                        <p className="text-red-400 text-sm mt-2">{otpError}</p>
+                      )}
+                    </div>
+                    <button
+                      onClick={verifyOTP}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-md font-semibold cursor-pointer"
+                    >
+                      Verify OTP & Start Test
+                    </button>
+                    <p className="text-slate-400 text-sm">
+                      Enter the OTP provided by your instructor to start the test
+                    </p>
+                  </>
+                )}
               </div>
-            ) : (
-              <button
-                onClick={() => {
-                  setPermissionsAttempted(true);
-                  requestPermissions();
-                }}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-md font-semibold cursor-pointer"
-              >
-                Request Permissions
-              </button>
             )}
           </div>
         </div>

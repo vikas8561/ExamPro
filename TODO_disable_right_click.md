@@ -1,0 +1,3 @@
+- [x] Add useEffect to disable right-click context menu during test
+- [x] Prevent contextmenu event on window when testStarted is true
+- [x] Ensure no impact on left clicks or other interactions
