@@ -326,7 +326,7 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
 
     // Check if already in progress - return 200 with special flag instead of 400
     if (assignment.status === "In Progress") {
-      return res.status(200).json({ 
+      return res.status(200).json({
         assignment,
         test: assignment.testId,
         message: "Test already started",
@@ -347,6 +347,23 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
       assignment.status = "Overdue";
       await assignment.save();
       return res.status(400).json({ message: "Test deadline has passed. The test was available until " + endTime.toLocaleString() });
+    }
+
+    // Check if OTP is required (skip if all permissions granted)
+    const hasAllPermissions = req.user.role === "admin" || req.user.role === "Mentor";
+    const requiresOtp = assignment.testId.otp && !hasAllPermissions;
+
+    if (requiresOtp) {
+      // OTP verification logic would go here
+      const { otp } = req.body;
+      if (!otp) {
+        return res.status(400).json({ message: "OTP is required to start this test" });
+      }
+
+      // Verify OTP (this would need to be implemented based on your OTP system)
+      if (otp !== assignment.testId.otp) {
+        return res.status(400).json({ message: "Invalid OTP" });
+      }
     }
 
     // Start the test
