@@ -237,7 +237,7 @@ const MentorSubmissions = () => {
                     </div>
                   </div>
                 </div>
-                
+
                 <div>
                   <h3 className="text-lg font-semibold mb-3">Submission Details</h3>
                   <div className="space-y-2">
@@ -255,6 +255,72 @@ const MentorSubmissions = () => {
                     </div>
                   </div>
                 </div>
+              </div>
+
+              {/* Student Answers */}
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold mb-3">Student Answers</h3>
+                {selectedStudent.responses && selectedStudent.responses.length > 0 ? (
+                  <div className="space-y-4">
+                    {selectedStudent.responses.map((response, index) => {
+                      const question = selectedStudent.assignmentId?.testId?.questions?.find(
+                        q => q._id === response.questionId
+                      );
+                      if (!question) return null;
+
+                      const isCorrect = response.isCorrect;
+                      let studentAnswer = "";
+                      let correctAnswer = "";
+
+                      if (question.kind === "mcq") {
+                        studentAnswer = question.options?.find(opt => opt.text === response.selectedOption)?.text || response.selectedOption || "Not answered";
+                        correctAnswer = question.options?.find(opt => opt.text === question.answer)?.text || question.answer || "N/A";
+                      } else if (question.kind === "msq") {
+                        studentAnswer = response.selectedOption ? response.selectedOption.join(", ") : "Not answered";
+                        correctAnswer = question.answers ? question.answers.join(", ") : "N/A";
+                      } else if (question.kind === "theory") {
+                        studentAnswer = response.textAnswer || "Not answered";
+                        correctAnswer = "Manual review required";
+                      } else {
+                        studentAnswer = response.textAnswer || response.selectedOption || "Not answered";
+                        correctAnswer = question.answer || "N/A";
+                      }
+
+                      return (
+                        <div key={index} className="bg-slate-700 rounded-lg p-4">
+                          <div className="mb-2">
+                            <span className="text-sm font-medium text-slate-300">Question {index + 1}:</span>
+                            <p className="text-white mt-1">{question.text}</p>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <span className="text-sm font-medium text-slate-300">Your Answer:</span>
+                              <p className={`mt-1 ${isCorrect ? 'text-green-400' : 'text-red-400'}`}>
+                                {studentAnswer}
+                              </p>
+                            </div>
+                            <div>
+                              <span className="text-sm font-medium text-slate-300">Correct Answer:</span>
+                              <p className="text-blue-400 mt-1">{correctAnswer}</p>
+                            </div>
+                          </div>
+                          <div className="mt-2">
+                            <span className={`px-2 py-1 rounded text-xs ${
+                              isCorrect ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'
+                            }`}>
+                              {isCorrect ? 'Correct' : 'Incorrect'}
+                            </span>
+                            <span className="ml-2 text-sm text-slate-400">
+                              Points: {response.points || 0} / {question.points || 1}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-slate-400">No answers available for this submission.</p>
+                )}
               </div>
 
               {/* All Student Submissions */}

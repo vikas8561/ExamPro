@@ -80,7 +80,7 @@ router.get("/submissions", authenticateToken, async (req, res) => {
         path: "assignmentId",
         populate: {
           path: "testId",
-          select: "title"
+          select: "title questions"
         }
       })
       .populate("userId", "name email")
@@ -137,7 +137,7 @@ router.get("/student/:studentId/submissions", authenticateToken, async (req, res
         path: "assignmentId",
         populate: {
           path: "testId",
-          select: "title"
+          select: "title questions"
         }
       })
       .sort({ submittedAt: -1 });
