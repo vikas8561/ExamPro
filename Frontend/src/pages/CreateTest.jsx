@@ -39,6 +39,7 @@ export default function CreateTest() {
     instructions: "",
     timeLimit: 30,
     negativeMarkingPercent: 0,
+    allowedTabSwitches: 0,
     questions: [emptyQuestion("mcq")],
   });
   const [assignmentOptions, setAssignmentOptions] = useState({
@@ -82,6 +83,7 @@ export default function CreateTest() {
         instructions: test.instructions,
         timeLimit: test.timeLimit,
         negativeMarkingPercent: test.negativeMarkingPercent || 0,
+        allowedTabSwitches: test.allowedTabSwitches || 0,
         questions: test.questions.map((q) => ({
           id: crypto.randomUUID(),
           kind: q.kind === "theoretical" ? "theory" : q.kind,
@@ -298,6 +300,7 @@ export default function CreateTest() {
         instructions: form.instructions,
         timeLimit: Number(form.timeLimit),
         negativeMarkingPercent: Number(form.negativeMarkingPercent),
+        allowedTabSwitches: Number(form.allowedTabSwitches),
         questions: form.questions.map((q) => ({
           kind: q.kind,
           text: q.text,
@@ -416,111 +419,126 @@ export default function CreateTest() {
           <div className="bg-slate-800 p-6 rounded-lg">
             <h2 className="text-xl font-semibold mb-4">Test Information</h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  Test Title *
-                </label>
-                <input
-                  type="text"
-                  value={form.title}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, title: e.target.value }))
-                  }
-                  className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
-                  required
-                />
-              </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium mb-2">
+            Test Title *
+          </label>
+          <input
+            type="text"
+            value={form.title}
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, title: e.target.value }))
+            }
+            className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
+            required
+          />
+        </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  Subject *
-                </label>
-                <div className="flex gap-2 items-center">
-                  <select
-                    value={form.subject}
-                    onChange={(e) =>
-                      setForm((prev) => ({ ...prev, subject: e.target.value }))
-                    }
-                    className="flex-1 p-3 bg-slate-700 border border-slate-600 rounded-md"
-                    required
-                  >
-                    <option value="" disabled>
-                      Select a subject
-                    </option>
-                    {subjects.map((subject) => (
-                      <option key={subject._id} value={subject.name}>
-                        {subject.name}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => setShowSubjectModal(true)}
-                    className="px-3 py-2 bg-blue-600 rounded text-white text-sm"
-                    title="Add Subject"
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
+        <div>
+          <label className="block text-sm font-medium mb-2">
+            Subject *
+          </label>
+          <div className="flex gap-2 items-center">
+            <select
+              value={form.subject}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, subject: e.target.value }))
+              }
+              className="flex-1 p-3 bg-slate-700 border border-slate-600 rounded-md"
+              required
+            >
+              <option value="" disabled>
+                Select a subject
+              </option>
+              {subjects.map((subject) => (
+                <option key={subject._id} value={subject.name}>
+                  {subject.name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => setShowSubjectModal(true)}
+              className="px-3 py-2 bg-blue-600 rounded text-white text-sm"
+              title="Add Subject"
+            >
+              +
+            </button>
+          </div>
+        </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  Test Type
-                </label>
-                <select
-                  value={form.type}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, type: e.target.value }))
-                  }
-                  className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
-                >
-                  <option value="mixed">Mixed (All Types)</option>
-                  <option value="mcq">MCQ Only</option>
-                  <option value="msq">MSQ Only</option>
-                  <option value="coding">Coding Only</option>
-                  <option value="theory">Theory Only</option>
-                </select>
-              </div>
+        <div>
+          <label className="block text-sm font-medium mb-2">
+            Test Type
+          </label>
+          <select
+            value={form.type}
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, type: e.target.value }))
+            }
+            className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
+          >
+            <option value="mixed">Mixed (All Types)</option>
+            <option value="mcq">MCQ Only</option>
+            <option value="msq">MSQ Only</option>
+            <option value="coding">Coding Only</option>
+            <option value="theory">Theory Only</option>
+          </select>
+        </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  Time Limit (minutes)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={form.timeLimit}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, timeLimit: e.target.value }))
-                  }
-                  className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
-                />
-              </div>
+        <div>
+          <label className="block text-sm font-medium mb-2">
+            Time Limit (minutes)
+          </label>
+          <input
+            type="number"
+            min="1"
+            value={form.timeLimit}
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, timeLimit: e.target.value }))
+            }
+            className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
+          />
+        </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  Negative Marking (%)
-                </label>
-                <select
-                  value={form.negativeMarkingPercent}
-                  onChange={(e) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      negativeMarkingPercent: Number(e.target.value),
-                    }))
-                  }
-                  className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
-                >
-                  <option value={0}>No Negative Marking</option>
-                  <option value={0.25}>25%</option>
-                  <option value={0.5}>50%</option>
-                  <option value={0.75}>75%</option>
-                  <option value={1}>100%</option>
-                </select>
-              </div>
-            </div>
+        <div>
+          <label className="block text-sm font-medium mb-2">
+            Negative Marking (%)
+          </label>
+          <select
+            value={form.negativeMarkingPercent}
+            onChange={(e) =>
+              setForm((prev) => ({
+                ...prev,
+                negativeMarkingPercent: Number(e.target.value),
+              }))
+            }
+            className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
+          >
+            <option value={0}>No Negative Marking</option>
+            <option value={0.25}>25%</option>
+            <option value={0.5}>50%</option>
+            <option value={0.75}>75%</option>
+            <option value={1}>100%</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-2">
+            Allowed Tab Switches
+          </label>
+          <input
+            type="number"
+            min="0"
+            value={form.allowedTabSwitches}
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, allowedTabSwitches: e.target.value }))
+            }
+            className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
+          />
+        </div>
+      </div>
 
             <div className="mt-4">
               <label className="block text-sm font-medium mb-2">

@@ -35,6 +35,7 @@ const TestSchema = new mongoose.Schema(
     instructions: { type: String, default: "" },
     timeLimit: { type: Number, default: 30, min: 1 },
     negativeMarkingPercent: { type: Number, enum: [0, 0.25, 0.5, 0.75, 1], default: 0 },
+    allowedTabSwitches: { type: Number, default: 0, min: 0 },
     status: {
       type: String,
       enum: ["Draft", "Active", "Archived"],
