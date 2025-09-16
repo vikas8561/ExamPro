@@ -60,7 +60,10 @@ const ViewTestResults = () => {
   }
 
   const { test, submission, showResults, message } = results;
-  const finalScore = showResults ? (submission.mentorReviewed ? submission.mentorScore : submission.totalScore) : null;
+  let finalScore = showResults ? (submission.mentorReviewed ? submission.mentorScore : submission.totalScore) : null;
+  if (finalScore !== null && finalScore < 0) {
+    finalScore = 0;
+  }
 
   // Check if results should be shown - if not, show access denied message
   if (!showResults) {
@@ -229,9 +232,9 @@ const ViewTestResults = () => {
 
           {console.log("Rendering questions:", test.questions)}
           {test.questions.map((question, index) => {
-            const response = submission.responses?.find(r =>
-              r.questionId === question._id.toString()
-            );
+const response = submission.responses?.find(r =>
+  r.questionId.toString() === question._id.toString()
+);
 
             const isCorrect = response?.isCorrect;
             const correctAnswer = question.answer;
@@ -271,9 +274,9 @@ const ViewTestResults = () => {
                         className={`p-3 rounded-md ${
                           showResults && option.text === question.answer
                             ? 'bg-green-900/50 border border-green-700'
-                            : showResults && question.selectedOption === option.text && option.text !== question.answer
+                            : showResults && response?.selectedOption === option.text && option.text !== question.answer
                             ? 'bg-red-900/50 border border-red-700'
-                            : question.selectedOption === option.text
+                            : response?.selectedOption === option.text
                             ? 'bg-blue-900/50 border border-blue-700'
                             : 'bg-slate-700'
                         }`}
@@ -282,10 +285,10 @@ const ViewTestResults = () => {
                         {showResults && option.text === question.answer && (
                           <span className="text-green-400 mr-2">✓</span>
                         )}
-                        {showResults && question.selectedOption === option.text && option.text !== question.answer && (
+                        {showResults && response?.selectedOption === option.text && option.text !== question.answer && (
                           <span className="text-red-400 mr-2">✗</span>
                         )}
-                        {!showResults && question.selectedOption === option.text && (
+                        {!showResults && response?.selectedOption === option.text && (
                           <span className="text-blue-400 mr-2">✓</span>
                         )}
                         <span>{option.text}</span>
@@ -296,9 +299,9 @@ const ViewTestResults = () => {
                       </div>
                     ))}
 
-                    <div className="text-sm text-slate-400 mt-4">
-                      Your answer: <span className="text-white">{question.selectedOption || "Not answered"}</span>
-                    </div>
+<div className="text-sm text-slate-400 mt-4">
+  Your answer: <span className="text-white">{response?.selectedOption || "Not answered"}</span>
+</div>
                   </div>
                 )}
 
@@ -307,8 +310,8 @@ const ViewTestResults = () => {
                   <div className="space-y-3">
                     <div className="text-sm text-slate-400">Options:</div>
                     {question.options?.map((option, optIndex) => {
-                      const isCorrect = showResults && question.answers?.includes(option.text);
-                      const userSelected = question.selectedOption ? question.selectedOption.split(',').map(s => s.trim()).includes(option.text) : false;
+const isCorrect = showResults && question.answers?.includes(option.text);
+const userSelected = response?.selectedOption ? response.selectedOption.split(',').map(s => s.trim()).includes(option.text) : false;
 
                       return (
                         <div
@@ -342,11 +345,11 @@ const ViewTestResults = () => {
                       );
                     })}
 
-                    <div className="text-sm text-slate-400 mt-4">
-                      Your answer: <span className="text-white">
-                        {question.selectedOption && question.selectedOption !== "" ? question.selectedOption.split(',').map(s => s.trim()).join(', ') : "No answer provided"}
-                      </span>
-                    </div>
+<div className="text-sm text-slate-400 mt-4">
+  Your answer: <span className="text-white">
+    {response?.selectedOption && response.selectedOption !== "" ? response.selectedOption.split(',').map(s => s.trim()).join(', ') : "No answer provided"}
+  </span>
+</div>
 
                     {showResults && question.answers && question.answers.length > 0 && (
                       <div className="text-sm text-slate-400 mt-2">
@@ -373,12 +376,12 @@ const ViewTestResults = () => {
                       </div>
                     </div>
 
-                    {console.log(`Question ${index + 1} - showResults: ${showResults}, geminiFeedback:`, question.geminiFeedback, "kind:", question.kind, "response:", response)}
-                    {(showResults && (question.kind === "theoretical" || question.kind === "coding") && question.geminiFeedback && question.geminiFeedback.trim() !== "") && (
+                    {console.log(`Question ${index + 1} - showResults: ${showResults}, geminiFeedback:`, response?.geminiFeedback, "kind:", question.kind, "response:", response)}
+                    {(showResults && (question.kind === "theoretical" || question.kind === "coding") && response?.geminiFeedback && response.geminiFeedback.trim() !== "") && (
                       <div className="bg-blue-900/20 p-4 rounded-lg">
                         <h4 className="font-semibold text-blue-300 mb-2">AI Evaluation Feedback:</h4>
                         <p className="text-blue-200">
-                          {question.geminiFeedback || "No feedback available."}
+                          {response.geminiFeedback || "No feedback available."}
                         </p>
                         <p className="mt-2 text-blue-200">
                           Points Awarded: {response?.points !== undefined ? response.points : "N/A"}
