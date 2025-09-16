@@ -37,7 +37,7 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     const assignments = await Assignment.find({ userId: req.user.userId })
       .populate({
         path: "testId",
-        select: "title type instructions timeLimit questions subject",
+        select: "title type instructions timeLimit questions subject otp",
         populate: {
           path: "questions",
           select: "kind text options answer guidelines examples points"
@@ -62,7 +62,7 @@ router.get("/student", authenticateToken, async (req, res, next) => {
         // Re-populate after save
         await assignment.populate({
           path: "testId",
-          select: "title type instructions timeLimit questions subject",
+          select: "title type instructions timeLimit questions subject otp",
           populate: {
             path: "questions",
             select: "kind text options answer guidelines examples points"
@@ -172,7 +172,7 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
     const assignment = await Assignment.findById(req.params.id)
       .populate({
         path: "testId",
-        select: "title type instructions timeLimit questions",
+        select: "title type instructions timeLimit questions otp",
         populate: {
           path: "questions",
           select: "kind text options answer guidelines examples points"
@@ -303,7 +303,7 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
     const assignment = await Assignment.findById(req.params.id)
       .populate({
         path: "testId",
-        select: "title type instructions timeLimit questions",
+        select: "title type instructions timeLimit questions otp",
         populate: {
           path: "questions",
           select: "kind text options answer guidelines examples points"
