@@ -243,7 +243,7 @@ export default function Tests() {
                 <th className="p-4">Status</th>
                 <th className="p-4">Time</th>
                 <th className="p-4">OTP</th>
-                <th className="p-4">Actions</th>
+                <th className="p-4 pl-19">Actions</th>
               </tr>
             </thead>
           <tbody>
