@@ -347,29 +347,7 @@ const TakeTest = () => {
     };
   }, [testStarted]);
 
-  // const verifyOTP = () => {
-  //   if (!test || !test.otp) {
-  //     setOtpError("Test OTP not available");
-  //     return;
-  //   }
 
-  //   if (otpInput.trim() === test.otp) {
-  //     setPermissionsGranted(true);
-  //     setShowPermissionModal(false);
-  //     setOtpError("");
-
-  //     // Request fullscreen mode after OTP verification
-  //     setTimeout(async () => {
-  //       await requestFullscreen();
-  //       if (!testStarted && !startRequestMade.current) {
-  //         startRequestMade.current = true;
-  //         startTest();
-  //       }
-  //     }, 100);
-  //   } else {
-  //     setOtpError("Invalid OTP. Please try again.");
-  //   }
-  // };
 
   const requestPermissions = async () => {
     await checkCameraPermission();

@@ -37,7 +37,7 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     const assignments = await Assignment.find({ userId: req.user.userId })
       .populate({
         path: "testId",
-        select: "title type instructions timeLimit questions subject otp",
+        select: "title type instructions timeLimit questions subject",
         populate: {
           path: "questions",
           select: "kind text options answer guidelines examples points"

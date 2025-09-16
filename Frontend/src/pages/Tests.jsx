@@ -243,7 +243,6 @@ export default function Tests() {
               <StatusPill label={t.status} />
             </div>
             <p className="text-slate-300 mb-1 font-medium">Time: {t.timeLimit} min</p>
-            <p className="text-slate-300 mb-4 font-medium">OTP: {t.otp}</p>
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => nav(`/admin/tests/create?id=${t._id}`)}
