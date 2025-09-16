@@ -84,6 +84,7 @@ router.get("/submissions", authenticateToken, async (req, res) => {
         }
       })
       .populate("userId", "name email")
+      .populate("responses")  // Added population of responses
       .sort({ submittedAt: -1 });
 
     // Group submissions by student
@@ -140,6 +141,7 @@ router.get("/student/:studentId/submissions", authenticateToken, async (req, res
           select: "title questions"
         }
       })
+      .populate("responses")  // Added population of responses
       .sort({ submittedAt: -1 });
 
     res.json(submissions);

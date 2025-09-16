@@ -263,27 +263,23 @@ const MentorSubmissions = () => {
                 {selectedStudent.responses && selectedStudent.responses.length > 0 ? (
                   <div className="space-y-4">
                     {selectedStudent.responses.map((response, index) => {
+                      console.log("Matching question for response:", response);
                       const question = selectedStudent.assignmentId?.testId?.questions?.find(
-                        q => q._id === response.questionId
+                        q => q._id.toString() === response.questionId.toString()
                       );
-                      if (!question) return null;
+                      if (!question) {
+                        console.warn("Question not found for response:", response);
+                        return null;
+                      }
 
                       const isCorrect = response.isCorrect;
-                      let studentAnswer = "";
-                      let correctAnswer = "";
+                      let studentAnswer = response.selectedOption || "Not answered";
+                      let correctAnswer = question.answer || "N/A";
 
-                      if (question.kind === "mcq") {
-                        studentAnswer = question.options?.find(opt => opt.text === response.selectedOption)?.text || response.selectedOption || "Not answered";
-                        correctAnswer = question.options?.find(opt => opt.text === question.answer)?.text || question.answer || "N/A";
-                      } else if (question.kind === "msq") {
-                        studentAnswer = response.selectedOption ? response.selectedOption.join(", ") : "Not answered";
-                        correctAnswer = question.answers ? question.answers.join(", ") : "N/A";
-                      } else if (question.kind === "theory") {
-                        studentAnswer = response.textAnswer || "Not answered";
-                        correctAnswer = "Manual review required";
-                      } else {
-                        studentAnswer = response.textAnswer || response.selectedOption || "Not answered";
-                        correctAnswer = question.answer || "N/A";
+                      // For MSQ, join array answers
+                      if (question.kind === "msq") {
+                        studentAnswer = Array.isArray(response.selectedOption) ? response.selectedOption.join(", ") : studentAnswer;
+                        correctAnswer = Array.isArray(question.answers) ? question.answers.join(", ") : correctAnswer;
                       }
 
                       return (
