@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const Test = require("../models/Test");
 const { authenticateToken, requireRole } = require("../middleware/auth");
+const { recalculateScoresForTest } = require("../services/scoreCalculation");
 
 // Get all tests (admin only)
 router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) => {
@@ -90,6 +91,11 @@ router.put("/:id", authenticateToken, requireRole("admin"), async (req, res, nex
 
     if (!test) {
       return res.status(404).json({ message: "Test not found" });
+    }
+
+    // Recalculate scores for all submissions of this test
+    if (questions) {
+      await recalculateScoresForTest(req.params.id);
     }
 
     res.json(test);
