@@ -232,77 +232,58 @@ export default function Tests() {
         </Link>
       </div>
 
-      <div className="rounded-xl border border-slate-700 bg-slate-800 overflow-hidden flex-grow">
-        <div className="overflow-y-auto h-full">
-          <table className="w-full">
-            <thead>
-              <tr className="text-left text-slate-300 border-b border-slate-700 sticky top-0 bg-slate-800 z-10">
-                <th className="p-4">Title</th>
-                <th className="p-4">Subject</th>
-                <th className="p-4">Type</th>
-                <th className="p-4">Status</th>
-                <th className="p-4">Time</th>
-                <th className="p-4">OTP</th>
-                <th className="p-4 pl-19">Actions</th>
-              </tr>
-            </thead>
-          <tbody>
-            {tests.map((t) => (
-              <tr key={t._id} className="border-b border-slate-700">
-                <td className="p-4">{t.title}</td>
-                <td className="p-4">{t.subject || "N/A"}</td>
-                <td className="p-4 capitalize">{t.type}</td>
-                <td className="p-4">
-                  <StatusPill label={t.status} />
-                </td>
-                <td className="p-4">{t.timeLimit} min</td>
-                <td className="p-4">{t.otp}</td>
-                <td className="p-4 flex gap-3">
-                  <button
-                    onClick={() => nav(`/admin/tests/create?id=${t._id}`)}
-                    className="text-blue-400 cursor-pointer"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() =>
-                      updateTest(t._id, {
-                        status: t.status === "Active" ? "Scheduled" : "Active",
-                      })
-                    }
-                    className="text-slate-300"
-                  >
-                    Toggle Status
-                  </button>
-                  <button
-                    onClick={() => {
-                      setSelectedTest(t._id);
-                      setShowAssignModal(true);
-                    }}
-                    className="text-green-400"
-                  >
-                    Assign
-                  </button>
-                  <button
-                    onClick={() => deleteTest(t._id)}
-                    className="text-rose-400 cursor-pointer"
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {tests.length === 0 && (
-              <tr>
-                <td colSpan="7" className="p-4 text-center text-slate-400">
-                  No tests found.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 overflow-y-auto flex-grow">
+        {tests.map((t) => (
+          <div key={t._id} className="bg-slate-800 border border-slate-700 rounded-lg p-4">
+            <h3 className="text-lg font-semibold text-white mb-2">{t.title}</h3>
+            <p className="text-slate-300 mb-1">Subject: {t.subject || "N/A"}</p>
+            <p className="text-slate-300 mb-1 capitalize">Type: {t.type}</p>
+            <div className="mb-1">
+              <StatusPill label={t.status} />
+            </div>
+            <p className="text-slate-300 mb-1">Time: {t.timeLimit} min</p>
+            <p className="text-slate-300 mb-4">OTP: {t.otp}</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => nav(`/admin/tests/create?id=${t._id}`)}
+                className="text-blue-400 hover:text-blue-300 cursor-pointer text-sm"
+              >
+                Edit
+              </button>
+              <button
+                onClick={() =>
+                  updateTest(t._id, {
+                    status: t.status === "Active" ? "Scheduled" : "Active",
+                  })
+                }
+                className="text-slate-300 hover:text-white text-sm"
+              >
+                Toggle Status
+              </button>
+              <button
+                onClick={() => {
+                  setSelectedTest(t._id);
+                  setShowAssignModal(true);
+                }}
+                className="text-green-400 hover:text-green-300 text-sm"
+              >
+                Assign
+              </button>
+              <button
+                onClick={() => deleteTest(t._id)}
+                className="text-rose-400 hover:text-red-300 cursor-pointer text-sm"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
+        {tests.length === 0 && (
+          <div className="col-span-full text-center text-slate-400 py-8">
+            No tests found.
+          </div>
+        )}
       </div>
-    </div>
 
       {/* Assignment Modal */}
       {showAssignModal && (

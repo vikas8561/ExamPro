@@ -49,7 +49,12 @@ router.get("/assignments", authenticateToken, async (req, res) => {
   try {
     const mentorId = req.user.userId;
     
-    const assignments = await Assignment.find({ mentorId })
+    const assignments = await Assignment.find({
+      $or: [
+        { mentorId: req.user.userId },
+        { mentorId: null }
+      ]
+    })
       .populate({
         path: "testId",
         select: "title type instructions timeLimit questions",

@@ -4,7 +4,6 @@ import StatusPill from "../components/StatusPill";
 export default function MentorAssignments() {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("all");
 
   useEffect(() => {
     fetchAssignments();
@@ -29,31 +28,13 @@ export default function MentorAssignments() {
     }
   };
 
-  const filteredAssignments = assignments.filter(assignment => {
-    if (filter === "all") return true;
-    return assignment.status === filter;
-  });
-
   if (loading) {
     return <div className="p-6">Loading...</div>;
   }
 
   return (
     <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-3xl font-bold">Test Assignments</h2>
-        
-        <select
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          className="bg-slate-700 text-white px-4 py-2 rounded-lg"
-        >
-          <option value="all">All Assignments</option>
-          <option value="Assigned">Assigned</option>
-          <option value="In Progress">In Progress</option>
-          <option value="Completed">Completed</option>
-        </select>
-      </div>
+      <h2 className="text-3xl font-bold mb-6">Test Assignments</h2>
 
       <div className="rounded-xl border border-slate-700 bg-slate-800 overflow-hidden">
         <table className="w-full">
@@ -70,16 +51,16 @@ export default function MentorAssignments() {
         <div className="max-h-96 overflow-y-auto">
           <table className="w-full">
             <tbody>
-              {filteredAssignments.map((assignment) => (
+              {assignments.map((assignment) => (
                 <tr key={assignment._id} className="border-b border-slate-700">
-                  <td className="p-4">{assignment.title}</td>
+                  <td className="p-4">{assignment.testId?.title || "Unknown Test"}</td>
                   <td className="p-4">{assignment.userId?.name || "Unknown"}</td>
                   <td className="p-4">
                     <StatusPill label={assignment.status} />
                   </td>
                   <td className="p-4">
-                    {assignment.deadline ? 
-                      new Date(assignment.deadline).toLocaleDateString() : 
+                    {assignment.deadline ?
+                      new Date(assignment.deadline).toLocaleDateString() :
                       "N/A"
                     }
                   </td>
@@ -88,7 +69,7 @@ export default function MentorAssignments() {
                   </td>
                 </tr>
               ))}
-              {filteredAssignments.length === 0 && (
+              {assignments.length === 0 && (
                 <tr>
                   <td
                     colSpan="5"
