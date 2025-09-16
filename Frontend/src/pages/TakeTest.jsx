@@ -867,17 +867,8 @@ const TakeTest = () => {
   };
 
   const handleSubmitClick = () => {
-    const isFullscreen = !!(
-      document.fullscreenElement ||
-      document.webkitFullscreenElement ||
-      document.msFullscreenElement
-    );
-
-    if (isFullscreen) {
-      setShowSubmitConfirmModal(true);
-    } else {
-      alert("Please return to fullscreen mode to submit the test.");
-    }
+    // Fullscreen check removed to allow submission even if fullscreen is exited
+    setShowSubmitConfirmModal(true);
   };
 
   const handleConfirmSubmit = () => {
