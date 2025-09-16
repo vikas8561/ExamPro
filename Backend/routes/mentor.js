@@ -141,7 +141,7 @@ router.get("/student/:studentId/submissions", authenticateToken, async (req, res
         path: "assignmentId",
         populate: {
           path: "testId",
-          select: "title questions",
+          select: "title questions negativeMarkingPercent",
           populate: {
             path: "questions",
             select: "kind text options answer answers guidelines examples points"
@@ -149,6 +149,15 @@ router.get("/student/:studentId/submissions", authenticateToken, async (req, res
         }
       })
       .sort({ submittedAt: -1 });
+
+    // Ensure scores are calculated and responses are graded
+    const { recalculateSubmissionScore } = require("../services/scoreCalculation");
+
+    for (const submission of submissions) {
+      if (submission.assignmentId?.testId && submission.responses?.length > 0) {
+        await recalculateSubmissionScore(submission, submission.assignmentId.testId);
+      }
+    }
 
     res.json(submissions);
   } catch (err) {

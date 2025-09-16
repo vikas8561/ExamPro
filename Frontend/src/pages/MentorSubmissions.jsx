@@ -36,10 +36,10 @@ const MentorSubmissions = () => {
     }
   };
 
-  const openStudentProfile = async (student) => {
-    console.log("Opening student profile:", student);
-    setSelectedStudent(student);
-    await fetchStudentSubmissions(student.userId._id);
+  const openStudentProfile = async (studentData) => {
+    console.log("Opening student profile:", studentData);
+    setSelectedStudent(studentData);
+    await fetchStudentSubmissions(studentData.student._id);
   };
 
   useEffect(() => {
@@ -269,11 +269,11 @@ const MentorSubmissions = () => {
               {/* Student Answers */}
               <div className="mb-6">
                 <h3 className="text-lg font-semibold mb-3">Student Answers</h3>
-                {selectedStudent.responses && selectedStudent.responses.length > 0 ? (
+                {studentSubmissions.length > 0 && studentSubmissions[0].responses && studentSubmissions[0].responses.length > 0 ? (
                   <div className="space-y-4">
-                    {selectedStudent.responses.map((response, index) => {
+                    {studentSubmissions[0].responses.map((response, index) => {
                       console.log("Matching question for response:", response);
-                      const question = selectedStudent.assignmentId?.testId?.questions?.find(
+                      const question = studentSubmissions[0].assignmentId?.testId?.questions?.find(
                         q => q._id.toString() === response.questionId.toString()
                       );
                       if (!question) {

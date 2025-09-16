@@ -6,4 +6,5 @@
 - [x] Frontend/src/pages/MentorSubmissions.jsx already displays student's answers with correct answers comparison
 - [x] Visual indicators for correct/incorrect answers already in the UI
 - [x] Updated mentor panel to show ALL test submissions (not filtered by mentor assignments)
+- [x] Fixed frontend to properly fetch and display student submitted answers from correct data source
 - [ ] Investigate why responses.isCorrect is not set during test submission - check test submission logic
