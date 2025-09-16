@@ -446,8 +446,9 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
     console.log('Current time >= deadline with buffer:', currentTime >= deadlineWithBuffer);
 
     // Determine if results should be shown
-    // Only show results after the deadline has passed
-    const showResults = currentTime >= deadlineWithBuffer;
+    // Show results immediately if user is the mentor for this assignment, otherwise only after deadline
+    const isMentor = assignment.mentorId && assignment.mentorId.toString() === userId;
+    const showResults = isMentor || currentTime >= deadlineWithBuffer;
 
     console.log('Show results:', showResults);
     console.log('================================');

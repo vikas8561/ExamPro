@@ -21,6 +21,7 @@ const ViewCompletedTest = () => {
     const fetchTestResults = async () => {
       try {
         const data = await testSubmissionsAPI.getTestSubmission(assignmentId);
+        console.log("Fetched test submission data:", data);  // Debug log
         if (data === null) {
           setError("Test submission not found");
         } else {
@@ -77,7 +78,10 @@ const ViewCompletedTest = () => {
   const totalQuestions = test.questions.length;
 
   // Check if results should be shown
-  if (!showResults) {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const isMentor = user.role === 'Mentor';
+
+  if (!showResults && !isMentor) {
     return (
       <div className="min-h-screen bg-slate-900 text-white p-6">
         <div className="max-w-4xl mx-auto">

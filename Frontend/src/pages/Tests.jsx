@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+ import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import StatusPill from "../components/StatusPill";
 import apiRequest from "../services/api";
@@ -222,6 +222,7 @@ export default function Tests() {
 
   return (
     <div className="p-6 h-screen flex flex-col">
+      <style dangerouslySetInnerHTML={{__html: `.scroll-hide::-webkit-scrollbar { display: none; } .scroll-hide { -ms-overflow-style: none; scrollbar-width: none; }`}} />
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-3xl font-bold">Tests</h2>
         <Link
@@ -232,46 +233,36 @@ export default function Tests() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 overflow-y-auto flex-grow">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 overflow-y-auto flex-grow scroll-hide">
         {tests.map((t) => (
-          <div key={t._id} className="bg-slate-800 border border-slate-700 rounded-lg p-4">
-            <h3 className="text-lg font-semibold text-white mb-2">{t.title}</h3>
-            <p className="text-slate-300 mb-1">Subject: {t.subject || "N/A"}</p>
-            <p className="text-slate-300 mb-1 capitalize">Type: {t.type}</p>
-            <div className="mb-1">
+          <div key={t._id} className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-600 rounded-xl p-6 hover:shadow-2xl hover:scale-105 hover:-translate-y-2 transition-all duration-300 cursor-pointer">
+            <h3 className="text-xl font-bold text-blue-300 bg-slate-700 px-3 py-2 rounded-lg mb-2 hover:bg-slate-600 hover:text-blue-200 hover:scale-105 transition-all duration-300 cursor-pointer">{t.title}</h3>
+            <p className="text-slate-300 mb-1 font-medium">Subject: {t.subject || "N/A"}</p>
+            <p className="text-slate-300 mb-1 capitalize font-medium">Type: {t.type}</p>
+            <div className="mb-1 cursor-pointer hover:scale-110 hover:text-white transition-transform duration-300 inline-block">
               <StatusPill label={t.status} />
             </div>
-            <p className="text-slate-300 mb-1">Time: {t.timeLimit} min</p>
-            <p className="text-slate-300 mb-4">OTP: {t.otp}</p>
+            <p className="text-slate-300 mb-1 font-medium">Time: {t.timeLimit} min</p>
+            <p className="text-slate-300 mb-4 font-medium">OTP: {t.otp}</p>
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => nav(`/admin/tests/create?id=${t._id}`)}
-                className="text-blue-400 hover:text-blue-300 cursor-pointer text-sm"
+                className="bg-blue-600 text-white px-3 py-1 rounded-md hover:bg-blue-500 hover:scale-105 hover:shadow-md transition-all duration-300 cursor-pointer text-sm"
               >
                 Edit
-              </button>
-              <button
-                onClick={() =>
-                  updateTest(t._id, {
-                    status: t.status === "Active" ? "Scheduled" : "Active",
-                  })
-                }
-                className="text-slate-300 hover:text-white text-sm"
-              >
-                Toggle Status
               </button>
               <button
                 onClick={() => {
                   setSelectedTest(t._id);
                   setShowAssignModal(true);
                 }}
-                className="text-green-400 hover:text-green-300 text-sm"
+                className="bg-green-600 text-white px-3 py-1 rounded-md hover:bg-green-500 hover:scale-105 hover:shadow-md transition-all duration-300 text-sm"
               >
                 Assign
               </button>
               <button
                 onClick={() => deleteTest(t._id)}
-                className="text-rose-400 hover:text-red-300 cursor-pointer text-sm"
+                className="bg-rose-600 text-white px-3 py-1 rounded-md hover:bg-rose-500 hover:scale-105 hover:shadow-md transition-all duration-300 cursor-pointer text-sm"
               >
                 Delete
               </button>
