@@ -19,17 +19,18 @@ const allowedOrigins = [
   "https://cg-test-app.vercel.app/*"
 ].filter(Boolean);
 
-// Manual CORS middleware - MUST be first
+// Comprehensive CORS middleware - MUST be first
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   
   console.log('CORS Request:', {
     method: req.method,
     origin: origin,
-    url: req.url
+    url: req.url,
+    headers: req.headers
   });
   
-  // More permissive CORS - allow all origins for now to test
+  // Set CORS headers for all requests
   res.header('Access-Control-Allow-Origin', origin || '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-auth-token, Accept, Origin, X-Requested-With');
@@ -38,7 +39,7 @@ app.use((req, res, next) => {
   
   console.log('CORS: Headers set for origin:', origin);
 
-  // Handle preflight requests immediately
+  // Handle preflight requests immediately - this is critical
   if (req.method === 'OPTIONS') {
     console.log('CORS: Handling preflight request for:', req.url);
     res.status(200).end();
@@ -74,7 +75,17 @@ const io = new Server(server, {
 // Global OPTIONS handler for all routes
 app.options('*', (req, res) => {
   console.log('Global OPTIONS handler triggered for:', req.url);
+  console.log('OPTIONS headers:', req.headers);
   res.status(200).end();
+});
+
+// Add a simple test endpoint to verify server is running
+app.get('/test', (req, res) => {
+  res.json({ 
+    message: 'Server is running!',
+    timestamp: new Date().toISOString(),
+    origin: req.headers.origin
+  });
 });
 
 // Routes
