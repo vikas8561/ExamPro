@@ -105,7 +105,7 @@ export default function MentorAssignments() {
               </button>
             </div>
 
-            <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="mb-8 grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-slate-700 p-6 rounded-lg shadow-md hover:shadow-lg hover:scale-105 transition-transform duration-300 cursor-pointer flex flex-col items-center justify-center">
                 <div className="text-slate-300 text-sm uppercase tracking-wide font-semibold mb-2">Students Assigned</div>
                 <div className="text-4xl font-extrabold text-white">
@@ -113,9 +113,15 @@ export default function MentorAssignments() {
                 </div>
               </div>
               <div className="bg-slate-700 p-6 rounded-lg shadow-md hover:shadow-lg hover:scale-105 transition-transform duration-300 cursor-pointer flex flex-col items-center justify-center">
-                <div className="text-slate-300 text-sm uppercase tracking-wide font-semibold mb-2">Total Submissions</div>
+                <div className="text-slate-300 text-sm uppercase tracking-wide font-semibold mb-2">Students Submitted</div>
                 <div className="text-4xl font-extrabold text-white">
                   {assignments.filter(a => a.testId?._id === selectedTest._id && a.status === "Completed").length}
+                </div>
+              </div>
+              <div className="bg-slate-700 p-6 rounded-lg shadow-md hover:shadow-lg hover:scale-105 transition-transform duration-300 cursor-pointer flex flex-col items-center justify-center">
+                <div className="text-slate-300 text-sm uppercase tracking-wide font-semibold mb-2">Students Not Submitted</div>
+                <div className="text-4xl font-extrabold text-white">
+                  {assignments.filter(a => a.testId?._id === selectedTest._id && a.status !== "Completed").length}
                 </div>
               </div>
             </div>
