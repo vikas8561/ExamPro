@@ -11,14 +11,14 @@ dotenv.config();
 
 const app = express();
 
-// ✅ Allowed origins (add more if needed)
+//  Allowed origins (add more if needed)
 const allowedOrigins = [
   process.env.FRONTEND_URL,
   "http://localhost:5173",
   "https://cg-test-app.vercel.app"
 ].filter(Boolean);
 
-// ✅ Configure CORS
+// Configure CORS
 app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (mobile apps, curl, Postman)
@@ -37,7 +37,7 @@ app.use(cors({
   credentials: true,
 }));
 
-// ✅ Handle preflight OPTIONS requests explicitly
+// Handle preflight OPTIONS requests explicitly
 app.options("*", cors());
 
 app.use(express.json());
@@ -45,7 +45,7 @@ app.use(morgan("dev"));
 
 const server = http.createServer(app);
 
-// ✅ Setup Socket.IO with same CORS rules
+// Setup Socket.IO with same CORS rules
 const io = new Server(server, {
   cors: {
     origin: function (origin, callback) {
@@ -53,7 +53,7 @@ const io = new Server(server, {
       if (allowedOrigins.includes(origin) || origin.endsWith(".vercel.app")) {
         callback(null, true);
       } else {
-        console.warn(`❌ Socket.IO blocked request from: ${origin}`);
+        console.warn(`Socket.IO blocked request from: ${origin}`);
         callback(new Error("Not allowed by CORS"));
       }
     },
@@ -62,7 +62,7 @@ const io = new Server(server, {
   }
 });
 
-// ✅ Basic route to test API health
+// Basic route to test API health
 app.get("/", (req, res) => res.json({ ok: true, name: "ExamPro API (CJS)" }));
 
 // ✅ API routes
@@ -78,10 +78,10 @@ app.use("/api/debug", require("./routes/debug"));
 app.use("/api/subjects", require("./routes/subjects"));
 app.use("/api/time", require("./routes/time"));
 
-// ✅ Make io available to routes
+// Make io available to routes
 app.set('io', io);
 
-// ✅ Socket.IO connection handling
+// Socket.IO connection handling
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);
 
@@ -95,10 +95,10 @@ io.on('connection', (socket) => {
   });
 });
 
-// ✅ Global error handler
+// Global error handler
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-  console.error("🚨 Server Error:", err.message || err);
+  console.error("Server Error:", err.message || err);
   if (err.name === "ValidationError") {
     return res.status(400).json({ message: err.message });
   }
@@ -107,12 +107,12 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 4000;
 
-// ✅ Connect to DB and start server
+// Connect to DB and start server
 connectDB(process.env.MONGODB_URI || 'mongodb://localhost:27017/test-platform')
   .then(() => {
-    server.listen(PORT, () => console.log(`✅ API running at http://localhost:${PORT}`));
+    server.listen(PORT, () => console.log(`API running at http://localhost:${PORT}`));
   })
   .catch((e) => {
-    console.error("❌ Mongo connection failed:", e);
+    console.error("Mongo connection failed:", e);
     process.exit(1);
   });

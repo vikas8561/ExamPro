@@ -27,7 +27,7 @@ const EmailUploader = ({ onUploadComplete }) => {
     }
 
     try {
-      const response = await fetch("http://localhost:4000/api/users/bulk", {
+      const response = await fetch("https://cg-test-app.onrender.com/api/users/bulk", {
         method: "POST",
         body: formData,
       });
