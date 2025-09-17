@@ -3,11 +3,6 @@ const User = require('../models/User');
 
 // Authentication middleware
 const authenticateToken = async (req, res, next) => {
-  // Handle OPTIONS requests for CORS preflight
-  if (req.method === 'OPTIONS') {
-    return next();
-  }
-
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 

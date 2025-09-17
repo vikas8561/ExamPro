@@ -6,22 +6,6 @@ const Test = require("../models/Test");
 const TestSubmission = require("../models/TestSubmission");
 const { authenticateToken } = require("../middleware/auth");
 
-// Handle OPTIONS requests for CORS preflight
-router.options('*', (req, res) => {
-  console.log('Mentor route OPTIONS handler triggered for:', req.url);
-  res.status(200).end();
-});
-
-// Test endpoint to verify CORS is working
-router.get("/test", (req, res) => {
-  res.json({ 
-    message: "Mentor CORS test successful!",
-    origin: req.headers.origin,
-    method: req.method,
-    timestamp: new Date().toISOString()
-  });
-});
-
 // Get mentor dashboard data
 router.get("/dashboard", authenticateToken, async (req, res) => {
   try {
