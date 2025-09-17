@@ -42,9 +42,9 @@ const TakeTest = () => {
             `/assignments/${assignmentId}`
           );
           if (assignmentData && assignmentData.startedAt) {
-            console.log("Existing test found, loading data...");
-            setShowPermissionModal(false);
-            await loadExistingTestData();
+            console.log("Existing test found, showing permission modal for resume...");
+            setShowPermissionModal(true);
+            setLoading(false);
           } else {
             console.log("No existing test found, showing permission modal...");
             setShowPermissionModal(true);
@@ -385,7 +385,9 @@ const TakeTest = () => {
 
       setTimeRemaining(remainingSeconds);
       setTestStarted(true);
+      setShowPermissionModal(false);
       setLoading(false);
+      setShowPermissionModal(false);
       setShowPermissionModal(false);
 
       // Request fullscreen mode after OTP verification
@@ -541,9 +543,9 @@ const TakeTest = () => {
       method: "POST",
       body: JSON.stringify({
         permissions: {
-          cameraGranted: cameraPermission === "granted",
-          microphoneGranted: microphonePermission === "granted",
-          locationGranted: locationPermission === "granted"
+          camera: cameraPermission,
+          microphone: microphonePermission,
+          location: locationPermission,
         },
         otp: otpInput.trim()
       }),
@@ -729,6 +731,7 @@ const TakeTest = () => {
       setTest(assignmentData.testId);
       setTimeRemaining(remainingSeconds);
       setTestStarted(true);
+      setShowPermissionModal(false);
       setLoading(false);
       console.log("[TakeTest] Test data loaded successfully, test started");
     } catch (error) {
@@ -1043,52 +1046,61 @@ const TakeTest = () => {
             </div>
           </div>
 
-          {!permissionsAttempted ? (
-            <button
-              onClick={requestPermissions}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-md font-semibold mb-4"
-            >
-              Request Permissions
-            </button>
-          ) : (
-            <div className="mb-4">
-              {permissionsGranted ? (
-                <div className="text-green-400 text-center mb-4">
-                  All permissions granted! Starting test automatically...
-                </div>
-              ) : (
-                <div className="text-red-400 text-center mb-4">
-                  Some permissions were denied. You can still proceed, but some features may not work.
-                </div>
-              )}
+          <div className="mb-4">
+            {permissionsAttempted && permissionsGranted ? (
+              <div className="text-green-400 text-center mb-4">
+                All permissions granted! Click the button below to start the test.
+              </div>
+            ) : permissionsAttempted && !permissionsGranted ? (
+              <div className="text-red-400 text-center mb-4">
+                Some permissions were denied. You can still proceed, but you need to provide an OTP to start the test.
+              </div>
+            ) : null}
 
-              {!permissionsGranted && (
-                <>
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium mb-2">Enter OTP</label>
-                    <input
-                      type="text"
-                      value={otpInput}
-                      onChange={(e) => setOtpInput(e.target.value)}
-                      className="w-full p-3 bg-slate-700 text-white rounded-md border border-slate-600 focus:border-blue-500 focus:outline-none"
-                      placeholder="Enter 6-digit OTP"
-                      maxLength={6}
-                    />
-                    {otpError && (
-                      <div className="text-red-400 text-sm mt-2">{otpError}</div>
-                    )}
-                  </div>
+            {( !permissionsGranted || !permissionsAttempted ) && (
+              <button
+                onClick={requestPermissions}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-md font-semibold mb-4"
+              >
+                Request Permissions
+              </button>
+            )}
 
-                  <button
-                    onClick={verifyOTP}
-                    className="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-md font-semibold"
-                  >
-                    Verify OTP & Start Test
-                  </button>
-                </>
-              )}
-            </div>
-          )}
+            {permissionsAttempted && permissionsGranted && (
+              <button
+                onClick={startTest}
+                className="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-md font-semibold"
+              >
+                Start Test
+              </button>
+            )}
+
+            {permissionsAttempted && !permissionsGranted && (
+              <>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-2">Enter OTP</label>
+                  <input
+                    type="text"
+                    value={otpInput}
+                    onChange={(e) => setOtpInput(e.target.value)}
+                    className="w-full p-3 bg-slate-700 text-white rounded-md border border-slate-600 focus:border-blue-500 focus:outline-none"
+                    placeholder="Enter 6-digit OTP"
+                    maxLength={6}
+                  />
+                  {otpError && (
+                    <div className="text-red-400 text-sm mt-2">{otpError}</div>
+                  )}
+                </div>
+
+                <button
+                  onClick={verifyOTP}
+                  className="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-md font-semibold"
+                >
+                  Verify OTP & Start Test
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
     );
