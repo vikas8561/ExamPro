@@ -1,3 +1,4 @@
+// server.js
 const express = require("express");
 const cors = require("cors");
 const morgan = require("morgan");
@@ -9,55 +10,62 @@ const { Server } = require("socket.io");
 dotenv.config();
 
 const app = express();
+
+// ✅ Allowed origins (add more if needed)
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  "http://localhost:5173",
+  "https://cg-test-app.vercel.app"
+].filter(Boolean);
+
+// ✅ Configure CORS
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
+    // Allow requests with no origin (mobile apps, curl, Postman)
     if (!origin) return callback(null, true);
 
-    const allowedOrigins = [
-      process.env.FRONTEND_URL,
-      "http://localhost:5173",
-      "https://cg-test-app.vercel.app"
-    ].filter(Boolean); // Remove undefined values
-
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
+    // Allow exact matches OR any Vercel preview subdomain
+    if (allowedOrigins.includes(origin) || origin.endsWith(".vercel.app")) {
+      callback(null, true);
     } else {
-      return callback(new Error('Not allowed by CORS'));
+      console.warn(`❌ CORS blocked request from: ${origin}`);
+      callback(new Error("Not allowed by CORS"));
     }
   },
-  credentials: true
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
 }));
+
+// ✅ Handle preflight OPTIONS requests explicitly
+app.options("*", cors());
+
 app.use(express.json());
 app.use(morgan("dev"));
 
 const server = http.createServer(app);
 
-// Setup Socket.IO server with CORS for frontend URL
+// ✅ Setup Socket.IO with same CORS rules
 const io = new Server(server, {
   cors: {
     origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) return callback(null, true);
-
-      const allowedOrigins = [
-        process.env.FRONTEND_URL,
-        "http://localhost:5173",
-        "https://cg-test-app.vercel.app"
-      ].filter(Boolean); // Remove undefined values
-
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
+      if (allowedOrigins.includes(origin) || origin.endsWith(".vercel.app")) {
+        callback(null, true);
       } else {
-        return callback(new Error('Not allowed by CORS'));
+        console.warn(`❌ Socket.IO blocked request from: ${origin}`);
+        callback(new Error("Not allowed by CORS"));
       }
     },
-    methods: ["GET", "POST"]
+    methods: ["GET", "POST"],
+    credentials: true
   }
 });
 
-// Routes
+// ✅ Basic route to test API health
 app.get("/", (req, res) => res.json({ ok: true, name: "ExamPro API (CJS)" }));
+
+// ✅ API routes
 app.use("/api/tests", require("./routes/tests"));
 app.use("/api/assignments", require("./routes/assignments"));
 app.use("/api/users", require("./routes/users"));
@@ -70,14 +78,13 @@ app.use("/api/debug", require("./routes/debug"));
 app.use("/api/subjects", require("./routes/subjects"));
 app.use("/api/time", require("./routes/time"));
 
-// Make io available to routes
+// ✅ Make io available to routes
 app.set('io', io);
 
-// Socket.IO connection handling
+// ✅ Socket.IO connection handling
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);
 
-  // Handle room joining for targeted events
   socket.on('join', (userId) => {
     socket.join(userId.toString());
     console.log(`User ${socket.id} joined room: ${userId}`);
@@ -88,10 +95,10 @@ io.on('connection', (socket) => {
   });
 });
 
-// Error handler
+// ✅ Global error handler
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-  console.error(err);
+  console.error("🚨 Server Error:", err.message || err);
   if (err.name === "ValidationError") {
     return res.status(400).json({ message: err.message });
   }
@@ -100,11 +107,12 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 4000;
 
+// ✅ Connect to DB and start server
 connectDB(process.env.MONGODB_URI || 'mongodb://localhost:27017/test-platform')
   .then(() => {
-    server.listen(PORT, () => console.log(`API running at http://localhost:${PORT}`));
+    server.listen(PORT, () => console.log(`✅ API running at http://localhost:${PORT}`));
   })
   .catch((e) => {
-    console.error("Mongo connection failed:", e);
+    console.error("❌ Mongo connection failed:", e);
     process.exit(1);
   });
