@@ -10,10 +10,6 @@ const TakeTest = () => {
   const [cameraPermission, setCameraPermission] = useState("prompt");
   const [microphonePermission, setMicrophonePermission] = useState("prompt");
   const [locationPermission, setLocationPermission] = useState("prompt");
-  const [showPermissionModal, setShowPermissionModal] = useState(true);
-  const [otpInput, setOtpInput] = useState("");
-  const [otpError, setOtpError] = useState("");
-  const [permissionsAttempted, setPermissionsAttempted] = useState(false);
   const { assignmentId } = useParams();
   const navigate = useNavigate();
   const [test, setTest] = useState(null);
@@ -33,6 +29,10 @@ const TakeTest = () => {
   const [isVideoActive, setIsVideoActive] = useState(false);
   const videoRef = useRef(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPermissionModal, setShowPermissionModal] = useState(true);
+  const [otpInput, setOtpInput] = useState("");
+  const [otpError, setOtpError] = useState("");
+  const [permissionsAttempted, setPermissionsAttempted] = useState(false);
 
   useEffect(() => {
     const checkExistingTest = async () => {
@@ -145,40 +145,7 @@ const TakeTest = () => {
     }
   };
 
-  const checkCameraPermission = async () => {
-    try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-      });
-      setCameraPermission("granted");
-      setStream(mediaStream);
-      setIsVideoActive(true);
-    } catch (error) {
-      setCameraPermission("denied");
-      setIsVideoActive(false);
-    }
-  };
 
-  const checkMicrophonePermission = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      setMicrophonePermission("granted");
-      stream.getTracks().forEach((track) => track.stop());
-    } catch (error) {
-      setMicrophonePermission("denied");
-    }
-  };
-
-  const checkLocationPermission = async () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        () => setLocationPermission("granted"),
-        () => setLocationPermission("denied")
-      );
-    } else {
-      setLocationPermission("denied");
-    }
-  };
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -417,6 +384,57 @@ const TakeTest = () => {
     } catch (error) {
       console.error("OTP verification failed:", error);
       setOtpError(error.message || "Invalid OTP. Please try again.");
+    }
+  };
+
+  const checkCameraPermission = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      setCameraPermission("granted");
+      setStream(stream);
+      setIsVideoActive(true);
+      console.log("Camera permission granted");
+    } catch (error) {
+      console.error("Camera permission denied:", error);
+      setCameraPermission("denied");
+    }
+  };
+
+  const checkMicrophonePermission = async () => {
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      setMicrophonePermission("granted");
+      console.log("Microphone permission granted");
+    } catch (error) {
+      console.error("Microphone permission denied:", error);
+      setMicrophonePermission("denied");
+    }
+  };
+
+  const checkLocationPermission = async () => {
+    try {
+      if ("geolocation" in navigator) {
+        await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(
+            () => {
+              setLocationPermission("granted");
+              console.log("Location permission granted");
+              resolve();
+            },
+            (error) => {
+              console.error("Location permission denied:", error);
+              setLocationPermission("denied");
+              reject(error);
+            }
+          );
+        });
+      } else {
+        setLocationPermission("denied");
+        console.log("Geolocation not supported");
+      }
+    } catch (error) {
+      setLocationPermission("denied");
+      console.error("Location permission error:", error);
     }
   };
 
@@ -983,143 +1001,7 @@ const TakeTest = () => {
     );
   }
 
-  if (showPermissionModal) {
-    return (
-      <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-6">
-        <div className="max-w-2xl bg-slate-800 rounded-lg p-8">
-          <h2 className="text-2xl font-bold mb-6 text-center">
-            Permission Requirements
-          </h2>
 
-          <div className="space-y-4 mb-6">
-            <div className="flex items-center justify-between p-4 bg-slate-700 rounded-lg">
-              <div>
-                <h3 className="font-semibold">Camera Access</h3>
-                <p className="text-slate-400 text-sm">
-                  Required for test monitoring
-                </p>
-              </div>
-              <div
-                className={`px-3 py-1 rounded-full text-sm ${
-                  cameraPermission === "granted"
-                    ? "bg-green-600"
-                    : cameraPermission === "denied"
-                    ? "bg-red-600"
-                    : "bg-yellow-600"
-                }`}
-              >
-                {cameraPermission === "granted"
-                  ? "✓ Granted"
-                  : cameraPermission === "denied"
-                  ? "✗ Denied"
-                  : "Pending"}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between p-4 bg-slate-700 rounded-lg">
-              <div>
-                <h3 className="font-semibold">Microphone Access</h3>
-                <p className="text-slate-400 text-sm">
-                  Required for audio monitoring
-                </p>
-              </div>
-              <div
-                className={`px-3 py-1 rounded-full text-sm ${
-                  microphonePermission === "granted"
-                    ? "bg-green-600"
-                    : microphonePermission === "denied"
-                    ? "bg-red-600"
-                    : "bg-yellow-600"
-                }`}
-              >
-                {microphonePermission === "granted"
-                  ? "✓ Granted"
-                  : microphonePermission === "denied"
-                  ? "✗ Denied"
-                  : "Pending"}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between p-4 bg-slate-700 rounded-lg">
-              <div>
-                <h3 className="font-semibold">Location Access</h3>
-                <p className="text-slate-400 text-sm">
-                  Required for location verification
-                </p>
-              </div>
-              <div
-                className={`px-3 py-1 rounded-full text-sm ${
-                  locationPermission === "granted"
-                    ? "bg-green-600"
-                    : locationPermission === "denied"
-                    ? "bg-red-600"
-                    : "bg-yellow-600"
-                }`}
-              >
-                {locationPermission === "granted"
-                  ? "✓ Granted"
-                  : locationPermission === "denied"
-                  ? "✗ Denied"
-                  : "Pending"}
-              </div>
-            </div>
-          </div>
-
-          <div className="text-center">
-            {permissionsGranted ? (
-              <button
-                onClick={requestPermissions}
-                disabled={permissionsGranted}
-                className="bg-blue-600 hover:bg-blue-700 disabled:bg-green-600 disabled:cursor-not-allowed text-white px-8 py-3 rounded-md font-semibold cursor-pointer"
-              >
-                All Permissions Granted ✓
-              </button>
-            ) : (
-              <div className="space-y-4">
-                <button
-                  onClick={() => {
-                    setPermissionsAttempted(true);
-                    requestPermissions();
-                  }}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-md font-semibold cursor-pointer"
-                >
-                  Request Permissions
-                </button>
-                {permissionsAttempted && (
-                  <>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-300 mb-2">
-                        Enter Test OTP
-                      </label>
-                      <input
-                        type="text"
-                        value={otpInput}
-                        onChange={(e) => setOtpInput(e.target.value)}
-                        className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-md text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder="Enter OTP..."
-                      />
-                      {otpError && (
-                        <p className="text-red-400 text-sm mt-2">{otpError}</p>
-                      )}
-                    </div>
-                    <button
-                      onClick={verifyOTP}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-md font-semibold cursor-pointer"
-                    >
-                      Verify OTP & Start Test
-                    </button>
-                    <p className="text-slate-400 text-sm">
-                      Enter the OTP provided by your instructor to start the test
-                    </p>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   if (!testStarted || !test) {
     return (
