@@ -207,17 +207,9 @@ const StudentAssignments = () => {
     }
   };
 
-  const handleStartTest = async (assignmentId) => {
-    try {
-      const response = await apiRequest(`/assignments/${assignmentId}/start`, {
-        method: "POST"
-      });
-
-      // Navigate to take test page
-      navigate(`/student/take-test/${assignmentId}`);
-    } catch (error) {
-      alert(error.message || "Failed to start test");
-    }
+  const handleStartTest = (assignmentId) => {
+    // Navigate to take test page where permissions will be requested
+    navigate(`/student/take-test/${assignmentId}`);
   };
 
   const filteredAssignments = assignments.filter((assignment) => {

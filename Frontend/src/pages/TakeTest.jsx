@@ -46,18 +46,17 @@ const TakeTest = () => {
             setShowPermissionModal(false);
             await loadExistingTestData();
           } else {
-            setShowPermissionModal(false);
-            startRequestMade.current = true;
-            startTest();
+            console.log("No existing test found, showing permission modal...");
+            setShowPermissionModal(true);
+            setLoading(false);
           }
         } catch (error) {
           console.log(
-            "Error checking for existing test, starting new test:",
+            "Error checking for existing test, showing permission modal:",
             error
           );
-          setShowPermissionModal(false);
-          startRequestMade.current = true;
-          startTest();
+          setShowPermissionModal(true);
+          setLoading(false);
         }
       }
     };
@@ -148,6 +147,8 @@ const TakeTest = () => {
 
 
   useEffect(() => {
+    if (!testStarted) return;
+
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
         const newViolationCount = violationCount + 1;
@@ -177,9 +178,11 @@ const TakeTest = () => {
     return () => {
       window.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [violationCount]);
+  }, [violationCount, testStarted]);
 
   useEffect(() => {
+    if (!testStarted) return;
+
     const handleFullscreenChange = () => {
       const isFullscreen = !!(
         document.fullscreenElement ||
@@ -321,11 +324,12 @@ const TakeTest = () => {
 
   const verifyOTP = async () => {
     if (!otpInput.trim()) {
-      setOtpError("Please enter the OTP");
-      return;
-    }
-
-    if (otpInput.length !== 6 || !/^\d{6}$/.test(otpInput)) {
+      if (!permissionsGranted) {
+        setOtpError("Please enter the OTP");
+        return;
+      }
+      // Allow empty OTP if permissions are granted (auto-start)
+    } else if (otpInput.length !== 6 || !/^\d{6}$/.test(otpInput)) {
       setOtpError("OTP must be 6 digits");
       return;
     }
@@ -352,6 +356,11 @@ const TakeTest = () => {
 
       if (!response.assignment || !response.test) {
         throw new Error("Unexpected response format from backend. Expected assignment and test data.");
+      }
+
+      if (!permissionsGranted && !otpInput.trim()) {
+        setOtpError("OTP is required when permissions are denied.");
+        return;
       }
 
       setAssignment(response.assignment);
@@ -450,15 +459,9 @@ const TakeTest = () => {
       locationPermission === "granted"
     ) {
       setPermissionsGranted(true);
-      setShowPermissionModal(false);
-
+      // Do not automatically start the test here, keep the button visible for user to click
       // Request fullscreen mode after permissions are granted
       await requestFullscreen();
-
-      if (!testStarted && !startRequestMade.current) {
-        startRequestMade.current = true;
-        startTest();
-      }
     } else {
       setPermissionsGranted(false);
     }
@@ -534,16 +537,17 @@ const TakeTest = () => {
         browserTimeZone
       );
 
-      const response = await apiRequest(`/assignments/${assignmentId}/start`, {
-        method: "POST",
-        body: JSON.stringify({
-          permissions: {
-            camera: "granted",
-            microphone: "granted",
-            location: "granted"
-          }
-        }),
-      });
+    const response = await apiRequest(`/assignments/${assignmentId}/start`, {
+      method: "POST",
+      body: JSON.stringify({
+        permissions: {
+          cameraGranted: cameraPermission === "granted",
+          microphoneGranted: microphonePermission === "granted",
+          locationGranted: locationPermission === "granted"
+        },
+        otp: otpInput.trim()
+      }),
+    });
       console.log("[startTest] Response:", response);
 
       if (response.alreadyStarted) {
@@ -1001,7 +1005,94 @@ const TakeTest = () => {
     );
   }
 
+  if (showPermissionModal) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-4">
+        <div className="bg-slate-800 rounded-lg p-8 max-w-md w-full">
+          <h2 className="text-2xl font-bold mb-6 text-center">Test Permissions</h2>
 
+          <div className="space-y-4 mb-6">
+            <div className="flex items-center justify-between">
+              <span>Camera Access</span>
+              <span className={`px-2 py-1 rounded text-sm ${
+                cameraPermission === "granted" ? "bg-green-600" :
+                cameraPermission === "denied" ? "bg-red-600" : "bg-yellow-600"
+              }`}>
+                {cameraPermission}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span>Microphone Access</span>
+              <span className={`px-2 py-1 rounded text-sm ${
+                microphonePermission === "granted" ? "bg-green-600" :
+                microphonePermission === "denied" ? "bg-red-600" : "bg-yellow-600"
+              }`}>
+                {microphonePermission}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span>Location Access</span>
+              <span className={`px-2 py-1 rounded text-sm ${
+                locationPermission === "granted" ? "bg-green-600" :
+                locationPermission === "denied" ? "bg-red-600" : "bg-yellow-600"
+              }`}>
+                {locationPermission}
+              </span>
+            </div>
+          </div>
+
+          {!permissionsAttempted ? (
+            <button
+              onClick={requestPermissions}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-md font-semibold mb-4"
+            >
+              Request Permissions
+            </button>
+          ) : (
+            <div className="mb-4">
+              {permissionsGranted ? (
+                <div className="text-green-400 text-center mb-4">
+                  All permissions granted! Starting test automatically...
+                </div>
+              ) : (
+                <div className="text-red-400 text-center mb-4">
+                  Some permissions were denied. You can still proceed, but some features may not work.
+                </div>
+              )}
+
+              {!permissionsGranted && (
+                <>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium mb-2">Enter OTP</label>
+                    <input
+                      type="text"
+                      value={otpInput}
+                      onChange={(e) => setOtpInput(e.target.value)}
+                      className="w-full p-3 bg-slate-700 text-white rounded-md border border-slate-600 focus:border-blue-500 focus:outline-none"
+                      placeholder="Enter 6-digit OTP"
+                      maxLength={6}
+                    />
+                    {otpError && (
+                      <div className="text-red-400 text-sm mt-2">{otpError}</div>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={verifyOTP}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-md font-semibold"
+                  >
+                    Verify OTP & Start Test
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (!testStarted || !test) {
     return (
