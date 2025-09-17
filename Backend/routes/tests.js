@@ -48,6 +48,9 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
       return res.status(400).json({ message: "Test title is required" });
     }
 
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
     const test = await Test.create({
       title: title.trim(),
       subject: subject || "",
@@ -56,6 +59,7 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
       timeLimit: Number(timeLimit || 30),
       negativeMarkingPercent: Number(negativeMarkingPercent || 0),
       allowedTabSwitches: Number(allowedTabSwitches || 0),
+      otp: otp,
       questions: Array.isArray(questions) ? questions : [],
       createdBy: req.user.userId
     });

@@ -11,6 +11,9 @@ const TakeTest = () => {
   const [microphonePermission, setMicrophonePermission] = useState("prompt");
   const [locationPermission, setLocationPermission] = useState("prompt");
   const [showPermissionModal, setShowPermissionModal] = useState(true);
+  const [otpInput, setOtpInput] = useState("");
+  const [otpError, setOtpError] = useState("");
+  const [permissionsAttempted, setPermissionsAttempted] = useState(false);
   const { assignmentId } = useParams();
   const navigate = useNavigate();
   const [test, setTest] = useState(null);
@@ -349,7 +352,76 @@ const TakeTest = () => {
 
 
 
+  const verifyOTP = async () => {
+    if (!otpInput.trim()) {
+      setOtpError("Please enter the OTP");
+      return;
+    }
+
+    if (otpInput.length !== 6 || !/^\d{6}$/.test(otpInput)) {
+      setOtpError("OTP must be 6 digits");
+      return;
+    }
+
+    try {
+      setOtpError("");
+      const response = await apiRequest(`/assignments/${assignmentId}/start`, {
+        method: "POST",
+        body: JSON.stringify({
+          permissions: {
+            camera: cameraPermission,
+            microphone: microphonePermission,
+            location: locationPermission,
+          },
+          otp: otpInput.trim(),
+        }),
+      });
+
+      if (response.alreadyStarted) {
+        console.log("Test already in progress, fetching existing data...");
+        await loadExistingTestData();
+        return;
+      }
+
+      if (!response.assignment || !response.test) {
+        throw new Error("Unexpected response format from backend. Expected assignment and test data.");
+      }
+
+      setAssignment(response.assignment);
+      setTest(response.test);
+
+      // Initialize questionStatuses to 'not-answered' for all questions
+      const initialStatuses = {};
+      response.test.questions.forEach((q) => {
+        initialStatuses[q._id] = "not-answered";
+      });
+      setQuestionStatuses(initialStatuses);
+
+      const assignmentDuration = response.assignment.duration;
+      const testTimeLimit = response.test.timeLimit;
+
+      // Always use test.timeLimit as timer duration
+      const totalSeconds = testTimeLimit * 60;
+      const testStartTime = new Date(response.assignment.startedAt || response.assignment.startTime);
+      const currentTime = new Date(); // Use client time for OTP start
+      const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
+      const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
+
+      setTimeRemaining(remainingSeconds);
+      setTestStarted(true);
+      setLoading(false);
+      setShowPermissionModal(false);
+
+      // Request fullscreen mode after OTP verification
+      await requestFullscreen();
+    } catch (error) {
+      console.error("OTP verification failed:", error);
+      setOtpError(error.message || "Invalid OTP. Please try again.");
+    }
+  };
+
   const requestPermissions = async () => {
+    setPermissionsAttempted(true);
     await checkCameraPermission();
     await checkMicrophonePermission();
     await checkLocationPermission();
@@ -1013,7 +1085,7 @@ const TakeTest = () => {
                 >
                   Request Permissions
                 </button>
-                {/* {permissionsAttempted && (
+                {permissionsAttempted && (
                   <>
                     <div>
                       <label className="block text-sm font-medium text-slate-300 mb-2">
@@ -1040,7 +1112,7 @@ const TakeTest = () => {
                       Enter the OTP provided by your instructor to start the test
                     </p>
                   </>
-                )} */}
+                )}
               </div>
             )}
           </div>
