@@ -10,11 +10,12 @@ export default function MentorAssignments() {
   const [showStudentListModal, setShowStudentListModal] = useState(false);
   const [selectedSection, setSelectedSection] = useState(null);
   const [scoreSort, setScoreSort] = useState('none');
-  const [submissionTimeFilter, setSubmissionTimeFilter] = useState('all');
+  const [submissionTimeSort, setSubmissionTimeSort] = useState('none');
   const [showFilters, setShowFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [studentsCurrentPage, setStudentsCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
+  const [studentSearchTerm, setStudentSearchTerm] = useState('');
   const itemsPerPage = 10;
   const navigate = useNavigate();
 
@@ -37,6 +38,11 @@ export default function MentorAssignments() {
         ...a,
         score: a.score !== undefined && a.score !== null ? a.score : (a.autoScore !== undefined && a.autoScore !== null ? a.autoScore : null)
       })) : [];
+      
+      // Debug logging
+      console.log('Assignments data:', assignmentsWithScore);
+      console.log('Sample assignment with submission data:', assignmentsWithScore.find(a => a.status === 'Completed'));
+      
       setAssignments(assignmentsWithScore);
     } catch (error) {
       console.error("Error fetching assignments:", error);
@@ -86,6 +92,19 @@ export default function MentorAssignments() {
       a.testId?._id === selectedTest._id && a.status === "Completed"
     );
 
+         // Apply student search filter
+         if (studentSearchTerm.trim()) {
+           const searchLower = studentSearchTerm.toLowerCase();
+           submittedStudents = submittedStudents.filter(assignment => 
+             (assignment.userId?.name || '').toLowerCase().includes(searchLower) ||
+             (assignment.userId?.email || '').toLowerCase().includes(searchLower) ||
+             (assignment.startedAt ? new Date(assignment.startedAt).toLocaleString() : '').toLowerCase().includes(searchLower) ||
+             (assignment.submittedAt ? new Date(assignment.submittedAt).toLocaleString() : '').toLowerCase().includes(searchLower) ||
+             (assignment.completedAt ? new Date(assignment.completedAt).toLocaleString() : '').toLowerCase().includes(searchLower) ||
+             (assignment.score !== undefined ? assignment.score.toString() : '').includes(searchLower)
+           );
+         }
+
     // Apply score sorting
     if (scoreSort !== 'none') {
       submittedStudents = [...submittedStudents].sort((a, b) => {
@@ -101,39 +120,56 @@ export default function MentorAssignments() {
       });
     }
 
-    // Apply submission time filter
-    if (submissionTimeFilter !== 'all') {
-      const now = new Date();
-      submittedStudents = submittedStudents.filter(assignment => {
-        if (!assignment.submittedAt) return false;
-        const submissionDate = new Date(assignment.submittedAt);
-        const timeDiff = now - submissionDate;
-        const daysDiff = timeDiff / (1000 * 60 * 60 * 24);
+    // Apply submission time sorting (duration: end time - start time)
+    if (submissionTimeSort !== 'none') {
+      submittedStudents = [...submittedStudents].sort((a, b) => {
+        // Calculate duration for assignment a
+        const startTimeA = a.startedAt ? new Date(a.startedAt) : null;
+        const endTimeA = a.submittedAt ? new Date(a.submittedAt) : (a.completedAt ? new Date(a.completedAt) : null);
+        const durationA = (startTimeA && endTimeA) ? (endTimeA - startTimeA) : 0;
 
-        switch (submissionTimeFilter) {
-          case 'today':
-            return daysDiff < 1;
-          case 'week':
-            return daysDiff < 7;
-          case 'month':
-            return daysDiff < 30;
-          case 'older':
-            return daysDiff >= 30;
-          default:
-            return true;
+        // Calculate duration for assignment b
+        const startTimeB = b.startedAt ? new Date(b.startedAt) : null;
+        const endTimeB = b.submittedAt ? new Date(b.submittedAt) : (b.completedAt ? new Date(b.completedAt) : null);
+        const durationB = (startTimeB && endTimeB) ? (endTimeB - startTimeB) : 0;
+
+        if (submissionTimeSort === 'increasing') {
+          return durationA - durationB;
+        } else if (submissionTimeSort === 'decreasing') {
+          return durationB - durationA;
         }
+        return 0;
       });
     }
 
     return submittedStudents;
   };
 
+  // Function to calculate test duration
+  const getTestDuration = (assignment) => {
+    const startTime = assignment.startedAt ? new Date(assignment.startedAt) : null;
+    const endTime = assignment.submittedAt ? new Date(assignment.submittedAt) : (assignment.completedAt ? new Date(assignment.completedAt) : null);
+    
+    if (!startTime || !endTime) return null;
+    
+    const durationMs = endTime - startTime;
+    const durationMinutes = Math.floor(durationMs / (1000 * 60));
+    const durationSeconds = Math.floor((durationMs % (1000 * 60)) / 1000);
+    
+    if (durationMinutes > 0) {
+      return `${durationMinutes}m ${durationSeconds}s`;
+    } else {
+      return `${durationSeconds}s`;
+    }
+  };
+
   // Function to reset filters
   const resetFilters = () => {
     setScoreSort('none');
-    setSubmissionTimeFilter('all');
+    setSubmissionTimeSort('none');
     setShowFilters(false);
     setStudentsCurrentPage(1);
+    setStudentSearchTerm('');
   };
 
   // Pagination functions
@@ -184,6 +220,12 @@ export default function MentorAssignments() {
   const handleSearchChange = (value) => {
     setSearchTerm(value);
     setCurrentPage(1); // Reset to first page when searching
+  };
+
+  // Handle student search changes
+  const handleStudentSearchChange = (value) => {
+    setStudentSearchTerm(value);
+    setStudentsCurrentPage(1); // Reset to first page when searching
   };
 
   // Keyboard navigation for pagination
@@ -393,7 +435,7 @@ export default function MentorAssignments() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                       </svg>
-                      View Details
+                    View Details
                     </span>
                   </button>
                   </td>
@@ -501,10 +543,39 @@ export default function MentorAssignments() {
             <div className="bg-slate-800 rounded-xl p-4 shadow-lg flex flex-col flex-1 min-h-0">
               <div className="flex justify-between items-center mb-4 flex-shrink-0">
                 <h4 className="text-lg font-semibold text-white flex items-center">
-                  <div className="w-2 h-2 bg-purple-400 rounded-full mr-3"></div>
-                  Submitted Students
-                </h4>
+                <div className="w-2 h-2 bg-purple-400 rounded-full mr-3"></div>
+                Submitted Students
+              </h4>
                 <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <svg className="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Search students..."
+                      value={studentSearchTerm}
+                      onChange={(e) => handleStudentSearchChange(e.target.value)}
+                      className="block w-64 pl-9 pr-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-sm"
+                    />
+                    {studentSearchTerm && (
+                      <button
+                        onClick={() => handleStudentSearchChange('')}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white transition-colors"
+                      >
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                  {studentSearchTerm && (
+                    <div className="text-xs text-slate-400 bg-slate-700 px-2 py-1 rounded">
+                      {getFilteredSubmittedStudents().length} result{getFilteredSubmittedStudents().length !== 1 ? 's' : ''}
+                    </div>
+                  )}
                   <button
                     onClick={() => setShowFilters(!showFilters)}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 ${
@@ -517,13 +588,13 @@ export default function MentorAssignments() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.207A1 1 0 013 6.5V4z" />
                     </svg>
                     Filters
-                    {(scoreSort !== 'none' || submissionTimeFilter !== 'all') && (
+                    {(scoreSort !== 'none' || submissionTimeSort !== 'none') && (
                       <span className="bg-red-500 text-white text-xs rounded-full px-2 py-1">
-                        {(scoreSort !== 'none' ? 1 : 0) + (submissionTimeFilter !== 'all' ? 1 : 0)}
+                        {(scoreSort !== 'none' ? 1 : 0) + (submissionTimeSort !== 'none' ? 1 : 0)}
                       </span>
                     )}
                   </button>
-                  {(scoreSort !== 'none' || submissionTimeFilter !== 'all') && (
+                  {(scoreSort !== 'none' || submissionTimeSort !== 'none') && (
                     <button
                       onClick={resetFilters}
                       className="text-slate-400 hover:text-white text-sm underline transition-colors"
@@ -557,24 +628,22 @@ export default function MentorAssignments() {
                       </select>
                     </div>
 
-                    {/* Submission Time Filter */}
+                    {/* Submission Time Sort */}
                     <div>
                       <label className="block text-slate-300 text-sm font-medium mb-2">
-                        Filter by Submission Time
+                        Sort by Test Duration (End Time - Start Time)
                       </label>
                       <select
-                        value={submissionTimeFilter}
+                        value={submissionTimeSort}
                         onChange={(e) => {
-                          setSubmissionTimeFilter(e.target.value);
+                          setSubmissionTimeSort(e.target.value);
                           handleFilterChange();
                         }}
                         className="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       >
-                        <option value="all">All Time</option>
-                        <option value="today">Today</option>
-                        <option value="week">This Week</option>
-                        <option value="month">This Month</option>
-                        <option value="older">Older than 1 Month</option>
+                        <option value="none">No Sorting</option>
+                        <option value="increasing">Fastest First</option>
+                        <option value="decreasing">Slowest First</option>
                       </select>
                     </div>
                   </div>
@@ -588,8 +657,14 @@ export default function MentorAssignments() {
                   <span className="font-semibold text-white">
                     {assignments.filter(a => a.testId?._id === selectedTest._id && a.status === "Completed").length}
                   </span> submitted students
-                  {(scoreSort !== 'none' || submissionTimeFilter !== 'all') && (
-                    <span className="text-blue-400 ml-2">(filtered/sorted)</span>
+                  {(scoreSort !== 'none' || submissionTimeSort !== 'none' || studentSearchTerm.trim()) && (
+                    <span className="text-blue-400 ml-2">
+                      ({[
+                        studentSearchTerm.trim() && 'searched',
+                        scoreSort !== 'none' && 'score sorted',
+                        submissionTimeSort !== 'none' && 'duration sorted'
+                      ].filter(Boolean).join(', ')})
+                    </span>
                   )}
                 </p>
               </div>
@@ -600,6 +675,7 @@ export default function MentorAssignments() {
                   <th className="p-3 font-semibold text-sm uppercase tracking-wide">Student Name</th>
                   <th className="p-3 font-semibold text-sm uppercase tracking-wide">Start Time</th>
                   <th className="p-3 font-semibold text-sm uppercase tracking-wide">End Time</th>
+                  <th className="p-3 font-semibold text-sm uppercase tracking-wide">Duration</th>
                   <th className="p-3 font-semibold text-sm uppercase tracking-wide">Score</th>
                   <th className="p-3 font-semibold text-sm uppercase tracking-wide text-center">Action</th>
                 </tr>
@@ -608,8 +684,18 @@ export default function MentorAssignments() {
               {getPaginatedStudents().map((assignment) => (
                 <tr key={assignment._id} className="border-b border-slate-600 hover:bg-slate-700 transition-colors duration-200">
                   <td className="p-3 text-slate-200 font-medium">{assignment.userId?.name || "Unknown"}</td>
-                  <td className="p-3 text-slate-200 font-medium text-sm">{assignment.startTime ? new Date(assignment.startTime).toLocaleString() : "N/A"}</td>
-                  <td className="p-3 text-slate-200 font-medium text-sm">{assignment.deadline ? new Date(assignment.deadline).toLocaleString() : "N/A"}</td>
+                        <td className="p-3 text-slate-200 font-medium text-sm">{assignment.startedAt ? new Date(assignment.startedAt).toLocaleString() : "N/A"}</td>
+                        <td className="p-3 text-slate-200 font-medium text-sm">
+                          {assignment.submittedAt ? new Date(assignment.submittedAt).toLocaleString() : 
+                           assignment.completedAt ? new Date(assignment.completedAt).toLocaleString() : "N/A"}
+                        </td>
+                        <td className="p-3 text-slate-200 font-medium text-sm">
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                            getTestDuration(assignment) ? 'bg-blue-900 text-blue-300' : 'bg-gray-900 text-gray-300'
+                          }`}>
+                            {getTestDuration(assignment) || "N/A"}
+                          </span>
+                        </td>
                   <td className="p-3 text-slate-200 font-medium">
                     <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
                       assignment.score >= 80 ? 'bg-green-900 text-green-300' :
@@ -634,14 +720,24 @@ export default function MentorAssignments() {
                   <tr>
                     <td colSpan="5" className="p-6 text-center text-slate-400">
                       <div className="text-xl mb-2">
-                        {(scoreSort !== 'none' || submissionTimeFilter !== 'all') ? '🔍' : '📝'}
+                        {(scoreSort !== 'none' || submissionTimeFilter !== 'all' || studentSearchTerm.trim()) ? '🔍' : '📝'}
                       </div>
                       <div className="text-sm">
-                        {(scoreSort !== 'none' || submissionTimeFilter !== 'all') 
-                          ? 'No submissions match the current filters.' 
-                          : 'No submissions yet.'
+                        {studentSearchTerm.trim() 
+                          ? `No students match "${studentSearchTerm}". Try a different search term.`
+                          : (scoreSort !== 'none' || submissionTimeFilter !== 'all') 
+                            ? 'No submissions match the current filters.' 
+                            : 'No submissions yet.'
                         }
                       </div>
+                      {(studentSearchTerm.trim() || scoreSort !== 'none' || submissionTimeFilter !== 'all') && (
+                        <button
+                          onClick={resetFilters}
+                          className="mt-3 text-blue-400 hover:text-blue-300 underline transition-colors text-sm"
+                        >
+                          Clear all filters
+                        </button>
+                      )}
                     </td>
                   </tr>
                 )}

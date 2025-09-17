@@ -66,7 +66,24 @@ router.get("/assignments", authenticateToken, async (req, res) => {
       .populate("userId", "name email")
       .sort({ createdAt: -1 });
 
-    res.json(assignments);
+    // Get submission data for each assignment to include submittedAt
+    const assignmentsWithSubmissions = await Promise.all(
+      assignments.map(async (assignment) => {
+        const submission = await TestSubmission.findOne({ 
+          assignmentId: assignment._id 
+        }).select('submittedAt');
+        
+        // Debug logging
+        console.log(`Assignment ${assignment._id}: submission found = ${!!submission}, submittedAt = ${submission?.submittedAt}`);
+        
+        return {
+          ...assignment.toObject(),
+          submittedAt: submission?.submittedAt || null
+        };
+      })
+    );
+
+    res.json(assignmentsWithSubmissions);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
