@@ -12,6 +12,9 @@ export default function MentorAssignments() {
   const [scoreSort, setScoreSort] = useState('none');
   const [submissionTimeFilter, setSubmissionTimeFilter] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [studentsCurrentPage, setStudentsCurrentPage] = useState(1);
+  const itemsPerPage = 10;
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -129,6 +132,172 @@ export default function MentorAssignments() {
     setScoreSort('none');
     setSubmissionTimeFilter('all');
     setShowFilters(false);
+    setStudentsCurrentPage(1);
+  };
+
+  // Pagination functions
+  const getPaginatedAssignments = () => {
+    const uniqueAssignments = Array.from(new Map(assignments.map(a => [a.testId?._id, a])).values());
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return uniqueAssignments.slice(startIndex, endIndex);
+  };
+
+  const getPaginatedStudents = () => {
+    const filteredStudents = getFilteredSubmittedStudents();
+    const startIndex = (studentsCurrentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return filteredStudents.slice(startIndex, endIndex);
+  };
+
+  const getTotalPages = (totalItems) => {
+    return Math.ceil(totalItems / itemsPerPage);
+  };
+
+  const getUniqueAssignmentsCount = () => {
+    return Array.from(new Map(assignments.map(a => [a.testId?._id, a])).values()).length;
+  };
+
+  // Reset pagination when filters change
+  const handleFilterChange = () => {
+    setStudentsCurrentPage(1);
+  };
+
+  // Keyboard navigation for pagination
+  useEffect(() => {
+    const handleKeyPress = (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === 'ArrowLeft' && currentPage > 1) {
+          e.preventDefault();
+          setCurrentPage(currentPage - 1);
+        } else if (e.key === 'ArrowRight' && currentPage < getTotalPages(getUniqueAssignmentsCount())) {
+          e.preventDefault();
+          setCurrentPage(currentPage + 1);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [currentPage, getUniqueAssignmentsCount]);
+
+  // Smooth scroll to top when page changes
+  const handlePageChange = (newPage, isStudentsTable = false) => {
+    if (isStudentsTable) {
+      setStudentsCurrentPage(newPage);
+    } else {
+      setCurrentPage(newPage);
+    }
+    
+    // Smooth scroll to top of table
+    setTimeout(() => {
+      const tableContainer = document.querySelector('.overflow-y-auto, .overflow-auto');
+      if (tableContainer) {
+        tableContainer.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }, 100);
+  };
+
+  // Enhanced Pagination Component
+  const Pagination = ({ currentPage, totalPages, onPageChange, totalItems, itemsPerPage }) => {
+    const startItem = (currentPage - 1) * itemsPerPage + 1;
+    const endItem = Math.min(currentPage * itemsPerPage, totalItems);
+
+    const getPageNumbers = () => {
+      const pages = [];
+      const maxVisiblePages = 5;
+      
+      if (totalPages <= maxVisiblePages) {
+        for (let i = 1; i <= totalPages; i++) {
+          pages.push(i);
+        }
+      } else {
+        if (currentPage <= 3) {
+          for (let i = 1; i <= 4; i++) {
+            pages.push(i);
+          }
+          pages.push('...');
+          pages.push(totalPages);
+        } else if (currentPage >= totalPages - 2) {
+          pages.push(1);
+          pages.push('...');
+          for (let i = totalPages - 3; i <= totalPages; i++) {
+            pages.push(i);
+          }
+        } else {
+          pages.push(1);
+          pages.push('...');
+          for (let i = currentPage - 1; i <= currentPage + 1; i++) {
+            pages.push(i);
+          }
+          pages.push('...');
+          pages.push(totalPages);
+        }
+      }
+      
+      return pages;
+    };
+
+    if (totalPages <= 1) return null;
+
+    return (
+      <div className="flex items-center justify-between px-4 py-4 bg-gradient-to-r from-slate-800 to-slate-700 border-t border-slate-600 shadow-lg">
+        <div className="flex items-center space-x-4">
+          <div className="text-sm text-slate-300 font-medium">
+            Showing <span className="text-blue-400 font-bold">{startItem}</span> to <span className="text-blue-400 font-bold">{endItem}</span> of <span className="text-white font-bold">{totalItems}</span> results
+          </div>
+          <div className="text-xs text-slate-400">
+            Page {currentPage} of {totalPages}
+          </div>
+          <div className="text-xs text-slate-500 bg-slate-600 px-2 py-1 rounded">
+            Ctrl + ← → to navigate
+          </div>
+        </div>
+        
+        <div className="flex items-center space-x-1">
+          <button
+            onClick={() => onPageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+            className="flex items-center px-3 py-2 text-sm bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:scale-105 active:scale-95 shadow-md hover:shadow-lg"
+          >
+            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Previous
+          </button>
+          
+          <div className="flex items-center space-x-1 mx-2">
+            {getPageNumbers().map((page, index) => (
+              <button
+                key={index}
+                onClick={() => typeof page === 'number' && onPageChange(page)}
+                disabled={page === '...'}
+                className={`px-3 py-2 text-sm rounded-lg transition-all duration-200 font-medium ${
+                  page === currentPage
+                    ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg transform scale-105'
+                    : page === '...'
+                    ? 'text-slate-400 cursor-default px-2'
+                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600 hover:scale-105 active:scale-95 shadow-md hover:shadow-lg'
+                }`}
+              >
+                {page}
+              </button>
+            ))}
+          </div>
+          
+          <button
+            onClick={() => onPageChange(currentPage + 1)}
+            disabled={currentPage === totalPages}
+            className="flex items-center px-3 py-2 text-sm bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:scale-105 active:scale-95 shadow-md hover:shadow-lg"
+          >
+            Next
+            <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    );
   };
 
   if (loading) {
@@ -139,36 +308,42 @@ export default function MentorAssignments() {
     <div className="p-6">
       <h2 className="text-3xl font-bold mb-6">Test Assignments</h2>
 
-      <div className="rounded-xl border border-slate-700 bg-slate-800 overflow-hidden">
-        <div className="h-[80vh] overflow-y-auto">
+      <div className="rounded-xl border border-slate-700 bg-slate-800 overflow-hidden flex flex-col h-[85vh]">
+        <div className="flex-1 overflow-y-auto">
           <table className="w-full">
-            <thead className="bg-slate-800 sticky top-0">
-              <tr className="text-left text-slate-300 border-b border-slate-700">
-                <th className="p-4">Test Name</th>
-                <th className="p-4">Test Date</th>
-                <th className="p-4">View Details</th>
+            <thead className="bg-gradient-to-r from-slate-800 to-slate-700 sticky top-0 shadow-lg">
+              <tr className="text-left text-slate-200 border-b border-slate-600">
+                <th className="p-4 font-semibold text-sm uppercase tracking-wide">Test Name</th>
+                <th className="p-4 font-semibold text-sm uppercase tracking-wide">Test Date</th>
+                <th className="p-4 font-semibold text-sm uppercase tracking-wide text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {Array.from(new Map(assignments.map(a => [a.testId?._id, a])).values()).map((assignment) => (
+              {getPaginatedAssignments().map((assignment) => (
                 <tr key={assignment._id} className="border-b border-slate-700 hover:bg-slate-700 transition-colors duration-200">
                   <td className="p-4 text-slate-200 font-medium">{assignment.testId?.title || "Unknown Test"}</td>
                   <td className="p-4 text-slate-300">{assignment.createdAt ? new Date(assignment.createdAt).toLocaleDateString() : "N/A"}</td>
-                  <td className="p-4">
+                  <td className="p-4 text-center">
                     <button
                     onClick={() => {
                       setSelectedTest(assignment.testId);
                       setShowModal(true);
                       resetFilters(); // Reset filters when opening a new test
                     }}
-                    className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2 rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
+                    className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2 rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 active:scale-95 font-medium"
                   >
-                    View Details
+                    <span className="flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                      View Details
+                    </span>
                   </button>
                   </td>
                 </tr>
               ))}
-              {assignments.length === 0 && (
+              {getUniqueAssignmentsCount() === 0 && (
                 <tr>
                   <td
                     colSpan="3"
@@ -181,13 +356,22 @@ export default function MentorAssignments() {
             </tbody>
           </table>
         </div>
+        <div className="flex-shrink-0">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={getTotalPages(getUniqueAssignmentsCount())}
+            onPageChange={(page) => handlePageChange(page, false)}
+            totalItems={getUniqueAssignmentsCount()}
+            itemsPerPage={itemsPerPage}
+          />
+        </div>
       </div>
 
       {showModal && selectedTest && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4 animate-fade-in">
-          <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-8 w-full max-w-5xl max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-700 transform scale-100 animate-modal-appear">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-3xl font-bold text-white bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+          <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-6 w-full max-w-7xl h-[95vh] flex flex-col shadow-2xl border border-slate-700 transform scale-100 animate-modal-appear">
+            <div className="flex justify-between items-center mb-4 flex-shrink-0">
+              <h3 className="text-2xl font-bold text-white bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
                 {selectedTest.title} - Details
               </h3>
               <button
@@ -200,7 +384,7 @@ export default function MentorAssignments() {
               </button>
             </div>
 
-            <div className="mb-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-4 flex-shrink-0">
               <div 
                 onClick={() => {
                   setSelectedSection('assigned');
@@ -239,9 +423,9 @@ export default function MentorAssignments() {
               </div>
             </div>
 
-            <div className="bg-slate-800 rounded-xl p-6 shadow-lg">
-              <div className="flex justify-between items-center mb-6">
-                <h4 className="text-xl font-semibold text-white flex items-center">
+            <div className="bg-slate-800 rounded-xl p-4 shadow-lg flex flex-col flex-1 min-h-0">
+              <div className="flex justify-between items-center mb-4 flex-shrink-0">
+                <h4 className="text-lg font-semibold text-white flex items-center">
                   <div className="w-2 h-2 bg-purple-400 rounded-full mr-3"></div>
                   Submitted Students
                 </h4>
@@ -277,8 +461,8 @@ export default function MentorAssignments() {
 
               {/* Collapsible Filter Controls */}
               {showFilters && (
-                <div className="mb-6 p-4 bg-slate-700 rounded-lg border border-slate-600">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="mb-4 p-3 bg-slate-700 rounded-lg border border-slate-600 flex-shrink-0">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {/* Score Sort */}
                     <div>
                       <label className="block text-slate-300 text-sm font-medium mb-2">
@@ -286,7 +470,10 @@ export default function MentorAssignments() {
                       </label>
                       <select
                         value={scoreSort}
-                        onChange={(e) => setScoreSort(e.target.value)}
+                        onChange={(e) => {
+                          setScoreSort(e.target.value);
+                          handleFilterChange();
+                        }}
                         className="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       >
                         <option value="none">No Sorting</option>
@@ -302,7 +489,10 @@ export default function MentorAssignments() {
                       </label>
                       <select
                         value={submissionTimeFilter}
-                        onChange={(e) => setSubmissionTimeFilter(e.target.value)}
+                        onChange={(e) => {
+                          setSubmissionTimeFilter(e.target.value);
+                          handleFilterChange();
+                        }}
                         className="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       >
                         <option value="all">All Time</option>
@@ -317,7 +507,7 @@ export default function MentorAssignments() {
               )}
 
               {/* Filter Results Summary */}
-              <div className="mb-4 p-3 bg-slate-700 rounded-lg">
+              <div className="mb-3 p-2 bg-slate-700 rounded-lg flex-shrink-0">
                 <p className="text-slate-300 text-sm">
                   Showing <span className="font-semibold text-white">{getFilteredSubmittedStudents().length}</span> of{' '}
                   <span className="font-semibold text-white">
@@ -328,50 +518,68 @@ export default function MentorAssignments() {
                   )}
                 </p>
               </div>
-              <div className="overflow-x-auto">
+              <div className="flex-1 overflow-auto min-h-0">
                 <table className="w-full">
-                  <thead className="bg-slate-700">
-                    <tr className="text-left text-slate-300 border-b border-slate-600">
-                  <th className="p-4 font-semibold">Student Name</th>
-                  <th className="p-4 font-semibold">Start Time</th>
-                  <th className="p-4 font-semibold">End Time</th>
-                  <th className="p-4 font-semibold">Score</th>
-                  <th className="p-4 font-semibold text-center">Action</th>
+                  <thead className="bg-gradient-to-r from-slate-700 to-slate-600 sticky top-0 shadow-lg">
+                    <tr className="text-left text-slate-200 border-b border-slate-500">
+                  <th className="p-3 font-semibold text-sm uppercase tracking-wide">Student Name</th>
+                  <th className="p-3 font-semibold text-sm uppercase tracking-wide">Start Time</th>
+                  <th className="p-3 font-semibold text-sm uppercase tracking-wide">End Time</th>
+                  <th className="p-3 font-semibold text-sm uppercase tracking-wide">Score</th>
+                  <th className="p-3 font-semibold text-sm uppercase tracking-wide text-center">Action</th>
                 </tr>
               </thead>
               <tbody>
-              {getFilteredSubmittedStudents().map((assignment) => (
+              {getPaginatedStudents().map((assignment) => (
                 <tr key={assignment._id} className="border-b border-slate-600 hover:bg-slate-700 transition-colors duration-200">
-                  <td className="p-4 text-slate-200 font-medium">{assignment.userId?.name || "Unknown"}</td>
-                  <td className="p-4 text-slate-200 font-medium">{assignment.startTime ? new Date(assignment.startTime).toLocaleString() : "N/A"}</td>
-                  <td className="p-4 text-slate-200 font-medium">{assignment.deadline ? new Date(assignment.deadline).toLocaleString() : "N/A"}</td>
-                  <td className="p-4 text-slate-200 font-medium">{assignment.score !== undefined ? assignment.score : "N/A"}</td>
-                  <td className="p-4 text-center">
+                  <td className="p-3 text-slate-200 font-medium">{assignment.userId?.name || "Unknown"}</td>
+                  <td className="p-3 text-slate-200 font-medium text-sm">{assignment.startTime ? new Date(assignment.startTime).toLocaleString() : "N/A"}</td>
+                  <td className="p-3 text-slate-200 font-medium text-sm">{assignment.deadline ? new Date(assignment.deadline).toLocaleString() : "N/A"}</td>
+                  <td className="p-3 text-slate-200 font-medium">
+                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                      assignment.score >= 80 ? 'bg-green-900 text-green-300' :
+                      assignment.score >= 60 ? 'bg-yellow-900 text-yellow-300' :
+                      assignment.score >= 40 ? 'bg-orange-900 text-orange-300' :
+                      'bg-red-900 text-red-300'
+                    }`}>
+                      {assignment.score !== undefined ? assignment.score : "N/A"}
+                    </span>
+                  </td>
+                  <td className="p-3 text-center">
                     <button
                       onClick={() => navigate(`/mentor/view-test/${assignment._id}`)}
-                      className="bg-white text-black px-4 py-2 rounded-lg hover:bg-gray-100 transition-all duration-300 shadow-md hover:shadow-lg transform hover:scale-105 font-semibold"
+                      className="bg-white text-black px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-all duration-300 shadow-md hover:shadow-lg transform hover:scale-105 font-semibold text-sm"
                     >
-                      View Submissions
+                      View
                     </button>
                   </td>
                 </tr>
               ))}
                 {getFilteredSubmittedStudents().length === 0 && (
                   <tr>
-                    <td colSpan="5" className="p-8 text-center text-slate-400">
-                      <div className="text-2xl mb-2">
+                    <td colSpan="5" className="p-6 text-center text-slate-400">
+                      <div className="text-xl mb-2">
                         {(scoreSort !== 'none' || submissionTimeFilter !== 'all') ? '🔍' : '📝'}
                       </div>
-                      {(scoreSort !== 'none' || submissionTimeFilter !== 'all') 
-                        ? 'No submissions match the current filters.' 
-                        : 'No submissions yet.'
-                      }
+                      <div className="text-sm">
+                        {(scoreSort !== 'none' || submissionTimeFilter !== 'all') 
+                          ? 'No submissions match the current filters.' 
+                          : 'No submissions yet.'
+                        }
+                      </div>
                     </td>
                   </tr>
                 )}
               </tbody>
                 </table>
               </div>
+              <Pagination
+                currentPage={studentsCurrentPage}
+                totalPages={getTotalPages(getFilteredSubmittedStudents().length)}
+                onPageChange={(page) => handlePageChange(page, true)}
+                totalItems={getFilteredSubmittedStudents().length}
+                itemsPerPage={itemsPerPage}
+              />
             </div>
           </div>
         </div>
