@@ -10,7 +10,7 @@ dotenv.config();
 
 const app = express();
 
-// Comprehensive CORS configuration for production
+// Define allowed origins
 const allowedOrigins = [
   process.env.FRONTEND_URL,
   "http://localhost:5173",
@@ -19,55 +19,43 @@ const allowedOrigins = [
   "https://cg-test-app.vercel.app/*"
 ].filter(Boolean);
 
-app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
-    // Check if origin is in allowed list
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-    
-    // Check if origin starts with any allowed origin (for subdomains)
-    const isAllowed = allowedOrigins.some(allowedOrigin => 
-      origin.startsWith(allowedOrigin.replace('/*', ''))
-    );
-    
-    if (isAllowed) {
-      return callback(null, true);
-    }
-    
-    console.log('CORS blocked origin:', origin);
-    return callback(new Error('Not allowed by CORS'));
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token', 'Accept', 'Origin', 'X-Requested-With'],
-  optionsSuccessStatus: 200 // For legacy browser support
-}));
-
-// Add manual CORS headers as backup
+// Manual CORS middleware - MUST be first
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   
-  // Always set CORS headers for allowed origins
-  if (!origin || allowedOrigins.some(allowed => origin.startsWith(allowed.replace('/*', '')))) {
-    res.header('Access-Control-Allow-Origin', origin || '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-auth-token, Accept, Origin, X-Requested-With');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Max-Age', '86400'); // 24 hours
-  }
+  console.log('CORS Request:', {
+    method: req.method,
+    origin: origin,
+    url: req.url
+  });
+  
+  // More permissive CORS - allow all origins for now to test
+  res.header('Access-Control-Allow-Origin', origin || '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-auth-token, Accept, Origin, X-Requested-With');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Max-Age', '86400'); // 24 hours
+  
+  console.log('CORS: Headers set for origin:', origin);
 
-  // Handle preflight requests
+  // Handle preflight requests immediately
   if (req.method === 'OPTIONS') {
+    console.log('CORS: Handling preflight request for:', req.url);
     res.status(200).end();
     return;
   }
   
   next();
 });
+
+// Additional CORS middleware using cors package - more permissive
+app.use(cors({
+  origin: true, // Allow all origins for now
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token', 'Accept', 'Origin', 'X-Requested-With'],
+  optionsSuccessStatus: 200 // For legacy browser support
+}));
 app.use(express.json());
 app.use(morgan("dev"));
 
@@ -81,6 +69,12 @@ const io = new Server(server, {
     allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token', 'Accept', 'Origin', 'X-Requested-With'],
     credentials: true
   }
+});
+
+// Global OPTIONS handler for all routes
+app.options('*', (req, res) => {
+  console.log('Global OPTIONS handler triggered for:', req.url);
+  res.status(200).end();
 });
 
 // Routes

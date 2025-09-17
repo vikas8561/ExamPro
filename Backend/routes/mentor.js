@@ -6,6 +6,12 @@ const Test = require("../models/Test");
 const TestSubmission = require("../models/TestSubmission");
 const { authenticateToken } = require("../middleware/auth");
 
+// Handle OPTIONS requests for CORS preflight
+router.options('*', (req, res) => {
+  console.log('Mentor route OPTIONS handler triggered for:', req.url);
+  res.status(200).end();
+});
+
 // Get mentor dashboard data
 router.get("/dashboard", authenticateToken, async (req, res) => {
   try {
