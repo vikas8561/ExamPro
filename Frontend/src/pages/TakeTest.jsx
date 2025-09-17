@@ -589,6 +589,7 @@ const TakeTest = () => {
 
       setTimeRemaining(remainingSeconds);
       setTestStarted(true);
+      setShowPermissionModal(false);
       setLoading(false);
     } catch (error) {
       if (error.message === "Test already started") {
