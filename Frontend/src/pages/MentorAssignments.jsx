@@ -14,6 +14,7 @@ export default function MentorAssignments() {
   const [showFilters, setShowFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [studentsCurrentPage, setStudentsCurrentPage] = useState(1);
+  const [searchTerm, setSearchTerm] = useState('');
   const itemsPerPage = 10;
   const navigate = useNavigate();
 
@@ -136,11 +137,27 @@ export default function MentorAssignments() {
   };
 
   // Pagination functions
-  const getPaginatedAssignments = () => {
+  const getFilteredAssignments = () => {
     const uniqueAssignments = Array.from(new Map(assignments.map(a => [a.testId?._id, a])).values());
+    
+    if (!searchTerm.trim()) {
+      return uniqueAssignments;
+    }
+    
+    const searchLower = searchTerm.toLowerCase();
+    return uniqueAssignments.filter(assignment => 
+      (assignment.testId?.title || '').toLowerCase().includes(searchLower) ||
+      (assignment.testId?.subject || '').toLowerCase().includes(searchLower) ||
+      (assignment.testId?.type || '').toLowerCase().includes(searchLower) ||
+      (assignment.createdAt ? new Date(assignment.createdAt).toLocaleDateString() : '').includes(searchLower)
+    );
+  };
+
+  const getPaginatedAssignments = () => {
+    const filteredAssignments = getFilteredAssignments();
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
-    return uniqueAssignments.slice(startIndex, endIndex);
+    return filteredAssignments.slice(startIndex, endIndex);
   };
 
   const getPaginatedStudents = () => {
@@ -155,12 +172,18 @@ export default function MentorAssignments() {
   };
 
   const getUniqueAssignmentsCount = () => {
-    return Array.from(new Map(assignments.map(a => [a.testId?._id, a])).values()).length;
+    return getFilteredAssignments().length;
   };
 
   // Reset pagination when filters change
   const handleFilterChange = () => {
     setStudentsCurrentPage(1);
+  };
+
+  // Handle search changes
+  const handleSearchChange = (value) => {
+    setSearchTerm(value);
+    setCurrentPage(1); // Reset to first page when searching
   };
 
   // Keyboard navigation for pagination
@@ -306,7 +329,40 @@ export default function MentorAssignments() {
 
   return (
     <div className="p-6">
-      <h2 className="text-3xl font-bold mb-6">Test Assignments</h2>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-3xl font-bold">Test Assignments</h2>
+        <div className="flex items-center space-x-4">
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <svg className="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            <input
+              type="text"
+              placeholder="Search tests by name, subject, type, or date..."
+              value={searchTerm}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="block w-80 pl-10 pr-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+            />
+            {searchTerm && (
+              <button
+                onClick={() => handleSearchChange('')}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white transition-colors"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+          {searchTerm && (
+            <div className="text-sm text-slate-400 bg-slate-700 px-3 py-1 rounded-lg">
+              {getUniqueAssignmentsCount()} result{getUniqueAssignmentsCount() !== 1 ? 's' : ''}
+            </div>
+          )}
+        </div>
+      </div>
 
       <div className="rounded-xl border border-slate-700 bg-slate-800 overflow-hidden flex flex-col h-[85vh]">
         <div className="flex-1 overflow-y-auto">
@@ -347,9 +403,28 @@ export default function MentorAssignments() {
                 <tr>
                   <td
                     colSpan="3"
-                    className="p-4 text-center text-slate-400"
+                    className="p-8 text-center text-slate-400"
                   >
-                    No assignments found.
+                    <div className="text-4xl mb-3">
+                      {searchTerm ? '🔍' : '📝'}
+                    </div>
+                    <div className="text-lg font-medium mb-2">
+                      {searchTerm ? 'No assignments found' : 'No assignments available'}
+                    </div>
+                    <div className="text-sm">
+                      {searchTerm 
+                        ? `No test assignments match "${searchTerm}". Try a different search term.`
+                        : 'There are no test assignments to display at the moment.'
+                      }
+                    </div>
+                    {searchTerm && (
+                      <button
+                        onClick={() => handleSearchChange('')}
+                        className="mt-3 text-blue-400 hover:text-blue-300 underline transition-colors"
+                      >
+                        Clear search
+                      </button>
+                    )}
                   </td>
                 </tr>
               )}
