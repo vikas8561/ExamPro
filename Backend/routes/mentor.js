@@ -7,10 +7,19 @@ const Test = require("../models/Test");
 const TestSubmission = require("../models/TestSubmission");
 const { authenticateToken } = require("../middleware/auth");
 
+// Test endpoint to verify mentor routes are working
+router.get("/test", (req, res) => {
+  res.json({ 
+    message: "Mentor routes are working!",
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Get mentor dashboard data
 router.get("/dashboard", authenticateToken, async (req, res) => {
   try {
     const mentorId = req.user.userId;
+    console.log('Fetching dashboard for mentor:', mentorId);
     
     // Get all assignments where this mentor is assigned
     const assignments = await Assignment.find({ mentorId })
@@ -21,7 +30,7 @@ router.get("/dashboard", authenticateToken, async (req, res) => {
     const activeAssignments = assignments.filter(a => a.status === "In Progress");
     const completedAssignments = assignments.filter(a => a.status === "Completed");
     
-    // Get test submissions for monitoring
+    // Get test submissions for monitoring (with limit to avoid performance issues)
     const submissions = await TestSubmission.find()
       .populate({
         path: "assignmentId",
@@ -31,16 +40,18 @@ router.get("/dashboard", authenticateToken, async (req, res) => {
         }
       })
       .populate("userId", "name email")
-      .sort({ submittedAt: -1 });
+      .sort({ submittedAt: -1 })
+      .limit(10); // Limit to 10 most recent submissions
 
     res.json({
       totalAssigned: assignments.length,
       activeTests: activeAssignments.length,
       completedTests: completedAssignments.length,
-      recentSubmissions: submissions.slice(0, 10),
+      recentSubmissions: submissions,
       assignments
     });
   } catch (err) {
+    console.error('Error in mentor dashboard:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -49,50 +60,109 @@ router.get("/dashboard", authenticateToken, async (req, res) => {
 router.get("/assignments", authenticateToken, async (req, res) => {
   try {
     const mentorId = req.user.userId;
+    console.log('Fetching assignments for mentor:', mentorId);
     
-    // Get assignments with optimized population
-    const assignments = await Assignment.find({
-      $or: [
-        { mentorId: req.user.userId },
-        { mentorId: null }
-      ]
-    })
-      .populate({
-        path: "testId",
-        select: "title type instructions timeLimit questions",
-        populate: {
-          path: "questions",
-          select: "kind text options answer guidelines examples points"
-        }
+    // First try the optimized approach
+    try {
+      // Get assignments with optimized population
+      const assignments = await Assignment.find({
+        $or: [
+          { mentorId: req.user.userId },
+          { mentorId: null }
+        ]
       })
-      .populate("userId", "name email")
-      .sort({ createdAt: -1 })
-      .lean(); // Use lean() for better performance
+        .populate({
+          path: "testId",
+          select: "title type instructions timeLimit questions",
+          populate: {
+            path: "questions",
+            select: "kind text options answer guidelines examples points"
+          }
+        })
+        .populate("userId", "name email")
+        .sort({ createdAt: -1 });
 
-    // Get all assignment IDs for batch query
-    const assignmentIds = assignments.map(a => a._id);
-    
-    // Single query to get all submissions for these assignments
-    const submissions = await TestSubmission.find({
-      assignmentId: { $in: assignmentIds }
-    }).select('assignmentId submittedAt').lean();
-    
-    // Create a map for quick lookup
-    const submissionMap = new Map();
-    submissions.forEach(sub => {
-      submissionMap.set(sub.assignmentId.toString(), sub.submittedAt);
-    });
-    
-    // Add submittedAt to assignments
-    const assignmentsWithSubmissions = assignments.map(assignment => ({
-      ...assignment,
-      submittedAt: submissionMap.get(assignment._id.toString()) || null
-    }));
+      console.log('Found assignments:', assignments.length);
 
-    res.json(assignmentsWithSubmissions);
+      // Get all assignment IDs for batch query
+      const assignmentIds = assignments.map(a => a._id);
+      
+      // Single query to get all submissions for these assignments
+      const submissions = await TestSubmission.find({
+        assignmentId: { $in: assignmentIds }
+      }).select('assignmentId submittedAt');
+      
+      console.log('Found submissions:', submissions.length);
+      
+      // Create a map for quick lookup
+      const submissionMap = new Map();
+      submissions.forEach(sub => {
+        submissionMap.set(sub.assignmentId.toString(), sub.submittedAt);
+      });
+      
+      // Add submittedAt to assignments
+      const assignmentsWithSubmissions = assignments.map(assignment => ({
+        ...assignment.toObject(),
+        submittedAt: submissionMap.get(assignment._id.toString()) || null
+      }));
+
+      console.log('Returning assignments with submissions');
+      res.json(assignmentsWithSubmissions);
+      
+    } catch (optimizationError) {
+      console.error('Optimized query failed, falling back to original approach:', optimizationError);
+      
+      // Fallback to original working approach
+      const assignments = await Assignment.find({
+        $or: [
+          { mentorId: req.user.userId },
+          { mentorId: null }
+        ]
+      })
+        .populate({
+          path: "testId",
+          select: "title type instructions timeLimit questions",
+          populate: {
+            path: "questions",
+            select: "kind text options answer guidelines examples points"
+          }
+        })
+        .populate("userId", "name email")
+        .sort({ createdAt: -1 });
+
+      // Get submission data for each assignment (original approach)
+      const assignmentsWithSubmissions = await Promise.all(
+        assignments.map(async (assignment) => {
+          try {
+            const submission = await TestSubmission.findOne({ 
+              assignmentId: assignment._id 
+            }).select('submittedAt');
+            
+            return {
+              ...assignment.toObject(),
+              submittedAt: submission?.submittedAt || null
+            };
+          } catch (submissionError) {
+            console.error(`Error fetching submission for assignment ${assignment._id}:`, submissionError);
+            return {
+              ...assignment.toObject(),
+              submittedAt: null
+            };
+          }
+        })
+      );
+
+      console.log('Returning assignments with fallback approach');
+      res.json(assignmentsWithSubmissions);
+    }
+    
   } catch (err) {
-    console.error('Error in mentor assignments:', err);
-    res.status(500).json({ error: err.message });
+    console.error('Critical error in mentor assignments:', err);
+    console.error('Error stack:', err.stack);
+    res.status(500).json({ 
+      error: 'Failed to fetch assignments',
+      details: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
+    });
   }
 });
 
