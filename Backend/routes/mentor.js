@@ -50,84 +50,44 @@ router.get("/assignments", authenticateToken, async (req, res) => {
   try {
     const mentorId = req.user.userId;
     
-    // Use aggregation to eliminate N+1 query problem
-    const assignmentsWithSubmissions = await Assignment.aggregate([
-      {
-        $match: {
-          $or: [
-            { mentorId: new mongoose.Types.ObjectId(mentorId) },
-            { mentorId: null }
-          ]
+    // Get assignments with optimized population
+    const assignments = await Assignment.find({
+      $or: [
+        { mentorId: req.user.userId },
+        { mentorId: null }
+      ]
+    })
+      .populate({
+        path: "testId",
+        select: "title type instructions timeLimit questions",
+        populate: {
+          path: "questions",
+          select: "kind text options answer guidelines examples points"
         }
-      },
-      {
-        $lookup: {
-          from: 'testsubmissions',
-          localField: '_id',
-          foreignField: 'assignmentId',
-          as: 'submission',
-          pipeline: [{ $project: { submittedAt: 1 } }]
-        }
-      },
-      {
-        $lookup: {
-          from: 'tests',
-          localField: 'testId',
-          foreignField: '_id',
-          as: 'testId',
-          pipeline: [
-            {
-              $project: {
-                title: 1,
-                type: 1,
-                instructions: 1,
-                timeLimit: 1,
-                questions: {
-                  $map: {
-                    input: '$questions',
-                    as: 'question',
-                    in: {
-                      _id: '$$question._id',
-                      kind: '$$question.kind',
-                      text: '$$question.text',
-                      options: '$$question.options',
-                      answer: '$$question.answer',
-                      guidelines: '$$question.guidelines',
-                      examples: '$$question.examples',
-                      points: '$$question.points'
-                    }
-                  }
-                }
-              }
-            }
-          ]
-        }
-      },
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'userId',
-          foreignField: '_id',
-          as: 'userId',
-          pipeline: [{ $project: { name: 1, email: 1 } }]
-        }
-      },
-      {
-        $addFields: {
-          testId: { $arrayElemAt: ['$testId', 0] },
-          userId: { $arrayElemAt: ['$userId', 0] },
-          submittedAt: { $arrayElemAt: ['$submission.submittedAt', 0] }
-        }
-      },
-      {
-        $project: {
-          submission: 0 // Remove the submission array, we only need submittedAt
-        }
-      },
-      {
-        $sort: { createdAt: -1 }
-      }
-    ]);
+      })
+      .populate("userId", "name email")
+      .sort({ createdAt: -1 })
+      .lean(); // Use lean() for better performance
+
+    // Get all assignment IDs for batch query
+    const assignmentIds = assignments.map(a => a._id);
+    
+    // Single query to get all submissions for these assignments
+    const submissions = await TestSubmission.find({
+      assignmentId: { $in: assignmentIds }
+    }).select('assignmentId submittedAt').lean();
+    
+    // Create a map for quick lookup
+    const submissionMap = new Map();
+    submissions.forEach(sub => {
+      submissionMap.set(sub.assignmentId.toString(), sub.submittedAt);
+    });
+    
+    // Add submittedAt to assignments
+    const assignmentsWithSubmissions = assignments.map(assignment => ({
+      ...assignment,
+      submittedAt: submissionMap.get(assignment._id.toString()) || null
+    }));
 
     res.json(assignmentsWithSubmissions);
   } catch (err) {
@@ -143,79 +103,24 @@ router.get("/submissions", authenticateToken, async (req, res) => {
     const limit = parseInt(req.query.limit) || 50;
     const skip = (page - 1) * limit;
 
-    // Use aggregation for better performance with pagination
-    const submissions = await TestSubmission.aggregate([
-      {
-        $lookup: {
-          from: 'assignments',
-          localField: 'assignmentId',
-          foreignField: '_id',
-          as: 'assignmentId',
-          pipeline: [
-            {
-              $lookup: {
-                from: 'tests',
-                localField: 'testId',
-                foreignField: '_id',
-                as: 'testId',
-                pipeline: [
-                  {
-                    $project: {
-                      title: 1,
-                      questions: {
-                        $map: {
-                          input: '$questions',
-                          as: 'question',
-                          in: {
-                            _id: '$$question._id',
-                            kind: '$$question.kind',
-                            text: '$$question.text',
-                            options: '$$question.options',
-                            answer: '$$question.answer',
-                            guidelines: '$$question.guidelines',
-                            examples: '$$question.examples',
-                            points: '$$question.points'
-                          }
-                        }
-                      }
-                    }
-                  }
-                ]
-              }
-            },
-            {
-              $addFields: {
-                testId: { $arrayElemAt: ['$testId', 0] }
-              }
-            }
-          ]
+    // Use optimized query with pagination
+    const submissions = await TestSubmission.find()
+      .populate({
+        path: "assignmentId",
+        populate: {
+          path: "testId",
+          select: "title questions",
+          populate: {
+            path: "questions",
+            select: "kind text options answer answers guidelines examples points"
+          }
         }
-      },
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'userId',
-          foreignField: '_id',
-          as: 'userId',
-          pipeline: [{ $project: { name: 1, email: 1 } }]
-        }
-      },
-      {
-        $addFields: {
-          assignmentId: { $arrayElemAt: ['$assignmentId', 0] },
-          userId: { $arrayElemAt: ['$userId', 0] }
-        }
-      },
-      {
-        $sort: { submittedAt: -1 }
-      },
-      {
-        $skip: skip
-      },
-      {
-        $limit: limit
-      }
-    ]);
+      })
+      .populate("userId", "name email")
+      .sort({ submittedAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
 
     // Group submissions by student
     const studentsMap = new Map();
