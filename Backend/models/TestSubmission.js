@@ -94,6 +94,9 @@ const TestSubmissionSchema = new mongoose.Schema({
 TestSubmissionSchema.index({ assignmentId: 1, userId: 1 }, { unique: true });
 TestSubmissionSchema.index({ userId: 1, submittedAt: -1 });
 TestSubmissionSchema.index({ testId: 1, submittedAt: -1 });
+TestSubmissionSchema.index({ submittedAt: -1 });
+TestSubmissionSchema.index({ mentorReviewed: 1, submittedAt: -1 });
+TestSubmissionSchema.index({ reviewStatus: 1, submittedAt: -1 });
 TestSubmissionSchema.index({ mentorReviewed: 1, reviewStatus: 1 });
 
 module.exports = mongoose.model("TestSubmission", TestSubmissionSchema);

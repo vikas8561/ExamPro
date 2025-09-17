@@ -121,9 +121,13 @@ const AssignmentSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
-// Index for efficient queries
+// Indexes for efficient queries
 AssignmentSchema.index({ userId: 1, status: 1 });
 AssignmentSchema.index({ testId: 1, userId: 1 }, { unique: true });
+AssignmentSchema.index({ mentorId: 1, status: 1 });
+AssignmentSchema.index({ mentorId: 1, createdAt: -1 });
+AssignmentSchema.index({ status: 1, deadline: 1 });
+AssignmentSchema.index({ startTime: 1, deadline: 1 });
 AssignmentSchema.index({ mentorId: 1, reviewStatus: 1 });
 AssignmentSchema.index({ deadline: 1 });
 

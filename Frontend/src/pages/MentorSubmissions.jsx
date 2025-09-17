@@ -12,12 +12,17 @@ const MentorSubmissions = () => {
     fetchSubmissions();
   }, []);
 
-  const fetchSubmissions = async () => {
+  const fetchSubmissions = async (page = 1) => {
     console.log("Fetching submissions for mentor...");
     try {
-      const data = await apiRequest("/mentor/submissions");
+      const data = await apiRequest(`/mentor/submissions?page=${page}&limit=50`);
       console.log("Received submissions data:", data);
-      setStudents(data);
+      // Handle both old format (array) and new format (object with students array)
+      if (Array.isArray(data)) {
+        setStudents(data);
+      } else {
+        setStudents(data.students || []);
+      }
     } catch (error) {
       console.error("Error fetching submissions:", error);
       alert("Failed to load submissions");

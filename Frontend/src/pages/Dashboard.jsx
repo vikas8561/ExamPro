@@ -9,40 +9,47 @@ export default function Dashboard() {
 
   // Fetch all data from backend when the component mounts
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    
-    // Fetch tests
-    fetch("https://cg-test-app.onrender.com/api/tests", {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    })
-      .then((res) => res.json())
-      .then((data) => setTests(data.tests || []))
-      .catch((err) => console.error("Error fetching tests:", err));
+    const fetchDashboardData = async () => {
+      const token = localStorage.getItem('token');
+      
+      try {
+        // Fetch data with limits to improve performance
+        const [testsResponse, usersResponse, reviewsResponse] = await Promise.all([
+          fetch("https://cg-test-app.onrender.com/api/tests?limit=20", {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          }),
+          fetch("https://cg-test-app.onrender.com/api/users?limit=50", {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          }),
+          fetch("https://cg-test-app.onrender.com/api/reviews?limit=10", {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          })
+        ]);
 
-    // Fetch users
-    fetch("https://cg-test-app.onrender.com/api/users", {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    })
-      .then((res) => res.json())
-      .then((data) => setUsers(data || []))
-      .catch((err) => console.error("Error fetching users:", err));
+        const [testsData, usersData, reviewsData] = await Promise.all([
+          testsResponse.json(),
+          usersResponse.json(),
+          reviewsResponse.json()
+        ]);
 
-    // Fetch reviews
-    fetch("https://cg-test-app.onrender.com/api/reviews", {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
+        setTests(testsData.tests || testsData || []);
+        setUsers(usersData || []);
+        setReviews(reviewsData || []);
+      } catch (err) {
+        console.error("Error fetching dashboard data:", err);
       }
-    })
-      .then((res) => res.json())
-      .then((data) => setReviews(data || []))
-      .catch((err) => console.error("Error fetching reviews:", err));
+    };
+
+    fetchDashboardData();
   }, []);
 
   return (

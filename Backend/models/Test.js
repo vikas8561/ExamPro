@@ -48,6 +48,11 @@ const TestSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Indexes for efficient queries
+TestSchema.index({ createdBy: 1, status: 1 });
+TestSchema.index({ status: 1, createdAt: -1 });
+TestSchema.index({ type: 1, status: 1 });
+
 // Validation for questions
 TestSchema.path("questions").validate(function (questions) {
   for (const q of questions || []) {

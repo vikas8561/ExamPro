@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const mongoose = require("mongoose");
 const Assignment = require("../models/Assignment");
 const User = require("../models/User");
 const Test = require("../models/Test");
@@ -49,42 +50,88 @@ router.get("/assignments", authenticateToken, async (req, res) => {
   try {
     const mentorId = req.user.userId;
     
-    const assignments = await Assignment.find({
-      $or: [
-        { mentorId: req.user.userId },
-        { mentorId: null }
-      ]
-    })
-      .populate({
-        path: "testId",
-        select: "title type instructions timeLimit questions",
-        populate: {
-          path: "questions",
-          select: "kind text options answer guidelines examples points"
+    // Use aggregation to eliminate N+1 query problem
+    const assignmentsWithSubmissions = await Assignment.aggregate([
+      {
+        $match: {
+          $or: [
+            { mentorId: new mongoose.Types.ObjectId(mentorId) },
+            { mentorId: null }
+          ]
         }
-      })
-      .populate("userId", "name email")
-      .sort({ createdAt: -1 });
-
-    // Get submission data for each assignment to include submittedAt
-    const assignmentsWithSubmissions = await Promise.all(
-      assignments.map(async (assignment) => {
-        const submission = await TestSubmission.findOne({ 
-          assignmentId: assignment._id 
-        }).select('submittedAt');
-        
-        // Debug logging
-        console.log(`Assignment ${assignment._id}: submission found = ${!!submission}, submittedAt = ${submission?.submittedAt}`);
-        
-        return {
-          ...assignment.toObject(),
-          submittedAt: submission?.submittedAt || null
-        };
-      })
-    );
+      },
+      {
+        $lookup: {
+          from: 'testsubmissions',
+          localField: '_id',
+          foreignField: 'assignmentId',
+          as: 'submission',
+          pipeline: [{ $project: { submittedAt: 1 } }]
+        }
+      },
+      {
+        $lookup: {
+          from: 'tests',
+          localField: 'testId',
+          foreignField: '_id',
+          as: 'testId',
+          pipeline: [
+            {
+              $project: {
+                title: 1,
+                type: 1,
+                instructions: 1,
+                timeLimit: 1,
+                questions: {
+                  $map: {
+                    input: '$questions',
+                    as: 'question',
+                    in: {
+                      _id: '$$question._id',
+                      kind: '$$question.kind',
+                      text: '$$question.text',
+                      options: '$$question.options',
+                      answer: '$$question.answer',
+                      guidelines: '$$question.guidelines',
+                      examples: '$$question.examples',
+                      points: '$$question.points'
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'userId',
+          foreignField: '_id',
+          as: 'userId',
+          pipeline: [{ $project: { name: 1, email: 1 } }]
+        }
+      },
+      {
+        $addFields: {
+          testId: { $arrayElemAt: ['$testId', 0] },
+          userId: { $arrayElemAt: ['$userId', 0] },
+          submittedAt: { $arrayElemAt: ['$submission.submittedAt', 0] }
+        }
+      },
+      {
+        $project: {
+          submission: 0 // Remove the submission array, we only need submittedAt
+        }
+      },
+      {
+        $sort: { createdAt: -1 }
+      }
+    ]);
 
     res.json(assignmentsWithSubmissions);
   } catch (err) {
+    console.error('Error in mentor assignments:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -92,20 +139,83 @@ router.get("/assignments", authenticateToken, async (req, res) => {
 // Get test submissions for monitoring - grouped by student
 router.get("/submissions", authenticateToken, async (req, res) => {
   try {
-    const submissions = await TestSubmission.find()
-      .populate({
-        path: "assignmentId",
-        populate: {
-          path: "testId",
-          select: "title questions",
-          populate: {
-            path: "questions",
-            select: "kind text options answer answers guidelines examples points"
-          }
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
+
+    // Use aggregation for better performance with pagination
+    const submissions = await TestSubmission.aggregate([
+      {
+        $lookup: {
+          from: 'assignments',
+          localField: 'assignmentId',
+          foreignField: '_id',
+          as: 'assignmentId',
+          pipeline: [
+            {
+              $lookup: {
+                from: 'tests',
+                localField: 'testId',
+                foreignField: '_id',
+                as: 'testId',
+                pipeline: [
+                  {
+                    $project: {
+                      title: 1,
+                      questions: {
+                        $map: {
+                          input: '$questions',
+                          as: 'question',
+                          in: {
+                            _id: '$$question._id',
+                            kind: '$$question.kind',
+                            text: '$$question.text',
+                            options: '$$question.options',
+                            answer: '$$question.answer',
+                            guidelines: '$$question.guidelines',
+                            examples: '$$question.examples',
+                            points: '$$question.points'
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              $addFields: {
+                testId: { $arrayElemAt: ['$testId', 0] }
+              }
+            }
+          ]
         }
-      })
-      .populate("userId", "name email")
-      .sort({ submittedAt: -1 });
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'userId',
+          foreignField: '_id',
+          as: 'userId',
+          pipeline: [{ $project: { name: 1, email: 1 } }]
+        }
+      },
+      {
+        $addFields: {
+          assignmentId: { $arrayElemAt: ['$assignmentId', 0] },
+          userId: { $arrayElemAt: ['$userId', 0] }
+        }
+      },
+      {
+        $sort: { submittedAt: -1 }
+      },
+      {
+        $skip: skip
+      },
+      {
+        $limit: limit
+      }
+    ]);
 
     // Group submissions by student
     const studentsMap = new Map();
@@ -142,8 +252,21 @@ router.get("/submissions", authenticateToken, async (req, res) => {
         : 0
     }));
 
-    res.json(groupedStudents);
+    // Get total count for pagination info
+    const totalCount = await TestSubmission.countDocuments();
+    
+    res.json({
+      students: groupedStudents,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(totalCount / limit),
+        totalCount,
+        hasNext: page < Math.ceil(totalCount / limit),
+        hasPrev: page > 1
+      }
+    });
   } catch (err) {
+    console.error('Error in mentor submissions:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -167,17 +290,27 @@ router.get("/student/:studentId/submissions", authenticateToken, async (req, res
       })
       .sort({ submittedAt: -1 });
 
-    // Ensure scores are calculated and responses are graded
+    // Only recalculate scores if submission was recently updated (within last 5 minutes)
+    // or if scores are missing/zero
     const { recalculateSubmissionScore } = require("../services/scoreCalculation");
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
 
     for (const submission of submissions) {
       if (submission.assignmentId?.testId && submission.responses?.length > 0) {
-        await recalculateSubmissionScore(submission, submission.assignmentId.testId);
+        const needsRecalculation = 
+          !submission.totalScore || 
+          submission.totalScore === 0 ||
+          submission.updatedAt > fiveMinutesAgo;
+        
+        if (needsRecalculation) {
+          await recalculateSubmissionScore(submission, submission.assignmentId.testId);
+        }
       }
     }
 
     res.json(submissions);
   } catch (err) {
+    console.error('Error in student submissions:', err);
     res.status(500).json({ error: err.message });
   }
 });
