@@ -83,16 +83,26 @@ const StudentAssignments = () => {
   const [typeFilter, setTypeFilter] = useState('all');
   const [subjectFilter, setSubjectFilter] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
+  const [lastFetchTime, setLastFetchTime] = useState(0);
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Fetch data in parallel for better performance
-    Promise.all([
-      fetchAssignments(),
-      fetchSubjects()
-    ]).catch(error => {
-      console.error("Error in parallel data fetching:", error);
-    });
+    // Check if we need to fetch data (cache for 30 seconds)
+    const now = Date.now();
+    const shouldFetch = now - lastFetchTime > 30000; // 30 seconds cache
+    
+    if (shouldFetch) {
+      // Fetch data in parallel for better performance
+      Promise.all([
+        fetchAssignments(),
+        fetchSubjects()
+      ]).catch(error => {
+        console.error("Error in parallel data fetching:", error);
+      });
+    } else {
+      console.log("Using cached data, skipping fetch");
+      setLoading(false);
+    }
 
     // Setup Socket.IO client - use the same base URL as API
     const API_BASE_URL = 'https://cg-test-app.onrender.com/api';
@@ -158,12 +168,31 @@ const StudentAssignments = () => {
   const fetchAssignments = async (retryCount = 0) => {
     try {
       const startTime = Date.now();
-      const data = await apiRequest("/assignments/student");
+      
+      // Add timeout to prevent hanging requests
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
+      const data = await apiRequest("/assignments/student", {
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
       const endTime = Date.now();
       console.log(`🚀 Student assignments loaded in ${endTime - startTime}ms`);
       setAssignments(data);
+      setLastFetchTime(endTime);
     } catch (error) {
       console.error("Error fetching assignments:", error);
+      
+      // Handle timeout errors
+      if (error.name === 'AbortError') {
+        console.log("Request timed out, retrying...");
+        if (retryCount === 0) {
+          setTimeout(() => fetchAssignments(1), 1000);
+          return;
+        }
+      }
       
       // Retry once if it's a network error and we haven't retried yet
       if (retryCount === 0 && (error.message?.includes('fetch') || error.message?.includes('network'))) {

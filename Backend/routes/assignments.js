@@ -57,6 +57,8 @@ router.get("/student", authenticateToken, async (req, res, next) => {
       .sort({ deadline: 1 })
       .lean(); // Use lean() for 2x faster queries
 
+    console.log(`📊 Found ${assignments.length} assignments in ${Date.now() - startTime}ms`);
+
     // ULTRA FAST: Auto-start logic - batch update instead of individual updates
     const now = new Date();
     const assignmentsToAutoStart = assignments.filter(assignment => 
@@ -71,13 +73,15 @@ router.get("/student", authenticateToken, async (req, res, next) => {
       
       // ULTRA FAST: Batch update all assignments at once
       const assignmentIds = assignmentsToAutoStart.map(a => a._id);
-      await Assignment.updateMany(
+      const updateResult = await Assignment.updateMany(
         { _id: { $in: assignmentIds } },
         { 
           status: "In Progress",
           startedAt: now
         }
       );
+      
+      console.log(`📊 Updated ${updateResult.modifiedCount} assignments in ${Date.now() - startTime}ms`);
       
       // Update local assignment objects
       assignmentsToAutoStart.forEach(assignment => {
@@ -91,6 +95,7 @@ router.get("/student", authenticateToken, async (req, res, next) => {
 
     res.json(assignments);
   } catch (error) {
+    console.error('❌ Error in student assignments:', error);
     next(error);
   }
 });
