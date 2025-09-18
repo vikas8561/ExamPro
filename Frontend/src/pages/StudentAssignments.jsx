@@ -86,8 +86,13 @@ const StudentAssignments = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchAssignments();
-    fetchSubjects();
+    // Fetch data in parallel for better performance
+    Promise.all([
+      fetchAssignments(),
+      fetchSubjects()
+    ]).catch(error => {
+      console.error("Error in parallel data fetching:", error);
+    });
 
     // Setup Socket.IO client - use the same base URL as API
     const API_BASE_URL = 'https://cg-test-app.onrender.com/api';
@@ -150,13 +155,25 @@ const StudentAssignments = () => {
     }
   };
 
-  const fetchAssignments = async () => {
+  const fetchAssignments = async (retryCount = 0) => {
     try {
+      const startTime = Date.now();
       const data = await apiRequest("/assignments/student");
+      const endTime = Date.now();
+      console.log(`🚀 Student assignments loaded in ${endTime - startTime}ms`);
       setAssignments(data);
     } catch (error) {
       console.error("Error fetching assignments:", error);
-      alert("Failed to load assignments");
+      
+      // Retry once if it's a network error and we haven't retried yet
+      if (retryCount === 0 && (error.message?.includes('fetch') || error.message?.includes('network'))) {
+        console.log("Retrying assignment fetch...");
+        setTimeout(() => fetchAssignments(1), 1000);
+        return;
+      }
+      
+      // Don't show alert - just log the error and set empty array
+      setAssignments([]);
     } finally {
       setLoading(false);
     }

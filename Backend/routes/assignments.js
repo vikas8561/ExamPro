@@ -57,35 +57,39 @@ router.get("/student", authenticateToken, async (req, res, next) => {
       .sort({ deadline: 1 })
       .lean(); // Use lean() for 2x faster queries
 
-    // Auto-start logic for assignments where duration == timeLimit
+    // ULTRA FAST: Auto-start logic - batch update instead of individual updates
     const now = new Date();
-    const updatedAssignments = [];
-    
-    for (const assignment of assignments) {
-      if (assignment.status === "Assigned" &&
-          assignment.duration === assignment.testId.timeLimit &&
-          now >= new Date(assignment.startTime) &&
-          now <= new Date(assignment.deadline)) {
+    const assignmentsToAutoStart = assignments.filter(assignment => 
+      assignment.status === "Assigned" &&
+      assignment.duration === assignment.testId.timeLimit &&
+      now >= new Date(assignment.startTime) &&
+      now <= new Date(assignment.deadline)
+    );
 
-        console.log(`Auto-starting assignment ${assignment._id} for user ${req.user.userId}`);
-        
-        // Update assignment status
-        await Assignment.findByIdAndUpdate(assignment._id, {
+    if (assignmentsToAutoStart.length > 0) {
+      console.log(`Auto-starting ${assignmentsToAutoStart.length} assignments for user ${req.user.userId}`);
+      
+      // ULTRA FAST: Batch update all assignments at once
+      const assignmentIds = assignmentsToAutoStart.map(a => a._id);
+      await Assignment.updateMany(
+        { _id: { $in: assignmentIds } },
+        { 
           status: "In Progress",
-          startedAt: new Date()
-        });
-        
-        // Update local assignment object
+          startedAt: now
+        }
+      );
+      
+      // Update local assignment objects
+      assignmentsToAutoStart.forEach(assignment => {
         assignment.status = "In Progress";
-        assignment.startedAt = new Date();
-      }
-      updatedAssignments.push(assignment);
+        assignment.startedAt = now;
+      });
     }
 
     const totalTime = Date.now() - startTime;
     console.log(`✅ ULTRA FAST student assignments completed in ${totalTime}ms - Found ${assignments.length} assignments`);
 
-    res.json(updatedAssignments);
+    res.json(assignments);
   } catch (error) {
     next(error);
   }
