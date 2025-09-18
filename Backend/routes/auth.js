@@ -166,11 +166,12 @@ router.post("/forgot-password", async (req, res) => {
       `
     };
 
-    // console.log('Sending email with options:', {
-      from: mailOptions.from,
-      to: mailOptions.to,
-      subject: mailOptions.subject
-    });
+    // Email options logging disabled
+    // const emailOptions = {
+    //   from: mailOptions.from,
+    //   to: mailOptions.to,
+    //   subject: mailOptions.subject
+    // };
 
     try {
       await transporter.sendMail(mailOptions);

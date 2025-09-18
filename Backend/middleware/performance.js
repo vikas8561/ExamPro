@@ -163,13 +163,14 @@ const memoryMonitor = () => {
     return (bytes / 1024 / 1024).toFixed(2) + ' MB';
   };
 
-  // console.log('Memory Usage:', {
-    rss: formatBytes(used.rss),
-    heapTotal: formatBytes(used.heapTotal),
-    heapUsed: formatBytes(used.heapUsed),
-    external: formatBytes(used.external),
-    arrayBuffers: formatBytes(used.arrayBuffers)
-  });
+  // Memory usage monitoring disabled
+  // const memoryStats = {
+  //   rss: formatBytes(used.rss),
+  //   heapTotal: formatBytes(used.heapTotal),
+  //   heapUsed: formatBytes(used.heapUsed),
+  //   external: formatBytes(used.external),
+  //   arrayBuffers: formatBytes(used.arrayBuffers)
+  // };
 };
 
 // Run memory monitor every 5 minutes

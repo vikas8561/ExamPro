@@ -78,13 +78,14 @@ router.get("/assignments", authenticateToken, async (req, res) => {
       .lean(); // Use lean() for 2x faster queries
 
     // console.log(`📊 Found ${assignments.length} assignments in ${Date.now() - startTime}ms`);
-    // console.log('Sample assignment data:', assignments.slice(0, 2).map(a => ({ 
-      id: a._id, 
-      status: a.status, 
-      autoScore: a.autoScore, 
-      score: a.score, 
-      mentorScore: a.mentorScore 
-    })));
+    // Sample assignment data logging disabled
+    // const sampleAssignments = assignments.slice(0, 2).map(a => ({ 
+    //   id: a._id, 
+    //   status: a.status, 
+    //   autoScore: a.autoScore, 
+    //   score: a.score, 
+    //   mentorScore: a.mentorScore 
+    // }));
 
     // ULTRA FAST: Batch fetch submissions (single query)
     const assignmentIds = assignments.map(a => a._id);
@@ -96,12 +97,13 @@ router.get("/assignments", authenticateToken, async (req, res) => {
     
     // console.log(`📊 Found ${submissions.length} submissions in ${Date.now() - startTime}ms`);
     // console.log('Sample submission data:', submissions.slice(0, 2));
-    // console.log('All submission data:', submissions.map(sub => ({ 
-      assignmentId: sub.assignmentId, 
-      totalScore: sub.totalScore, 
-      maxScore: sub.maxScore,
-      submittedAt: sub.submittedAt 
-    })));
+    // All submission data logging disabled
+    // const allSubmissionData = submissions.map(sub => ({ 
+    //   assignmentId: sub.assignmentId, 
+    //   totalScore: sub.totalScore, 
+    //   maxScore: sub.maxScore,
+    //   submittedAt: sub.submittedAt 
+    // }));
     
     // ULTRA FAST: Create lookup map
     const submissionMap = new Map();
