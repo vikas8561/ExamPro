@@ -4,18 +4,27 @@ const Test = require("../models/Test");
 const { authenticateToken, requireRole } = require("../middleware/auth");
 const { recalculateScoresForTest } = require("../services/scoreCalculation");
 
-// Get all tests (admin only)
+// Get all tests (admin only) - ULTRA FAST VERSION
 router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
+    const startTime = Date.now();
     const { status, search } = req.query;
     const query = {};
     
     if (status) query.status = status;
     if (search) query.title = { $regex: search, $options: "i" };
 
+    console.log('🚀 ULTRA FAST: Fetching tests for admin');
+
+    // ULTRA FAST: Get tests with MINIMAL data (NO questions!)
     const tests = await Test.find(query)
+      .select("title subject type instructions timeLimit negativeMarkingPercent allowedTabSwitches otp status createdAt createdBy")
       .populate("createdBy", "name email")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean(); // Use lean() for 2x faster queries
+
+    const totalTime = Date.now() - startTime;
+    console.log(`✅ ULTRA FAST admin tests completed in ${totalTime}ms - Found ${tests.length} tests`);
     
     res.json({ tests });
   } catch (error) {

@@ -5,9 +5,10 @@ const Test = require("../models/Test");
 const User = require("../models/User");
 const { authenticateToken, requireRole } = require("../middleware/auth");
 
-// Get all assignments (admin only)
+// Get all assignments (admin only) - ULTRA FAST VERSION
 router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
+    const startTime = Date.now();
     const { status, userId, testId } = req.query;
     const query = {};
     
@@ -15,11 +16,19 @@ router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) 
     if (userId) query.userId = userId;
     if (testId) query.testId = testId;
 
+    console.log('🚀 ULTRA FAST: Fetching assignments for admin');
+
+    // ULTRA FAST: Get assignments with MINIMAL data
     const assignments = await Assignment.find(query)
+      .select("testId userId mentorId status startTime duration deadline startedAt completedAt score autoScore mentorScore mentorFeedback reviewStatus timeSpent createdAt")
       .populate("testId", "title type instructions timeLimit")
       .populate("userId", "name email")
       .populate("mentorId", "name email")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean(); // Use lean() for 2x faster queries
+
+    const totalTime = Date.now() - startTime;
+    console.log(`✅ ULTRA FAST admin assignments completed in ${totalTime}ms - Found ${assignments.length} assignments`);
 
     res.json(assignments);
   } catch (error) {

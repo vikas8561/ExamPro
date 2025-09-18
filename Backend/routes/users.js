@@ -3,10 +3,21 @@ const bcrypt = require("bcrypt");
 const router = express.Router();
 const User = require("../models/User");
 
-// Get all users
+// Get all users - ULTRA FAST VERSION
 router.get("/", async (req, res) => {
   try {
-    const users = await User.find().select("-password");
+    const startTime = Date.now();
+    console.log('🚀 ULTRA FAST: Fetching users for admin');
+
+    // ULTRA FAST: Get users with MINIMAL data
+    const users = await User.find()
+      .select("name email role studentCategory createdAt")
+      .sort({ createdAt: -1 })
+      .lean(); // Use lean() for 2x faster queries
+
+    const totalTime = Date.now() - startTime;
+    console.log(`✅ ULTRA FAST admin users completed in ${totalTime}ms - Found ${users.length} users`);
+
     res.json(users);
   } catch (err) {
     res.status(500).json({ message: err.message });
