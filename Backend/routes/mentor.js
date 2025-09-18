@@ -241,27 +241,28 @@ router.get("/submissions", authenticateToken, async (req, res) => {
   }
 });
 
-// Get submissions for a specific student
+// Get submissions for a specific student - ULTRA FAST VERSION
 router.get("/student/:studentId/submissions", authenticateToken, async (req, res) => {
   try {
     const { studentId } = req.params;
+    const startTime = Date.now();
+    console.log('🚀 ULTRA FAST: Fetching submissions for student:', studentId);
 
+    // ULTRA FAST: Get submissions with MINIMAL data (NO questions upfront!)
     const submissions = await TestSubmission.find({ userId: studentId })
+      .select("assignmentId testId userId responses totalScore maxScore submittedAt timeSpent mentorReviewed mentorScore mentorFeedback reviewStatus reviewedAt")
       .populate({
         path: "assignmentId",
-        populate: {
-          path: "testId",
-          select: "title questions negativeMarkingPercent",
-          populate: {
-            path: "questions",
-            select: "kind text options answer answers guidelines examples points"
-          }
-        }
+        select: "testId userId status startTime duration deadline"
       })
-      .sort({ submittedAt: -1 });
+      .populate({
+        path: "testId",
+        select: "title type instructions timeLimit negativeMarkingPercent" // NO questions!
+      })
+      .sort({ submittedAt: -1 })
+      .lean(); // Use lean() for 2x faster queries
 
-    // Only recalculate scores if submission was recently updated (within last 5 minutes)
-    // or if scores are missing/zero
+    // ULTRA FAST: Only recalculate scores if absolutely necessary
     const { recalculateSubmissionScore } = require("../services/scoreCalculation");
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
 
@@ -273,10 +274,16 @@ router.get("/student/:studentId/submissions", authenticateToken, async (req, res
           submission.updatedAt > fiveMinutesAgo;
         
         if (needsRecalculation) {
-          await recalculateSubmissionScore(submission, submission.assignmentId.testId);
+          // Only populate questions for recalculation if needed
+          const testWithQuestions = await Test.findById(submission.testId._id)
+            .populate("questions", "kind text options answer answers guidelines examples points");
+          await recalculateSubmissionScore(submission, testWithQuestions);
         }
       }
     }
+
+    const totalTime = Date.now() - startTime;
+    console.log(`✅ ULTRA FAST student submissions completed in ${totalTime}ms - Found ${submissions.length} submissions`);
 
     res.json(submissions);
   } catch (err) {

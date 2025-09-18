@@ -36,27 +36,31 @@ router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) 
   }
 });
 
-// Get assignments for current student
+// Get assignments for current student - ULTRA FAST VERSION
 router.get("/student", authenticateToken, async (req, res, next) => {
   try {
     if (req.user.role !== "Student") {
       return res.status(403).json({ message: "Access denied. Student access only." });
     }
 
+    const startTime = Date.now();
+    console.log('🚀 ULTRA FAST: Fetching assignments for student:', req.user.userId);
+
+    // ULTRA FAST: Get assignments with MINIMAL data (NO questions upfront!)
     const assignments = await Assignment.find({ userId: req.user.userId })
+      .select("testId mentorId status startTime duration deadline startedAt completedAt score autoScore mentorScore mentorFeedback reviewStatus timeSpent createdAt")
       .populate({
         path: "testId",
-        select: "title type instructions timeLimit questions subject",
-        populate: {
-          path: "questions",
-          select: "kind text options answer guidelines examples points"
-        }
+        select: "title type instructions timeLimit subject" // NO questions!
       })
       .populate("mentorId", "name email")
-      .sort({ deadline: 1 });
+      .sort({ deadline: 1 })
+      .lean(); // Use lean() for 2x faster queries
 
     // Auto-start logic for assignments where duration == timeLimit
     const now = new Date();
+    const updatedAssignments = [];
+    
     for (const assignment of assignments) {
       if (assignment.status === "Assigned" &&
           assignment.duration === assignment.testId.timeLimit &&
@@ -64,74 +68,66 @@ router.get("/student", authenticateToken, async (req, res, next) => {
           now <= new Date(assignment.deadline)) {
 
         console.log(`Auto-starting assignment ${assignment._id} for user ${req.user.userId}`);
+        
+        // Update assignment status
+        await Assignment.findByIdAndUpdate(assignment._id, {
+          status: "In Progress",
+          startedAt: new Date()
+        });
+        
+        // Update local assignment object
         assignment.status = "In Progress";
         assignment.startedAt = new Date();
-        await assignment.save();
-
-        // Re-populate after save
-        await assignment.populate({
-          path: "testId",
-          select: "title type instructions timeLimit questions subject otp",
-          populate: {
-            path: "questions",
-            select: "kind text options answer guidelines examples points"
-          }
-        });
-        await assignment.populate("mentorId", "name email");
       }
+      updatedAssignments.push(assignment);
     }
 
-    res.json(assignments);
+    const totalTime = Date.now() - startTime;
+    console.log(`✅ ULTRA FAST student assignments completed in ${totalTime}ms - Found ${assignments.length} assignments`);
+
+    res.json(updatedAssignments);
   } catch (error) {
     next(error);
   }
 });
 
-// Get recent activity for current student
+// Get recent activity for current student - ULTRA FAST VERSION
 router.get("/student/recent-activity", authenticateToken, async (req, res, next) => {
   try {
     if (req.user.role !== "Student") {
       return res.status(403).json({ message: "Access denied. Student access only." });
     }
 
+    const startTime = Date.now();
     const userId = req.user.userId;
-    console.log("Fetching recent activity for user:", userId);
+    console.log('🚀 ULTRA FAST: Fetching recent activity for student:', userId);
     const activities = [];
 
-    // Get recently completed tests
-    const completedTests = await Assignment.find({
-      userId,
-      status: "Completed"
-    })
-    .populate("testId", "title")
-    .sort({ completedAt: -1 })
-    .limit(3);
+    // ULTRA FAST: Get all student assignments in one query with minimal data
+    const assignments = await Assignment.find({ userId })
+      .select("testId status completedAt startedAt createdAt")
+      .populate("testId", "title")
+      .sort({ createdAt: -1 })
+      .lean(); // Use lean() for 2x faster queries
 
-    console.log("Completed tests found:", completedTests.length);
+    // Process assignments into activities
+    const completedTests = assignments.filter(a => a.status === "Completed").slice(0, 3);
+    const startedTests = assignments.filter(a => a.status === "In Progress" && a.startedAt).slice(0, 2);
+    const assignedTests = assignments.filter(a => a.status === "Assigned").slice(0, 2);
+
+    // Add completed tests to activities
     completedTests.forEach(test => {
-      console.log("Completed test:", test.testId?.title, "completedAt:", test.completedAt);
       activities.push({
         type: "completed",
         testId: test.testId,
         testTitle: test.testId.title,
-        timestamp: test.completedAt || test.updatedAt,
+        timestamp: test.completedAt || test.createdAt,
         message: `Completed test: ${test.testId.title}`
       });
     });
 
-    // Get recently started tests
-    const startedTests = await Assignment.find({
-      userId,
-      status: "In Progress",
-      startedAt: { $exists: true }
-    })
-    .populate("testId", "title")
-    .sort({ startedAt: -1 })
-    .limit(2);
-
-    console.log("Started tests found:", startedTests.length);
+    // Add started tests to activities
     startedTests.forEach(test => {
-      console.log("Started test:", test.testId?.title, "startedAt:", test.startedAt);
       activities.push({
         type: "started",
         testId: test.testId,
@@ -141,18 +137,8 @@ router.get("/student/recent-activity", authenticateToken, async (req, res, next)
       });
     });
 
-    // Get recently assigned tests
-    const assignedTests = await Assignment.find({
-      userId,
-      status: "Assigned"
-    })
-    .populate("testId", "title")
-    .sort({ createdAt: -1 })
-    .limit(2);
-
-    console.log("Assigned tests found:", assignedTests.length);
+    // Add assigned tests to activities
     assignedTests.forEach(test => {
-      console.log("Assigned test:", test.testId?.title, "createdAt:", test.createdAt);
       activities.push({
         type: "assigned",
         testId: test.testId,
@@ -167,7 +153,9 @@ router.get("/student/recent-activity", authenticateToken, async (req, res, next)
 
     // Return only the most recent 7 activities
     const recentActivities = activities.slice(0, 7);
-    console.log("Final activities to return:", recentActivities.length, recentActivities);
+
+    const totalTime = Date.now() - startTime;
+    console.log(`✅ ULTRA FAST student recent activity completed in ${totalTime}ms - Found ${recentActivities.length} activities`);
 
     res.json(recentActivities);
   } catch (error) {
