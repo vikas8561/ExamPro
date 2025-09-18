@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import apiRequest from "../services/api";
-import "../styles/scrollbar.css";
 
 const MentorSubmissions = () => {
   const [students, setStudents] = useState([]);
@@ -118,9 +117,9 @@ const MentorSubmissions = () => {
             <div className="text-slate-400">Passing Scores</div>
           </div>
           <div className="bg-slate-800 p-6 rounded-lg border border-slate-700">
-<div className="text-2xl font-bold text-yellow-400">
-  {averageScore} / 100
-</div>
+            <div className="text-2xl font-bold text-yellow-400">
+              {averageScore} / 100
+            </div>
             <div className="text-slate-400">Average Score</div>
           </div>
         </div>
@@ -131,7 +130,7 @@ const MentorSubmissions = () => {
             <p className="text-slate-500">No students have submitted tests yet.</p>
           </div>
         ) : (
-          <div className="max-h-[60vh] overflow-y-auto space-y-4 pr-2 student-list-scrollable">
+          <div className="max-h-[600px] overflow-y-auto space-y-4">
             {students.map((studentData) => (
               <div key={studentData.student._id} className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
                 {/* Student Header */}
@@ -201,17 +200,17 @@ const MentorSubmissions = () => {
                         {studentData.submissions.map((submission) => (
                           <tr key={submission._id} className="border-b border-slate-700 hover:bg-slate-700/50">
                             <td className="p-4 font-medium">{submission.testId?.title || submission.assignmentId?.testId?.title || "Test"}</td>
-<td className="p-4">
-  <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-    (submission.totalScore || 0) >= 70 
-      ? 'bg-green-900/50 text-green-300'
-      : (submission.totalScore || 0) >= 50
-      ? 'bg-yellow-900/50 text-yellow-300'
-      : 'bg-red-900/50 text-red-300'
-  }`}>
-    {submission.totalScore || 0} / {submission.maxScore || 0}
-  </span>
-</td>
+                            <td className="p-4">
+                              <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                                (submission.totalScore || 0) >= 70
+                                  ? 'bg-green-900/50 text-green-300'
+                                  : (submission.totalScore || 0) >= 50
+                                  ? 'bg-yellow-900/50 text-yellow-300'
+                                  : 'bg-red-900/50 text-red-300'
+                              }`}>
+                                {submission.totalScore || 0} / {submission.maxScore || 0}
+                              </span>
+                            </td>
                             <td className="p-4 text-slate-400">{formatDate(submission.submittedAt)}</td>
                             <td className="p-4 text-slate-400">
                               {Math.floor((submission.timeSpent || 0) / 60)}m {(submission.timeSpent || 0) % 60}s
