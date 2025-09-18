@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import apiRequest from "../services/api";
+import "../styles/scrollbar.css";
 
 const MentorSubmissions = () => {
   const [students, setStudents] = useState([]);
@@ -101,22 +102,6 @@ const MentorSubmissions = () => {
 
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6">
-      <style jsx>{`
-        .student-list::-webkit-scrollbar {
-          width: 8px;
-        }
-        .student-list::-webkit-scrollbar-track {
-          background: #1e293b;
-          border-radius: 4px;
-        }
-        .student-list::-webkit-scrollbar-thumb {
-          background: #475569;
-          border-radius: 4px;
-        }
-        .student-list::-webkit-scrollbar-thumb:hover {
-          background: #64748b;
-        }
-      `}</style>
       <div className="max-w-6xl mx-auto">
         <h1 className="text-3xl font-bold mb-8">Student Submissions</h1>
 
@@ -146,7 +131,7 @@ const MentorSubmissions = () => {
             <p className="text-slate-500">No students have submitted tests yet.</p>
           </div>
         ) : (
-          <div className="max-h-[60vh] overflow-y-auto space-y-4 pr-2 student-list">
+          <div className="max-h-[60vh] overflow-y-auto space-y-4 pr-2 student-list-scrollable">
             {students.map((studentData) => (
               <div key={studentData.student._id} className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
                 {/* Student Header */}
