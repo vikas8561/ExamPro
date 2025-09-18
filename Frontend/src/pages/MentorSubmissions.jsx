@@ -101,6 +101,22 @@ const MentorSubmissions = () => {
 
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6">
+      <style jsx>{`
+        .scrollable-table::-webkit-scrollbar {
+          width: 8px;
+        }
+        .scrollable-table::-webkit-scrollbar-track {
+          background: #1e293b;
+          border-radius: 4px;
+        }
+        .scrollable-table::-webkit-scrollbar-thumb {
+          background: #475569;
+          border-radius: 4px;
+        }
+        .scrollable-table::-webkit-scrollbar-thumb:hover {
+          background: #64748b;
+        }
+      `}</style>
       <div className="max-w-6xl mx-auto">
         <h1 className="text-3xl font-bold mb-8">Student Submissions</h1>
 
@@ -130,7 +146,7 @@ const MentorSubmissions = () => {
             <p className="text-slate-500">No students have submitted tests yet.</p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="max-h-[70vh] overflow-y-auto space-y-4 pr-2 scrollable-table">
             {students.map((studentData) => (
               <div key={studentData.student._id} className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
                 {/* Student Header */}
@@ -186,44 +202,46 @@ const MentorSubmissions = () => {
                 {/* Student Submissions (Collapsible) */}
                 {expandedStudents.has(studentData.student._id) && (
                   <div className="border-t border-slate-700">
-                    <table className="w-full">
-                      <thead className="bg-slate-700">
-                        <tr>
-                          <th className="p-4 text-left text-slate-300">Test</th>
-                          <th className="p-4 text-left text-slate-300">Score</th>
-                          <th className="p-4 text-left text-slate-300">Submitted</th>
-                          <th className="p-4 text-left text-slate-300">Time Spent</th>
-                          <th className="p-4 text-left text-slate-300">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {studentData.submissions.map((submission) => (
-                          <tr key={submission._id} className="border-b border-slate-700 hover:bg-slate-700/50">
-                            <td className="p-4 font-medium">{submission.testId?.title || submission.assignmentId?.testId?.title || "Test"}</td>
-<td className="p-4">
-  <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-    (submission.totalScore || 0) >= 70 
-      ? 'bg-green-900/50 text-green-300'
-      : (submission.totalScore || 0) >= 50
-      ? 'bg-yellow-900/50 text-yellow-300'
-      : 'bg-red-900/50 text-red-300'
-  }`}>
-    {submission.totalScore || 0} / {submission.maxScore || 0}
-  </span>
-</td>
-                            <td className="p-4 text-slate-400">{formatDate(submission.submittedAt)}</td>
-                            <td className="p-4 text-slate-400">
-                              {Math.floor((submission.timeSpent || 0) / 60)}m {(submission.timeSpent || 0) % 60}s
-                            </td>
-                            <td className="p-4">
-                              <span className="px-2 py-1 rounded text-xs bg-blue-900/50 text-blue-300">
-                                Completed
-                              </span>
-                            </td>
+                    <div className="max-h-96 overflow-y-auto scrollable-table">
+                      <table className="w-full">
+                        <thead className="bg-slate-700 sticky top-0 z-10">
+                          <tr>
+                            <th className="p-4 text-left text-slate-300">Test</th>
+                            <th className="p-4 text-left text-slate-300">Score</th>
+                            <th className="p-4 text-left text-slate-300">Submitted</th>
+                            <th className="p-4 text-left text-slate-300">Time Spent</th>
+                            <th className="p-4 text-left text-slate-300">Status</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {studentData.submissions.map((submission) => (
+                            <tr key={submission._id} className="border-b border-slate-700 hover:bg-slate-700/50">
+                              <td className="p-4 font-medium">{submission.testId?.title || submission.assignmentId?.testId?.title || "Test"}</td>
+                              <td className="p-4">
+                                <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                                  (submission.totalScore || 0) >= 70 
+                                    ? 'bg-green-900/50 text-green-300'
+                                    : (submission.totalScore || 0) >= 50
+                                    ? 'bg-yellow-900/50 text-yellow-300'
+                                    : 'bg-red-900/50 text-red-300'
+                                }`}>
+                                  {submission.totalScore || 0} / {submission.maxScore || 0}
+                                </span>
+                              </td>
+                              <td className="p-4 text-slate-400">{formatDate(submission.submittedAt)}</td>
+                              <td className="p-4 text-slate-400">
+                                {Math.floor((submission.timeSpent || 0) / 60)}m {(submission.timeSpent || 0) % 60}s
+                              </td>
+                              <td className="p-4">
+                                <span className="px-2 py-1 rounded text-xs bg-blue-900/50 text-blue-300">
+                                  Completed
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
               </div>
@@ -340,40 +358,42 @@ const MentorSubmissions = () => {
                   <p className="text-slate-400">No other submissions found for this student.</p>
                 ) : (
                   <div className="bg-slate-700 rounded-lg p-4">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="text-left text-slate-300">
-                          <th className="p-2">Test</th>
-                          <th className="p-2">Score</th>
-                          <th className="p-2">Submitted</th>
-                          <th className="p-2">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {studentSubmissions.map((submission) => (
-                          <tr key={submission._id} className="border-b border-slate-600">
-                            <td className="p-2">{submission.testId?.title || submission.assignmentId?.testId?.title || "Test"}</td>
-                            <td className="p-2">
-                              <span className={`px-2 py-1 rounded text-xs ${
-                                (submission.totalScore || 0) >= 70 
-                                  ? 'bg-green-900/50 text-green-300'
-                                  : (submission.totalScore || 0) >= 50
-                                  ? 'bg-yellow-900/50 text-yellow-300'
-                                  : 'bg-red-900/50 text-red-300'
-                              }`}>
-                                {submission.totalScore || 0} / {submission.maxScore || 0}
-                              </span>
-                            </td>
-                            <td className="p-2 text-slate-400">{formatDate(submission.submittedAt)}</td>
-                            <td className="p-2">
-                              <span className="px-2 py-1 rounded text-xs bg-blue-900/50 text-blue-300">
-                                Completed
-                              </span>
-                            </td>
+                    <div className="max-h-80 overflow-y-auto scrollable-table">
+                      <table className="w-full">
+                        <thead className="sticky top-0 bg-slate-700 z-10">
+                          <tr className="text-left text-slate-300">
+                            <th className="p-2">Test</th>
+                            <th className="p-2">Score</th>
+                            <th className="p-2">Submitted</th>
+                            <th className="p-2">Status</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {studentSubmissions.map((submission) => (
+                            <tr key={submission._id} className="border-b border-slate-600 hover:bg-slate-600/50">
+                              <td className="p-2">{submission.testId?.title || submission.assignmentId?.testId?.title || "Test"}</td>
+                              <td className="p-2">
+                                <span className={`px-2 py-1 rounded text-xs ${
+                                  (submission.totalScore || 0) >= 70 
+                                    ? 'bg-green-900/50 text-green-300'
+                                    : (submission.totalScore || 0) >= 50
+                                    ? 'bg-yellow-900/50 text-yellow-300'
+                                    : 'bg-red-900/50 text-red-300'
+                                }`}>
+                                  {submission.totalScore || 0} / {submission.maxScore || 0}
+                                </span>
+                              </td>
+                              <td className="p-2 text-slate-400">{formatDate(submission.submittedAt)}</td>
+                              <td className="p-2">
+                                <span className="px-2 py-1 rounded text-xs bg-blue-900/50 text-blue-300">
+                                  Completed
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
               </div>
