@@ -13,10 +13,8 @@ const MentorSubmissions = () => {
   }, []);
 
   const fetchSubmissions = async (page = 1) => {
-    console.log("Fetching submissions for mentor...");
     try {
       const data = await apiRequest(`/mentor/submissions?page=${page}&limit=50`);
-      console.log("Received submissions data:", data);
       // Handle both old format (array) and new format (object with students array)
       if (Array.isArray(data)) {
         setStudents(data);
@@ -42,16 +40,13 @@ const MentorSubmissions = () => {
   };
 
   const openStudentProfile = async (studentData) => {
-    console.log("Opening student profile:", studentData);
     setSelectedStudent(studentData);
     await fetchStudentSubmissions(studentData.student._id);
   };
 
   useEffect(() => {
     if (selectedStudent) {
-      console.log("Selected student data:", selectedStudent);
-      console.log("Selected student responses:", selectedStudent.responses);
-      console.log("Test questions:", selectedStudent.assignmentId?.testId?.questions);
+      // Student data loaded
     }
   }, [selectedStudent]);
 
@@ -277,7 +272,6 @@ const MentorSubmissions = () => {
                 {studentSubmissions.length > 0 && studentSubmissions[0].responses && studentSubmissions[0].responses.length > 0 ? (
                   <div className="space-y-4">
                     {studentSubmissions[0].responses.map((response, index) => {
-                      console.log("Matching question for response:", response);
                       const question = studentSubmissions[0].assignmentId?.testId?.questions?.find(
                         q => q._id.toString() === response.questionId.toString()
                       );

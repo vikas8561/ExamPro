@@ -14,7 +14,7 @@ router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) 
     if (status) query.status = status;
     if (search) query.title = { $regex: search, $options: "i" };
 
-    console.log('🚀 ULTRA FAST: Fetching tests for admin');
+    // console.log('🚀 ULTRA FAST: Fetching tests for admin');
 
     // ULTRA FAST: Get tests with MINIMAL data (NO questions!)
     const tests = await Test.find(query)
@@ -24,7 +24,7 @@ router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) 
       .lean(); // Use lean() for 2x faster queries
 
     const totalTime = Date.now() - startTime;
-    console.log(`✅ ULTRA FAST admin tests completed in ${totalTime}ms - Found ${tests.length} tests`);
+    // console.log(`✅ ULTRA FAST admin tests completed in ${totalTime}ms - Found ${tests.length} tests`);
     
     res.json({ tests });
   } catch (error) {

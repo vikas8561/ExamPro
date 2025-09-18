@@ -16,7 +16,7 @@ const cacheMiddleware = (duration = 300) => {
     // Check if data exists in cache
     const cachedData = cache.get(key);
     if (cachedData) {
-      console.log(`Cache hit for key: ${key}`);
+      // console.log(`Cache hit for key: ${key}`);
       return res.json(cachedData);
     }
 
@@ -27,7 +27,7 @@ const cacheMiddleware = (duration = 300) => {
     res.json = function(data) {
       // Cache the response data
       cache.set(key, data, duration);
-      console.log(`Cached data for key: ${key}`);
+      // console.log(`Cached data for key: ${key}`);
       
       // Call original json method
       originalJson.call(this, data);
@@ -44,14 +44,14 @@ const invalidateCache = (pattern) => {
   
   if (keysToDelete.length > 0) {
     cache.del(keysToDelete);
-    console.log(`Invalidated ${keysToDelete.length} cache entries matching pattern: ${pattern}`);
+    // console.log(`Invalidated ${keysToDelete.length} cache entries matching pattern: ${pattern}`);
   }
 };
 
 // Clear all cache
 const clearAllCache = () => {
   cache.flushAll();
-  console.log('All cache cleared');
+  // console.log('All cache cleared');
 };
 
 module.exports = {

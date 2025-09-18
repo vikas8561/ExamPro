@@ -20,7 +20,7 @@ async function recalculateScoresForTest(testId) {
       await recalculateSubmissionScore(submission, test);
     }
 
-    console.log(`Recalculated scores for ${submissions.length} submissions of test ${testId}`);
+    // console.log(`Recalculated scores for ${submissions.length} submissions of test ${testId}`);
   } catch (error) {
     console.error("Error recalculating scores:", error);
     throw error;

@@ -12,7 +12,7 @@ const { cacheMiddleware, invalidateCache } = require("../middleware/cache");
 router.get("/dashboard", authenticateToken, cacheMiddleware(300), async (req, res) => {
   try {
     const mentorId = req.user.userId;
-    console.log('Fetching dashboard for mentor:', mentorId);
+    // console.log('Fetching dashboard for mentor:', mentorId);
     
     // Optimized query with selective population
     const assignments = await Assignment.find({ mentorId })
@@ -55,7 +55,7 @@ router.get("/dashboard", authenticateToken, cacheMiddleware(300), async (req, re
 router.get("/assignments", authenticateToken, cacheMiddleware(180), async (req, res) => {
   try {
     const mentorId = req.user.userId;
-    console.log('Fetching assignments for mentor:', mentorId);
+    // console.log('Fetching assignments for mentor:', mentorId);
     
     // Use aggregation pipeline for better performance
     const assignments = await Assignment.aggregate([
@@ -131,7 +131,7 @@ router.get("/assignments", authenticateToken, cacheMiddleware(180), async (req, 
       }
     ]);
 
-    console.log('Found assignments:', assignments.length);
+    // console.log('Found assignments:', assignments.length);
     res.json(assignments);
     
   } catch (err) {

@@ -7,7 +7,7 @@ const User = require("../models/User");
 router.get("/", async (req, res) => {
   try {
     const startTime = Date.now();
-    console.log('🚀 ULTRA FAST: Fetching users for admin');
+    // console.log('🚀 ULTRA FAST: Fetching users for admin');
 
     // ULTRA FAST: Get users with MINIMAL data
     const users = await User.find()
@@ -16,7 +16,7 @@ router.get("/", async (req, res) => {
       .lean(); // Use lean() for 2x faster queries
 
     const totalTime = Date.now() - startTime;
-    console.log(`✅ ULTRA FAST admin users completed in ${totalTime}ms - Found ${users.length} users`);
+    // console.log(`✅ ULTRA FAST admin users completed in ${totalTime}ms - Found ${users.length} users`);
 
     res.json(users);
   } catch (err) {

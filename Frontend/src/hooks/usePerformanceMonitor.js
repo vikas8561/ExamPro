@@ -95,12 +95,6 @@ export const usePerformanceMonitor = () => {
   const logPerformanceMetrics = useCallback(() => {
     const score = getPerformanceScore();
     console.group('🚀 Performance Metrics');
-    console.log('First Contentful Paint:', metrics.fcp?.toFixed(2) + 'ms');
-    console.log('Largest Contentful Paint:', metrics.lcp?.toFixed(2) + 'ms');
-    console.log('First Input Delay:', metrics.fid?.toFixed(2) + 'ms');
-    console.log('Cumulative Layout Shift:', metrics.cls?.toFixed(4));
-    console.log('Time to First Byte:', metrics.ttfb?.toFixed(2) + 'ms');
-    console.log('Overall Score:', score.grade, `(${(score.overall * 100).toFixed(1)}%)`);
     console.groupEnd();
   }, [metrics, getPerformanceScore]);
 

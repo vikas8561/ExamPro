@@ -19,7 +19,7 @@ router.get("/test", (req, res) => {
 router.get("/dashboard", authenticateToken, async (req, res) => {
   try {
     const mentorId = req.user.userId;
-    console.log('Fetching dashboard for mentor:', mentorId);
+    // console.log('Fetching dashboard for mentor:', mentorId);
     
     // Get all assignments where this mentor is assigned
     const assignments = await Assignment.find({ mentorId })
@@ -60,7 +60,7 @@ router.get("/dashboard", authenticateToken, async (req, res) => {
 router.get("/assignments", authenticateToken, async (req, res) => {
   try {
     const mentorId = req.user.userId;
-    console.log('🚀 ULTRA FAST: Fetching assignments for mentor:', mentorId);
+    // console.log('🚀 ULTRA FAST: Fetching assignments for mentor:', mentorId);
     
     const startTime = Date.now();
     
@@ -77,8 +77,8 @@ router.get("/assignments", authenticateToken, async (req, res) => {
       .sort({ createdAt: -1 })
       .lean(); // Use lean() for 2x faster queries
 
-    console.log(`📊 Found ${assignments.length} assignments in ${Date.now() - startTime}ms`);
-    console.log('Sample assignment data:', assignments.slice(0, 2).map(a => ({ 
+    // console.log(`📊 Found ${assignments.length} assignments in ${Date.now() - startTime}ms`);
+    // console.log('Sample assignment data:', assignments.slice(0, 2).map(a => ({ 
       id: a._id, 
       status: a.status, 
       autoScore: a.autoScore, 
@@ -94,9 +94,9 @@ router.get("/assignments", authenticateToken, async (req, res) => {
       .select('assignmentId submittedAt totalScore maxScore')
       .lean();
     
-    console.log(`📊 Found ${submissions.length} submissions in ${Date.now() - startTime}ms`);
-    console.log('Sample submission data:', submissions.slice(0, 2));
-    console.log('All submission data:', submissions.map(sub => ({ 
+    // console.log(`📊 Found ${submissions.length} submissions in ${Date.now() - startTime}ms`);
+    // console.log('Sample submission data:', submissions.slice(0, 2));
+    // console.log('All submission data:', submissions.map(sub => ({ 
       assignmentId: sub.assignmentId, 
       totalScore: sub.totalScore, 
       maxScore: sub.maxScore,
@@ -145,9 +145,9 @@ router.get("/assignments", authenticateToken, async (req, res) => {
     });
     
     const totalTime = Date.now() - startTime;
-    console.log(`✅ ULTRA FAST assignments completed in ${totalTime}ms`);
-    console.log('Sample final assignment with score:', assignmentsWithSubmissions.find(a => a.score !== null && a.score !== undefined));
-    console.log('Score range:', assignmentsWithSubmissions.filter(a => a.score !== null && a.score !== undefined).map(a => `${a.score} out of ${a.maxScore}`));
+    // console.log(`✅ ULTRA FAST assignments completed in ${totalTime}ms`);
+    // console.log('Sample final assignment with score:', assignmentsWithSubmissions.find(a => a.score !== null && a.score !== undefined));
+    // console.log('Score range:', assignmentsWithSubmissions.filter(a => a.score !== null && a.score !== undefined).map(a => `${a.score} out of ${a.maxScore}`));
 
     res.json(assignmentsWithSubmissions);
     
@@ -246,7 +246,7 @@ router.get("/student/:studentId/submissions", authenticateToken, async (req, res
   try {
     const { studentId } = req.params;
     const startTime = Date.now();
-    console.log('🚀 ULTRA FAST: Fetching submissions for student:', studentId);
+    // console.log('🚀 ULTRA FAST: Fetching submissions for student:', studentId);
 
     // ULTRA FAST: Get submissions with MINIMAL data (NO questions upfront!)
     const submissions = await TestSubmission.find({ userId: studentId })
@@ -283,7 +283,7 @@ router.get("/student/:studentId/submissions", authenticateToken, async (req, res
     }
 
     const totalTime = Date.now() - startTime;
-    console.log(`✅ ULTRA FAST student submissions completed in ${totalTime}ms - Found ${submissions.length} submissions`);
+    // console.log(`✅ ULTRA FAST student submissions completed in ${totalTime}ms - Found ${submissions.length} submissions`);
 
     res.json(submissions);
   } catch (err) {
@@ -345,14 +345,14 @@ router.put("/assignments/:id/review", authenticateToken, async (req, res) => {
 router.get("/submissions/pending", authenticateToken, async (req, res, next) => {
   try {
     const mentorId = req.user.userId;
-    console.log(`Fetching pending submissions for mentor: ${mentorId}`);
+    // console.log(`Fetching pending submissions for mentor: ${mentorId}`);
 
     // Find assignments assigned to this mentor
     const assignments = await Assignment.find({ mentorId });
-    console.log(`Found ${assignments.length} assignments for mentor ${mentorId}`);
+    // console.log(`Found ${assignments.length} assignments for mentor ${mentorId}`);
     
     const assignmentIds = assignments.map(a => a._id);
-    console.log(`Assignment IDs: ${assignmentIds}`);
+    // console.log(`Assignment IDs: ${assignmentIds}`);
 
     const submissions = await TestSubmission.find({
       assignmentId: { $in: assignmentIds },
@@ -366,7 +366,7 @@ router.get("/submissions/pending", authenticateToken, async (req, res, next) => 
     })
     .sort({ submittedAt: -1 });
 
-    console.log(`Found ${submissions.length} pending submissions for review`);
+    // console.log(`Found ${submissions.length} pending submissions for review`);
     res.json(submissions);
   } catch (error) {
     console.error("Error fetching mentor pending submissions:", error);

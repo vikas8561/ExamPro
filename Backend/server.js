@@ -107,15 +107,15 @@ app.set('io', io);
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {
-  console.log('A user connected:', socket.id);
+  // console.log('A user connected:', socket.id);
 
   socket.on('join', (userId) => {
     socket.join(userId.toString());
-    console.log(`User ${socket.id} joined room: ${userId}`);
+    // console.log(`User ${socket.id} joined room: ${userId}`);
   });
 
   socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
+    // console.log('User disconnected:', socket.id);
   });
 });
 
@@ -134,7 +134,7 @@ const PORT = process.env.PORT || 4000;
 // Connect to DB and start server
 connectDB(process.env.MONGODB_URI || 'mongodb://localhost:27017/test-platform')
   .then(() => {
-    server.listen(PORT, () => console.log(`API running at http://localhost:${PORT}`));
+    server.listen(PORT, () => // console.log(`API running at http://localhost:${PORT}`));
   })
   .catch((e) => {
     console.error("Mongo connection failed:", e);

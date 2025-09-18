@@ -22,14 +22,12 @@ const StudentDashboard = () => {
     const socket = io(socketUrl);
 
     socket.on("connect", () => {
-      console.log("Connected to socket server:", socket.id);
       setSocketConnected(true);
       setConnectionError(null);
       // Join room with userId for targeted events
       const userId = getCurrentUserId();
       if (userId) {
         socket.emit('join', userId);
-        console.log("Joined room:", userId);
       }
     });
 
@@ -47,7 +45,6 @@ const StudentDashboard = () => {
     });
 
     socket.on("disconnect", (reason) => {
-      console.log("Disconnected from socket server:", reason);
       setSocketConnected(false);
       // Clear fallback polling if it exists
       if (socket.pollInterval) {
@@ -56,7 +53,6 @@ const StudentDashboard = () => {
     });
 
     socket.on("assignmentCreated", (data) => {
-      console.log("Received assignmentCreated event:", data);
       if (data.userId === getCurrentUserId()) {
         // Refresh student data and recent activity
         fetchStudentData();
@@ -66,7 +62,6 @@ const StudentDashboard = () => {
 
     // Debug: log all events to verify connection
     socket.onAny((event, ...args) => {
-      console.log(`Socket event received: ${event}`, args);
     });
 
     // Cleanup on unmount
@@ -78,7 +73,6 @@ const StudentDashboard = () => {
   const getCurrentUserId = () => {
     // Assuming userId is stored in localStorage
     const userId = localStorage.getItem("userId");
-    console.log("Current userId from localStorage:", userId);
     return userId;
   };
 
@@ -107,7 +101,6 @@ const StudentDashboard = () => {
   const fetchRecentActivity = async () => {
     try {
       const activities = await apiRequest("/assignments/student/recent-activity");
-      console.log("Recent activities fetched:", activities);
       setRecentActivities(activities);
     } catch (error) {
       console.error("Error fetching recent activity:", error);

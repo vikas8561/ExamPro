@@ -100,7 +100,6 @@ const StudentAssignments = () => {
         console.error("Error in parallel data fetching:", error);
       });
     } else {
-      console.log("Using cached data, skipping fetch");
       setLoading(false);
     }
 
@@ -110,12 +109,10 @@ const StudentAssignments = () => {
     const socket = io(socketUrl);
 
     socket.on("connect", () => {
-      console.log("Connected to socket server:", socket.id);
       // Join room with userId for targeted events
       const userId = localStorage.getItem("userId");
       if (userId) {
         socket.emit('join', userId);
-        console.log("Joined room:", userId);
       }
     });
 
@@ -130,7 +127,6 @@ const StudentAssignments = () => {
     });
 
     socket.on("disconnect", (reason) => {
-      console.log("Disconnected from socket server:", reason);
       // Clear fallback polling if it exists
       if (socket.pollInterval) {
         clearInterval(socket.pollInterval);
@@ -138,14 +134,12 @@ const StudentAssignments = () => {
     });
 
     socket.on("assignmentCreated", (data) => {
-      console.log("Received assignmentCreated event:", data);
       // Refresh assignments data
       fetchAssignments();
     });
 
     // Debug: log all events to verify connection
     socket.onAny((event, ...args) => {
-      console.log(`Socket event received: ${event}`, args);
     });
 
     // Cleanup on unmount
@@ -179,7 +173,6 @@ const StudentAssignments = () => {
       
       clearTimeout(timeoutId);
       const endTime = Date.now();
-      console.log(`🚀 Student assignments loaded in ${endTime - startTime}ms`);
       setAssignments(data);
       setLastFetchTime(endTime);
     } catch (error) {
@@ -187,7 +180,6 @@ const StudentAssignments = () => {
       
       // Handle timeout errors
       if (error.name === 'AbortError') {
-        console.log("Request timed out, retrying...");
         if (retryCount === 0) {
           setTimeout(() => fetchAssignments(1), 1000);
           return;
@@ -196,7 +188,6 @@ const StudentAssignments = () => {
       
       // Retry once if it's a network error and we haven't retried yet
       if (retryCount === 0 && (error.message?.includes('fetch') || error.message?.includes('network'))) {
-        console.log("Retrying assignment fetch...");
         setTimeout(() => fetchAssignments(1), 1000);
         return;
       }

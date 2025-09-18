@@ -7,10 +7,10 @@ const { authenticateToken, requireRole } = require("../middleware/auth");
 
 // Gemini API function for grading theory and coding questions
 async function evaluateWithGemini(questionText, studentAnswer, maxPoints) {
-  console.log("🔍 DEBUG: evaluateWithGemini called with:");
-  console.log("Question:", questionText.substring(0, 100) + "...");
-  console.log("Answer:", studentAnswer.substring(0, 100) + "...");
-  console.log("Max Points:", maxPoints);
+  // console.log("🔍 DEBUG: evaluateWithGemini called with:");
+  // console.log("Question:", questionText.substring(0, 100) + "...");
+  // console.log("Answer:", studentAnswer.substring(0, 100) + "...");
+  // console.log("Max Points:", maxPoints);
 
   try {
     // Check if API key is available
@@ -22,7 +22,7 @@ async function evaluateWithGemini(questionText, studentAnswer, maxPoints) {
       };
     }
 
-    console.log("✅ API key found, initializing Gemini...");
+    // console.log("✅ API key found, initializing Gemini...");
 
     // Import required packages at the top of the file
     const { GoogleGenerativeAI } = require("@google/generative-ai");
@@ -31,7 +31,7 @@ async function evaluateWithGemini(questionText, studentAnswer, maxPoints) {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-    console.log("✅ Gemini model initialized, creating prompt...");
+    // console.log("✅ Gemini model initialized, creating prompt...");
 
     // For now, using mock implementation - replace with actual API call
     const prompt = `
@@ -54,7 +54,7 @@ async function evaluateWithGemini(questionText, studentAnswer, maxPoints) {
       }
     `;
 
-    console.log("📤 Using mock Gemini evaluation...");
+    // console.log("📤 Using mock Gemini evaluation...");
 
     // Mock evaluation logic - replace with actual API call when ready
     const feedbackOptions = [
@@ -73,7 +73,7 @@ async function evaluateWithGemini(questionText, studentAnswer, maxPoints) {
     // Assign random marks between 0 and maxPoints
     const marks = Math.floor(Math.random() * (maxPoints + 1));
 
-    console.log("✅ Mock evaluation result:", { marks, feedback: randomFeedback });
+    // console.log("✅ Mock evaluation result:", { marks, feedback: randomFeedback });
 
     return {
       marks,
@@ -140,14 +140,14 @@ router.post("/", authenticateToken, async (req, res, next) => {
     }
 
     // Check if user has access to this assignment
-    console.log(`Assignment userId: ${assignment.userId.toString()}, Request userId: ${userId}`);
-    console.log(`Assignment userId type: ${typeof assignment.userId.toString()}, Request userId type: ${typeof userId}`);
+    // console.log(`Assignment userId: ${assignment.userId.toString()}, Request userId: ${userId}`);
+    // console.log(`Assignment userId type: ${typeof assignment.userId.toString()}, Request userId type: ${typeof userId}`);
     
     // Allow submission if the assignment belongs to the user OR if the user is assigned to this test
     // This is more permissive to handle cases where assignments might be shared or reassigned
     if (assignment.userId.toString() !== userId) {
-      console.log(`Assignment ownership mismatch: Assignment belongs to user ${assignment.userId.toString()} but request is from user ${userId}`);
-      console.log(`Allowing submission anyway for flexibility in assignment management`);
+      // console.log(`Assignment ownership mismatch: Assignment belongs to user ${assignment.userId.toString()} but request is from user ${userId}`);
+      // console.log(`Allowing submission anyway for flexibility in assignment management`);
       
       // We'll allow the submission but log the mismatch for auditing
       // In a production system, you might want additional checks here
@@ -427,17 +427,17 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
     const currentTime = new Date();
     let assignmentDeadline = assignment.deadline;
 
-    console.log('=== DEBUGGING DEADLINE LOGIC ===');
-    console.log('Current time:', currentTime.toISOString());
-    console.log('Assignment deadline:', assignmentDeadline);
-    console.log('Assignment startTime:', assignment.startTime);
-    console.log('Assignment duration:', assignment.duration);
-    console.log('Submission exists:', !!submission);
-    console.log('Submission mentorReviewed:', submission?.mentorReviewed);
+    // console.log('=== DEBUGGING DEADLINE LOGIC ===');
+    // console.log('Current time:', currentTime.toISOString());
+    // console.log('Assignment deadline:', assignmentDeadline);
+    // console.log('Assignment startTime:', assignment.startTime);
+    // console.log('Assignment duration:', assignment.duration);
+    // console.log('Submission exists:', !!submission);
+    // console.log('Submission mentorReviewed:', submission?.mentorReviewed);
 
     // Check if deadline is valid
     if (!assignmentDeadline) {
-      console.log('ERROR: Assignment deadline is null/undefined');
+      // console.log('ERROR: Assignment deadline is null/undefined');
       // If deadline is not set, calculate it from startTime + duration
       if (assignment.startTime && assignment.duration) {
         const calculatedDeadline = new Date(assignment.startTime);
@@ -445,22 +445,22 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
         assignment.deadline = calculatedDeadline;
         await assignment.save();
         assignmentDeadline = calculatedDeadline; // Update local variable as well
-        console.log('Calculated and saved deadline:', calculatedDeadline.toISOString());
+        // console.log('Calculated and saved deadline:', calculatedDeadline.toISOString());
       }
     }
 
     // Add a small buffer (5 seconds) to handle timing precision issues
     const deadlineWithBuffer = new Date(assignmentDeadline.getTime() + 5000);
 
-    console.log('Deadline with buffer:', deadlineWithBuffer.toISOString());
-    console.log('Current time >= deadline with buffer:', currentTime >= deadlineWithBuffer);
+    // console.log('Deadline with buffer:', deadlineWithBuffer.toISOString());
+    // console.log('Current time >= deadline with buffer:', currentTime >= deadlineWithBuffer);
 
     // Determine if results should be shown
     // Show results immediately if user is the mentor for this assignment, otherwise only after deadline
     const showResults = isMentor || currentTime >= deadlineWithBuffer;
 
-    console.log('Show results:', showResults);
-    console.log('================================');
+    // console.log('Show results:', showResults);
+    // console.log('================================');
 
     if (submission) {
       // Merge responses with questions for display
@@ -481,7 +481,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
 
         // Debug logging for theory/coding questions
         if (question.kind === "theoretical" || question.kind === "coding") {
-          console.log(`DEBUG: Question ${question._id} - kind: ${question.kind}, geminiFeedback:`, response?.geminiFeedback);
+          // console.log(`DEBUG: Question ${question._id} - kind: ${question.kind}, geminiFeedback:`, response?.geminiFeedback);
         }
 
         return mergedQuestion;

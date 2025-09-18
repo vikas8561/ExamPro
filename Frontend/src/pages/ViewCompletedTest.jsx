@@ -21,7 +21,7 @@ const ViewCompletedTest = () => {
     const fetchTestResults = async () => {
       try {
         const data = await testSubmissionsAPI.getTestSubmission(assignmentId);
-        console.log("Fetched test submission data:", data);  // Debug log
+        // Debug log removed
         if (data === null) {
           setError("Test submission not found");
         } else {

@@ -30,10 +30,10 @@ const authenticateToken = async (req, res, next) => {
 // Role-based authorization middleware
 const requireRole = (role) => {
   return (req, res, next) => {
-    console.log('Role check - User:', req.user);
-    console.log('Required role:', role);
-    console.log('User role:', req.user?.role);
-    console.log('User role type:', typeof req.user?.role);
+    // console.log('Role check - User:', req.user);
+    // console.log('Required role:', role);
+    // console.log('User role:', req.user?.role);
+    // console.log('User role type:', typeof req.user?.role);
     
     if (!req.user) {
       return res.status(401).json({ message: 'Authentication required' });
@@ -46,8 +46,8 @@ const requireRole = (role) => {
     const userRole = String(req.user?.role || '').toLowerCase();
     const normalizedAllowedRoles = allowedRoles.map(r => String(r).toLowerCase());
     
-    console.log('Normalized user role:', userRole);
-    console.log('Normalized allowed roles:', normalizedAllowedRoles);
+    // console.log('Normalized user role:', userRole);
+    // console.log('Normalized allowed roles:', normalizedAllowedRoles);
     
     if (!normalizedAllowedRoles.includes(userRole)) {
       return res.status(403).json({ 

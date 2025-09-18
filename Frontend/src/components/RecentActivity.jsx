@@ -1,7 +1,7 @@
 import React from "react";
 
 const RecentActivity = ({ data }) => {
-  console.log("RecentActivity received data:", data);
+  // Debug log removed
 
   if (!data || data.length === 0) {
     return (

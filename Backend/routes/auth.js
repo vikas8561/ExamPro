@@ -98,35 +98,35 @@ router.get("/me", async (req, res) => {
 // Forgot password endpoint
 router.post("/forgot-password", async (req, res) => {
   try {
-    console.log('Forgot password request received:', req.body);
+    // console.log('Forgot password request received:', req.body);
 
     const { oldEmail, newEmail, newPassword, confirmPassword } = req.body;
 
     // Validate input
     if (!oldEmail || !newEmail || !newPassword || !confirmPassword) {
-      console.log('Validation failed: Missing fields');
+      // console.log('Validation failed: Missing fields');
       return res.status(400).json({ message: "All fields are required" });
     }
 
     if (newPassword !== confirmPassword) {
-      console.log('Validation failed: Passwords do not match');
+      // console.log('Validation failed: Passwords do not match');
       return res.status(400).json({ message: "Passwords do not match" });
     }
 
     if (newPassword.length < 6) {
-      console.log('Validation failed: Password too short');
+      // console.log('Validation failed: Password too short');
       return res.status(400).json({ message: "Password must be at least 6 characters long" });
     }
 
-    console.log('Finding user by email:', oldEmail);
+    // console.log('Finding user by email:', oldEmail);
     // Find user by old email
     const user = await User.findOne({ email: oldEmail });
     if (!user) {
-      console.log('User not found');
+      // console.log('User not found');
       return res.status(404).json({ message: "User not found" });
     }
 
-    console.log('User found, hashing password');
+    // console.log('User found, hashing password');
     // Hash the new password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(newPassword, salt);
@@ -145,12 +145,12 @@ router.post("/forgot-password", async (req, res) => {
     user.resetPasswordToken = resetToken;
     user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
 
-    console.log('Saving user with pending changes');
+    // console.log('Saving user with pending changes');
     await user.save();
 
     // Determine which email to send verification to
     const verificationEmail = (oldEmail !== newEmail) ? newEmail : oldEmail;
-    console.log('Verification email will be sent to:', verificationEmail);
+    // console.log('Verification email will be sent to:', verificationEmail);
 
     // Send email with reset link to verificationEmail
     const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
@@ -166,7 +166,7 @@ router.post("/forgot-password", async (req, res) => {
       `
     };
 
-    console.log('Sending email with options:', {
+    // console.log('Sending email with options:', {
       from: mailOptions.from,
       to: mailOptions.to,
       subject: mailOptions.subject
@@ -174,7 +174,7 @@ router.post("/forgot-password", async (req, res) => {
 
     try {
       await transporter.sendMail(mailOptions);
-      console.log('Reset email sent successfully');
+      // console.log('Reset email sent successfully');
       return res.json({
         message: "Password reset verification sent",
         verificationSentTo: verificationEmail,

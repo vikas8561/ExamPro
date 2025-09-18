@@ -85,7 +85,7 @@ const deduplicationMiddleware = (req, res, next) => {
   if (requestCache.has(key)) {
     const cached = requestCache.get(key);
     if (now - cached.timestamp < REQUEST_CACHE_TTL) {
-      console.log(`Deduplicating request: ${key}`);
+      // console.log(`Deduplicating request: ${key}`);
       return cached.promise;
     } else {
       requestCache.delete(key);
@@ -131,7 +131,7 @@ const performanceMiddleware = (req, res, next) => {
     }
     
     // Log performance metrics
-    console.log(`${method} ${originalUrl} - ${duration}ms - ${statusCode}`);
+    // console.log(`${method} ${originalUrl} - ${duration}ms - ${statusCode}`);
   });
   
   next();
@@ -141,7 +141,7 @@ const performanceMiddleware = (req, res, next) => {
 const optimizeDatabase = (mongoose) => {
   // Set connection pool options
   mongoose.connection.on('connected', () => {
-    console.log('MongoDB connected with optimized settings');
+    // console.log('MongoDB connected with optimized settings');
   });
 
   // Optimize connection pool
@@ -163,7 +163,7 @@ const memoryMonitor = () => {
     return (bytes / 1024 / 1024).toFixed(2) + ' MB';
   };
 
-  console.log('Memory Usage:', {
+  // console.log('Memory Usage:', {
     rss: formatBytes(used.rss),
     heapTotal: formatBytes(used.heapTotal),
     heapUsed: formatBytes(used.heapUsed),

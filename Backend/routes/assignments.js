@@ -16,7 +16,7 @@ router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) 
     if (userId) query.userId = userId;
     if (testId) query.testId = testId;
 
-    console.log('🚀 ULTRA FAST: Fetching assignments for admin');
+    // console.log('🚀 ULTRA FAST: Fetching assignments for admin');
 
     // ULTRA FAST: Get assignments with MINIMAL data
     const assignments = await Assignment.find(query)
@@ -28,7 +28,7 @@ router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) 
       .lean(); // Use lean() for 2x faster queries
 
     const totalTime = Date.now() - startTime;
-    console.log(`✅ ULTRA FAST admin assignments completed in ${totalTime}ms - Found ${assignments.length} assignments`);
+    // console.log(`✅ ULTRA FAST admin assignments completed in ${totalTime}ms - Found ${assignments.length} assignments`);
 
     res.json(assignments);
   } catch (error) {
@@ -44,7 +44,7 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     }
 
     const startTime = Date.now();
-    console.log('🚀 ULTRA FAST: Fetching assignments for student:', req.user.userId);
+    // console.log('🚀 ULTRA FAST: Fetching assignments for student:', req.user.userId);
 
     // ULTRA FAST: Get assignments with MINIMAL data (NO questions upfront!)
     const assignments = await Assignment.find({ userId: req.user.userId })
@@ -57,7 +57,7 @@ router.get("/student", authenticateToken, async (req, res, next) => {
       .sort({ deadline: 1 })
       .lean(); // Use lean() for 2x faster queries
 
-    console.log(`📊 Found ${assignments.length} assignments in ${Date.now() - startTime}ms`);
+    // console.log(`📊 Found ${assignments.length} assignments in ${Date.now() - startTime}ms`);
 
     // ULTRA FAST: Auto-start logic - batch update instead of individual updates
     const now = new Date();
@@ -69,7 +69,7 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     );
 
     if (assignmentsToAutoStart.length > 0) {
-      console.log(`Auto-starting ${assignmentsToAutoStart.length} assignments for user ${req.user.userId}`);
+      // console.log(`Auto-starting ${assignmentsToAutoStart.length} assignments for user ${req.user.userId}`);
       
       // ULTRA FAST: Batch update all assignments at once
       const assignmentIds = assignmentsToAutoStart.map(a => a._id);
@@ -81,7 +81,7 @@ router.get("/student", authenticateToken, async (req, res, next) => {
         }
       );
       
-      console.log(`📊 Updated ${updateResult.modifiedCount} assignments in ${Date.now() - startTime}ms`);
+      // console.log(`📊 Updated ${updateResult.modifiedCount} assignments in ${Date.now() - startTime}ms`);
       
       // Update local assignment objects
       assignmentsToAutoStart.forEach(assignment => {
@@ -91,7 +91,7 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     }
 
     const totalTime = Date.now() - startTime;
-    console.log(`✅ ULTRA FAST student assignments completed in ${totalTime}ms - Found ${assignments.length} assignments`);
+    // console.log(`✅ ULTRA FAST student assignments completed in ${totalTime}ms - Found ${assignments.length} assignments`);
 
     res.json(assignments);
   } catch (error) {
@@ -109,7 +109,7 @@ router.get("/student/recent-activity", authenticateToken, async (req, res, next)
 
     const startTime = Date.now();
     const userId = req.user.userId;
-    console.log('🚀 ULTRA FAST: Fetching recent activity for student:', userId);
+    // console.log('🚀 ULTRA FAST: Fetching recent activity for student:', userId);
     const activities = [];
 
     // ULTRA FAST: Get all student assignments in one query with minimal data
@@ -164,7 +164,7 @@ router.get("/student/recent-activity", authenticateToken, async (req, res, next)
     const recentActivities = activities.slice(0, 7);
 
     const totalTime = Date.now() - startTime;
-    console.log(`✅ ULTRA FAST student recent activity completed in ${totalTime}ms - Found ${recentActivities.length} activities`);
+    // console.log(`✅ ULTRA FAST student recent activity completed in ${totalTime}ms - Found ${recentActivities.length} activities`);
 
     res.json(recentActivities);
   } catch (error) {
@@ -292,7 +292,7 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
 
     // Emit real-time update to specific student
     const io = req.app.get('io');
-    console.log(`Emitting assignmentCreated to user ${userId}`);
+    // console.log(`Emitting assignmentCreated to user ${userId}`);
     io.to(userId.toString()).emit('assignmentCreated', {
       userId: userId,
       assignment: populatedAssignment
@@ -391,7 +391,7 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
     const hasRolePermissions = req.user.role === "Admin" || req.user.role === "Mentor";
     const requiresOtp = assignment.testId.otp && !hasRolePermissions && !hasAllPermissionsGranted;
 
-    console.log(`User role: ${req.user.role}, hasRolePermissions: ${hasRolePermissions}, hasAllPermissionsGranted: ${hasAllPermissionsGranted}, test OTP: ${assignment.testId.otp}, requiresOtp: ${requiresOtp}`);
+    // console.log(`User role: ${req.user.role}, hasRolePermissions: ${hasRolePermissions}, hasAllPermissionsGranted: ${hasAllPermissionsGranted}, test OTP: ${assignment.testId.otp}, requiresOtp: ${requiresOtp}`);
 
     if (requiresOtp) {
       if (!otp) {

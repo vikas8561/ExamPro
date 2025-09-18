@@ -9,7 +9,7 @@ const { redisCacheMiddleware } = require("../middleware/redisCache");
 router.get("/assignments", authenticateToken, redisCacheMiddleware(60), async (req, res) => {
   try {
     const mentorId = req.user.userId;
-    console.log('🚀 Fast assignments fetch for mentor:', mentorId);
+    // console.log('🚀 Fast assignments fetch for mentor:', mentorId);
     
     const startTime = Date.now();
     
@@ -25,7 +25,7 @@ router.get("/assignments", authenticateToken, redisCacheMiddleware(60), async (r
       .sort({ createdAt: -1 })
       .lean(); // Use lean() for 2x faster queries
     
-    console.log(`📊 Found ${assignments.length} assignments in ${Date.now() - startTime}ms`);
+    // console.log(`📊 Found ${assignments.length} assignments in ${Date.now() - startTime}ms`);
     
     // STEP 2: Batch fetch submissions (single query)
     const assignmentIds = assignments.map(a => a._id);
@@ -35,7 +35,7 @@ router.get("/assignments", authenticateToken, redisCacheMiddleware(60), async (r
       .select('assignmentId submittedAt score autoScore')
       .lean();
     
-    console.log(`📊 Found ${submissions.length} submissions in ${Date.now() - startTime}ms`);
+    // console.log(`📊 Found ${submissions.length} submissions in ${Date.now() - startTime}ms`);
     
     // STEP 3: Create lookup map
     const submissionMap = new Map();
@@ -58,7 +58,7 @@ router.get("/assignments", authenticateToken, redisCacheMiddleware(60), async (r
     });
     
     const totalTime = Date.now() - startTime;
-    console.log(`✅ Fast assignments completed in ${totalTime}ms`);
+    // console.log(`✅ Fast assignments completed in ${totalTime}ms`);
     
     res.json(assignmentsWithSubmissions);
     

@@ -42,16 +42,16 @@ const TakeTest = () => {
             `/assignments/${assignmentId}`
           );
           if (assignmentData && assignmentData.startedAt) {
-            console.log("Existing test found, showing permission modal for resume...");
+("Existing test found, showing permission modal for resume...");
             setShowPermissionModal(true);
             setLoading(false);
           } else {
-            console.log("No existing test found, showing permission modal...");
+("No existing test found, showing permission modal...");
             setShowPermissionModal(true);
             setLoading(false);
           }
         } catch (error) {
-          console.log(
+(
             "Error checking for existing test, showing permission modal:",
             error
           );
@@ -104,15 +104,15 @@ const TakeTest = () => {
     try {
       if (document.documentElement.requestFullscreen) {
         await document.documentElement.requestFullscreen();
-        console.log("Fullscreen mode activated");
+("Fullscreen mode activated");
       } else if (document.documentElement.webkitRequestFullscreen) {
         // Safari
         await document.documentElement.webkitRequestFullscreen();
-        console.log("Fullscreen mode activated (Safari)");
+("Fullscreen mode activated (Safari)");
       } else if (document.documentElement.msRequestFullscreen) {
         // IE/Edge
         await document.documentElement.msRequestFullscreen();
-        console.log("Fullscreen mode activated (IE/Edge)");
+("Fullscreen mode activated (IE/Edge)");
       } else {
         console.warn("Fullscreen API not supported in this browser");
       }
@@ -126,15 +126,15 @@ const TakeTest = () => {
     try {
       if (document.exitFullscreen) {
         await document.exitFullscreen();
-        console.log("Fullscreen mode exited");
+("Fullscreen mode exited");
       } else if (document.webkitExitFullscreen) {
         // Safari
         await document.webkitExitFullscreen();
-        console.log("Fullscreen mode exited (Safari)");
+("Fullscreen mode exited (Safari)");
       } else if (document.msExitFullscreen) {
         // IE/Edge
         await document.msExitFullscreen();
-        console.log("Fullscreen mode exited (IE/Edge)");
+("Fullscreen mode exited (IE/Edge)");
       } else {
         console.warn("Fullscreen API not supported in this browser");
       }
@@ -191,7 +191,7 @@ const TakeTest = () => {
       );
 
       if (!isFullscreen && testStarted && !isSubmitting) {
-        console.log("Fullscreen mode exited - treating as violation");
+("Fullscreen mode exited - treating as violation");
         const newViolationCount = violationCount + 1;
         setViolationCount(newViolationCount);
 
@@ -349,7 +349,7 @@ const TakeTest = () => {
       });
 
       if (response.alreadyStarted) {
-        console.log("Test already in progress, fetching existing data...");
+("Test already in progress, fetching existing data...");
         await loadExistingTestData();
         return;
       }
@@ -404,7 +404,7 @@ const TakeTest = () => {
       setCameraPermission("granted");
       setStream(stream);
       setIsVideoActive(true);
-      console.log("Camera permission granted");
+("Camera permission granted");
     } catch (error) {
       console.error("Camera permission denied:", error);
       setCameraPermission("denied");
@@ -415,7 +415,7 @@ const TakeTest = () => {
     try {
       await navigator.mediaDevices.getUserMedia({ audio: true });
       setMicrophonePermission("granted");
-      console.log("Microphone permission granted");
+("Microphone permission granted");
     } catch (error) {
       console.error("Microphone permission denied:", error);
       setMicrophonePermission("denied");
@@ -429,7 +429,7 @@ const TakeTest = () => {
           navigator.geolocation.getCurrentPosition(
             () => {
               setLocationPermission("granted");
-              console.log("Location permission granted");
+("Location permission granted");
               resolve();
             },
             (error) => {
@@ -441,7 +441,7 @@ const TakeTest = () => {
         });
       } else {
         setLocationPermission("denied");
-        console.log("Geolocation not supported");
+("Geolocation not supported");
       }
     } catch (error) {
       setLocationPermission("denied");
@@ -480,15 +480,15 @@ const TakeTest = () => {
   useEffect(() => {
     const connectStreamToVideo = () => {
       if (stream && videoRef.current) {
-        console.log("Connecting stream to video element");
+("Connecting stream to video element");
         videoRef.current.srcObject = stream;
 
         videoRef.current.onloadedmetadata = () => {
-          console.log("Video metadata loaded");
+("Video metadata loaded");
         };
 
         videoRef.current.onplay = () => {
-          console.log("Video started playing");
+("Video started playing");
         };
 
         videoRef.current.onerror = (e) => {
@@ -496,7 +496,7 @@ const TakeTest = () => {
         };
         return true;
       } else {
-        console.log("Stream or videoRef not available:", {
+("Stream or videoRef not available:", {
           streamAvailable: !!stream,
           videoRefAvailable: !!videoRef.current,
         });
@@ -526,13 +526,13 @@ const TakeTest = () => {
   const startTest = async () => {
     try {
       setLoading(true);
-      console.log(`Starting test for assignment ID: ${assignmentId}`);
+(`Starting test for assignment ID: ${assignmentId}`);
 
       // Fetch current server time and browser timezone
       const timeResponse = await apiRequest("/time");
       const serverTime = new Date(timeResponse.serverTime);
       const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      console.log(
+(
         "[startTest] Server time:",
         serverTime.toISOString(),
         "Browser timezone:",
@@ -550,10 +550,10 @@ const TakeTest = () => {
         otp: otpInput.trim()
       }),
     });
-      console.log("[startTest] Response:", response);
+("[startTest] Response:", response);
 
       if (response.alreadyStarted) {
-        console.log("Test already in progress, fetching existing data...");
+("Test already in progress, fetching existing data...");
         await loadExistingTestData();
         return;
       }
@@ -593,13 +593,13 @@ const TakeTest = () => {
       setLoading(false);
     } catch (error) {
       if (error.message === "Test already started") {
-        console.log("Test already in progress, fetching existing data...");
+("Test already in progress, fetching existing data...");
         await loadExistingTestData();
       } else if (
         error.message.includes("400") &&
         error.message.includes("Bad Request")
       ) {
-        console.log("Test start request failed:", error.message);
+("Test start request failed:", error.message);
         await loadExistingTestData();
       } else {
         setError(error.message || "Failed to start test");
@@ -609,9 +609,9 @@ const TakeTest = () => {
   };
 
   const loadExistingTestData = async () => {
-    console.log("Loading existing test data for assignment ID:", assignmentId);
+("Loading existing test data for assignment ID:", assignmentId);
     try {
-      console.log(
+(
         `[TakeTest] Loading existing test data for assignment: ${assignmentId}`
       );
 
@@ -619,7 +619,7 @@ const TakeTest = () => {
       const timeResponse = await apiRequest("/time");
       const serverTime = new Date(timeResponse.serverTime);
       const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      console.log(
+(
         "[loadExistingTestData] Server time:",
         serverTime.toISOString(),
         "Browser timezone:",
@@ -627,7 +627,7 @@ const TakeTest = () => {
       );
 
       const assignmentData = await apiRequest(`/assignments/${assignmentId}`);
-      console.log(`[TakeTest] Assignment data loaded:`, assignmentData);
+(`[TakeTest] Assignment data loaded:`, assignmentData);
       setAssignment(assignmentData);
 
       const assignmentDuration = assignmentData.duration;
@@ -642,13 +642,13 @@ const TakeTest = () => {
       const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
       const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
 
-      console.log(
+(
         `[TakeTest] Time calculation - Assignment Duration: ${assignmentDuration}m, Test Limit: ${testTimeLimit}m, Elapsed: ${elapsedSeconds}s, Remaining: ${remainingSeconds}s`
       );
 
       let answersData = [];
       try {
-        console.log(
+(
           `[TakeTest] Fetching existing answers for assignment ID: ${assignmentId}`
         );
         answersData = await apiRequest(`/answers/assignment/${assignmentId}`, {
@@ -656,10 +656,10 @@ const TakeTest = () => {
             Authorization: `Bearer ${localStorage.getItem("token")}`,
           },
         });
-        console.log("[TakeTest] Answers API response:", answersData);
+("[TakeTest] Answers API response:", answersData);
 
         if (answersData && answersData.length > 0) {
-          console.log("[TakeTest] Existing answers found, restoring answers");
+("[TakeTest] Existing answers found, restoring answers");
           const existingAnswers = {};
           answersData.forEach((response) => {
             const question = assignmentData.testId.questions.find(
@@ -691,13 +691,13 @@ const TakeTest = () => {
             }
           });
           setAnswers(existingAnswers);
-          console.log(
+(
             `[TakeTest] Restored ${
               Object.keys(existingAnswers).length
             } answers from existing answers`
           );
         } else {
-          console.log("[TakeTest] No existing answers found, starting fresh");
+("[TakeTest] No existing answers found, starting fresh");
         }
       } catch (answersError) {
         if (
@@ -705,7 +705,7 @@ const TakeTest = () => {
           answersError.message.includes("not found") ||
           answersError.message.includes("Resource not found")
         ) {
-          console.log(
+(
             "[TakeTest] No existing answers found (404 error) - this is expected when test is in progress but no answers saved yet"
           );
         } else {
@@ -734,7 +734,7 @@ const TakeTest = () => {
       setTestStarted(true);
       setShowPermissionModal(false);
       setLoading(false);
-      console.log("[TakeTest] Test data loaded successfully, test started");
+("[TakeTest] Test data loaded successfully, test started");
     } catch (error) {
       console.error("[TakeTest] Error loading test data:", error);
       setError(error.message || "Failed to load test data");
@@ -810,7 +810,7 @@ const TakeTest = () => {
           tempDiv.textContent || tempDiv.innerText || sanitizedSelectedOption;
       }
 
-      console.log(
+(
         "Saving answer for question:",
         questionId,
         "selectedOption:",
@@ -828,12 +828,12 @@ const TakeTest = () => {
             textAnswer,
           }),
         });
-        console.log("Answer saved successfully for question:", questionId);
+("Answer saved successfully for question:", questionId);
       } catch (error) {
         console.error("Failed to save answer:", error);
       }
     } else {
-      console.log(
+(
         "Not saving answer for question:",
         questionId,
         "hasAnswer:",
