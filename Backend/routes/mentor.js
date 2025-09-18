@@ -73,10 +73,18 @@ router.get("/assignments", authenticateToken, async (req, res) => {
     })
       .populate("testId", "title type instructions timeLimit") // NO questions!
       .populate("userId", "name email")
+      .select("testId userId mentorId status startTime duration deadline startedAt completedAt score autoScore mentorScore mentorFeedback reviewStatus timeSpent createdAt")
       .sort({ createdAt: -1 })
       .lean(); // Use lean() for 2x faster queries
 
     console.log(`📊 Found ${assignments.length} assignments in ${Date.now() - startTime}ms`);
+    console.log('Sample assignment data:', assignments.slice(0, 2).map(a => ({ 
+      id: a._id, 
+      status: a.status, 
+      autoScore: a.autoScore, 
+      score: a.score, 
+      mentorScore: a.mentorScore 
+    })));
 
     // ULTRA FAST: Batch fetch submissions (single query)
     const assignmentIds = assignments.map(a => a._id);
@@ -88,6 +96,12 @@ router.get("/assignments", authenticateToken, async (req, res) => {
     
     console.log(`📊 Found ${submissions.length} submissions in ${Date.now() - startTime}ms`);
     console.log('Sample submission data:', submissions.slice(0, 2));
+    console.log('All submission data:', submissions.map(sub => ({ 
+      assignmentId: sub.assignmentId, 
+      totalScore: sub.totalScore, 
+      maxScore: sub.maxScore,
+      submittedAt: sub.submittedAt 
+    })));
     
     // ULTRA FAST: Create lookup map
     const submissionMap = new Map();
@@ -105,11 +119,22 @@ router.get("/assignments", authenticateToken, async (req, res) => {
     // ULTRA FAST: Merge data (no async operations)
     const assignmentsWithSubmissions = assignments.map(assignment => {
       const submission = submissionMap.get(assignment._id.toString());
+      
+      // Priority: Assignment.autoScore > TestSubmission.score > Assignment.score > null
+      let finalScore = null;
+      if (assignment.autoScore !== null && assignment.autoScore !== undefined) {
+        finalScore = assignment.autoScore;
+      } else if (submission?.score !== null && submission?.score !== undefined) {
+        finalScore = submission.score;
+      } else if (assignment.score !== null && assignment.score !== undefined) {
+        finalScore = assignment.score;
+      }
+      
       return {
         ...assignment,
-        submittedAt: submission?.submittedAt || null,
-        score: submission?.score || null,
-        autoScore: submission?.score || null
+        submittedAt: submission?.submittedAt || assignment.completedAt || null,
+        score: finalScore,
+        autoScore: finalScore
       };
     });
     
