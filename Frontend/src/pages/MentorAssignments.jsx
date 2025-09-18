@@ -25,6 +25,7 @@ export default function MentorAssignments() {
 
   const fetchAssignments = async () => {
     try {
+      const startTime = Date.now();
       const token = localStorage.getItem('token');
       const response = await fetch("https://cg-test-app.onrender.com/api/mentor/assignments", {
         headers: {
@@ -33,11 +34,17 @@ export default function MentorAssignments() {
         }
       });
       const data = await response.json();
+      const endTime = Date.now();
+      console.log(`🚀 API call completed in ${endTime - startTime}ms`);
       // Map score from assignment to each assignment object for frontend use
       const assignmentsWithScore = Array.isArray(data) ? data.map(a => ({
         ...a,
         score: a.score !== undefined && a.score !== null ? a.score : (a.autoScore !== undefined && a.autoScore !== null ? a.autoScore : null)
       })) : [];
+      
+      // Debug logging for scores
+      console.log('Sample assignment with score:', assignmentsWithScore.find(a => a.score !== null && a.score !== undefined));
+      console.log('Assignments with scores:', assignmentsWithScore.filter(a => a.score !== null && a.score !== undefined).length);
       
       // Debug logging
       console.log('Assignments data:', assignmentsWithScore);
