@@ -22,6 +22,10 @@ export default defineConfig({
     // Optimize bundle size
     rollupOptions: {
       output: {
+        // Add proper cache busting with hashes
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash].[ext]',
         manualChunks: {
           // Separate vendor chunks for better caching
           vendor: ['react', 'react-dom', 'react-router-dom'],
