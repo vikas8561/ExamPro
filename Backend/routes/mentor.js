@@ -83,17 +83,22 @@ router.get("/assignments", authenticateToken, async (req, res) => {
     const submissions = await TestSubmission.find({
       assignmentId: { $in: assignmentIds }
     })
-      .select('assignmentId submittedAt score autoScore')
+      .select('assignmentId submittedAt totalScore maxScore')
       .lean();
     
     console.log(`📊 Found ${submissions.length} submissions in ${Date.now() - startTime}ms`);
+    console.log('Sample submission data:', submissions.slice(0, 2));
     
     // ULTRA FAST: Create lookup map
     const submissionMap = new Map();
     submissions.forEach(sub => {
+      // Calculate percentage score
+      const percentageScore = sub.maxScore > 0 ? Math.round((sub.totalScore / sub.maxScore) * 100) : 0;
       submissionMap.set(sub.assignmentId.toString(), {
         submittedAt: sub.submittedAt,
-        score: sub.score || sub.autoScore || null
+        score: percentageScore,
+        totalScore: sub.totalScore,
+        maxScore: sub.maxScore
       });
     });
     
@@ -110,7 +115,8 @@ router.get("/assignments", authenticateToken, async (req, res) => {
     
     const totalTime = Date.now() - startTime;
     console.log(`✅ ULTRA FAST assignments completed in ${totalTime}ms`);
-    
+    console.log('Sample final assignment with score:', assignmentsWithSubmissions.find(a => a.score !== null && a.score !== undefined));
+
     res.json(assignmentsWithSubmissions);
     
   } catch (err) {
