@@ -11,9 +11,6 @@ const { Server } = require("socket.io");
 const {
   compressionMiddleware,
   securityMiddleware,
-  generalRateLimit,
-  authRateLimit,
-  apiRateLimit,
   deduplicationMiddleware,
   performanceMiddleware,
   optimizeDatabase
@@ -64,10 +61,10 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(morgan("combined"));
 
-// Apply rate limiting
-app.use('/api/auth', authRateLimit);
-app.use('/api', apiRateLimit);
-app.use(generalRateLimit);
+// Rate limiting removed for exam system to handle unlimited students
+// app.use('/api/auth', authRateLimit);
+// app.use('/api', apiRateLimit);
+// app.use(generalRateLimit);
 
 const server = http.createServer(app);
 

@@ -57,14 +57,14 @@ const generalRateLimit = createRateLimit(
 );
 
 const authRateLimit = createRateLimit(
-  15 * 60 * 1000, // 15 minutes
-  5, // 5 login attempts per window
+  1 * 60 * 1000, // 1 minute
+  300, // 300 requests per minute
   'Too many authentication attempts, please try again later.'
 );
 
 const apiRateLimit = createRateLimit(
   1 * 60 * 1000, // 1 minute
-  60, // 60 requests per minute
+  300, // 300 requests per minute
   'API rate limit exceeded, please slow down.'
 );
 
