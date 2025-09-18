@@ -106,11 +106,10 @@ router.get("/assignments", authenticateToken, async (req, res) => {
     // ULTRA FAST: Create lookup map
     const submissionMap = new Map();
     submissions.forEach(sub => {
-      // Calculate percentage score
-      const percentageScore = sub.maxScore > 0 ? Math.round((sub.totalScore / sub.maxScore) * 100) : 0;
+      // Store both totalScore and maxScore for "X out of Y" format
       submissionMap.set(sub.assignmentId.toString(), {
         submittedAt: sub.submittedAt,
-        score: percentageScore,
+        score: sub.totalScore,
         totalScore: sub.totalScore,
         maxScore: sub.maxScore
       });
@@ -122,18 +121,25 @@ router.get("/assignments", authenticateToken, async (req, res) => {
       
       // Priority: Assignment.autoScore > TestSubmission.score > Assignment.score > null
       let finalScore = null;
+      let finalMaxScore = null;
+      
       if (assignment.autoScore !== null && assignment.autoScore !== undefined) {
         finalScore = assignment.autoScore;
+        // For Assignment.autoScore, we need to get maxScore from TestSubmission
+        finalMaxScore = submission?.maxScore || null;
       } else if (submission?.score !== null && submission?.score !== undefined) {
         finalScore = submission.score;
+        finalMaxScore = submission.maxScore;
       } else if (assignment.score !== null && assignment.score !== undefined) {
         finalScore = assignment.score;
+        finalMaxScore = submission?.maxScore || null;
       }
       
       return {
         ...assignment,
         submittedAt: submission?.submittedAt || assignment.completedAt || null,
         score: finalScore,
+        maxScore: finalMaxScore,
         autoScore: finalScore
       };
     });
@@ -141,6 +147,7 @@ router.get("/assignments", authenticateToken, async (req, res) => {
     const totalTime = Date.now() - startTime;
     console.log(`✅ ULTRA FAST assignments completed in ${totalTime}ms`);
     console.log('Sample final assignment with score:', assignmentsWithSubmissions.find(a => a.score !== null && a.score !== undefined));
+    console.log('Score range:', assignmentsWithSubmissions.filter(a => a.score !== null && a.score !== undefined).map(a => `${a.score} out of ${a.maxScore}`));
 
     res.json(assignmentsWithSubmissions);
     

@@ -45,7 +45,14 @@ export default function MentorAssignments() {
       // Debug logging for scores
       console.log('Sample assignment with score:', assignmentsWithScore.find(a => a.score !== null && a.score !== undefined));
       console.log('Assignments with scores:', assignmentsWithScore.filter(a => a.score !== null && a.score !== undefined).length);
-      console.log('All assignments scores:', assignmentsWithScore.map(a => ({ id: a._id, score: a.score, autoScore: a.autoScore, status: a.status })));
+      console.log('All assignments scores:', assignmentsWithScore.map(a => ({ 
+        id: a._id, 
+        score: a.score, 
+        maxScore: a.maxScore,
+        displayScore: a.score !== null && a.maxScore !== null ? `${a.score} out of ${a.maxScore}` : a.score,
+        autoScore: a.autoScore, 
+        status: a.status 
+      })));
       
       // Debug logging
       console.log('Assignments data:', assignmentsWithScore);
@@ -707,13 +714,22 @@ export default function MentorAssignments() {
                   <td className="p-3 text-slate-200 font-medium">
                     <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
                       assignment.score !== null && assignment.score !== undefined ? (
-                        assignment.score >= 80 ? 'bg-green-900 text-green-300' :
-                        assignment.score >= 60 ? 'bg-yellow-900 text-yellow-300' :
-                        assignment.score >= 40 ? 'bg-orange-900 text-orange-300' :
-                        'bg-red-900 text-red-300'
+                        (() => {
+                          // Calculate percentage for color coding
+                          const percentage = assignment.maxScore > 0 ? (assignment.score / assignment.maxScore) * 100 : 0;
+                          if (percentage >= 80) return 'bg-green-900 text-green-300';
+                          if (percentage >= 60) return 'bg-yellow-900 text-yellow-300';
+                          if (percentage >= 40) return 'bg-orange-900 text-orange-300';
+                          if (percentage > 0) return 'bg-red-900 text-red-300';
+                          return 'bg-gray-900 text-gray-300';
+                        })()
                       ) : 'bg-gray-900 text-gray-300'
                     }`}>
-                      {assignment.score !== null && assignment.score !== undefined ? `${assignment.score}%` : "N/A"}
+                      {assignment.score !== null && assignment.score !== undefined ? 
+                        (assignment.maxScore !== null && assignment.maxScore !== undefined ? 
+                          `${assignment.score} out of ${assignment.maxScore}` : 
+                          assignment.score
+                        ) : "N/A"}
                     </span>
                   </td>
                   <td className="p-3 text-center">
