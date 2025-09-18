@@ -27,21 +27,18 @@ export default function MentorAssignmentsUltraFast() {
   const debouncedStudentSearchTerm = useDebounce(studentSearchTerm, 300);
 
   // Use cached API calls with 1-minute cache
-  const { data: assignments = [], loading, error, invalidateCache } = useApiCache(
-    'mentorAssignmentsFast',
-    async () => {
-      const token = localStorage.getItem('token');
-      const response = await fetch("https://cg-test-app.onrender.com/api/mentor/assignments", {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      const data = await response.json();
-      return Array.isArray(data) ? data : [];
-    },
-    { staleTime: 60000 } // 1 minute cache
+  const { data: assignments, loading, error, refetch } = useApiCache(
+    'https://cg-test-app.onrender.com/api/mentor/assignments',
+    {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        'Content-Type': 'application/json'
+      }
+    }
   );
+
+  // Ensure assignments is always an array
+  const assignmentsArray = Array.isArray(assignments) ? assignments : [];
 
   // Load test details on demand
   const loadTestDetails = useCallback(async (assignmentId) => {
@@ -69,7 +66,7 @@ export default function MentorAssignmentsUltraFast() {
 
   // Memoized filtered assignments
   const filteredAssignments = useMemo(() => {
-    let filtered = [...assignments];
+    let filtered = [...assignmentsArray];
 
     // Apply search filter
     if (debouncedSearchTerm) {
@@ -100,7 +97,7 @@ export default function MentorAssignmentsUltraFast() {
     }
 
     return filtered;
-  }, [assignments, debouncedSearchTerm, scoreSort, submissionTimeSort]);
+  }, [assignmentsArray, debouncedSearchTerm, scoreSort, submissionTimeSort]);
 
   // Pagination
   const totalPages = Math.ceil(filteredAssignments.length / itemsPerPage);
@@ -112,7 +109,7 @@ export default function MentorAssignmentsUltraFast() {
   const getFilteredStudents = () => {
     if (!selectedTest || !selectedSection) return [];
     
-    const testAssignments = assignments.filter(a => a.testId?._id === selectedTest._id);
+    const testAssignments = assignmentsArray.filter(a => a.testId?._id === selectedTest._id);
     
     switch (selectedSection) {
       case 'assigned':
@@ -204,7 +201,7 @@ export default function MentorAssignmentsUltraFast() {
           <h1 className="text-2xl font-bold text-white">Test Assignments</h1>
           <div className="flex gap-4">
             <button
-              onClick={() => invalidateCache()}
+              onClick={() => refetch()}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
               Refresh
@@ -268,28 +265,28 @@ export default function MentorAssignmentsUltraFast() {
 
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-slate-800 p-4 rounded-lg">
-            <div className="text-2xl font-bold text-white">{assignments.length}</div>
-            <div className="text-slate-400">Total Assignments</div>
+        <div className="bg-slate-800 p-4 rounded-lg">
+          <div className="text-2xl font-bold text-white">{assignmentsArray.length}</div>
+          <div className="text-slate-400">Total Assignments</div>
+        </div>
+        <div className="bg-slate-800 p-4 rounded-lg">
+          <div className="text-2xl font-bold text-green-400">
+            {assignmentsArray.filter(a => a.status === 'Completed').length}
           </div>
-          <div className="bg-slate-800 p-4 rounded-lg">
-            <div className="text-2xl font-bold text-green-400">
-              {assignments.filter(a => a.status === 'Completed').length}
-            </div>
-            <div className="text-slate-400">Completed</div>
+          <div className="text-slate-400">Completed</div>
+        </div>
+        <div className="bg-slate-800 p-4 rounded-lg">
+          <div className="text-2xl font-bold text-yellow-400">
+            {assignmentsArray.filter(a => a.status === 'In Progress').length}
           </div>
-          <div className="bg-slate-800 p-4 rounded-lg">
-            <div className="text-2xl font-bold text-yellow-400">
-              {assignments.filter(a => a.status === 'In Progress').length}
-            </div>
-            <div className="text-slate-400">In Progress</div>
+          <div className="text-slate-400">In Progress</div>
+        </div>
+        <div className="bg-slate-800 p-4 rounded-lg">
+          <div className="text-2xl font-bold text-blue-400">
+            {assignmentsArray.filter(a => a.status === 'Pending').length}
           </div>
-          <div className="bg-slate-800 p-4 rounded-lg">
-            <div className="text-2xl font-bold text-blue-400">
-              {assignments.filter(a => a.status === 'Pending').length}
-            </div>
-            <div className="text-slate-400">Pending</div>
-          </div>
+          <div className="text-slate-400">Pending</div>
+        </div>
         </div>
 
         {/* Assignments Table */}
