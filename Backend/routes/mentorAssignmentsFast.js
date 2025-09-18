@@ -3,10 +3,8 @@ const router = express.Router();
 const Assignment = require("../models/Assignment");
 const TestSubmission = require("../models/TestSubmission");
 const { authenticateToken } = require("../middleware/auth");
-const { redisCacheMiddleware } = require("../middleware/redisCache");
-
 // ULTRA-FAST assignments endpoint - optimized for 30+ second loading issue
-router.get("/assignments", authenticateToken, redisCacheMiddleware(60), async (req, res) => {
+router.get("/assignments", authenticateToken, async (req, res) => {
   try {
     const mentorId = req.user.userId;
     // console.log('🚀 Fast assignments fetch for mentor:', mentorId);

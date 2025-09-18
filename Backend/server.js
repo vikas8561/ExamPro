@@ -7,26 +7,9 @@ const { connectDB } = require("./configs/db.config");
 const http = require("http");
 const { Server } = require("socket.io");
 
-// Performance optimizations
-const {
-  compressionMiddleware,
-  securityMiddleware,
-  deduplicationMiddleware,
-  performanceMiddleware,
-  optimizeDatabase
-} = require("./middleware/performance");
-
-const { redisCacheMiddleware } = require("./middleware/redisCache");
-
 dotenv.config();
 
 const app = express();
-
-// Apply performance middleware
-app.use(compressionMiddleware);
-app.use(securityMiddleware);
-app.use(performanceMiddleware);
-app.use(deduplicationMiddleware);
 
 //  Allowed origins (add more if needed)
 const allowedOrigins = [
@@ -57,14 +40,8 @@ app.use(cors({
 // Handle preflight OPTIONS requests explicitly
 app.options("*", cors());
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use(morgan("combined"));
-
-// Rate limiting removed for exam system to handle unlimited students
-// app.use('/api/auth', authRateLimit);
-// app.use('/api', apiRateLimit);
-// app.use(generalRateLimit);
+app.use(express.json());
+app.use(morgan("dev"));
 
 const server = http.createServer(app);
 
