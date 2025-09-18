@@ -40,11 +40,16 @@ export default defineConfig({
     terserOptions: {
       compress: {
         drop_console: true,
-        drop_debugger: true
+        drop_debugger: true,
+        pure_funcs: ['console.log', 'console.info', 'console.debug']
       }
     },
     // Increase chunk size warning limit
-    chunkSizeWarningLimit: 1000
+    chunkSizeWarningLimit: 1000,
+    // Enable gzip compression
+    reportCompressedSize: true,
+    // Optimize for faster loading
+    target: 'es2015'
   },
   // Enable source maps for debugging in production
   sourcemap: false,
