@@ -134,7 +134,9 @@ const PORT = process.env.PORT || 4000;
 // Connect to DB and start server
 connectDB(process.env.MONGODB_URI || 'mongodb://localhost:27017/test-platform')
   .then(() => {
-    server.listen(PORT, () => // console.log(`API running at http://localhost:${PORT}`));
+    server.listen(PORT, () => {
+      // Server started successfully
+    });
   })
   .catch((e) => {
     console.error("Mongo connection failed:", e);
