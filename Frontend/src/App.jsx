@@ -16,6 +16,7 @@ import TakeTest from "./pages/TakeTest";
 import StudentSidebar from "./components/StudentSidebar";
 import MentorLayout from "./components/MentorLayout";
 import MentorAssignments from "./pages/MentorAssignments";
+import MentorAssignmentsUltraFast from "./pages/MentorAssignmentsUltraFast";
 import MentorDashboard from "./pages/MentorDashboard";
 import MentorSubmissions from "./pages/MentorSubmissions";
 import ViewCompletedTest from "./pages/ViewCompletedTest";
@@ -127,7 +128,7 @@ const MentorRoutes = () => {
       <main className="flex-1">
         <Routes>
           <Route path="/" element={<MentorDashboard />} />
-          <Route path="/assignments" element={<MentorAssignments />} />
+          <Route path="/assignments" element={<MentorAssignmentsUltraFast />} />
           <Route path="/submissions" element={<MentorSubmissions />} />
           <Route path="/view-test/:assignmentId" element={<ViewCompletedTest />} />
           <Route path="*" element={<div className="p-6">Not Found</div>} />

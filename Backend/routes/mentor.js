@@ -56,105 +56,62 @@ router.get("/dashboard", authenticateToken, async (req, res) => {
   }
 });
 
-// Get assignments assigned to mentor
+// Get assignments assigned to mentor - ULTRA FAST VERSION
 router.get("/assignments", authenticateToken, async (req, res) => {
   try {
     const mentorId = req.user.userId;
-    console.log('Fetching assignments for mentor:', mentorId);
+    console.log('🚀 ULTRA FAST: Fetching assignments for mentor:', mentorId);
     
-    // First try the optimized approach
-    try {
-      // Get assignments with optimized population
-      const assignments = await Assignment.find({
-        $or: [
-          { mentorId: req.user.userId },
-          { mentorId: null }
-        ]
-      })
-        .populate({
-          path: "testId",
-          select: "title type instructions timeLimit questions",
-          populate: {
-            path: "questions",
-            select: "kind text options answer guidelines examples points"
-          }
-        })
-        .populate("userId", "name email")
-        .sort({ createdAt: -1 });
+    const startTime = Date.now();
+    
+    // ULTRA FAST: Get assignments with MINIMAL population (NO questions!)
+    const assignments = await Assignment.find({
+      $or: [
+        { mentorId: req.user.userId },
+        { mentorId: null }
+      ]
+    })
+      .populate("testId", "title type instructions timeLimit") // NO questions!
+      .populate("userId", "name email")
+      .sort({ createdAt: -1 })
+      .lean(); // Use lean() for 2x faster queries
 
-      console.log('Found assignments:', assignments.length);
+    console.log(`📊 Found ${assignments.length} assignments in ${Date.now() - startTime}ms`);
 
-      // Get all assignment IDs for batch query
-      const assignmentIds = assignments.map(a => a._id);
-      
-      // Single query to get all submissions for these assignments
-      const submissions = await TestSubmission.find({
-        assignmentId: { $in: assignmentIds }
-      }).select('assignmentId submittedAt');
-      
-      console.log('Found submissions:', submissions.length);
-      
-      // Create a map for quick lookup
-      const submissionMap = new Map();
-      submissions.forEach(sub => {
-        submissionMap.set(sub.assignmentId.toString(), sub.submittedAt);
+    // ULTRA FAST: Batch fetch submissions (single query)
+    const assignmentIds = assignments.map(a => a._id);
+    const submissions = await TestSubmission.find({
+      assignmentId: { $in: assignmentIds }
+    })
+      .select('assignmentId submittedAt score autoScore')
+      .lean();
+    
+    console.log(`📊 Found ${submissions.length} submissions in ${Date.now() - startTime}ms`);
+    
+    // ULTRA FAST: Create lookup map
+    const submissionMap = new Map();
+    submissions.forEach(sub => {
+      submissionMap.set(sub.assignmentId.toString(), {
+        submittedAt: sub.submittedAt,
+        score: sub.score || sub.autoScore || null
       });
-      
-      // Add submittedAt to assignments
-      const assignmentsWithSubmissions = assignments.map(assignment => ({
-        ...assignment.toObject(),
-        submittedAt: submissionMap.get(assignment._id.toString()) || null
-      }));
-
-      console.log('Returning assignments with submissions');
-      res.json(assignmentsWithSubmissions);
-      
-    } catch (optimizationError) {
-      console.error('Optimized query failed, falling back to original approach:', optimizationError);
-      
-      // Fallback to original working approach
-      const assignments = await Assignment.find({
-        $or: [
-          { mentorId: req.user.userId },
-          { mentorId: null }
-        ]
-      })
-        .populate({
-          path: "testId",
-          select: "title type instructions timeLimit questions",
-          populate: {
-            path: "questions",
-            select: "kind text options answer guidelines examples points"
-          }
-        })
-        .populate("userId", "name email")
-        .sort({ createdAt: -1 });
-
-      // Get submission data for each assignment (original approach)
-      const assignmentsWithSubmissions = await Promise.all(
-        assignments.map(async (assignment) => {
-          try {
-            const submission = await TestSubmission.findOne({ 
-              assignmentId: assignment._id 
-            }).select('submittedAt');
-            
-            return {
-              ...assignment.toObject(),
-              submittedAt: submission?.submittedAt || null
-            };
-          } catch (submissionError) {
-            console.error(`Error fetching submission for assignment ${assignment._id}:`, submissionError);
-            return {
-              ...assignment.toObject(),
-              submittedAt: null
-            };
-          }
-        })
-      );
-
-      console.log('Returning assignments with fallback approach');
-      res.json(assignmentsWithSubmissions);
-    }
+    });
+    
+    // ULTRA FAST: Merge data (no async operations)
+    const assignmentsWithSubmissions = assignments.map(assignment => {
+      const submission = submissionMap.get(assignment._id.toString());
+      return {
+        ...assignment,
+        submittedAt: submission?.submittedAt || null,
+        score: submission?.score || null,
+        autoScore: submission?.score || null
+      };
+    });
+    
+    const totalTime = Date.now() - startTime;
+    console.log(`✅ ULTRA FAST assignments completed in ${totalTime}ms`);
+    
+    res.json(assignmentsWithSubmissions);
     
   } catch (err) {
     console.error('Critical error in mentor assignments:', err);
