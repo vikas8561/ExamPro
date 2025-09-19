@@ -1,4 +1,4 @@
-- [x] Add questionCount field to Test model and pre-save hook
+- [x] Add questionCount virtual field to Test model
 - [x] Update populate in assignments route to include questionCount
 - [x] Update frontend StudentAssignments to use questionCount
 - [x] Test the changes (skipped by user)
