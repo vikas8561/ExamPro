@@ -46,7 +46,7 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     const startTime = Date.now();
     // console.log('🚀 ULTRA FAST: Fetching assignments for student:', req.user.userId);
 
-    // ULTRA FAST: Get assignments with MINIMAL data (NO questions content!)
+    // ULTRA FAST: Get assignments with MINIMAL data (NO questions upfront!)
     const assignments = await Assignment.find({ userId: req.user.userId })
       .select("testId mentorId status startTime duration deadline startedAt completedAt score autoScore mentorScore mentorFeedback reviewStatus timeSpent createdAt")
       .populate({
@@ -90,33 +90,10 @@ router.get("/student", authenticateToken, async (req, res, next) => {
       });
     }
 
-    // Get question counts for all unique test IDs
-    const testIds = [...new Set(assignments.map(a => a.testId?._id).filter(Boolean))];
-    const questionCounts = {};
-    
-    if (testIds.length > 0) {
-      const testsWithQuestionCount = await Test.find({ _id: { $in: testIds } })
-        .select('_id questions')
-        .lean();
-      
-      testsWithQuestionCount.forEach(test => {
-        questionCounts[test._id.toString()] = test.questions ? test.questions.length : 0;
-      });
-    }
-
-    // Add question count to each assignment for frontend display
-    const assignmentsWithQuestionCount = assignments.map(assignment => ({
-      ...assignment,
-      testId: {
-        ...assignment.testId,
-        questionCount: assignment.testId?._id ? (questionCounts[assignment.testId._id.toString()] || 0) : 0
-      }
-    }));
-
     const totalTime = Date.now() - startTime;
     // console.log(`✅ ULTRA FAST student assignments completed in ${totalTime}ms - Found ${assignments.length} assignments`);
 
-    res.json(assignmentsWithQuestionCount);
+    res.json(assignments);
   } catch (error) {
     console.error('❌ Error in student assignments:', error);
     next(error);
