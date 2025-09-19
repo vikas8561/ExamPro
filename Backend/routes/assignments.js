@@ -55,7 +55,7 @@ router.get("/student", authenticateToken, async (req, res, next) => {
       })
       .populate("mentorId", "name email")
       .sort({ deadline: 1 })
-      .lean(); // Use lean() for 2x faster queries
+      .lean({ virtuals: true }); // Use lean() with virtuals for 2x faster queries
 
     // console.log(`📊 Found ${assignments.length} assignments in ${Date.now() - startTime}ms`);
 
