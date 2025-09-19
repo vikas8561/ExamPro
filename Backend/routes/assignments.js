@@ -46,12 +46,12 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     const startTime = Date.now();
     // console.log('🚀 ULTRA FAST: Fetching assignments for student:', req.user.userId);
 
-    // ULTRA FAST: Get assignments with MINIMAL data (NO questions content, but include question count!)
+    // ULTRA FAST: Get assignments with MINIMAL data (NO questions content!)
     const assignments = await Assignment.find({ userId: req.user.userId })
       .select("testId mentorId status startTime duration deadline startedAt completedAt score autoScore mentorScore mentorFeedback reviewStatus timeSpent createdAt")
       .populate({
         path: "testId",
-        select: "title type instructions timeLimit subject questions" // Include questions for count only
+        select: "title type instructions timeLimit subject" // NO questions!
       })
       .populate("mentorId", "name email")
       .sort({ deadline: 1 })
@@ -90,13 +90,26 @@ router.get("/student", authenticateToken, async (req, res, next) => {
       });
     }
 
+    // Get question counts for all unique test IDs
+    const testIds = [...new Set(assignments.map(a => a.testId?._id).filter(Boolean))];
+    const questionCounts = {};
+    
+    if (testIds.length > 0) {
+      const testsWithQuestionCount = await Test.find({ _id: { $in: testIds } })
+        .select('_id questions')
+        .lean();
+      
+      testsWithQuestionCount.forEach(test => {
+        questionCounts[test._id.toString()] = test.questions ? test.questions.length : 0;
+      });
+    }
+
     // Add question count to each assignment for frontend display
     const assignmentsWithQuestionCount = assignments.map(assignment => ({
       ...assignment,
       testId: {
         ...assignment.testId,
-        questionCount: assignment.testId?.questions?.length || 0,
-        questions: undefined // Remove questions array to keep response lightweight
+        questionCount: assignment.testId?._id ? (questionCounts[assignment.testId._id.toString()] || 0) : 0
       }
     }));
 
