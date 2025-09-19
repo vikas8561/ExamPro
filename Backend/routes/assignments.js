@@ -51,7 +51,7 @@ router.get("/student", authenticateToken, async (req, res, next) => {
       .select("testId mentorId status startTime duration deadline startedAt completedAt score autoScore mentorScore mentorFeedback reviewStatus timeSpent createdAt")
       .populate({
         path: "testId",
-        select: "title type instructions timeLimit subject" // NO questions!
+        select: "title type instructions timeLimit subject questionCount" // Added questionCount
       })
       .populate("mentorId", "name email")
       .sort({ deadline: 1 })

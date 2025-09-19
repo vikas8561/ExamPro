@@ -43,6 +43,7 @@ const TestSchema = new mongoose.Schema(
       default: "Draft",
     },
     questions: { type: [QuestionSchema], default: [] },
+    questionCount: { type: Number, default: 0 }, // Cached count for performance
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   },
   { timestamps: true }
@@ -52,6 +53,12 @@ const TestSchema = new mongoose.Schema(
 TestSchema.index({ createdBy: 1, status: 1 });
 TestSchema.index({ status: 1, createdAt: -1 });
 TestSchema.index({ type: 1, status: 1 });
+
+// Pre-save hook to update questionCount
+TestSchema.pre('save', function(next) {
+  this.questionCount = this.questions ? this.questions.length : 0;
+  next();
+});
 
 // Validation for questions
 TestSchema.path("questions").validate(function (questions) {

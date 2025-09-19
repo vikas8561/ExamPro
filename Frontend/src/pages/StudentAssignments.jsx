@@ -503,7 +503,7 @@ const StudentAssignments = () => {
 
                   <div className="flex justify-between">
                     <span>Questions:</span>
-                    <span>{assignment.testId?.questions?.length || 0}</span>
+                    <span>{assignment.testId?.questionCount || 0}</span>
                   </div>
 
                   {assignment.mentorId && (
