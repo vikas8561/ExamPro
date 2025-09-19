@@ -731,17 +731,17 @@ export default function MentorAssignments() {
                   <tr>
                     <td colSpan="5" className="p-6 text-center text-slate-400">
                       <div className="text-xl mb-2">
-                        {(scoreSort !== 'none' || submissionTimeFilter !== 'all' || studentSearchTerm.trim()) ? '🔍' : '📝'}
+                        {(scoreSort !== 'none' || submissionTimeSort !== 'none' || studentSearchTerm.trim()) ? '🔍' : '📝'}
                       </div>
                       <div className="text-sm">
                         {studentSearchTerm.trim() 
                           ? `No students match "${studentSearchTerm}". Try a different search term.`
-                          : (scoreSort !== 'none' || submissionTimeFilter !== 'all') 
+                          : (scoreSort !== 'none' || submissionTimeSort !== 'none') 
                             ? 'No submissions match the current filters.' 
                             : 'No submissions yet.'
                         }
                       </div>
-                      {(studentSearchTerm.trim() || scoreSort !== 'none' || submissionTimeFilter !== 'all') && (
+                      {(studentSearchTerm.trim() || scoreSort !== 'none' || submissionTimeSort !== 'none') && (
                         <button
                           onClick={resetFilters}
                           className="mt-3 text-blue-400 hover:text-blue-300 underline transition-colors text-sm"
