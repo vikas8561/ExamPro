@@ -387,11 +387,25 @@ const TakeTest = () => {
       setTestStarted(true);
       setShowPermissionModal(false);
       setLoading(false);
-      setShowPermissionModal(false);
-      setShowPermissionModal(false);
 
-      // Request fullscreen mode after OTP verification
-      await requestFullscreen();
+      // Force fullscreen mode immediately - no conditions, no delays
+      setTimeout(async () => {
+        try {
+          await requestFullscreen();
+          console.log("Fullscreen activated successfully");
+        } catch (error) {
+          console.error("Fullscreen failed, but continuing with test:", error);
+          // Try again after a brief moment
+          setTimeout(async () => {
+            try {
+              await requestFullscreen();
+              console.log("Fullscreen retry successful");
+            } catch (retryError) {
+              console.error("Fullscreen retry failed:", retryError);
+            }
+          }, 500);
+        }
+      }, 50);
     } catch (error) {
       console.error("OTP verification failed:", error);
       setOtpError(error.message || "Invalid OTP. Please try again.");
@@ -461,9 +475,10 @@ const TakeTest = () => {
       locationPermission === "granted"
     ) {
       setPermissionsGranted(true);
-      // Do not automatically start the test here, keep the button visible for user to click
-      // Request fullscreen mode after permissions are granted
-      await requestFullscreen();
+      // Request fullscreen mode after all permissions are granted
+      setTimeout(async () => {
+        await requestFullscreen();
+      }, 100);
     } else {
       setPermissionsGranted(false);
     }
@@ -734,6 +749,11 @@ const TakeTest = () => {
       setTestStarted(true);
       setShowPermissionModal(false);
       setLoading(false);
+
+      // Request fullscreen mode when resuming existing test - after all state updates with small delay
+      setTimeout(async () => {
+        await requestFullscreen();
+      }, 100);
 ("[TakeTest] Test data loaded successfully, test started");
     } catch (error) {
       console.error("[TakeTest] Error loading test data:", error);
@@ -1094,7 +1114,7 @@ const TakeTest = () => {
                 </div>
 
                 <button
-                  onClick={verifyOTP}
+                  onClick={() => {verifyOTP(), requestFullscreen()}}
                   className="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-md font-semibold"
                 >
                   Verify OTP & Start Test
