@@ -31,12 +31,19 @@ const TestSchema = new mongoose.Schema(
   {
     title: { type: String, required: true, trim: true },
     subject: { type: String, default: "" },
-    type: { type: String, enum: ["mcq", "msq", "theory", "coding", "mixed"], default: "mixed" },
+    type: { type: String, enum: ["mcq", "msq", "theory", "coding", "mixed", "practice"], default: "mixed" },
     instructions: { type: String, default: "" },
     timeLimit: { type: Number, default: 30, min: 1 },
     negativeMarkingPercent: { type: Number, enum: [0, 0.25, 0.5, 0.75, 1], default: 0 },
     allowedTabSwitches: { type: Number, default: 0, min: 0 },
     otp: { type: String, default: null }, // 6-digit OTP for permission bypass
+    isPracticeTest: { type: Boolean, default: false }, // Flag to identify practice tests
+    practiceTestSettings: {
+      allowMultipleAttempts: { type: Boolean, default: true },
+      showCorrectAnswers: { type: Boolean, default: false }, // For practice tests, don't show correct answers
+      allowTabSwitching: { type: Boolean, default: true }, // Practice tests allow tab switching
+      noProctoring: { type: Boolean, default: true } // Practice tests have no proctoring
+    },
     status: {
       type: String,
       enum: ["Draft", "Active", "Archived"],

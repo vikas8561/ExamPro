@@ -13,6 +13,9 @@ import StudentDashboard from "./pages/StudentDashboard";
 import StudentAssignments from "./pages/StudentAssignments";
 import StudentResults from "./pages/StudentResults";
 import TakeTest from "./pages/TakeTest";
+import PracticeTests from "./pages/PracticeTests";
+import TakePracticeTest from "./pages/TakePracticeTest";
+import PracticeTestResults from "./pages/PracticeTestResults";
 import StudentSidebar from "./components/StudentSidebar";
 import MentorLayout from "./components/MentorLayout";
 import MentorAssignments from "./pages/MentorAssignments";
@@ -109,6 +112,9 @@ const StudentRoutes = () => {
         <Routes>
           <Route path="/" element={<StudentDashboard />} />
           <Route path="/assignments" element={<StudentAssignments />} />
+          <Route path="/practice-tests" element={<PracticeTests />} />
+          <Route path="/practice-test/:testId" element={<TakePracticeTest />} />
+          <Route path="/practice-test-results/:testId" element={<PracticeTestResults />} />
           <Route path="/take-test/:assignmentId" element={<TakeTest />} />
           <Route path="/view-test/:assignmentId" element={<ViewCompletedTest />} />
           <Route path="/results" element={<StudentResults />} />

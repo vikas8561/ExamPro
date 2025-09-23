@@ -60,7 +60,7 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
     // Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-    const test = await Test.create({
+    const testData = {
       title: title.trim(),
       subject: subject || "",
       type: type || "mixed",
@@ -71,7 +71,24 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
       otp: otp,
       questions: Array.isArray(questions) ? questions : [],
       createdBy: req.user.userId
-    });
+    };
+
+    // Handle practice test specific settings
+    if (type === "practice") {
+      testData.isPracticeTest = true;
+      testData.practiceTestSettings = {
+        allowMultipleAttempts: true,
+        showCorrectAnswers: false,
+        allowTabSwitching: true,
+        noProctoring: true
+      };
+      // Practice tests should have no negative marking
+      testData.negativeMarkingPercent = 0;
+      // Practice tests allow unlimited tab switches
+      testData.allowedTabSwitches = -1;
+    }
+
+    const test = await Test.create(testData);
 
     const populatedTest = await Test.findById(test._id)
       .populate("createdBy", "name email");
@@ -97,6 +114,25 @@ router.put("/:id", authenticateToken, requireRole("admin"), async (req, res, nex
     if (allowedTabSwitches !== undefined) updateData.allowedTabSwitches = Number(allowedTabSwitches);
     if (questions) updateData.questions = questions;
     if (status) updateData.status = status;
+
+    // Handle practice test specific settings
+    if (type === "practice") {
+      updateData.isPracticeTest = true;
+      updateData.practiceTestSettings = {
+        allowMultipleAttempts: true,
+        showCorrectAnswers: false,
+        allowTabSwitching: true,
+        noProctoring: true
+      };
+      // Practice tests should have no negative marking
+      updateData.negativeMarkingPercent = 0;
+      // Practice tests allow unlimited tab switches
+      updateData.allowedTabSwitches = -1;
+    } else {
+      // If changing from practice to regular test, reset practice settings
+      updateData.isPracticeTest = false;
+      updateData.practiceTestSettings = undefined;
+    }
 
     const test = await Test.findByIdAndUpdate(
       req.params.id,

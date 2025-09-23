@@ -64,6 +64,7 @@ export default function StudentSidebar({ isOpen, onToggle }) {
         <nav className="space-y-2">
           <Item to="/student" icon={"🏠"} onClick={handleNavClick}>Dashboard</Item>
           <Item to="/student/assignments" icon={"📄"} onClick={handleNavClick}>Assigned Tests</Item>
+          <Item to="/student/practice-tests" icon={"🎯"} onClick={handleNavClick}>Practice Tests</Item>
           <Item to="/student/results" icon={"✔️"} onClick={handleNavClick}>Completed Tests</Item>
         </nav>
 

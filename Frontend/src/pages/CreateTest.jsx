@@ -484,6 +484,7 @@ export default function CreateTest() {
             <option value="msq">MSQ Only</option>
             <option value="coding">Coding Only</option>
             <option value="theory">Theory Only</option>
+            <option value="practice">Practice Test (MCQ Only)</option>
           </select>
         </div>
 
@@ -502,42 +503,46 @@ export default function CreateTest() {
           />
         </div>
 
-        <div>
-          <label className="block text-sm font-medium mb-2">
-            Negative Marking (%)
-          </label>
-          <select
-            value={form.negativeMarkingPercent}
-            onChange={(e) =>
-              setForm((prev) => ({
-                ...prev,
-                negativeMarkingPercent: Number(e.target.value),
-              }))
-            }
-            className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
-          >
-            <option value={0}>No Negative Marking</option>
-            <option value={0.25}>25%</option>
-            <option value={0.5}>50%</option>
-            <option value={0.75}>75%</option>
-            <option value={1}>100%</option>
-          </select>
-        </div>
+        {form.type !== "practice" && (
+          <div>
+            <label className="block text-sm font-medium mb-2">
+              Negative Marking (%)
+            </label>
+            <select
+              value={form.negativeMarkingPercent}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  negativeMarkingPercent: Number(e.target.value),
+                }))
+              }
+              className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
+            >
+              <option value={0}>No Negative Marking</option>
+              <option value={0.25}>25%</option>
+              <option value={0.5}>50%</option>
+              <option value={0.75}>75%</option>
+              <option value={1}>100%</option>
+            </select>
+          </div>
+        )}
 
-        <div>
-          <label className="block text-sm font-medium mb-2">
-            Allowed Tab Switches
-          </label>
-          <input
-            type="number"
-            min="0"
-            value={form.allowedTabSwitches}
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, allowedTabSwitches: e.target.value }))
-            }
-            className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
-          />
-        </div>
+        {form.type !== "practice" && (
+          <div>
+            <label className="block text-sm font-medium mb-2">
+              Allowed Tab Switches
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={form.allowedTabSwitches}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, allowedTabSwitches: e.target.value }))
+              }
+              className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
+            />
+          </div>
+        )}
       </div>
 
             <div className="mt-4">
@@ -778,13 +783,22 @@ export default function CreateTest() {
                     </button>
                   </>
                 )}
-                {form.type !== "mixed" && (
+                {form.type !== "mixed" && form.type !== "practice" && (
                   <button
                     type="button"
                     onClick={() => addQuestion(form.type)}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md cursor-pointer"
                   >
                     Add Question
+                  </button>
+                )}
+                {form.type === "practice" && (
+                  <button
+                    type="button"
+                    onClick={() => addQuestion("mcq")}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-md cursor-pointer"
+                  >
+                    Add MCQ Question
                   </button>
                 )}
               </div>

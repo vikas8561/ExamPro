@@ -1,0 +1,257 @@
+import React, { useState, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import apiRequest from "../services/api";
+
+const TakePracticeTest = () => {
+  const { testId } = useParams();
+  const navigate = useNavigate();
+  const [test, setTest] = useState(null);
+  const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [answers, setAnswers] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState("");
+
+  useEffect(() => {
+    fetchPracticeTest();
+  }, [testId]);
+
+  const fetchPracticeTest = async () => {
+    try {
+      setLoading(true);
+      const data = await apiRequest(`/practice-tests/${testId}`);
+      setTest(data);
+    } catch (error) {
+      console.error("Error fetching practice test:", error);
+      setError("Failed to load practice test");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAnswerChange = (questionId, answer) => {
+    setAnswers(prev => ({
+      ...prev,
+      [questionId]: answer
+    }));
+  };
+
+  const handleSaveTest = async () => {
+    try {
+      setIsSaving(true);
+      setSaveMessage("");
+
+      // Convert answers to the format expected by the backend
+      const responses = Object.entries(answers).map(([questionId, answer]) => ({
+        questionId,
+        selectedOption: answer
+      }));
+
+      await apiRequest(`/practice-tests/${testId}/save`, {
+        method: "POST",
+        body: JSON.stringify({
+          responses,
+          timeSpent: 0 // For practice tests, we don't track time strictly
+        })
+      });
+
+      setSaveMessage("Practice test saved successfully!");
+      
+      // Navigate to results after a short delay
+      setTimeout(() => {
+        navigate(`/student/practice-test-results/${testId}`);
+      }, 1500);
+
+    } catch (error) {
+      console.error("Error saving practice test:", error);
+      setSaveMessage("Error saving practice test. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const formatTime = (seconds) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    if (hours > 0) {
+      return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${minutes}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center">
+        <div className="text-xl">Loading practice test...</div>
+      </div>
+    );
+  }
+
+  if (error || !test) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-xl text-red-400 mb-4">{error || "Practice test not found"}</div>
+          <button
+            onClick={() => navigate("/student/practice-tests")}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md"
+          >
+            Back to Practice Tests
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const currentQ = test.questions[currentQuestion];
+  const totalQuestions = test.questions.length;
+  const answeredQuestions = Object.keys(answers).length;
+
+  return (
+    <div className="min-h-screen bg-slate-900 text-white">
+      {/* Header */}
+      <div className="bg-slate-800 border-b border-slate-700 p-4">
+        <div className="max-w-6xl mx-auto flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-green-400">{test.title}</h1>
+            <p className="text-slate-400">Practice Test - No Proctoring</p>
+          </div>
+          <div className="text-right">
+            <div className="text-sm text-slate-400">Progress</div>
+            <div className="text-lg font-semibold">
+              {answeredQuestions} / {totalQuestions} answered
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-6xl mx-auto p-6">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Question Navigation Sidebar */}
+          <div className="lg:col-span-1">
+            <div className="bg-slate-800 rounded-lg p-4 sticky top-6">
+              <h3 className="text-lg font-semibold mb-4">Questions</h3>
+              <div className="grid grid-cols-5 lg:grid-cols-1 gap-2">
+                {test.questions.map((_, index) => (
+                  <button
+                    key={index}
+                    onClick={() => setCurrentQuestion(index)}
+                    className={`p-2 rounded-md text-sm font-medium transition-colors ${
+                      index === currentQuestion
+                        ? "bg-green-600 text-white"
+                        : answers[test.questions[index]._id]
+                        ? "bg-green-900/50 text-green-300"
+                        : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                    }`}
+                  >
+                    {index + 1}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Main Question Area */}
+          <div className="lg:col-span-3">
+            <div className="bg-slate-800 rounded-lg p-6">
+              {/* Question Header */}
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-semibold">
+                  Question {currentQuestion + 1} of {totalQuestions}
+                </h2>
+                <div className="text-sm text-slate-400">
+                  {test.timeLimit} minutes (Practice Mode)
+                </div>
+              </div>
+
+              {/* Question Text */}
+              <div className="mb-6">
+                <p className="text-lg text-slate-200 leading-relaxed">
+                  {currentQ.text}
+                </p>
+              </div>
+
+              {/* Answer Options */}
+              <div className="space-y-3">
+                {currentQ.options?.map((option, index) => (
+                  <label
+                    key={index}
+                    className={`flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                      answers[currentQ._id] === option.text
+                        ? "border-green-500 bg-green-900/20"
+                        : "border-slate-600 hover:border-slate-500"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name={`question-${currentQ._id}`}
+                      value={option.text}
+                      checked={answers[currentQ._id] === option.text}
+                      onChange={(e) => handleAnswerChange(currentQ._id, e.target.value)}
+                      className="sr-only"
+                    />
+                    <div className={`w-4 h-4 rounded-full border-2 mr-3 flex items-center justify-center ${
+                      answers[currentQ._id] === option.text
+                        ? "border-green-500 bg-green-500"
+                        : "border-slate-400"
+                    }`}>
+                      {answers[currentQ._id] === option.text && (
+                        <div className="w-2 h-2 rounded-full bg-white"></div>
+                      )}
+                    </div>
+                    <span className="text-slate-200">{option.text}</span>
+                  </label>
+                ))}
+              </div>
+
+              {/* Navigation Buttons */}
+              <div className="flex justify-between mt-8">
+                <button
+                  onClick={() => setCurrentQuestion(Math.max(0, currentQuestion - 1))}
+                  disabled={currentQuestion === 0}
+                  className="px-6 py-2 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-500 rounded-md transition-colors"
+                >
+                  Previous
+                </button>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleSaveTest}
+                    disabled={isSaving}
+                    className="px-6 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-800 disabled:text-green-300 rounded-md transition-colors"
+                  >
+                    {isSaving ? "Saving..." : "Save Test"}
+                  </button>
+
+                  <button
+                    onClick={() => setCurrentQuestion(Math.min(totalQuestions - 1, currentQuestion + 1))}
+                    disabled={currentQuestion === totalQuestions - 1}
+                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:text-blue-300 rounded-md transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+
+              {/* Save Message */}
+              {saveMessage && (
+                <div className={`mt-4 p-3 rounded-md ${
+                  saveMessage.includes("successfully") 
+                    ? "bg-green-900/50 text-green-300" 
+                    : "bg-red-900/50 text-red-300"
+                }`}>
+                  {saveMessage}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default TakePracticeTest;
