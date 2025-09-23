@@ -172,12 +172,6 @@ const TakePracticeTest = () => {
         <div className="max-w-6xl mx-auto flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold text-green-400">{test.title}</h1>
-            <p className="text-slate-400">Practice Test - No Proctoring</p>
-            {previousResponsesLoaded && (
-              <p className="text-green-300 text-sm mt-1">
-                ✓ Previous responses loaded
-              </p>
-            )}
           </div>
           <div className="text-right">
             <div className="flex items-center space-x-6">
@@ -201,42 +195,15 @@ const TakePracticeTest = () => {
       </div>
 
       <div className="max-w-6xl mx-auto p-6">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Question Navigation Sidebar */}
-          <div className="lg:col-span-1">
-            <div className="bg-slate-800 rounded-lg p-4 sticky top-6">
-              <h3 className="text-lg font-semibold mb-4">Questions</h3>
-              <div className="grid grid-cols-5 lg:grid-cols-1 gap-2">
-                {test.questions.map((_, index) => (
-                  <button
-                    key={index}
-                    onClick={() => setCurrentQuestion(index)}
-                    className={`p-2 rounded-md text-sm font-medium transition-colors ${
-                      index === currentQuestion
-                        ? "bg-green-600 text-white"
-                        : answers[test.questions[index]._id]
-                        ? "bg-green-900/50 text-green-300"
-                        : "bg-slate-700 text-slate-300 hover:bg-slate-600"
-                    }`}
-                  >
-                    {index + 1}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
+        <div className="flex flex-col lg:flex-row gap-6">
           {/* Main Question Area */}
-          <div className="lg:col-span-3">
-            <div className="bg-slate-800 rounded-lg p-6">
+          <div className="lg:w-3/4">
+            <div className="bg-slate-800 rounded-lg p-6 h-full">
               {/* Question Header */}
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-semibold">
                   Question {currentQuestion + 1} of {totalQuestions}
                 </h2>
-                <div className="text-sm text-slate-400">
-                  {test.timeLimit} minutes (Practice Mode)
-                </div>
               </div>
 
               {/* Question Text */}
@@ -318,6 +285,48 @@ const TakePracticeTest = () => {
                   {saveMessage}
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* Question Navigation Sidebar */}
+          <div className="lg:w-1/4">
+            <div className="bg-slate-800 rounded-2xl shadow-xl border border-slate-700 p-5 sticky top-6 h-full">
+              <h3 className="text-lg font-semibold text-white mb-5 text-center">Questions</h3>
+              <div className="grid grid-cols-5 lg:grid-cols-1 gap-2">
+                {test.questions.map((_, index) => (
+                  <button
+                    key={index}
+                    onClick={() => setCurrentQuestion(index)}
+                    className={`relative p-2 rounded-xl text-sm font-medium ${
+                      index === currentQuestion
+                        ? "bg-indigo-500 text-white shadow-lg"
+                        : answers[test.questions[index]._id]
+                        ? "bg-emerald-500 text-white border border-emerald-400"
+                        : "bg-slate-600 text-slate-200 border border-slate-500"
+                    }`}
+                  >
+                    <div className="flex items-center justify-center">
+                      <span className="text-base font-semibold">{index + 1}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              
+              {/* Progress Summary */}
+              <div className="mt-6 pt-4 border-t border-slate-600">
+                <div className="text-center">
+                  <div className="text-sm text-slate-300 mb-3 font-medium">Progress</div>
+                  <div className="w-full bg-slate-700 rounded-full h-2 mb-3">
+                    <div 
+                      className="bg-gradient-to-r from-indigo-400 to-indigo-600 h-2 rounded-full"
+                      style={{ width: `${(answeredQuestions / totalQuestions) * 100}%` }}
+                    ></div>
+                  </div>
+                  <div className="text-xs text-slate-400 font-medium">
+                    {answeredQuestions} of {totalQuestions} answered
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
