@@ -18,14 +18,14 @@ export default function Tests() {
 
   // Fetch all tests on page load
   useEffect(() => {
-    const fetchTests = async () => {
-      try {
-        const data = await apiRequest("/tests");
-        setTests(data.tests || []);
-      } catch (err) {
-        console.error("Error fetching tests:", err);
-      }
-    };
+  const fetchTests = async () => {
+    try {
+      const data = await apiRequest("/tests");
+      setTests(data.tests || []);
+    } catch (err) {
+      console.error("Error fetching tests:", err);
+    }
+  };
     
     fetchTests();
   }, []);

@@ -21,16 +21,23 @@ router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) 
     // ULTRA FAST: Get assignments with MINIMAL data
     const assignments = await Assignment.find(query)
       .select("testId userId mentorId status startTime duration deadline startedAt completedAt score autoScore mentorScore mentorFeedback reviewStatus timeSpent createdAt")
-      .populate("testId", "title type instructions timeLimit")
+      .populate({
+        path: "testId",
+        select: "title type instructions timeLimit",
+        match: { type: { $ne: "practice" } } // Exclude practice tests from admin assignments
+      })
       .populate("userId", "name email")
       .populate("mentorId", "name email")
       .sort({ createdAt: -1 })
       .lean(); // Use lean() for 2x faster queries
 
-    const totalTime = Date.now() - startTime;
-    // console.log(`✅ ULTRA FAST admin assignments completed in ${totalTime}ms - Found ${assignments.length} assignments`);
+    // Filter out assignments where testId is null (due to the match filter above)
+    const filteredAssignments = assignments.filter(assignment => assignment.testId !== null);
 
-    res.json(assignments);
+    const totalTime = Date.now() - startTime;
+    // console.log(`✅ ULTRA FAST admin assignments completed in ${totalTime}ms - Found ${filteredAssignments.length} assignments`);
+
+    res.json(filteredAssignments);
   } catch (error) {
     next(error);
   }
@@ -51,17 +58,21 @@ router.get("/student", authenticateToken, async (req, res, next) => {
       .select("testId mentorId status startTime duration deadline startedAt completedAt score autoScore mentorScore mentorFeedback reviewStatus timeSpent createdAt")
       .populate({
         path: "testId",
-        select: "title type instructions timeLimit subject"
+        select: "title type instructions timeLimit subject",
+        match: { type: { $ne: "practice" } } // Exclude practice tests from assignments
       })
       .populate("mentorId", "name email")
       .sort({ deadline: 1 })
       .lean({ virtuals: true }); // Use lean() with virtuals for 2x faster queries
 
-    // console.log(`📊 Found ${assignments.length} assignments in ${Date.now() - startTime}ms`);
+    // Filter out assignments where testId is null (due to the match filter above)
+    const filteredAssignments = assignments.filter(assignment => assignment.testId !== null);
+
+    // console.log(`📊 Found ${filteredAssignments.length} assignments in ${Date.now() - startTime}ms`);
 
     // ULTRA FAST: Auto-start logic - batch update instead of individual updates
     const now = new Date();
-    const assignmentsToAutoStart = assignments.filter(assignment => 
+    const assignmentsToAutoStart = filteredAssignments.filter(assignment => 
       assignment.status === "Assigned" &&
       assignment.duration === assignment.testId.timeLimit &&
       now >= new Date(assignment.startTime) &&
@@ -91,9 +102,9 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     }
 
     const totalTime = Date.now() - startTime;
-    // console.log(`✅ ULTRA FAST student assignments completed in ${totalTime}ms - Found ${assignments.length} assignments`);
+    // console.log(`✅ ULTRA FAST student assignments completed in ${totalTime}ms - Found ${filteredAssignments.length} assignments`);
 
-    res.json(assignments);
+    res.json(filteredAssignments);
   } catch (error) {
     console.error('❌ Error in student assignments:', error);
     next(error);

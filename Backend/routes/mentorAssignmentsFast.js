@@ -18,15 +18,22 @@ router.get("/assignments", authenticateToken, async (req, res) => {
         { mentorId: null }
       ]
     })
-      .populate("testId", "title type instructions timeLimit") // NO questions!
+      .populate({
+        path: "testId",
+        select: "title type instructions timeLimit",
+        match: { type: { $ne: "practice" } } // Exclude practice tests from mentor assignments
+      })
       .populate("userId", "name email")
       .sort({ createdAt: -1 })
       .lean(); // Use lean() for 2x faster queries
+
+    // Filter out assignments where testId is null (due to the match filter above)
+    const filteredAssignments = assignments.filter(assignment => assignment.testId !== null);
     
-    // console.log(`📊 Found ${assignments.length} assignments in ${Date.now() - startTime}ms`);
+    // console.log(`📊 Found ${filteredAssignments.length} assignments in ${Date.now() - startTime}ms`);
     
     // STEP 2: Batch fetch submissions (single query)
-    const assignmentIds = assignments.map(a => a._id);
+    const assignmentIds = filteredAssignments.map(a => a._id);
     const submissions = await TestSubmission.find({
       assignmentId: { $in: assignmentIds }
     })
@@ -45,7 +52,7 @@ router.get("/assignments", authenticateToken, async (req, res) => {
     });
     
     // STEP 4: Merge data (no async operations)
-    const assignmentsWithSubmissions = assignments.map(assignment => {
+    const assignmentsWithSubmissions = filteredAssignments.map(assignment => {
       const submission = submissionMap.get(assignment._id.toString());
       return {
         ...assignment,
