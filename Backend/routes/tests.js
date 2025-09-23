@@ -9,7 +9,7 @@ router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) 
   try {
     const startTime = Date.now();
     const { status, search } = req.query;
-    const query = { type: { $ne: "practice" } }; // Exclude practice tests from regular tests listing
+    const query = {}; // Include all tests including practice tests
     
     if (status) query.status = status;
     if (search) query.title = { $regex: search, $options: "i" };
