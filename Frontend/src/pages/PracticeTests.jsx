@@ -221,7 +221,7 @@ const PracticeTests = () => {
                 </div>
 
                 <div className="relative z-10">
-                  <div className="flex items-center gap-3 mb-4">
+                  <div className="flex items-center gap-3 mb-4 ml-1">
                     <div className="p-2 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg shadow-lg group-hover:shadow-green-500/25 transition-all duration-300 transform group-hover:rotate-6">
                       <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
