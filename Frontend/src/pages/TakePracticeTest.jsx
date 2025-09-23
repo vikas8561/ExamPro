@@ -12,6 +12,7 @@ const TakePracticeTest = () => {
   const [error, setError] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
+  const [previousResponsesLoaded, setPreviousResponsesLoaded] = useState(false);
 
   useEffect(() => {
     fetchPracticeTest();
@@ -20,8 +21,42 @@ const TakePracticeTest = () => {
   const fetchPracticeTest = async () => {
     try {
       setLoading(true);
-      const data = await apiRequest(`/practice-tests/${testId}`);
-      setTest(data);
+      
+      // Fetch the practice test
+      const testData = await apiRequest(`/practice-tests/${testId}`);
+      console.log('🎯 Test data:', testData);
+      setTest(testData);
+      
+      // Fetch user's previous attempts to load their last responses
+      const attemptsData = await apiRequest(`/practice-tests/${testId}/attempts`);
+      const attempts = attemptsData.submissions || [];
+      
+      console.log('🎯 Attempts data:', attemptsData);
+      console.log('🎯 Attempts:', attempts);
+      
+      if (attempts.length > 0) {
+        // Get the latest attempt
+        const latestAttempt = attempts[0]; // They are sorted by attemptNumber descending
+        
+        console.log('🎯 Latest attempt:', latestAttempt);
+        console.log('🎯 Latest attempt responses:', latestAttempt.responses);
+        
+        // Load the responses from the latest attempt
+        const previousAnswers = {};
+        if (latestAttempt.responses) {
+          latestAttempt.responses.forEach(response => {
+            console.log('🎯 Processing response:', response);
+            if (response.selectedOption) {
+              previousAnswers[response.questionId] = response.selectedOption;
+            }
+          });
+        }
+        
+        console.log('🎯 Previous answers object:', previousAnswers);
+        setAnswers(previousAnswers);
+        setPreviousResponsesLoaded(true);
+      }
+      
     } catch (error) {
       console.error("Error fetching practice test:", error);
       setError("Failed to load practice test");
@@ -109,6 +144,11 @@ const TakePracticeTest = () => {
   const currentQ = test.questions[currentQuestion];
   const totalQuestions = test.questions.length;
   const answeredQuestions = Object.keys(answers).length;
+  
+  console.log('🎯 Current answers state:', answers);
+  console.log('🎯 Current question:', currentQ);
+  console.log('🎯 Current question ID:', currentQ?._id);
+  console.log('🎯 Answer for current question:', answers[currentQ?._id]);
 
   return (
     <div className="min-h-screen bg-slate-900 text-white">
@@ -118,6 +158,11 @@ const TakePracticeTest = () => {
           <div>
             <h1 className="text-2xl font-bold text-green-400">{test.title}</h1>
             <p className="text-slate-400">Practice Test - No Proctoring</p>
+            {previousResponsesLoaded && (
+              <p className="text-green-300 text-sm mt-1">
+                ✓ Previous responses loaded
+              </p>
+            )}
           </div>
           <div className="text-right">
             <div className="text-sm text-slate-400">Progress</div>

@@ -256,9 +256,15 @@ router.get("/:testId/attempts", authenticateToken, async (req, res, next) => {
       testId,
       userId
     })
-    .select("totalScore maxScore correctCount incorrectCount notAnsweredCount savedAt timeSpent attemptNumber isCompleted")
+    .select("totalScore maxScore correctCount incorrectCount notAnsweredCount savedAt timeSpent attemptNumber isCompleted responses")
     .sort({ attemptNumber: -1 });
 
+    console.log('🎯 Backend: Returning submissions:', submissions.map(s => ({
+      attemptNumber: s.attemptNumber,
+      responsesCount: s.responses?.length || 0,
+      responses: s.responses
+    })));
+    
     res.json({ submissions });
   } catch (error) {
     console.error("Error in GET /api/practice-tests/:testId/attempts:", error.message, error.stack);
