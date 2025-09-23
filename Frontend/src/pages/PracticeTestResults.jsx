@@ -21,6 +21,7 @@ const PracticeTestResults = () => {
     try {
       // Get the latest attempt by default
       const data = await apiRequest(`/practice-tests/${testId}/results/1`);
+      console.log('🎯 PracticeTestResults: Data received:', data);
       setTest(data.test);
       setSubmission(data.submission);
       setSelectedAttempt(1);
@@ -173,9 +174,13 @@ const PracticeTestResults = () => {
           <h3 className="text-xl font-semibold mb-6">Question Review</h3>
           <div className="space-y-6">
             {test.questions.map((question, index) => {
-              const response = submission.responses.find(r => 
-                r.questionId === question._id
-              );
+              // The backend already includes the response data in the question object
+              const response = {
+                selectedOption: question.selectedOption,
+                textAnswer: question.textAnswer,
+                isCorrect: question.isCorrect,
+                points: question.pointsEarned
+              };
 
               return (
                 <div key={question._id} className="border border-slate-700 rounded-lg p-6">
