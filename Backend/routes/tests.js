@@ -76,6 +76,7 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
     // Handle practice test specific settings
     if (type === "practice") {
       testData.isPracticeTest = true;
+      testData.status = "Active"; // Practice tests should be immediately available
       testData.practiceTestSettings = {
         allowMultipleAttempts: true,
         showCorrectAnswers: false,
@@ -118,6 +119,7 @@ router.put("/:id", authenticateToken, requireRole("admin"), async (req, res, nex
     // Handle practice test specific settings
     if (type === "practice") {
       updateData.isPracticeTest = true;
+      updateData.status = "Active"; // Practice tests should be immediately available
       updateData.practiceTestSettings = {
         allowMultipleAttempts: true,
         showCorrectAnswers: false,

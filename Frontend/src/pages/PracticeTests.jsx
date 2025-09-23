@@ -17,7 +17,9 @@ const PracticeTests = () => {
   const fetchPracticeTests = async () => {
     try {
       setLoading(true);
+      console.log('🎯 Frontend: Fetching practice tests...');
       const data = await apiRequest("/practice-tests");
+      console.log('🎯 Frontend: Practice tests data received:', data);
       setTests(data.tests || []);
     } catch (error) {
       console.error("Error fetching practice tests:", error);

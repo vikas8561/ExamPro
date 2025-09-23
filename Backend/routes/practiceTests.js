@@ -7,6 +7,15 @@ const { authenticateToken, requireRole } = require("../middleware/auth");
 // Get all practice tests for students
 router.get("/", authenticateToken, async (req, res, next) => {
   try {
+    console.log('🎯 Fetching practice tests...');
+    
+    // First, let's see all practice tests regardless of status
+    const allPracticeTests = await Test.find({ type: "practice" })
+      .select("title subject status")
+      .lean();
+    console.log('🎯 All practice tests found:', allPracticeTests);
+    
+    // Then get only active ones
     const tests = await Test.find({ 
       type: "practice", 
       status: "Active" 
@@ -16,8 +25,10 @@ router.get("/", authenticateToken, async (req, res, next) => {
     .sort({ createdAt: -1 })
     .lean();
 
+    console.log(`🎯 Active practice tests found: ${tests.length}`);
     res.json({ tests });
   } catch (error) {
+    console.error('🎯 Error fetching practice tests:', error);
     next(error);
   }
 });
