@@ -249,26 +249,26 @@ const TakePracticeTest = () => {
               {/* Navigation Buttons */}
               <div className="flex justify-between mt-8">
                 <button
-                  onClick={() => setCurrentQuestion(Math.max(0, currentQuestion - 1))}
-                  disabled={currentQuestion === 0}
+                  onClick={handleSaveTest}
+                  disabled={isSaving}
                   className="px-6 py-2 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-500 rounded-md transition-colors"
                 >
-                  Previous
+                  {isSaving ? "Saving..." : "Save Test"}
                 </button>
 
                 <div className="flex gap-3">
                   <button
-                    onClick={handleSaveTest}
-                    disabled={isSaving}
-                    className="px-6 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-800 disabled:text-green-300 rounded-md transition-colors"
+                    onClick={() => setCurrentQuestion(Math.max(0, currentQuestion - 1))}
+                    disabled={currentQuestion === 0}
+                    className="px-6 py-2 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-500 rounded-md transition-colors"
                   >
-                    {isSaving ? "Saving..." : "Save Test"}
+                    Previous
                   </button>
 
                   <button
                     onClick={() => setCurrentQuestion(Math.min(totalQuestions - 1, currentQuestion + 1))}
                     disabled={currentQuestion === totalQuestions - 1}
-                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:text-blue-300 rounded-md transition-colors"
+                    className="px-6 py-2 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-500 rounded-md transition-colors"
                   >
                     Next
                   </button>
@@ -292,24 +292,33 @@ const TakePracticeTest = () => {
           <div className="lg:w-1/4">
             <div className="bg-slate-800 rounded-2xl shadow-xl border border-slate-700 p-5 sticky top-6 h-full">
               <h3 className="text-lg font-semibold text-white mb-5 text-center">Questions</h3>
-              <div className="grid grid-cols-5 lg:grid-cols-1 gap-2">
-                {test.questions.map((_, index) => (
-                  <button
-                    key={index}
-                    onClick={() => setCurrentQuestion(index)}
+              <div 
+                className="max-h-96 overflow-y-auto" 
+                style={{ 
+                  scrollbarWidth: 'none', 
+                  msOverflowStyle: 'none',
+                  WebkitScrollbar: { display: 'none' }
+                }}
+              >
+                <div className="grid grid-cols-5 lg:grid-cols-1 gap-2">
+                  {test.questions.map((_, index) => (
+                    <button
+                      key={index}
+                      onClick={() => setCurrentQuestion(index)}
                     className={`relative p-2 rounded-xl text-sm font-medium ${
                       index === currentQuestion
-                        ? "bg-indigo-500 text-white shadow-lg"
+                        ? "bg-blue-500 text-white shadow-lg"
                         : answers[test.questions[index]._id]
-                        ? "bg-emerald-500 text-white border border-emerald-400"
+                        ? "bg-teal-500 text-white border border-teal-400"
                         : "bg-slate-600 text-slate-200 border border-slate-500"
                     }`}
-                  >
-                    <div className="flex items-center justify-center">
-                      <span className="text-base font-semibold">{index + 1}</span>
-                    </div>
-                  </button>
-                ))}
+                    >
+                      <div className="flex items-center justify-center">
+                        <span className="text-base font-semibold">{index + 1}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
               
               {/* Progress Summary */}
