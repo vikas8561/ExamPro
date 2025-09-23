@@ -83,4 +83,17 @@ TestSchema.path("questions").validate(function (questions) {
   return true;
 }, "Invalid questions payload.");
 
+// Validation for practice tests - only MCQ questions allowed
+TestSchema.pre('save', function(next) {
+  if (this.type === 'practice') {
+    // Ensure all questions are MCQ for practice tests
+    for (const q of this.questions || []) {
+      if (q.kind !== 'mcq') {
+        return next(new Error('Practice tests can only contain MCQ questions'));
+      }
+    }
+  }
+  next();
+});
+
 module.exports = mongoose.model("Test", TestSchema);
