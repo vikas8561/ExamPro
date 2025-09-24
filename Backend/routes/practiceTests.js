@@ -305,16 +305,15 @@ router.post("/:testId/save", authenticateToken, async (req, res, next) => {
   }
 });
 
-// Get practice test results for a specific attempt
-router.get("/:testId/results/:attemptNumber", authenticateToken, async (req, res, next) => {
+// Get practice test results (single attempt storage)
+router.get("/:testId/results", authenticateToken, async (req, res, next) => {
   try {
-    const { testId, attemptNumber } = req.params;
+    const { testId } = req.params;
     const userId = req.user.userId;
 
     const submission = await PracticeTestSubmission.findOne({
       testId,
-      userId,
-      attemptNumber: parseInt(attemptNumber)
+      userId
     }).populate({
       path: "testId",
       select: "title subject questions"
@@ -373,21 +372,91 @@ router.get("/:testId/results/:attemptNumber", authenticateToken, async (req, res
   }
 });
 
-// Get all practice test attempts for a user
+// Backward compatible endpoint for old URL format with attemptNumber
+router.get("/:testId/results/:attemptNumber", authenticateToken, async (req, res, next) => {
+  try {
+    const { testId } = req.params;
+    const userId = req.user.userId;
+
+    const submission = await PracticeTestSubmission.findOne({
+      testId,
+      userId
+    }).populate({
+      path: "testId",
+      select: "title subject questions"
+    });
+
+    if (!submission) {
+      return res.status(404).json({ message: "Practice test submission not found" });
+    }
+
+    // For practice tests, only show if the answer is correct or incorrect, not the correct answer
+    const questionsWithResponses = submission.testId.questions.map(question => {
+      const response = submission.responses.find(r => 
+        r.questionId.toString() === question._id.toString()
+      );
+
+      return {
+        _id: question._id,
+        text: question.text,
+        kind: question.kind,
+        options: question.options,
+        points: question.points,
+        // Don't include correct answers for practice tests
+        answer: undefined,
+        answers: undefined,
+        // Include student's response and correctness
+        selectedOption: response?.selectedOption || "",
+        textAnswer: response?.textAnswer || "",
+        isCorrect: response?.isCorrect || false,
+        pointsEarned: response?.points || 0
+      };
+    });
+
+    res.json({
+      test: {
+        _id: submission.testId._id,
+        title: submission.testId.title,
+        subject: submission.testId.subject,
+        questions: questionsWithResponses
+      },
+      submission: {
+        _id: submission._id,
+        totalScore: submission.totalScore,
+        maxScore: submission.maxScore,
+        correctCount: submission.correctCount,
+        incorrectCount: submission.incorrectCount,
+        notAnsweredCount: submission.notAnsweredCount,
+        savedAt: submission.savedAt,
+        timeSpent: submission.timeSpent,
+        attemptNumber: submission.attemptNumber,
+        isCompleted: submission.isCompleted
+      }
+    });
+  } catch (error) {
+    console.error("Error in GET /api/practice-tests/:testId/results/:attemptNumber:", error.message, error.stack);
+    next(error);
+  }
+});
+
+// Get practice test attempt for a user (single attempt storage)
 router.get("/:testId/attempts", authenticateToken, async (req, res, next) => {
   try {
     const { testId } = req.params;
     const userId = req.user.userId;
 
-    const submissions = await PracticeTestSubmission.find({
+    const submission = await PracticeTestSubmission.findOne({
       testId,
       userId
     })
-    .select("totalScore maxScore correctCount incorrectCount notAnsweredCount savedAt timeSpent attemptNumber isCompleted responses")
-    .sort({ attemptNumber: -1 });
+    .select("totalScore maxScore correctCount incorrectCount notAnsweredCount savedAt timeSpent attemptNumber isCompleted");
 
-    
-    res.json({ submissions });
+    if (!submission) {
+      return res.json({ submissions: [] });
+    }
+
+    // Return as array for compatibility with frontend
+    res.json({ submissions: [submission] });
   } catch (error) {
     console.error("Error in GET /api/practice-tests/:testId/attempts:", error.message, error.stack);
     next(error);
