@@ -327,9 +327,11 @@ router.post("/:testId/save", authenticateToken, async (req, res, next) => {
 router.get("/:testId/results/:attemptNumber", authenticateToken, async (req, res, next) => {
   try {
     console.log(`🎯 Practice Test Results Route Hit: /${req.params.testId}/results/${req.params.attemptNumber}`);
+    console.log(`🎯 User ID: ${req.user.userId}`);
     const { testId } = req.params; // attemptNumber is ignored
     const userId = req.user.userId;
 
+    console.log(`🎯 Searching for submission: testId=${testId}, userId=${userId}`);
     const submission = await PracticeTestSubmission.findOne({
       testId,
       userId
@@ -338,7 +340,9 @@ router.get("/:testId/results/:attemptNumber", authenticateToken, async (req, res
       select: "title subject questions"
     });
 
+    console.log(`🎯 Submission found:`, submission ? "YES" : "NO");
     if (!submission) {
+      console.log(`🎯 No submission found for testId=${testId}, userId=${userId}`);
       return res.status(404).json({ message: "Practice test submission not found" });
     }
 
