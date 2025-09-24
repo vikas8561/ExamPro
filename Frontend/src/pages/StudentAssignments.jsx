@@ -192,6 +192,8 @@ const StudentAssignments = () => {
       
       clearTimeout(timeoutId);
       const endTime = Date.now();
+      
+      
       setAssignments(data);
       setLastFetchTime(endTime);
     } catch (error) {
@@ -264,6 +266,7 @@ const StudentAssignments = () => {
   };
 
   const handleStartTest = (assignmentId) => {
+    console.log('Start Test clicked for assignment:', assignmentId);
     // Navigate to take test page where permissions will be requested
     navigate(`/student/take-test/${assignmentId}`);
   };
@@ -494,6 +497,10 @@ const StudentAssignments = () => {
                 key={assignment._id} 
                 className="group relative bg-gradient-to-br from-slate-800/90 to-slate-900/90 backdrop-blur-sm rounded-xl p-6 border border-slate-700/50 hover:border-blue-500/50 transition-all duration-500 transform hover:scale-105 hover:shadow-2xl hover:shadow-blue-500/10 cursor-pointer animate-slide-in-up"
                 style={{ animationDelay: `${index * 100}ms` }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
               >
                 {/* Animated Background Gradient */}
                 <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 via-indigo-500/5 to-purple-500/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
@@ -594,12 +601,18 @@ const StudentAssignments = () => {
                   
                   {assignment.status === "Assigned" && isTestAvailable(assignment.startTime, assignment.duration) && (
                     <button
-                      onClick={() => handleStartTest(assignment._id)}
+                      onClick={() => {
+                        console.log('Start Test button clicked for assignment:', assignment._id);
+                        handleStartTest(assignment._id);
+                      }}
                       className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md font-semibold transition-colors cursor-pointer"
+                      style={{ border: '2px solid transparent', zIndex: 9999, position: 'relative' }}
                     >
                       Start Test
                     </button>
                   )}
+                  
+                  
 
                   {assignment.status === "Assigned" && isDeadlinePassed(assignment.startTime, assignment.duration) && (
                     <button
@@ -612,38 +625,55 @@ const StudentAssignments = () => {
 
                   {assignment.status === "In Progress" && (
                     isDeadlinePassed(assignment.startTime, assignment.duration) ? (
-                    <button
-                      onClick={() => navigate(`/student/view-test/${assignment._id}`)}
-                      className="w-full bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-md font-semibold transition-colors cursor-pointer"
-                    >
-                      View Results
-                    </button>
+                      <button
+                        onClick={() => {
+                          console.log('View Results button clicked for assignment:', assignment._id);
+                          navigate(`/student/view-test/${assignment._id}`);
+                        }}
+                        className="w-full bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-md font-semibold transition-colors cursor-pointer"
+                        style={{ border: '2px solid green', zIndex: 9999, position: 'relative' }}
+                      >
+                        View Results
+                      </button>
                     ) : (
-                    <button
-                      onClick={() => navigate(`/student/take-test/${assignment._id}`)}
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md font-semibold transition-colors cursor-pointer"
-                    >
-                      Continue Test
-                    </button>
+                      <button
+                        onClick={() => {
+                          console.log('Continue Test button clicked for assignment:', assignment._id);
+                          navigate(`/student/take-test/${assignment._id}`);
+                        }}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md font-semibold transition-colors cursor-pointer"
+                        style={{ border: '2px solid blue', zIndex: 9999, position: 'relative' }}
+                      >
+                        Continue Test
+                      </button>
                     )
                   )}
+                  
 
                   {assignment.status === "Completed" && (
                     isDeadlinePassed(assignment.startTime, assignment.duration) ? (
                       assignment.reviewStatus === "Reviewed" ? (
                         <button
-                          onClick={() => navigate(`/student/view-test/${assignment._id}`)}
+                          onClick={() => {
+                            console.log('View Results button clicked for assignment:', assignment._id);
+                            navigate(`/student/view-test/${assignment._id}`);
+                          }}
                           className="w-full bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-md font-semibold transition-colors"
+                          style={{ border: '2px solid green', zIndex: 9999, position: 'relative' }}
                         >
                           View Results
                         </button>
                       ) : (
-                    <button
-                      onClick={() => navigate(`/student/view-test/${assignment._id}`)}
-                      className="w-full bg-yellow-600 hover:bg-yellow-700 text-white py-2 px-4 rounded-md font-semibold transition-colors cursor-pointer"
-                    >
-                      View Submission
-                    </button>
+                        <button
+                          onClick={() => {
+                            console.log('View Submission button clicked for assignment:', assignment._id);
+                            navigate(`/student/view-test/${assignment._id}`);
+                          }}
+                          className="w-full bg-yellow-600 hover:bg-yellow-700 text-white py-2 px-4 rounded-md font-semibold transition-colors cursor-pointer"
+                          style={{ border: '2px solid yellow', zIndex: 9999, position: 'relative' }}
+                        >
+                          View Submission
+                        </button>
                       )
                     ) : (
                       <button
@@ -654,6 +684,7 @@ const StudentAssignments = () => {
                       </button>
                     )
                   )}
+                  
 
                   {assignment.status === "Overdue" && (
                     <button
