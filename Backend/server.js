@@ -9,34 +9,73 @@ const { Server } = require("socket.io");
 
 dotenv.config();
 
-// Memory monitoring and optimization
+// Enhanced Memory Management for 500+ users
 const memoryUsage = () => {
   const used = process.memoryUsage();
   const formatMB = (bytes) => Math.round(bytes / 1024 / 1024 * 100) / 100;
   
-  console.log('📊 Memory Usage:', {
+  const memoryStats = {
     rss: `${formatMB(used.rss)} MB`,
     heapTotal: `${formatMB(used.heapTotal)} MB`,
     heapUsed: `${formatMB(used.heapUsed)} MB`,
-    external: `${formatMB(used.external)} MB`
-  });
+    external: `${formatMB(used.external)} MB`,
+    activeConnections: activeConnections,
+    maxConnections: MAX_CONNECTIONS
+  };
   
-  // Alert if memory usage is high
-  if (used.heapUsed > 400 * 1024 * 1024) { // 400MB
-    console.warn('⚠️ HIGH MEMORY USAGE DETECTED!');
+  console.log('📊 Memory & Connection Status:', memoryStats);
+  
+  // Enhanced memory alerts for 500+ users
+  if (used.heapUsed > 500 * 1024 * 1024) { // 500MB (increased for 500 users)
+    console.warn('🚨 CRITICAL MEMORY USAGE DETECTED!');
+    console.warn(`💾 Heap Used: ${formatMB(used.heapUsed)} MB`);
+    console.warn(`👥 Active Connections: ${activeConnections}/${MAX_CONNECTIONS}`);
+    
     // Force garbage collection if available
     if (global.gc) {
       global.gc();
-      console.log('🗑️ Garbage collection triggered');
+      console.log('🗑️ Emergency garbage collection triggered');
     }
+  } else if (used.heapUsed > 300 * 1024 * 1024) { // 300MB warning
+    console.warn('⚠️ HIGH MEMORY USAGE DETECTED!');
+    console.warn(`💾 Heap Used: ${formatMB(used.heapUsed)} MB`);
+    console.warn(`👥 Active Connections: ${activeConnections}/${MAX_CONNECTIONS}`);
+  }
+  
+  // WebSocket connection alerts
+  if (activeConnections > MAX_CONNECTIONS * 0.9) { // 90% of limit
+    console.warn(`⚠️ WebSocket connections near limit: ${activeConnections}/${MAX_CONNECTIONS}`);
   }
 };
 
-// Monitor memory every 30 seconds
-setInterval(memoryUsage, 30000);
+// Monitor memory every 15 seconds (more frequent for 500+ users)
+setInterval(memoryUsage, 15000);
 
 // Log initial memory usage
 memoryUsage();
+
+// Memory cleanup function for 500+ users
+const cleanupMemory = () => {
+  const used = process.memoryUsage();
+  const formatMB = (bytes) => Math.round(bytes / 1024 / 1024 * 100) / 100;
+  
+  console.log('🧹 Starting memory cleanup...');
+  
+  // Force garbage collection
+  if (global.gc) {
+    global.gc();
+    console.log('🗑️ Garbage collection completed');
+  }
+  
+  // Log memory after cleanup
+  const afterUsed = process.memoryUsage();
+  console.log(`📊 Memory before cleanup: ${formatMB(used.heapUsed)} MB`);
+  console.log(`📊 Memory after cleanup: ${formatMB(afterUsed.heapUsed)} MB`);
+  console.log(`📊 Memory freed: ${formatMB(used.heapUsed - afterUsed.heapUsed)} MB`);
+};
+
+// Run memory cleanup every 5 minutes
+setInterval(cleanupMemory, 5 * 60 * 1000);
 
 const app = express();
 
@@ -205,17 +244,30 @@ app.use("/api/time", require("./routes/time"));
 // Make io available to routes
 app.set('io', io);
 
-// Socket.IO connection handling
+// WebSocket Connection Management for 500+ users
+let activeConnections = 0;
+const MAX_CONNECTIONS = 600; // 20% buffer over 500 users
+
+// Socket.IO connection handling with limits
 io.on('connection', (socket) => {
-  // console.log('A user connected:', socket.id);
+  // Check connection limit
+  if (activeConnections >= MAX_CONNECTIONS) {
+    console.warn(`⚠️ WebSocket connection limit reached (${MAX_CONNECTIONS}). Disconnecting new connection.`);
+    socket.disconnect(true);
+    return;
+  }
+  
+  activeConnections++;
+  console.log(`📊 WebSocket connections: ${activeConnections}/${MAX_CONNECTIONS}`);
 
   socket.on('join', (userId) => {
     socket.join(userId.toString());
-    // console.log(`User ${socket.id} joined room: ${userId}`);
+    console.log(`👤 User ${socket.id} joined room: ${userId} (Total: ${activeConnections})`);
   });
 
   socket.on('disconnect', () => {
-    // console.log('User disconnected:', socket.id);
+    activeConnections--;
+    console.log(`👤 User disconnected: ${socket.id} (Total: ${activeConnections})`);
   });
 });
 
