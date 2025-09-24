@@ -4,6 +4,22 @@ const Test = require("../models/Test");
 const PracticeTestSubmission = require("../models/PracticeTestSubmission");
 const { authenticateToken, requireRole } = require("../middleware/auth");
 
+// Test route to verify the file is loaded
+router.get("/test", (req, res) => {
+  console.log("🎯 Practice Tests Route File Loaded Successfully!");
+  res.json({ message: "Practice tests route file is working", timestamp: new Date().toISOString() });
+});
+
+// Test route for results without authentication
+router.get("/:testId/results-test", (req, res) => {
+  console.log(`🎯 Test Results Route Hit: /${req.params.testId}/results-test`);
+  res.json({ 
+    message: "Test results route is working", 
+    testId: req.params.testId,
+    timestamp: new Date().toISOString() 
+  });
+});
+
 // MEMORY OPTIMIZATION: Clean up old practice test data
 const cleanupOldPracticeData = async () => {
   try {
