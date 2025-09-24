@@ -363,23 +363,8 @@ const StudentAssignments = () => {
                 </div>
               </div>
 
-              {/* Search Bar, Refresh Button and Filter Button */}
+              {/* Search Bar and Filter Button */}
               <div className="flex items-center gap-3">
-                {/* ✅ Fixed: Add refresh button to manually refresh assignments */}
-                <button
-                  onClick={() => {
-                    setLastFetchTime(0); // Force refresh by resetting cache
-                    fetchAssignments();
-                  }}
-                  className="flex items-center gap-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-4 py-3 rounded-xl font-medium transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl"
-                  title="Refresh assignments"
-                >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  Refresh
-                </button>
-                
                 <div className="relative max-w-md w-full lg:w-80">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                     <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
