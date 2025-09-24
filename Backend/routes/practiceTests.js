@@ -202,21 +202,25 @@ router.post("/:testId/save", authenticateToken, async (req, res, next) => {
       let points = 0;
       let selectedOption = "";
       let textAnswer = "";
+      let isAnswered = false;
 
       if (response) {
         if (question.kind === "mcq") {
           selectedOption = response.selectedOption || "";
+          isAnswered = selectedOption !== "";
           isCorrect = selectedOption === question.answer;
           points = isCorrect ? (question.points || 1) : 0;
         } else if (question.kind === "msq") {
           // For MSQ, check if all correct answers are selected and no wrong ones
           const correctAnswers = question.answers || [];
           const selectedAnswers = response.selectedOptions || [];
+          isAnswered = selectedAnswers.length > 0;
           isCorrect = correctAnswers.length === selectedAnswers.length && 
                      correctAnswers.every(ans => selectedAnswers.includes(ans));
           points = isCorrect ? (question.points || 1) : 0;
         } else {
           textAnswer = response.textAnswer || "";
+          isAnswered = textAnswer.trim() !== "";
           // For practice tests, we don't evaluate theory/coding questions automatically
           points = 0;
         }
@@ -225,7 +229,7 @@ router.post("/:testId/save", authenticateToken, async (req, res, next) => {
       if (isCorrect) {
         correctCount++;
         totalScore += points;
-      } else if (response && (selectedOption || textAnswer)) {
+      } else if (isAnswered) {
         incorrectCount++;
       } else {
         notAnsweredCount++;
@@ -236,6 +240,7 @@ router.post("/:testId/save", authenticateToken, async (req, res, next) => {
         selectedOption,
         textAnswer,
         isCorrect,
+        isAnswered,
         points
       });
     }
@@ -343,6 +348,7 @@ router.get("/:testId/results/:attemptNumber", authenticateToken, async (req, res
         selectedOption: response?.selectedOption || "",
         textAnswer: response?.textAnswer || "",
         isCorrect: response?.isCorrect || false,
+        isAnswered: response?.isAnswered || false,
         pointsEarned: response?.points || 0
       };
     });
@@ -410,6 +416,7 @@ router.get("/:testId/results", authenticateToken, async (req, res, next) => {
         selectedOption: response?.selectedOption || "",
         textAnswer: response?.textAnswer || "",
         isCorrect: response?.isCorrect || false,
+        isAnswered: response?.isAnswered || false,
         pointsEarned: response?.points || 0
       };
     });

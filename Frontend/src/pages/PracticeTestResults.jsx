@@ -191,9 +191,11 @@ const PracticeTestResults = () => {
                     <div className={`px-3 py-1 rounded-full text-sm font-medium ${
                       response?.isCorrect 
                         ? "bg-green-900/50 text-green-300" 
-                        : "bg-red-900/50 text-red-300"
+                        : response?.isAnswered
+                        ? "bg-red-900/50 text-red-300"
+                        : "bg-slate-700 text-slate-300"
                     }`}>
-                      {response?.isCorrect ? "Correct" : "Incorrect"}
+                      {response?.isCorrect ? "Correct" : response?.isAnswered ? "Incorrect" : "Not Answered"}
                     </div>
                   </div>
 
