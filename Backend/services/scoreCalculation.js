@@ -114,6 +114,14 @@ async function recalculateSubmissionScore(submission, test) {
     } else {
       throw error;
     }
+  } finally {
+    // MEMORY OPTIMIZATION: Clear large objects from memory
+    if (submission.responses) {
+      submission.responses = null;
+    }
+    if (submission.tabViolations) {
+      submission.tabViolations = null;
+    }
   }
 }
 

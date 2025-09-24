@@ -4,8 +4,8 @@
   "description": "ExamPro simple tests API (CommonJS)",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start": "node --max-old-space-size=1024 server.js",
+    "dev": "nodemon --max-old-space-size=1024 server.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

@@ -36,7 +36,7 @@ const PracticeTestSubmissionSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Indexes for efficient queries
-PracticeTestSubmissionSchema.index({ testId: 1, userId: 1, attemptNumber: 1 }, { unique: true });
+PracticeTestSubmissionSchema.index({ testId: 1, userId: 1 }, { unique: true }); // Only one submission per user per test
 PracticeTestSubmissionSchema.index({ userId: 1, savedAt: -1 });
 PracticeTestSubmissionSchema.index({ testId: 1, savedAt: -1 });
 

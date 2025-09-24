@@ -11,6 +11,11 @@ router.get("/assignments", authenticateToken, async (req, res) => {
     
     const startTime = Date.now();
     
+    // MEMORY OPTIMIZED: Add pagination to prevent memory issues
+    const page = parseInt(req.query.page) || 0;
+    const limit = Math.min(parseInt(req.query.limit) || 50, 100); // Max 100 records
+    const skip = page * limit;
+
     // STEP 1: Get assignments with MINIMAL population (no questions!)
     const assignments = await Assignment.find({
       $or: [
@@ -25,6 +30,8 @@ router.get("/assignments", authenticateToken, async (req, res) => {
       })
       .populate("userId", "name email")
       .sort({ createdAt: -1 })
+      .limit(limit)
+      .skip(skip)
       .lean(); // Use lean() for 2x faster queries
 
     // Filter out assignments where testId is null (due to the match filter above)

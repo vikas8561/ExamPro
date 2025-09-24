@@ -9,6 +9,35 @@ const { Server } = require("socket.io");
 
 dotenv.config();
 
+// Memory monitoring and optimization
+const memoryUsage = () => {
+  const used = process.memoryUsage();
+  const formatMB = (bytes) => Math.round(bytes / 1024 / 1024 * 100) / 100;
+  
+  console.log('📊 Memory Usage:', {
+    rss: `${formatMB(used.rss)} MB`,
+    heapTotal: `${formatMB(used.heapTotal)} MB`,
+    heapUsed: `${formatMB(used.heapUsed)} MB`,
+    external: `${formatMB(used.external)} MB`
+  });
+  
+  // Alert if memory usage is high
+  if (used.heapUsed > 400 * 1024 * 1024) { // 400MB
+    console.warn('⚠️ HIGH MEMORY USAGE DETECTED!');
+    // Force garbage collection if available
+    if (global.gc) {
+      global.gc();
+      console.log('🗑️ Garbage collection triggered');
+    }
+  }
+};
+
+// Monitor memory every 30 seconds
+setInterval(memoryUsage, 30000);
+
+// Log initial memory usage
+memoryUsage();
+
 const app = express();
 
 //  Allowed origins (add more if needed)
@@ -18,30 +47,75 @@ const allowedOrigins = [
   "https://cg-test-app.vercel.app"
 ].filter(Boolean);
 
-// Configure CORS
+// Configure CORS with more permissive settings for production
 app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (mobile apps, curl, Postman)
     if (!origin) return callback(null, true);
 
-    // Allow exact matches OR any Vercel preview subdomain
-    if (allowedOrigins.includes(origin) || origin.endsWith(".vercel.app")) {
+    // Allow exact matches OR any Vercel subdomain
+    if (allowedOrigins.includes(origin) || 
+        origin.endsWith(".vercel.app") || 
+        origin.includes("vercel.app")) {
+      console.log(`✅ CORS allowing request from: ${origin}`);
       callback(null, true);
     } else {
       console.warn(`❌ CORS blocked request from: ${origin}`);
       callback(new Error("Not allowed by CORS"));
     }
   },
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+  allowedHeaders: [
+    "Content-Type", 
+    "Authorization", 
+    "X-Requested-With",
+    "Accept",
+    "Origin",
+    "Access-Control-Request-Method",
+    "Access-Control-Request-Headers"
+  ],
   credentials: true,
+  optionsSuccessStatus: 200, // For legacy browser support
 }));
 
 // Handle preflight OPTIONS requests explicitly
-app.options("*", cors());
+app.options("*", (req, res) => {
+  res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin");
+  res.header("Access-Control-Allow-Credentials", "true");
+  res.sendStatus(200);
+});
 
-app.use(express.json());
+// Memory optimization middleware
+app.use((req, res, next) => {
+  // Set memory-friendly limits
+  req.setTimeout(30000); // 30 second timeout
+  res.setTimeout(30000);
+  
+  // Add memory usage to response headers for monitoring
+  const memUsage = process.memoryUsage();
+  res.set('X-Memory-Usage', Math.round(memUsage.heapUsed / 1024 / 1024));
+  
+  next();
+});
+
+app.use(express.json({ limit: '10mb' })); // Limit JSON payload size
 app.use(morgan("dev"));
+
+// Add CORS headers to all responses
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && (allowedOrigins.includes(origin) || origin.includes("vercel.app"))) {
+    res.header("Access-Control-Allow-Origin", origin);
+  } else {
+    res.header("Access-Control-Allow-Origin", "*");
+  }
+  res.header("Access-Control-Allow-Credentials", "true");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin");
+  next();
+});
 
 const server = http.createServer(app);
 
@@ -50,20 +124,68 @@ const io = new Server(server, {
   cors: {
     origin: function (origin, callback) {
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin) || origin.endsWith(".vercel.app")) {
+      if (allowedOrigins.includes(origin) || 
+          origin.endsWith(".vercel.app") || 
+          origin.includes("vercel.app")) {
+        console.log(`✅ Socket.IO allowing request from: ${origin}`);
         callback(null, true);
       } else {
-        console.warn(`Socket.IO blocked request from: ${origin}`);
+        console.warn(`❌ Socket.IO blocked request from: ${origin}`);
         callback(new Error("Not allowed by CORS"));
       }
     },
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type", 
+      "Authorization", 
+      "X-Requested-With",
+      "Accept",
+      "Origin"
+    ],
     credentials: true
   }
 });
 
 // Basic route to test API health
-app.get("/", (req, res) => res.json({ ok: true, name: "ExamPro API (CJS)" }));
+app.get("/", (req, res) => {
+  res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
+  res.json({ 
+    ok: true, 
+    name: "ExamPro API (CJS)",
+    timestamp: new Date().toISOString(),
+    cors: "enabled"
+  });
+});
+
+// Health check endpoint
+app.get("/health", (req, res) => {
+  res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
+  res.json({ 
+    status: "healthy",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
+// Memory monitoring endpoint
+app.get("/memory", (req, res) => {
+  res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
+  const memUsage = process.memoryUsage();
+  const formatMB = (bytes) => Math.round(bytes / 1024 / 1024 * 100) / 100;
+  
+  res.json({
+    memory: {
+      rss: `${formatMB(memUsage.rss)} MB`,
+      heapTotal: `${formatMB(memUsage.heapTotal)} MB`,
+      heapUsed: `${formatMB(memUsage.heapUsed)} MB`,
+      external: `${formatMB(memUsage.external)} MB`
+    },
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+    nodeVersion: process.version,
+    platform: process.platform
+  });
+});
 
 // ✅ API routes
 app.use("/api/tests", require("./routes/tests"));

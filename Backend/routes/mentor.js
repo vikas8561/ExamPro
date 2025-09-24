@@ -64,6 +64,11 @@ router.get("/assignments", authenticateToken, async (req, res) => {
     
     const startTime = Date.now();
     
+    // MEMORY OPTIMIZED: Add pagination to prevent memory issues
+    const page = parseInt(req.query.page) || 0;
+    const limit = Math.min(parseInt(req.query.limit) || 50, 100); // Max 100 records
+    const skip = page * limit;
+
     // ULTRA FAST: Get assignments with MINIMAL population (NO questions!)
     const assignments = await Assignment.find({
       $or: [
@@ -75,6 +80,8 @@ router.get("/assignments", authenticateToken, async (req, res) => {
       .populate("userId", "name email")
       .select("testId userId mentorId status startTime duration deadline startedAt completedAt score autoScore mentorScore mentorFeedback reviewStatus timeSpent createdAt")
       .sort({ createdAt: -1 })
+      .limit(limit)
+      .skip(skip)
       .lean(); // Use lean() for 2x faster queries
 
     // console.log(`📊 Found ${assignments.length} assignments in ${Date.now() - startTime}ms`);
@@ -264,10 +271,28 @@ router.get("/student/:studentId/submissions", authenticateToken, async (req, res
       .sort({ submittedAt: -1 })
       .lean(); // Use lean() for 2x faster queries
 
-    // ULTRA FAST: Only recalculate scores if absolutely necessary
+    // MEMORY OPTIMIZED: Batch process score recalculation
     const { recalculateSubmissionScore } = require("../services/scoreCalculation");
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
 
+    // Get unique test IDs to avoid duplicate queries
+    const uniqueTestIds = [...new Set(submissions
+      .filter(sub => sub.assignmentId?.testId && sub.responses?.length > 0)
+      .map(sub => sub.testId._id.toString())
+    )];
+
+    // Batch load all required tests (single query per test)
+    const testsMap = new Map();
+    for (const testId of uniqueTestIds) {
+      const test = await Test.findById(testId)
+        .populate("questions", "kind text options answer answers guidelines examples points")
+        .lean();
+      if (test) {
+        testsMap.set(testId, test);
+      }
+    }
+
+    // Process submissions with pre-loaded tests
     for (const submission of submissions) {
       if (submission.assignmentId?.testId && submission.responses?.length > 0) {
         const needsRecalculation = 
@@ -276,10 +301,10 @@ router.get("/student/:studentId/submissions", authenticateToken, async (req, res
           submission.updatedAt > fiveMinutesAgo;
         
         if (needsRecalculation) {
-          // Only populate questions for recalculation if needed
-          const testWithQuestions = await Test.findById(submission.testId._id)
-            .populate("questions", "kind text options answer answers guidelines examples points");
-          await recalculateSubmissionScore(submission, testWithQuestions);
+          const testWithQuestions = testsMap.get(submission.testId._id.toString());
+          if (testWithQuestions) {
+            await recalculateSubmissionScore(submission, testWithQuestions);
+          }
         }
       }
     }
