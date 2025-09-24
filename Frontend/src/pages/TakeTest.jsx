@@ -33,6 +33,7 @@ const TakeTest = () => {
   const [otpInput, setOtpInput] = useState("");
   const [otpError, setOtpError] = useState("");
   const [permissionsAttempted, setPermissionsAttempted] = useState(false);
+  const fullscreenTimeoutRef = useRef(null);
 
   useEffect(() => {
     const checkExistingTest = async () => {
@@ -209,8 +210,11 @@ const TakeTest = () => {
 
           if (newViolationCount === 1 || newViolationCount === 2) {
             setShowResumeModal(true);
-            // Attempt to re-enter fullscreen mode
-            setTimeout(() => {
+            // ✅ Fixed: Clear existing timeout and set new one
+            if (fullscreenTimeoutRef.current) {
+              clearTimeout(fullscreenTimeoutRef.current);
+            }
+            fullscreenTimeoutRef.current = setTimeout(() => {
               requestFullscreen();
             }, 1000);
           } else if (newViolationCount >= 3) {
@@ -231,6 +235,10 @@ const TakeTest = () => {
     document.addEventListener("msfullscreenchange", handleFullscreenChange);
 
     return () => {
+      // ✅ Fixed: Clean up timeout on unmount
+      if (fullscreenTimeoutRef.current) {
+        clearTimeout(fullscreenTimeoutRef.current);
+      }
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
       document.removeEventListener(
         "webkitfullscreenchange",
