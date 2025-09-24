@@ -51,14 +51,10 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     }
 
     const startTime = Date.now();
-    // console.log('🚀 ULTRA FAST: Fetching assignments for student:', req.user.userId);
+    console.log('🚀 ULTRA FAST: Fetching assignments for student:', req.user.userId);
 
-    // ✅ Fixed: Add pagination to prevent memory issues
-    const page = parseInt(req.query.page) || 0;
-    const limit = Math.min(parseInt(req.query.limit) || 50, 100); // Max 100 records
-    const skip = page * limit;
-
-    // ULTRA FAST: Get assignments with MINIMAL data (NO questions upfront!)
+    // ✅ Fixed: Remove pagination for student assignments to show all tests
+    // Students need to see all their assignments, not just the first 50
     const assignments = await Assignment.find({ userId: req.user.userId })
       .select("testId mentorId status startTime duration deadline startedAt completedAt score autoScore mentorScore mentorFeedback reviewStatus timeSpent createdAt")
       .populate({
@@ -68,8 +64,6 @@ router.get("/student", authenticateToken, async (req, res, next) => {
       })
       .populate("mentorId", "name email")
       .sort({ deadline: 1 })
-      .limit(limit)
-      .skip(skip)
       .lean({ virtuals: true }); // Use lean() with virtuals for 2x faster queries
 
     // Filter out assignments where testId is null (due to the match filter above)
@@ -86,7 +80,7 @@ router.get("/student", authenticateToken, async (req, res, next) => {
       }
     }));
 
-    // console.log(`📊 Found ${assignmentsWithQuestionCount.length} assignments in ${Date.now() - startTime}ms`);
+    console.log(`📊 Found ${assignmentsWithQuestionCount.length} assignments in ${Date.now() - startTime}ms`);
 
     // ULTRA FAST: Auto-start logic - batch update instead of individual updates
     const now = new Date();
