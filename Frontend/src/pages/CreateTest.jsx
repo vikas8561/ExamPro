@@ -19,7 +19,6 @@ const emptyQuestion = (kind) => ({
   }),
   ...(kind === "theory" && {
     guidelines: "",
-    examples: [],
   }),
   ...(kind === "coding" && {
     guidelines: "",
@@ -104,7 +103,6 @@ export default function CreateTest() {
           }),
           ...(q.kind === "theory" && {
             guidelines: q.guidelines,
-            examples: q.examples || [],
           }),
         })),
       });
@@ -250,7 +248,7 @@ export default function CreateTest() {
 
     setForm((prev) => ({
       ...prev,
-      questions: uploadedQuestions,
+      questions: normalized,
     }));
   };
 
@@ -320,7 +318,6 @@ export default function CreateTest() {
           }),
           ...(q.kind === "theory" && {
             guidelines: q.guidelines,
-            examples: q.examples || [],
           }),
         })),
       };
