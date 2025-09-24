@@ -308,6 +308,7 @@ router.post("/:testId/save", authenticateToken, async (req, res, next) => {
 // Backward compatible endpoint for old URL format with attemptNumber (MUST BE FIRST)
 router.get("/:testId/results/:attemptNumber", authenticateToken, async (req, res, next) => {
   try {
+    console.log(`🎯 Practice Test Results Route Hit: /${req.params.testId}/results/${req.params.attemptNumber}`);
     const { testId } = req.params; // attemptNumber is ignored
     const userId = req.user.userId;
 
@@ -375,6 +376,7 @@ router.get("/:testId/results/:attemptNumber", authenticateToken, async (req, res
 // Get practice test results (single attempt storage)
 router.get("/:testId/results", authenticateToken, async (req, res, next) => {
   try {
+    console.log(`🎯 Practice Test Results Route Hit: /${req.params.testId}/results`);
     const { testId } = req.params;
     const userId = req.user.userId;
 
