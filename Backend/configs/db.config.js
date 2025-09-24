@@ -15,7 +15,6 @@ async function connectDB(uri) {
     
     // Performance Settings
     bufferCommands: false,           // Don't buffer commands
-    bufferMaxEntries: 0,             // No buffering
     maxConnecting: 100,              // Allow 100 simultaneous connections
     
     // High Load Settings
@@ -26,7 +25,6 @@ async function connectDB(uri) {
     
     // Connection Management
     heartbeatFrequencyMS: 10000,      // Heartbeat every 10 seconds
-    serverSelectionRetryDelayMS: 2000, // Retry every 2 seconds
     
     // Auto Index (keep existing)
     autoIndex: true
