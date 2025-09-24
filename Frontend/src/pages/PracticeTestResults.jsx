@@ -21,7 +21,6 @@ const PracticeTestResults = () => {
     try {
       // Get the latest attempt by default
       const data = await apiRequest(`/practice-tests/${testId}/results/1`);
-      console.log('🎯 PracticeTestResults: Data received:', data);
       setTest(data.test);
       setSubmission(data.submission);
       setSelectedAttempt(1);

@@ -31,7 +31,6 @@ const StudentDashboard = () => {
     let pollInterval = null;
 
     socket.on("connect", () => {
-      console.log("Socket connected successfully");
       setSocketConnected(true);
       setConnectionError(null);
       // Join room with userId for targeted events
@@ -53,7 +52,6 @@ const StudentDashboard = () => {
     });
 
     socket.on("disconnect", (reason) => {
-      console.log("Socket disconnected:", reason);
       setSocketConnected(false);
       // Clear fallback polling if it exists
       if (pollInterval) {
@@ -63,7 +61,6 @@ const StudentDashboard = () => {
     });
 
     socket.on("assignmentCreated", (data) => {
-      console.log("Assignment created event received:", data);
       if (data.userId === getCurrentUserId()) {
         // Refresh student data and recent activity
         fetchStudentData();
@@ -73,7 +70,6 @@ const StudentDashboard = () => {
 
     // ✅ Fixed: Proper cleanup function
     return () => {
-      console.log("Cleaning up socket connection");
       if (pollInterval) {
         clearInterval(pollInterval);
       }

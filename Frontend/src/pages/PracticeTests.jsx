@@ -47,7 +47,6 @@ const PracticeTests = () => {
           }
         } catch (error) {
           // If there's an error (like 404), the test hasn't been attempted
-          console.log(`No attempts found for test ${test._id}`);
         }
       }
       setAttemptedTests(attemptedSet);
@@ -67,9 +66,7 @@ const PracticeTests = () => {
     try {
       setLoading(true);
       setError(null);
-      console.log('🎯 Frontend: Fetching practice tests...');
       const data = await apiRequest("/practice-tests");
-      console.log('🎯 Frontend: Practice tests data received:', data);
       setTests(data.tests || []);
     } catch (error) {
       console.error("Error fetching practice tests:", error);
