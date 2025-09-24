@@ -18,10 +18,9 @@ const emptyQuestion = (kind) => ({
     answers: [],
   }),
   ...(kind === "theory" && {
-    guidelines: "",
+    // No guidelines field
   }),
   ...(kind === "coding" && {
-    guidelines: "",
     examples: [],
   }),
 });
@@ -98,11 +97,10 @@ export default function CreateTest() {
           }),
 
           ...(q.kind === "coding" && {
-            guidelines: q.guidelines,
             examples: q.examples || [],
           }),
           ...(q.kind === "theory" && {
-            guidelines: q.guidelines,
+            // No guidelines field
           }),
         })),
       });
@@ -385,11 +383,10 @@ export default function CreateTest() {
           }),
 
           ...(q.kind === "coding" && {
-            guidelines: q.guidelines,
             examples: q.examples || [],
           }),
           ...(q.kind === "theory" && {
-            guidelines: q.guidelines,
+            // No guidelines field
           }),
         })),
       };
@@ -1037,35 +1034,6 @@ export default function CreateTest() {
 
                   {question.kind === "coding" && (
                     <>
-                      <div>
-                        <label className="block text-sm font-medium mb-2">
-                          Guidelines (Optional)
-                        </label>
-                        <Editor
-                          height="200px"
-                          defaultLanguage="plaintext"
-                          value={question.guidelines || ""}
-                          onChange={(value) =>
-                            updateQuestion(
-                              question.id,
-                              "guidelines",
-                              value || ""
-                            )
-                          }
-                          theme="vs-dark"
-                          options={{
-                            minimap: { enabled: false },
-                            fontSize: 14,
-                            lineNumbers: "off",
-                            scrollBeyondLastLine: false,
-                            automaticLayout: true,
-                            wordWrap: "on",
-                            padding: { top: 16, bottom: 16 },
-                            placeholder:
-                              "Enter evaluation guidelines for this coding question...",
-                          }}
-                        />
-                      </div>
 
                       <div>
                         <div className="flex justify-between items-center mb-2">
@@ -1174,35 +1142,6 @@ export default function CreateTest() {
                           rows={3}
                           placeholder="Enter answer here..."
                           required
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-2">
-                          Guidelines (Optional)
-                        </label>
-                        <Editor
-                          height="200px"
-                          defaultLanguage="plaintext"
-                          value={question.guidelines || ""}
-                          onChange={(value) =>
-                            updateQuestion(
-                              question.id,
-                              "guidelines",
-                              value || ""
-                            )
-                          }
-                          theme="vs-dark"
-                          options={{
-                            minimap: { enabled: false },
-                            fontSize: 14,
-                            lineNumbers: "off",
-                            scrollBeyondLastLine: false,
-                            automaticLayout: true,
-                            wordWrap: "on",
-                            padding: { top: 16, bottom: 16 },
-                            placeholder:
-                              "Enter evaluation guidelines for this question...",
-                          }}
                         />
                       </div>
 
