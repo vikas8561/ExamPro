@@ -59,7 +59,7 @@ const StudentTable = ({ type, data }) => {
                           <div className="flex items-center space-x-2">
                             <div className="w-3 h-3 bg-yellow-400 rounded-full animate-pulse"></div>
                             <span className="px-4 py-2 rounded-full text-sm font-medium bg-yellow-900/30 text-yellow-300 border border-yellow-500/30">
-                              Hidden until deadline
+                              Available after deadline
                             </span>
                           </div>
                         );
