@@ -4,23 +4,6 @@ const Test = require("../models/Test");
 const PracticeTestSubmission = require("../models/PracticeTestSubmission");
 const { authenticateToken, requireRole } = require("../middleware/auth");
 
-console.log("🎯 Practice Tests Route File Loading...");
-
-// Test route to verify the file is loaded
-router.get("/test", (req, res) => {
-  console.log("🎯 Practice Tests Route File Loaded Successfully!");
-  res.json({ message: "Practice tests route file is working", timestamp: new Date().toISOString() });
-});
-
-// Test route for results without authentication
-router.get("/:testId/results-test", (req, res) => {
-  console.log(`🎯 Test Results Route Hit: /${req.params.testId}/results-test`);
-  res.json({ 
-    message: "Test results route is working", 
-    testId: req.params.testId,
-    timestamp: new Date().toISOString() 
-  });
-});
 
 // MEMORY OPTIMIZATION: Clean up old practice test data
 const cleanupOldPracticeData = async () => {
@@ -326,12 +309,9 @@ router.post("/:testId/save", authenticateToken, async (req, res, next) => {
 // Backward compatible endpoint for old URL format with attemptNumber (MUST BE FIRST)
 router.get("/:testId/results/:attemptNumber", authenticateToken, async (req, res, next) => {
   try {
-    console.log(`🎯 Practice Test Results Route Hit: /${req.params.testId}/results/${req.params.attemptNumber}`);
-    console.log(`🎯 User ID: ${req.user.userId}`);
     const { testId } = req.params; // attemptNumber is ignored
     const userId = req.user.userId;
 
-    console.log(`🎯 Searching for submission: testId=${testId}, userId=${userId}`);
     const submission = await PracticeTestSubmission.findOne({
       testId,
       userId
@@ -340,9 +320,7 @@ router.get("/:testId/results/:attemptNumber", authenticateToken, async (req, res
       select: "title subject questions"
     });
 
-    console.log(`🎯 Submission found:`, submission ? "YES" : "NO");
     if (!submission) {
-      console.log(`🎯 No submission found for testId=${testId}, userId=${userId}`);
       return res.status(404).json({ message: "Practice test submission not found" });
     }
 
@@ -398,7 +376,6 @@ router.get("/:testId/results/:attemptNumber", authenticateToken, async (req, res
 // Get practice test results (single attempt storage)
 router.get("/:testId/results", authenticateToken, async (req, res, next) => {
   try {
-    console.log(`🎯 Practice Test Results Route Hit: /${req.params.testId}/results`);
     const { testId } = req.params;
     const userId = req.user.userId;
 
