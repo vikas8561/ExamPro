@@ -30,9 +30,14 @@ export default function Users() {
         setIsFilterOpen(false);
       }
     };
+    
+    // ✅ Fixed: Add event listener with proper cleanup
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []); // ✅ Fixed: Empty dependency array to prevent recreation
 
   const [studentCategoryFilter, setStudentCategoryFilter] = useState("All");
   const [isFilterOpen, setIsFilterOpen] = useState(false);

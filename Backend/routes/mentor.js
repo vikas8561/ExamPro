@@ -257,6 +257,11 @@ router.get("/student/:studentId/submissions", authenticateToken, async (req, res
     const startTime = Date.now();
     // console.log('🚀 ULTRA FAST: Fetching submissions for student:', studentId);
 
+    // ✅ Fixed: Add pagination to prevent memory issues
+    const page = parseInt(req.query.page) || 0;
+    const limit = Math.min(parseInt(req.query.limit) || 50, 100); // Max 100 records
+    const skip = page * limit;
+
     // ULTRA FAST: Get submissions with MINIMAL data (NO questions upfront!)
     const submissions = await TestSubmission.find({ userId: studentId })
       .select("assignmentId testId userId responses totalScore maxScore submittedAt timeSpent mentorReviewed mentorScore mentorFeedback reviewStatus reviewedAt")
@@ -269,6 +274,8 @@ router.get("/student/:studentId/submissions", authenticateToken, async (req, res
         select: "title type instructions timeLimit negativeMarkingPercent" // NO questions!
       })
       .sort({ submittedAt: -1 })
+      .limit(limit)
+      .skip(skip)
       .lean(); // Use lean() for 2x faster queries
 
     // MEMORY OPTIMIZED: Batch process score recalculation
@@ -281,15 +288,16 @@ router.get("/student/:studentId/submissions", authenticateToken, async (req, res
       .map(sub => sub.testId._id.toString())
     )];
 
-    // Batch load all required tests (single query per test)
+    // ✅ Fixed: Batch load all required tests (single query instead of N+1)
     const testsMap = new Map();
-    for (const testId of uniqueTestIds) {
-      const test = await Test.findById(testId)
+    if (uniqueTestIds.length > 0) {
+      const tests = await Test.find({ _id: { $in: uniqueTestIds } })
         .populate("questions", "kind text options answer answers guidelines examples points")
         .lean();
-      if (test) {
-        testsMap.set(testId, test);
-      }
+      
+      tests.forEach(test => {
+        testsMap.set(test._id.toString(), test);
+      });
     }
 
     // Process submissions with pre-loaded tests

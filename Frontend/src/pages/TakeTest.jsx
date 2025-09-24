@@ -151,25 +151,29 @@ const TakeTest = () => {
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
-        const newViolationCount = violationCount + 1;
-        setViolationCount(newViolationCount);
+        setViolationCount(prev => {
+          const newViolationCount = prev + 1;
+          
+          const violation = {
+            timestamp: new Date(),
+            violationType: "tab_switch",
+            details: `Tab switched - violation ${newViolationCount}`,
+            tabCount: newViolationCount,
+          };
+          
+          setViolations(prevViolations => [...prevViolations, violation]);
 
-        const violation = {
-          timestamp: new Date(),
-          violationType: "tab_switch",
-          details: `Tab switched - violation ${newViolationCount}`,
-          tabCount: newViolationCount,
-        };
-        setViolations((prev) => [...prev, violation]);
-
-        if (newViolationCount === 1 || newViolationCount === 2) {
-          setShowResumeModal(true);
-        } else if (newViolationCount >= 3) {
-          alert(
-            "Test cancelled due to multiple tab violations (3+ violations detected)."
-          );
-          submitTest(true);
-        }
+          if (newViolationCount === 1 || newViolationCount === 2) {
+            setShowResumeModal(true);
+          } else if (newViolationCount >= 3) {
+            alert(
+              "Test cancelled due to multiple tab violations (3+ violations detected)."
+            );
+            submitTest(true);
+          }
+          
+          return newViolationCount;
+        });
       }
     };
 
@@ -178,7 +182,7 @@ const TakeTest = () => {
     return () => {
       window.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [violationCount, testStarted]);
+  }, [testStarted, submitTest]); // ✅ Fixed: Removed violationCount dependency, added submitTest
 
   useEffect(() => {
     if (!testStarted) return;
@@ -191,30 +195,33 @@ const TakeTest = () => {
       );
 
       if (!isFullscreen && testStarted && !isSubmitting) {
-("Fullscreen mode exited - treating as violation");
-        const newViolationCount = violationCount + 1;
-        setViolationCount(newViolationCount);
+        console.log("Fullscreen mode exited - treating as violation");
+        setViolationCount(prev => {
+          const newViolationCount = prev + 1;
+          
+          const violation = {
+            timestamp: new Date(),
+            violationType: "fullscreen_exit",
+            details: `Fullscreen exited - violation ${newViolationCount}`,
+            tabCount: newViolationCount,
+          };
+          setViolations(prevViolations => [...prevViolations, violation]);
 
-        const violation = {
-          timestamp: new Date(),
-          violationType: "fullscreen_exit",
-          details: `Fullscreen exited - violation ${newViolationCount}`,
-          tabCount: newViolationCount,
-        };
-        setViolations((prev) => [...prev, violation]);
-
-        if (newViolationCount === 1 || newViolationCount === 2) {
-          setShowResumeModal(true);
-          // Attempt to re-enter fullscreen mode
-          setTimeout(() => {
-            requestFullscreen();
-          }, 1000);
-        } else if (newViolationCount >= 3) {
-          alert(
-            "Test cancelled due to multiple violations (3+ violations detected)."
-          );
-          submitTest(true);
-        }
+          if (newViolationCount === 1 || newViolationCount === 2) {
+            setShowResumeModal(true);
+            // Attempt to re-enter fullscreen mode
+            setTimeout(() => {
+              requestFullscreen();
+            }, 1000);
+          } else if (newViolationCount >= 3) {
+            alert(
+              "Test cancelled due to multiple violations (3+ violations detected)."
+            );
+            submitTest(true);
+          }
+          
+          return newViolationCount;
+        });
       }
     };
 
@@ -234,7 +241,7 @@ const TakeTest = () => {
         handleFullscreenChange
       );
     };
-  }, [testStarted, violationCount, isSubmitting]);
+  }, [testStarted, isSubmitting, submitTest, requestFullscreen]); // ✅ Fixed: Removed violationCount dependency
 
   useEffect(() => {
     if (!testStarted) return;
@@ -272,7 +279,7 @@ const TakeTest = () => {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [testStarted]);
+  }, [testStarted]); // ✅ Fixed: Only depends on testStarted
 
   useEffect(() => {
     if (!testStarted) return;
@@ -303,7 +310,7 @@ const TakeTest = () => {
     return () => {
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [testStarted]);
+  }, [testStarted]); // ✅ Fixed: Only depends on testStarted
 
   useEffect(() => {
     if (!testStarted) return;

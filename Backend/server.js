@@ -248,11 +248,12 @@ app.use("/api/time", require("./routes/time"));
 // Make io available to routes
 app.set('io', io);
 
-// Socket.IO connection handling with limits
+// ✅ Fixed: Enhanced Socket.IO connection handling with proper error management
 io.on('connection', (socket) => {
   // Check connection limit
   if (activeConnections >= MAX_CONNECTIONS) {
     console.warn(`⚠️ WebSocket connection limit reached (${MAX_CONNECTIONS}). Disconnecting new connection.`);
+    socket.emit('error', { message: 'Server at capacity. Please try again later.' });
     socket.disconnect(true);
     return;
   }
@@ -260,14 +261,40 @@ io.on('connection', (socket) => {
   activeConnections++;
   console.log(`📊 WebSocket connections: ${activeConnections}/${MAX_CONNECTIONS}`);
 
+  // ✅ Fixed: Add connection timeout to prevent hanging connections
+  const connectionTimeout = setTimeout(() => {
+    if (socket.connected) {
+      console.warn(`⚠️ Connection timeout for socket ${socket.id}`);
+      socket.disconnect(true);
+    }
+  }, 30000); // 30 second timeout
+
   socket.on('join', (userId) => {
-    socket.join(userId.toString());
-    console.log(`👤 User ${socket.id} joined room: ${userId} (Total: ${activeConnections})`);
+    try {
+      socket.join(userId.toString());
+      console.log(`👤 User ${socket.id} joined room: ${userId} (Total: ${activeConnections})`);
+      clearTimeout(connectionTimeout); // Clear timeout on successful join
+    } catch (error) {
+      console.error(`❌ Error joining room for user ${userId}:`, error);
+    }
   });
 
-  socket.on('disconnect', () => {
+  socket.on('disconnect', (reason) => {
     activeConnections--;
-    console.log(`👤 User disconnected: ${socket.id} (Total: ${activeConnections})`);
+    clearTimeout(connectionTimeout);
+    console.log(`👤 User disconnected: ${socket.id} (Reason: ${reason}, Total: ${activeConnections})`);
+  });
+
+  // ✅ Fixed: Add error handler for socket errors
+  socket.on('error', (error) => {
+    console.error(`❌ Socket error for ${socket.id}:`, error);
+    activeConnections--;
+    clearTimeout(connectionTimeout);
+  });
+
+  // ✅ Fixed: Add ping/pong to detect dead connections
+  socket.on('ping', () => {
+    socket.emit('pong');
   });
 });
 

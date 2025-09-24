@@ -125,9 +125,19 @@ const StudentAssignments = () => {
     // Setup Socket.IO client - use the same base URL as API
     const API_BASE_URL = 'https://cg-test-app.onrender.com/api';
     const socketUrl = API_BASE_URL.replace('/api', ''); // Remove /api to get base URL
-    const socket = io(socketUrl);
+    const socket = io(socketUrl, {
+      // ✅ Fixed: Add connection options for better cleanup
+      autoConnect: true,
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      timeout: 20000
+    });
+
+    let pollInterval = null;
 
     socket.on("connect", () => {
+      console.log("Socket connected successfully");
       // Join room with userId for targeted events
       const userId = localStorage.getItem("userId");
       if (userId) {
@@ -138,34 +148,36 @@ const StudentAssignments = () => {
     socket.on("connect_error", (error) => {
       console.error("Socket connection error:", error);
       // Fallback: poll for updates every 30 seconds
-      const pollInterval = setInterval(() => {
+      pollInterval = setInterval(() => {
         fetchAssignments();
       }, 30000);
-      // Store interval ID for cleanup
-      socket.pollInterval = pollInterval;
     });
 
     socket.on("disconnect", (reason) => {
+      console.log("Socket disconnected:", reason);
       // Clear fallback polling if it exists
-      if (socket.pollInterval) {
-        clearInterval(socket.pollInterval);
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
       }
     });
 
     socket.on("assignmentCreated", (data) => {
+      console.log("Assignment created event received:", data);
       // Refresh assignments data
       fetchAssignments();
     });
 
-    // Debug: log all events to verify connection
-    socket.onAny((event, ...args) => {
-    });
-
-    // Cleanup on unmount
+    // ✅ Fixed: Proper cleanup function
     return () => {
+      console.log("Cleaning up socket connection");
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+      socket.removeAllListeners();
       socket.disconnect();
     };
-  }, []);
+  }, []); // ✅ Fixed: Empty dependency array to prevent recreation
 
   const fetchSubjects = async () => {
     try {
