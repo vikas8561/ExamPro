@@ -4,6 +4,8 @@ const Test = require("../models/Test");
 const PracticeTestSubmission = require("../models/PracticeTestSubmission");
 const { authenticateToken, requireRole } = require("../middleware/auth");
 
+console.log("🎯 Practice Tests Route File Loading...");
+
 // Test route to verify the file is loaded
 router.get("/test", (req, res) => {
   console.log("🎯 Practice Tests Route File Loaded Successfully!");
