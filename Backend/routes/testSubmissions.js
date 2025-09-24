@@ -210,27 +210,6 @@ router.post("/", authenticateToken, async (req, res, next) => {
           points = -(question.points * negativeMarkingPercent);
           incorrectCount++;
         }
-      } else if (question.kind === "msq") {
-        // For MSQ, selectedOption is a comma-separated string of selected option texts
-        const selectedOptions = userResponse.selectedOption ? userResponse.selectedOption.split(',').map(opt => opt.trim()) : [];
-        const correctAnswers = question.answers || [];
-
-        // Check if all selected options are correct and all correct answers are selected
-        const allSelectedCorrect = selectedOptions.every(selected => correctAnswers.includes(selected));
-        const allCorrectSelected = correctAnswers.every(correct => selectedOptions.includes(correct));
-
-        isCorrect = allSelectedCorrect && allCorrectSelected && selectedOptions.length > 0;
-
-        if (isCorrect) {
-          points = question.points;
-          correctCount++;
-        } else if (selectedOptions.length > 0) {
-          // Apply negative marking for incorrect MSQ answers (only if user attempted)
-          points = -(question.points * negativeMarkingPercent);
-          incorrectCount++;
-        } else {
-          notAnsweredCount++;
-        }
       } else if (question.kind === "theoretical" || question.kind === "coding") {
         // Theoretical and coding questions are graded by Gemini AI
         if (userResponse.textAnswer && userResponse.textAnswer.trim() !== "") {

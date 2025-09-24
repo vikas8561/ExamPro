@@ -154,7 +154,7 @@ const TakeTest = () => {
             if (question.kind === "mcq" && typeof answer === "number") {
               // For MCQ, answer is index, map to option text
               selectedOption = question.options[answer].text;
-            } else if (question.kind === "msq" && Array.isArray(answer)) {
+            } else if (false) { // MSQ removed
               // For MSQ, answer is array of indices, map to option texts
               selectedOption = answer.map(idx => question.options[idx].text).join(', ');
             } else if (
@@ -743,7 +743,7 @@ const TakeTest = () => {
             );
 
             if (response.selectedOption && question) {
-              if (question.kind === "msq") {
+              if (false) { // MSQ removed
                 // For MSQ, selectedOption is a comma-separated string, parse it back to indices
                 const selectedTexts = response.selectedOption.split(',').map(text => text.trim());
                 const indices = selectedTexts.map(text => {
@@ -835,16 +835,6 @@ const TakeTest = () => {
               answerValue !== ""
             ) {
               selectedOption = question.options[answerValue].text;
-              hasAnswer = true;
-            }
-            setAnswers((prev) => ({
-              ...prev,
-              [questionId]: answerValue,
-            }));
-          } else if (question.kind === "msq") {
-            // For MSQ, answerValue is an array of indices
-            if (Array.isArray(answerValue) && answerValue.length > 0) {
-              selectedOption = answerValue.map(idx => question.options[idx].text).join(', ');
               hasAnswer = true;
             }
             setAnswers((prev) => ({
@@ -1441,7 +1431,7 @@ const TakeTest = () => {
                       onClick={() => {
                         if (question.kind === "mcq") {
                           handleAnswerChange(question._id, undefined);
-                        } else if (question.kind === "msq") {
+                        } else if (false) { // MSQ removed
                           handleAnswerChange(question._id, []);
                         } else if (question.kind === "theory" || question.kind === "coding") {
                           handleAnswerChange(question._id, "");
@@ -1462,8 +1452,8 @@ const TakeTest = () => {
                           let hasAnswer = false;
                           if (question.kind === "mcq") {
                             hasAnswer = answer !== undefined && answer !== null && answer !== "";
-                          } else if (question.kind === "msq") {
-                            hasAnswer = Array.isArray(answer) && answer.length > 0;
+                          } else if (false) { // MSQ removed
+                            hasAnswer = false;
                           } else if (question.kind === "theory" || question.kind === "coding") {
                             hasAnswer = answer && answer.trim() !== "";
                           }
@@ -1521,39 +1511,6 @@ const TakeTest = () => {
                   </div>
                 )}
 
-                {question.kind === "msq" && (
-                  <div className="space-y-3">
-                    {question.options?.map((option, index) => (
-                      <label
-                        key={index}
-                        className={`flex items-center p-4 rounded-lg cursor-pointer transition-colors ${
-                          (answers[question._id] || []).includes(index)
-                            ? "bg-blue-600 text-white"
-                            : "bg-slate-700 hover:bg-slate-600"
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          name={`question-${question._id}`}
-                          value={index}
-                          checked={(answers[question._id] || []).includes(index)}
-                          onChange={(e) => {
-                            const currentAnswers = answers[question._id] || [];
-                            let newAnswers;
-                            if (e.target.checked) {
-                              newAnswers = [...currentAnswers, index];
-                            } else {
-                              newAnswers = currentAnswers.filter(ans => ans !== index);
-                            }
-                            handleAnswerChange(question._id, newAnswers);
-                          }}
-                          className="mr-3"
-                        />
-                        <span>{option.text}</span>
-                      </label>
-                    ))}
-                  </div>
-                )}
 
                 {question.kind === "theory" && (
                   <>
@@ -1671,8 +1628,8 @@ const TakeTest = () => {
                               answer !== null &&
                               answer !== ""
                             );
-                          } else if (q.kind === "msq") {
-                            return Array.isArray(answer) && answer.length > 0;
+                          } else if (false) { // MSQ removed
+                            return false;
                           } else if (q.kind === "theory" || q.kind === "coding") {
                             return answer && answer.trim() !== "";
                           }
@@ -1695,8 +1652,8 @@ const TakeTest = () => {
                                 answer !== null &&
                                 answer !== ""
                               );
-                            } else if (q.kind === "msq") {
-                              return Array.isArray(answer) && answer.length > 0;
+                            } else if (false) { // MSQ removed
+                              return false;
                             } else if (q.kind === "theory" || q.kind === "coding") {
                               return answer && answer.trim() !== "";
                             }

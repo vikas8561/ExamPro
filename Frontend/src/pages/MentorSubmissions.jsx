@@ -284,11 +284,7 @@ const MentorSubmissions = () => {
                       let studentAnswer = response.selectedOption || "Not answered";
                       let correctAnswer = question.answer || "N/A";
 
-                      // For MSQ, join array answers
-                      if (question.kind === "msq") {
-                        studentAnswer = Array.isArray(response.selectedOption) ? response.selectedOption.join(", ") : studentAnswer;
-                        correctAnswer = Array.isArray(question.answers) ? question.answers.join(", ") : correctAnswer;
-                      }
+                      // MSQ removed
 
                       return (
                         <div key={index} className="bg-slate-700 rounded-lg p-4">

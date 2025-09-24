@@ -15,11 +15,11 @@ const ExampleSchema = new mongoose.Schema(
 
 const QuestionSchema = new mongoose.Schema(
   {
-    kind: { type: String, enum: ["mcq", "msq", "theory", "coding"], required: true },
+    kind: { type: String, enum: ["mcq", "theory", "coding"], required: true },
     text: { type: String, required: true, trim: true },
     options: { type: [OptionSchema], default: undefined },
     answer: { type: String, default: "" },
-    answers: { type: [String], default: [] }, // For MSQ - multiple correct answers
+    answers: { type: [String], default: [] }, // Removed MSQ support
     guidelines: { type: String, default: "" },
     examples: { type: [ExampleSchema], default: [] },
     points: { type: Number, default: 1, min: 0 },
@@ -31,7 +31,7 @@ const TestSchema = new mongoose.Schema(
   {
     title: { type: String, required: true, trim: true },
     subject: { type: String, default: "" },
-    type: { type: String, enum: ["mcq", "msq", "theory", "coding", "mixed", "practice"], default: "mixed" },
+    type: { type: String, enum: ["mcq", "theory", "coding", "mixed", "practice"], default: "mixed" },
     instructions: { type: String, default: "" },
     timeLimit: { type: Number, default: 30, min: 1 },
     negativeMarkingPercent: { type: Number, enum: [0, 0.25, 0.5, 0.75, 1], default: 0 },
@@ -75,9 +75,6 @@ TestSchema.path("questions").validate(function (questions) {
     if (q.kind === "mcq") {
       if (!Array.isArray(q.options) || q.options.length < 2) return false;
       if (!q.answer || typeof q.answer !== "string") return false;
-    } else if (q.kind === "msq") {
-      if (!Array.isArray(q.options) || q.options.length < 2) return false;
-      if (!Array.isArray(q.answers) || q.answers.length === 0) return false;
     }
   }
   return true;

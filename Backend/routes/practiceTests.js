@@ -85,7 +85,7 @@ router.get("/:testId", authenticateToken, async (req, res, next) => {
     const questionsWithoutAnswers = test.questions.map(q => ({
       ...q,
       answer: undefined, // Don't send correct answers
-      answers: undefined // Don't send correct answers for MSQ
+      answers: undefined // Removed MSQ support
     }));
 
     res.json({
@@ -222,14 +222,6 @@ router.post("/:testId/save", authenticateToken, async (req, res, next) => {
           selectedOption = response.selectedOption || "";
           isAnswered = selectedOption !== "";
           isCorrect = selectedOption === question.answer;
-          points = isCorrect ? (question.points || 1) : 0;
-        } else if (question.kind === "msq") {
-          // For MSQ, check if all correct answers are selected and no wrong ones
-          const correctAnswers = question.answers || [];
-          const selectedAnswers = response.selectedOptions || [];
-          isAnswered = selectedAnswers.length > 0;
-          isCorrect = correctAnswers.length === selectedAnswers.length && 
-                     correctAnswers.every(ans => selectedAnswers.includes(ans));
           points = isCorrect ? (question.points || 1) : 0;
         } else {
           textAnswer = response.textAnswer || "";

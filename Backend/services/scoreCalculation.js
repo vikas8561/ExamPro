@@ -58,22 +58,6 @@ async function recalculateSubmissionScore(submission, test) {
       if (!isCorrect && test.negativeMarkingPercent > 0) {
         points = -(question.points || 1) * test.negativeMarkingPercent;
       }
-    } else if (question.kind === "msq") {
-      // For MSQ, check if all correct answers are selected and no wrong ones
-      const correctAnswers = question.answers || [];
-      const selectedAnswers = response.selectedOption ? response.selectedOption.split(',').map(a => a.trim()) : [];
-
-      // All correct answers must be selected, and no incorrect answers
-      const allCorrectSelected = correctAnswers.every(ans => selectedAnswers.includes(ans));
-      const noIncorrectSelected = selectedAnswers.every(ans => correctAnswers.includes(ans));
-
-      isCorrect = allCorrectSelected && noIncorrectSelected;
-      points = isCorrect ? (question.points || 1) : 0;
-
-      // Apply negative marking if applicable
-      if (!isCorrect && test.negativeMarkingPercent > 0) {
-        points = -(question.points || 1) * test.negativeMarkingPercent;
-      }
     } else if (question.kind === "theory" || question.kind === "coding") {
       // For theory/coding, keep existing manual grading
       isCorrect = response.isCorrect;

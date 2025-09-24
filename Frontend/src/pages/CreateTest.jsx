@@ -13,7 +13,7 @@ const emptyQuestion = (kind) => ({
     options: ["", "", "", ""],
     answer: "",
   }),
-  ...(kind === "msq" && {
+  ...(false && { // MSQ removed
     options: ["", "", "", ""],
     answers: [],
   }),
@@ -93,7 +93,7 @@ export default function CreateTest() {
             options: q.options.map((opt) => opt.text),
             answer: q.answer,
           }),
-          ...(q.kind === "msq" && {
+          ...(false && { // MSQ removed
             options: q.options.map((opt) => opt.text),
             answers: q.answers || [],
           }),
@@ -309,7 +309,7 @@ export default function CreateTest() {
             options: q.options.map((opt) => ({ text: opt })),
             answer: q.answer,
           }),
-          ...(q.kind === "msq" && {
+          ...(false && { // MSQ removed
             options: q.options.map((opt) => ({ text: opt })),
             answers: q.answers || [],
           }),
@@ -481,7 +481,6 @@ export default function CreateTest() {
           >
             <option value="mixed">Mixed (All Types)</option>
             <option value="mcq">MCQ Only</option>
-            <option value="msq">MSQ Only</option>
             <option value="coding">Coding Only</option>
             <option value="theory">Theory Only</option>
             <option value="practice">Practice Test (MCQ Only)</option>
@@ -761,10 +760,10 @@ export default function CreateTest() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => addQuestion("msq")}
+                      onClick={() => {}} // MSQ removed
                       className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-md cursor-pointer"
                     >
-                      Add MSQ
+                      Add MSQ (Disabled)
                     </button>
 
                     <button
@@ -892,7 +891,7 @@ export default function CreateTest() {
                     </>
                   )}
 
-                  {question.kind === "msq" && (
+                  {false && ( // MSQ removed
                     <>
                       <div>
                         <label className="block text-sm font-medium mb-2">
