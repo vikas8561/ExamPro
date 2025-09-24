@@ -46,7 +46,7 @@ const JsonQuestionUploader = ({ onQuestionsLoaded }) => {
             text: q.text,
             options: q.kind === 'mcq' ? q.options : undefined,
             answer: q.kind === 'mcq' ? q.answer : undefined,
-            examples: q.kind === 'theoretical' ? q.examples || [] : undefined,
+            examples: q.kind === 'coding' ? q.examples || [] : undefined,
             points: q.points || 1
           };
         });
@@ -101,15 +101,24 @@ const JsonQuestionUploader = ({ onQuestionsLoaded }) => {
       "points": 2
     },
     {
-      "kind": "theoretical",
+      "kind": "theory",
       "text": "Explain the concept of photosynthesis.",
+      "points": 5
+    },
+    {
+      "kind": "coding",
+      "text": "Write a function to calculate factorial.",
       "examples": [
         {
-          "input": "Photosynthesis equation",
-          "output": "6CO2 + 6H2O → C6H12O6 + 6O2"
+          "input": "5",
+          "output": "120"
+        },
+        {
+          "input": "3",
+          "output": "6"
         }
       ],
-      "points": 5
+      "points": 10
     }
   ]
 }`}
