@@ -358,22 +358,14 @@ router.get("/student", authenticateToken, async (req, res, next) => {
         }
       });
 
-    // Filter submissions to only include those where the deadline has passed
+    // Return all submissions - let frontend handle deadline logic for score visibility
+    // This ensures students can see all their completed tests immediately
     const filteredSubmissions = submissions.filter(submission => {
       const assignment = submission.assignmentId;
       if (!assignment) return false;
-
-      let deadline = assignment.deadline;
-      if (!deadline) {
-        // Calculate deadline from startTime + duration if not set
-        deadline = new Date(assignment.startTime);
-        deadline.setMinutes(deadline.getMinutes() + (assignment.duration || 0));
-      }
-
-      // Add buffer to handle timing precision issues
-      const deadlineWithBuffer = new Date(deadline.getTime() + 5000);
-
-      return currentTime >= deadlineWithBuffer;
+      
+      // Only return submissions that have been submitted (completed)
+      return submission.submittedAt !== null && submission.submittedAt !== undefined;
     });
 
     res.json(filteredSubmissions);
