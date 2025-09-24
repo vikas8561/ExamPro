@@ -179,6 +179,7 @@ const PracticeTestResults = () => {
                 selectedOption: question.selectedOption,
                 textAnswer: question.textAnswer,
                 isCorrect: question.isCorrect,
+                isAnswered: question.isAnswered,
                 points: question.pointsEarned
               };
 
@@ -191,11 +192,11 @@ const PracticeTestResults = () => {
                     <div className={`px-3 py-1 rounded-full text-sm font-medium ${
                       response?.isCorrect 
                         ? "bg-green-900/50 text-green-300" 
-                        : response?.isAnswered
+                        : (response?.selectedOption || response?.textAnswer)
                         ? "bg-red-900/50 text-red-300"
                         : "bg-slate-700 text-slate-300"
                     }`}>
-                      {response?.isCorrect ? "Correct" : response?.isAnswered ? "Incorrect" : "Not Answered"}
+                      {response?.isCorrect ? "Correct" : (response?.selectedOption || response?.textAnswer) ? "Incorrect" : "Not Answered"}
                     </div>
                   </div>
 

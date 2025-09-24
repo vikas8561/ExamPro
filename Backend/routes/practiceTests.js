@@ -35,18 +35,31 @@ router.get("/", authenticateToken, async (req, res, next) => {
       .lean();
     console.log('🎯 All practice tests found:', allPracticeTests);
     
-    // Then get only active ones
+    // Then get only active ones - exclude questions for performance but include question count
     const tests = await Test.find({ 
       type: "practice", 
       status: "Active" 
     })
-    .select("title subject instructions timeLimit questions createdBy")
+    .select("title subject instructions timeLimit createdBy questions")
     .populate("createdBy", "name email")
     .sort({ createdAt: -1 })
     .lean();
 
-    console.log(`🎯 Active practice tests found: ${tests.length}`);
-    res.json({ tests });
+    // Transform tests to include question count but exclude question content
+    const testsWithQuestionCount = tests.map(test => ({
+      _id: test._id,
+      title: test.title,
+      subject: test.subject,
+      instructions: test.instructions,
+      timeLimit: test.timeLimit,
+      createdBy: test.createdBy,
+      questionCount: test.questions ? test.questions.length : 0,
+      // Exclude the actual questions array for performance
+      questions: undefined
+    }));
+
+    console.log(`🎯 Active practice tests found: ${testsWithQuestionCount.length}`);
+    res.json({ tests: testsWithQuestionCount });
   } catch (error) {
     console.error('🎯 Error fetching practice tests:', error);
     next(error);

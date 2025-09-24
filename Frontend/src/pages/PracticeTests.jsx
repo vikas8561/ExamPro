@@ -24,6 +24,7 @@ const cardAnimationStyles = `
 const PracticeTests = () => {
   const [tests, setTests] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [subjectFilter, setSubjectFilter] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
@@ -65,6 +66,7 @@ const PracticeTests = () => {
   const fetchPracticeTests = async () => {
     try {
       setLoading(true);
+      setError(null);
       console.log('🎯 Frontend: Fetching practice tests...');
       const data = await apiRequest("/practice-tests");
       console.log('🎯 Frontend: Practice tests data received:', data);
@@ -72,6 +74,7 @@ const PracticeTests = () => {
     } catch (error) {
       console.error("Error fetching practice tests:", error);
       setTests([]);
+      setError('Failed to load practice tests. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -113,6 +116,46 @@ const PracticeTests = () => {
       <div className="min-h-screen bg-slate-900 text-white p-6">
         <div className="flex items-center justify-center h-64">
           <div className="text-xl">Loading practice tests...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white p-6">
+        <div className="max-w-2xl mx-auto">
+          <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-6 text-center">
+            <div className="flex items-center justify-center mb-4">
+              <svg className="h-12 w-12 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 19.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-semibold text-red-300 mb-2">Unable to Load Practice Tests</h2>
+            <p className="text-red-200 mb-4">{error}</p>
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={() => {
+                  setError(null);
+                  fetchPracticeTests();
+                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
+              >
+                Try Again
+              </button>
+              <button
+                onClick={() => {
+                  localStorage.removeItem('token');
+                  localStorage.removeItem('user');
+                  localStorage.removeItem('userId');
+                  window.location.href = '/login';
+                }}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
+              >
+                Log In Again
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -318,7 +361,7 @@ const PracticeTests = () => {
                         <span className="text-slate-300 text-sm font-medium">Questions</span>
                       </div>
                       <span className="px-3 py-1 bg-gradient-to-r from-purple-500/20 to-pink-500/20 text-purple-300 rounded-full text-sm font-semibold border border-purple-400/30 group-hover/item:from-purple-500/30 group-hover/item:to-pink-500/30 group-hover/item:text-purple-200 transition-all duration-300">
-                        {test.questions?.length || 0}
+                        {test.questionCount || 0}
                       </span>
                     </div>
                   </div>
