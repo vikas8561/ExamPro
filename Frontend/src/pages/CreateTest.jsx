@@ -390,6 +390,7 @@ export default function CreateTest() {
           }),
         })),
       };
+      console.log('DEBUG: Frontend sending payload:', payload);
 
       if (isEdit) {
         // Update existing test

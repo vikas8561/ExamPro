@@ -52,6 +52,7 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
 router.post("/", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
     const { title, subject, type, instructions, timeLimit, negativeMarkingPercent, allowedTabSwitches, questions } = req.body;
+    console.log('DEBUG: Creating test with allowedTabSwitches:', allowedTabSwitches);
 
     if (!title) {
       return res.status(400).json({ message: "Test title is required" });
@@ -90,9 +91,11 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
     }
 
     const test = await Test.create(testData);
+    console.log('DEBUG: Test created in database:', test);
 
     const populatedTest = await Test.findById(test._id)
       .populate("createdBy", "name email");
+    console.log('DEBUG: Populated test returned to frontend:', populatedTest);
 
     res.status(201).json(populatedTest);
   } catch (error) {

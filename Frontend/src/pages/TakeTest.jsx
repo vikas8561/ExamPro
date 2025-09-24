@@ -193,7 +193,7 @@ const TakeTest = () => {
           details: String(violation.details),
           tabCount: Number(violation.tabCount),
         })),
-        cancelledDueToViolation: cancelledDueToViolation || violationCount >= 3,
+        cancelledDueToViolation: cancelledDueToViolation || (test?.allowedTabSwitches !== -1 && violationCount > (test?.allowedTabSwitches ?? 2)),
         autoSubmit,
         permissions: {
           camera: String(cameraPermission),
@@ -248,7 +248,9 @@ const TakeTest = () => {
     if (!testStarted) return;
 
     const handleVisibilityChange = () => {
+      console.log('Visibility change detected:', document.visibilityState);
       if (document.visibilityState === "hidden") {
+        console.log('Tab switch violation triggered!');
         setViolationCount(prev => {
           const newViolationCount = prev + 1;
           
@@ -261,13 +263,25 @@ const TakeTest = () => {
           
           setViolations(prevViolations => [...prevViolations, violation]);
 
-          if (newViolationCount === 1 || newViolationCount === 2) {
-            setShowResumeModal(true);
-          } else if (newViolationCount >= 3) {
-            alert(
-              "Test cancelled due to multiple tab violations (3+ violations detected)."
-            );
-            submitTest(true);
+          // Get the allowed tab switches from test data, default to 2 if not available
+          const allowedSwitches = test?.allowedTabSwitches ?? 2;
+          
+          // Handle unlimited switches (practice tests with -1 value)
+          if (allowedSwitches === -1) {
+            // For practice tests, show warning but don't cancel
+            if (newViolationCount === 1 || newViolationCount === 2) {
+              setShowResumeModal(true);
+            }
+          } else {
+            // For regular tests, enforce the limit
+            if (newViolationCount < allowedSwitches) {
+              setShowResumeModal(true);
+            } else if (newViolationCount >= allowedSwitches) {
+              alert(
+                `Test cancelled due to tab violations (${newViolationCount} violations detected, limit: ${allowedSwitches}).`
+              );
+              submitTest(true);
+            }
           }
           
           return newViolationCount;
@@ -291,8 +305,10 @@ const TakeTest = () => {
         document.webkitFullscreenElement ||
         document.msFullscreenElement
       );
+      console.log('Fullscreen change detected:', isFullscreen);
 
       if (!isFullscreen && testStarted && !isSubmitting) {
+        console.log('Fullscreen exit violation triggered!');
         setViolationCount(prev => {
           const newViolationCount = prev + 1;
           
@@ -304,20 +320,39 @@ const TakeTest = () => {
           };
           setViolations(prevViolations => [...prevViolations, violation]);
 
-          if (newViolationCount === 1 || newViolationCount === 2) {
-            setShowResumeModal(true);
-            // ✅ Fixed: Clear existing timeout and set new one
-            if (fullscreenTimeoutRef.current) {
-              clearTimeout(fullscreenTimeoutRef.current);
+          // Get the allowed tab switches from test data, default to 2 if not available
+          const allowedSwitches = test?.allowedTabSwitches ?? 2;
+          
+          // Handle unlimited switches (practice tests with -1 value)
+          if (allowedSwitches === -1) {
+            // For practice tests, show warning but don't cancel
+            if (newViolationCount === 1 || newViolationCount === 2) {
+              setShowResumeModal(true);
+              // ✅ Fixed: Clear existing timeout and set new one
+              if (fullscreenTimeoutRef.current) {
+                clearTimeout(fullscreenTimeoutRef.current);
+              }
+              fullscreenTimeoutRef.current = setTimeout(() => {
+                requestFullscreen();
+              }, 1000);
             }
-            fullscreenTimeoutRef.current = setTimeout(() => {
-              requestFullscreen();
-            }, 1000);
-          } else if (newViolationCount >= 3) {
-            alert(
-              "Test cancelled due to multiple violations (3+ violations detected)."
-            );
-            submitTest(true);
+          } else {
+            // For regular tests, enforce the limit
+            if (newViolationCount < allowedSwitches) {
+              setShowResumeModal(true);
+              // ✅ Fixed: Clear existing timeout and set new one
+              if (fullscreenTimeoutRef.current) {
+                clearTimeout(fullscreenTimeoutRef.current);
+              }
+              fullscreenTimeoutRef.current = setTimeout(() => {
+                requestFullscreen();
+              }, 1000);
+            } else if (newViolationCount >= allowedSwitches) {
+              alert(
+                `Test cancelled due to violations (${newViolationCount} violations detected, limit: ${allowedSwitches}).`
+              );
+              submitTest(true);
+            }
           }
           
           return newViolationCount;
@@ -475,6 +510,8 @@ const TakeTest = () => {
 
       setAssignment(response.assignment);
       setTest(response.test);
+      console.log('Test data loaded in startTest:', response.test);
+      console.log('Test allowedTabSwitches:', response.test?.allowedTabSwitches);
 
       // Initialize questionStatuses to 'not-answered' for all questions
       const initialStatuses = {};
@@ -674,6 +711,8 @@ const TakeTest = () => {
 
       setAssignment(response.assignment);
       setTest(response.test);
+      console.log('Test data loaded in startTest:', response.test);
+      console.log('Test allowedTabSwitches:', response.test?.allowedTabSwitches);
 
       // Initialize questionStatuses to 'not-answered' for all questions
       const initialStatuses = {};
@@ -815,6 +854,8 @@ const TakeTest = () => {
       setQuestionStatuses(initialStatuses);
 
       setTest(assignmentData.testId);
+      console.log('Test data loaded in loadExistingTestData:', assignmentData.testId);
+      console.log('Test allowedTabSwitches:', assignmentData.testId?.allowedTabSwitches);
       setTimeRemaining(remainingSeconds);
       setTestStarted(true);
       setShowPermissionModal(false);
@@ -1695,11 +1736,20 @@ const TakeTest = () => {
               <p className="text-slate-300 mb-2">
                 You have switched tabs/windows {violationCount} time(s) during
                 this test.
+                {test?.allowedTabSwitches !== undefined && test.allowedTabSwitches !== -1 && (
+                  <span className="block text-slate-400 text-sm mt-1">
+                    (Limit: {test.allowedTabSwitches} switches)
+                  </span>
+                )}
               </p>
               <p className="text-slate-400 text-sm">
-                {violationCount === 1
+                {test?.allowedTabSwitches === -1 
+                  ? "This is a practice test - tab switching is allowed but monitored."
+                  : violationCount === 1
                   ? "First warning: Please remain focused on the test."
-                  : "Second warning: This is your final warning."}
+                  : violationCount < (test?.allowedTabSwitches ?? 2)
+                  ? `Warning: ${violationCount} of ${test?.allowedTabSwitches ?? 2} allowed switches used.`
+                  : "Final warning: This is your last allowed switch."}
               </p>
             </div>
 

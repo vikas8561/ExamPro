@@ -201,7 +201,7 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
     const assignment = await Assignment.findById(req.params.id)
       .populate({
         path: "testId",
-        select: "title type instructions timeLimit questions otp",
+        select: "title type instructions timeLimit allowedTabSwitches questions otp",
         populate: {
           path: "questions",
           select: "kind text options answer guidelines examples points"
@@ -334,7 +334,7 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
     const assignment = await Assignment.findById(req.params.id)
       .populate({
         path: "testId",
-        select: "title type instructions timeLimit questions otp",
+        select: "title type instructions timeLimit allowedTabSwitches questions otp",
         populate: {
           path: "questions",
           select: "kind text options answer guidelines examples points"
