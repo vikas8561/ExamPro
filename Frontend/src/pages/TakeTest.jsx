@@ -36,6 +36,15 @@ const TakeTest = () => {
   const fullscreenTimeoutRef = useRef(null);
   const debounceTimers = useRef({});
 
+  // Cleanup debounce timers on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(debounceTimers.current).forEach(timer => {
+        if (timer) clearTimeout(timer);
+      });
+    };
+  }, []);
+
   useEffect(() => {
     const checkExistingTest = async () => {
       if (assignmentId && !testStarted && !startRequestMade.current) {
@@ -1092,15 +1101,6 @@ const TakeTest = () => {
   }
 
   const question = test.questions[currentQuestion];
-
-  // Cleanup debounce timers on unmount
-  useEffect(() => {
-    return () => {
-      Object.values(debounceTimers.current).forEach(timer => {
-        if (timer) clearTimeout(timer);
-      });
-    };
-  }, []);
 
   return (
     <>

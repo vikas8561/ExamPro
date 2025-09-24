@@ -39,7 +39,7 @@ export default function CreateTest() {
     timeLimit: 30,
     negativeMarkingPercent: 0,
     allowedTabSwitches: 0,
-    questions: [emptyQuestion("mcq")],
+    questions: [],
   });
   const [assignmentOptions, setAssignmentOptions] = useState({
     assignToAll: false,
@@ -159,7 +159,35 @@ export default function CreateTest() {
       student.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // Get allowed question types based on test type
+  const getAllowedQuestionTypes = (testType) => {
+    switch (testType) {
+      case "mcq":
+        return ["mcq"];
+      case "coding":
+        return ["coding"];
+      case "theory":
+        return ["theory"];
+      case "practice":
+        return ["mcq"];
+      case "mixed":
+      default:
+        return ["mcq", "coding", "theory"];
+    }
+  };
+
+  // Check if a question type is allowed for the current test type
+  const isQuestionTypeAllowed = (questionType) => {
+    return getAllowedQuestionTypes(form.type).includes(questionType);
+  };
+
   const addQuestion = (kind) => {
+    // Validate that the question type is allowed for the current test type
+    if (!isQuestionTypeAllowed(kind)) {
+      alert(`Cannot add ${kind} questions to a ${form.type} test.`);
+      return;
+    }
+
     setForm((prev) => ({
       ...prev,
       questions: [...prev.questions, emptyQuestion(kind)],
@@ -171,6 +199,36 @@ export default function CreateTest() {
       ...prev,
       questions: prev.questions.filter((q) => q.id !== id),
     }));
+  };
+
+  // Handle test type change and validate existing questions
+  const handleTestTypeChange = (newType) => {
+    const allowedTypes = getAllowedQuestionTypes(newType);
+    const incompatibleQuestions = form.questions.filter(
+      (q) => !allowedTypes.includes(q.kind)
+    );
+
+    if (incompatibleQuestions.length > 0) {
+      const questionTypes = incompatibleQuestions.map(q => q.kind).join(", ");
+      const confirmMessage = `Changing to ${newType} test will remove ${incompatibleQuestions.length} incompatible question(s) (${questionTypes}). Do you want to continue?`;
+      
+      if (!window.confirm(confirmMessage)) {
+        return; // User cancelled, don't change test type
+      }
+
+      // Remove incompatible questions
+      setForm((prev) => ({
+        ...prev,
+        type: newType,
+        questions: prev.questions.filter((q) => allowedTypes.includes(q.kind)),
+      }));
+    } else {
+      // No incompatible questions, safe to change
+      setForm((prev) => ({
+        ...prev,
+        type: newType,
+      }));
+    }
   };
 
   const updateQuestion = (id, field, value) => {
@@ -288,6 +346,20 @@ export default function CreateTest() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Check if there are any questions
+    if (form.questions.length === 0) {
+      alert("Please add at least one question to the test.");
+      return;
+    }
+    
+    // Check for incompatible questions
+    const incompatibleQuestions = form.questions.filter(q => !isQuestionTypeAllowed(q.kind));
+    if (incompatibleQuestions.length > 0) {
+      alert(`Cannot submit test with ${incompatibleQuestions.length} incompatible question(s). Please remove them or change the test type.`);
+      return;
+    }
+    
     setLoading(true);
 
     try {
@@ -471,9 +543,7 @@ export default function CreateTest() {
           </label>
           <select
             value={form.type}
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, type: e.target.value }))
-            }
+            onChange={(e) => handleTestTypeChange(e.target.value)}
             className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
           >
             <option value="mixed">Mixed (All Types)</option>
@@ -482,6 +552,19 @@ export default function CreateTest() {
             <option value="theory">Theory Only</option>
             <option value="practice">Practice Test (MCQ Only)</option>
           </select>
+          
+          {/* Show allowed question types */}
+          <div className="mt-2 text-sm text-slate-400">
+            <span className="font-medium">Allowed question types:</span>{" "}
+            {getAllowedQuestionTypes(form.type).map(type => {
+              const typeLabels = {
+                mcq: "MCQ",
+                coding: "Coding", 
+                theory: "Theory"
+              };
+              return typeLabels[type] || type;
+            }).join(", ")}
+          </div>
         </div>
 
         <div>
@@ -743,79 +826,91 @@ export default function CreateTest() {
 
           {/* Questions Section */}
           <div className="bg-slate-800 p-6 rounded-lg">
+            {/* Warning for incompatible questions */}
+            {form.questions.some(q => !isQuestionTypeAllowed(q.kind)) && (
+              <div className="mb-4 p-3 bg-red-900 border border-red-700 rounded-md">
+                <div className="flex items-center gap-2">
+                  <span className="text-red-400">⚠️</span>
+                  <span className="text-red-200 text-sm">
+                    Some questions are incompatible with the current test type. 
+                    Change the test type or remove incompatible questions.
+                  </span>
+                </div>
+              </div>
+            )}
+            
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-semibold">Questions</h2>
               <div className="flex gap-2 flex-wrap">
-                {form.type === "mixed" && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => addQuestion("mcq")}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md cursor-pointer"
-                    >
-                      Add MCQ
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {}} // MSQ removed
-                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-md cursor-pointer"
-                    >
-                      Add MSQ (Disabled)
-                    </button>
+                {getAllowedQuestionTypes(form.type).map((questionType) => {
+                  const buttonConfig = {
+                    mcq: { label: "Add MCQ", className: "bg-blue-600 hover:bg-blue-700" },
+                    coding: { label: "Add Coding", className: "bg-orange-600 hover:bg-orange-700" },
+                    theory: { label: "Add Theory", className: "bg-red-600 hover:bg-red-700" },
+                  };
 
+                  const config = buttonConfig[questionType];
+                  if (!config) return null;
+
+                  return (
                     <button
+                      key={questionType}
                       type="button"
-                      onClick={() => addQuestion("coding")}
-                      className="px-4 py-2 bg-orange-600 hover:bg-orange-700 rounded-md cursor-pointer"
+                      onClick={() => addQuestion(questionType)}
+                      className={`px-4 py-2 ${config.className} rounded-md cursor-pointer`}
                     >
-                      Add Coding
+                      {config.label}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => addQuestion("theory")}
-                      className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-md cursor-pointer"
-                    >
-                      Add Theory
-                    </button>
-                  </>
-                )}
-                {form.type !== "mixed" && form.type !== "practice" && (
-                  <button
-                    type="button"
-                    onClick={() => addQuestion(form.type)}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md cursor-pointer"
-                  >
-                    Add Question
-                  </button>
-                )}
-                {form.type === "practice" && (
-                  <button
-                    type="button"
-                    onClick={() => addQuestion("mcq")}
-                    className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-md cursor-pointer"
-                  >
-                    Add MCQ Question
-                  </button>
+                  );
+                })}
+                
+                {/* Show message if no question types are allowed */}
+                {getAllowedQuestionTypes(form.type).length === 0 && (
+                  <span className="text-slate-400 text-sm">
+                    No question types available for this test type
+                  </span>
                 )}
               </div>
             </div>
 
-            {form.questions.map((question, index) => (
+            {form.questions.length === 0 ? (
+              <div className="text-center py-8 text-slate-400">
+                <div className="text-lg mb-2">No questions added yet</div>
+                <div className="text-sm">Click on one of the "Add" buttons above to start adding questions</div>
+              </div>
+            ) : (
+              form.questions.map((question, index) => (
               <div
                 key={question.id}
                 className="bg-slate-700 p-4 rounded-lg mb-4"
               >
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-semibold">Question {index + 1}</h3>
-                  {form.questions.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeQuestion(question.id)}
-                      className="text-red-400 hover:text-red-300 cursor-pointer"
-                    >
-                      Remove
-                    </button>
-                  )}
+                  <div className="flex items-center gap-3">
+                    <h3 className="font-semibold">Question {index + 1}</h3>
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                      question.kind === "mcq" ? "bg-blue-600 text-white" :
+                      question.kind === "coding" ? "bg-orange-600 text-white" :
+                      question.kind === "theory" ? "bg-red-600 text-white" :
+                      "bg-gray-600 text-white"
+                    }`}>
+                      {question.kind === "mcq" ? "MCQ" :
+                       question.kind === "coding" ? "Coding" :
+                       question.kind === "theory" ? "Theory" :
+                       question.kind}
+                    </span>
+                    {!isQuestionTypeAllowed(question.kind) && (
+                      <span className="px-2 py-1 rounded text-xs font-medium bg-red-800 text-red-200">
+                        Incompatible with {form.type} test
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeQuestion(question.id)}
+                    className="text-red-400 hover:text-red-300 cursor-pointer"
+                  >
+                    Remove
+                  </button>
                 </div>
 
                 <div className="space-y-4">
@@ -1200,7 +1295,8 @@ export default function CreateTest() {
                   )}
                 </div>
               </div>
-            ))}
+            ))
+            )}
           </div>
 
           {/* Submit Button */}
