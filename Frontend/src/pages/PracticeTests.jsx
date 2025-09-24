@@ -27,11 +27,40 @@ const PracticeTests = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [subjectFilter, setSubjectFilter] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
+  const [attemptedTests, setAttemptedTests] = useState(new Set()); // Track which tests have been attempted
   const navigate = useNavigate();
 
   useEffect(() => {
     fetchPracticeTests();
   }, []);
+
+  // Check which tests have been attempted
+  const checkAttemptedTests = async () => {
+    try {
+      const attemptedSet = new Set();
+      for (const test of tests) {
+        try {
+          const response = await apiRequest(`/practice-tests/${test._id}/attempts`);
+          if (response.submissions && response.submissions.length > 0) {
+            attemptedSet.add(test._id);
+          }
+        } catch (error) {
+          // If there's an error (like 404), the test hasn't been attempted
+          console.log(`No attempts found for test ${test._id}`);
+        }
+      }
+      setAttemptedTests(attemptedSet);
+    } catch (error) {
+      console.error("Error checking attempted tests:", error);
+    }
+  };
+
+  // Check attempted tests when tests are loaded
+  useEffect(() => {
+    if (tests.length > 0) {
+      checkAttemptedTests();
+    }
+  }, [tests]);
 
   const fetchPracticeTests = async () => {
     try {
@@ -54,6 +83,13 @@ const PracticeTests = () => {
 
   const handleViewResults = (testId) => {
     navigate(`/student/practice-test-results/${testId}`);
+  };
+
+  // Function to refresh attempted tests (can be called after completing a test)
+  const refreshAttemptedTests = () => {
+    if (tests.length > 0) {
+      checkAttemptedTests();
+    }
   };
 
   const filteredTests = tests.filter((test) => {
@@ -228,9 +264,16 @@ const PracticeTests = () => {
                       </svg>
                     </div>
                     <div>
-                      <h3 className="text-xl font-bold text-white group-hover:text-green-300 transition-colors duration-300">
-                        {test.title}
-                      </h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-xl font-bold text-white group-hover:text-green-300 transition-colors duration-300">
+                          {test.title}
+                        </h3>
+                        {attemptedTests.has(test._id) && (
+                          <span className="bg-green-600 text-white text-xs px-2 py-1 rounded-full">
+                            Attempted
+                          </span>
+                        )}
+                      </div>
                       <p className="text-sm text-slate-400 mt-1">Practice Test</p>
                     </div>
                   </div>
@@ -292,15 +335,17 @@ const PracticeTests = () => {
                       <span>Start Practice Test</span>
                     </button>
                     
-                    <button
-                      onClick={() => handleViewResults(test._id)}
-                      className="w-full bg-gray-600 hover:bg-gray-700 text-white py-3 px-4 rounded-lg font-semibold transition-all duration-200 transform hover:scale-[1.02] hover:shadow-lg flex items-center justify-center gap-2 group/btn"
-                    >
-                      <svg className="h-5 w-5 group-hover/btn:animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                      </svg>
-                      <span>View Previous Results</span>
-                    </button>
+                    {attemptedTests.has(test._id) && (
+                      <button
+                        onClick={() => handleViewResults(test._id)}
+                        className="w-full bg-gray-600 hover:bg-gray-700 text-white py-3 px-4 rounded-lg font-semibold transition-all duration-200 transform hover:scale-[1.02] hover:shadow-lg flex items-center justify-center gap-2 group/btn"
+                      >
+                        <svg className="h-5 w-5 group-hover/btn:animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                        <span>View Previous Results</span>
+                      </button>
+                    )}
                   </div>
 
                   {/* Footer Info */}
