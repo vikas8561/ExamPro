@@ -301,11 +301,31 @@ io.on('connection', (socket) => {
 // Global error handler
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-  console.error("Server Error:", err.message || err);
+  console.error("🚨 Server Error:", err.message || err);
+  console.error("📍 Error Stack:", err.stack);
+  console.error("🔍 Request Details:", {
+    method: req.method,
+    url: req.url,
+    body: req.body,
+    user: req.user
+  });
+  
   if (err.name === "ValidationError") {
     return res.status(400).json({ message: err.message });
   }
-  res.status(500).json({ message: "Server error" });
+  
+  if (err.name === "CastError") {
+    return res.status(400).json({ message: "Invalid ID format" });
+  }
+  
+  if (err.code === 11000) {
+    return res.status(400).json({ message: "Duplicate entry" });
+  }
+  
+  res.status(500).json({ 
+    message: "Server error",
+    error: process.env.NODE_ENV === 'development' ? err.message : "Internal server error"
+  });
 });
 
 const PORT = process.env.PORT || 4000;

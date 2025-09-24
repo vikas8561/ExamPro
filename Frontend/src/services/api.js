@@ -31,6 +31,11 @@ const apiRequest = async (endpoint, options = {}) => {
     },
   };
 
+  // Add Content-Type header for POST/PUT/PATCH requests with body
+  if (options.body && (options.method === 'POST' || options.method === 'PUT' || options.method === 'PATCH')) {
+    config.headers['Content-Type'] = 'application/json';
+  }
+
   try {
     const response = await fetch(url, config);
     

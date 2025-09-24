@@ -34,6 +34,7 @@ const TakeTest = () => {
   const [otpError, setOtpError] = useState("");
   const [permissionsAttempted, setPermissionsAttempted] = useState(false);
   const fullscreenTimeoutRef = useRef(null);
+  const debounceTimers = useRef({});
 
   useEffect(() => {
     const checkExistingTest = async () => {
@@ -827,31 +828,31 @@ const TakeTest = () => {
     let textAnswer = undefined;
     let hasAnswer = false;
 
-          if (question.kind === "mcq") {
-            // For MCQ, answerValue is the index (number)
-            if (
-              answerValue !== undefined &&
-              answerValue !== null &&
-              answerValue !== ""
-            ) {
-              selectedOption = question.options[answerValue].text;
-              hasAnswer = true;
-            }
-            setAnswers((prev) => ({
-              ...prev,
-              [questionId]: answerValue,
-            }));
-          } else if (question.kind === "theory" || question.kind === "coding") {
-            // For theory and coding, answerValue is the text (string)
-            if (answerValue && answerValue.trim() !== "") {
-              textAnswer = answerValue;
-              hasAnswer = true;
-            }
-            setAnswers((prev) => ({
-              ...prev,
-              [questionId]: answerValue,
-            }));
-          }
+    if (question.kind === "mcq") {
+      // For MCQ, answerValue is the index (number)
+      if (
+        answerValue !== undefined &&
+        answerValue !== null &&
+        answerValue !== ""
+      ) {
+        selectedOption = question.options[answerValue].text;
+        hasAnswer = true;
+      }
+      setAnswers((prev) => ({
+        ...prev,
+        [questionId]: answerValue,
+      }));
+    } else if (question.kind === "theory" || question.kind === "coding") {
+      // For theory and coding, answerValue is the text (string)
+      if (answerValue && answerValue.trim() !== "") {
+        textAnswer = answerValue;
+        hasAnswer = true;
+      }
+      setAnswers((prev) => ({
+        ...prev,
+        [questionId]: answerValue,
+      }));
+    }
 
     // Update question status to 'answered' when answer is provided
     setQuestionStatuses((prev) => ({
@@ -859,6 +860,23 @@ const TakeTest = () => {
       [questionId]: hasAnswer ? "answered" : "not-answered",
     }));
 
+    // Clear existing debounce timer for this question
+    if (debounceTimers.current[questionId]) {
+      clearTimeout(debounceTimers.current[questionId]);
+    }
+
+    // For coding questions, debounce the save operation to avoid excessive API calls
+    if (question.kind === "coding") {
+      debounceTimers.current[questionId] = setTimeout(async () => {
+        await saveAnswerToBackend(questionId, selectedOption, textAnswer, hasAnswer);
+      }, 1000); // Wait 1 second after user stops typing
+    } else {
+      // For MCQ and theory questions, save immediately
+      await saveAnswerToBackend(questionId, selectedOption, textAnswer, hasAnswer);
+    }
+  };
+
+  const saveAnswerToBackend = async (questionId, selectedOption, textAnswer, hasAnswer) => {
     // Only save to backend if there's an actual answer
     if (hasAnswer) {
       // Sanitize selectedOption to extract plain text from HTML if needed
@@ -879,14 +897,6 @@ const TakeTest = () => {
           tempDiv.textContent || tempDiv.innerText || sanitizedSelectedOption;
       }
 
-(
-        "Saving answer for question:",
-        questionId,
-        "selectedOption:",
-        sanitizedSelectedOption,
-        "textAnswer:",
-        textAnswer
-      );
       try {
         await apiRequest("/answers", {
           method: "POST",
@@ -899,16 +909,9 @@ const TakeTest = () => {
         });
       } catch (error) {
         console.error("Failed to save answer:", error);
+        // Don't show alert for coding questions as it's too frequent
+        // The answer will be saved on next successful attempt
       }
-    } else {
-(
-        "Not saving answer for question:",
-        questionId,
-        "hasAnswer:",
-        hasAnswer,
-        "answerValue:",
-        answerValue
-      );
     }
   };
 
@@ -1089,6 +1092,15 @@ const TakeTest = () => {
   }
 
   const question = test.questions[currentQuestion];
+
+  // Cleanup debounce timers on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(debounceTimers.current).forEach(timer => {
+        if (timer) clearTimeout(timer);
+      });
+    };
+  }, []);
 
   return (
     <>
