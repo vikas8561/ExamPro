@@ -137,6 +137,101 @@ const TakeTest = () => {
     }
   };
 
+  const submitTest = async (
+    cancelledDueToViolation = false,
+    autoSubmit = false
+  ) => {
+    setIsSubmitting(true);
+    try {
+      const submissionData = {
+        assignmentId,
+        responses: test.questions.map((question) => {
+          const answer = answers[question._id];
+          let selectedOption = undefined;
+          let textAnswer = undefined;
+
+          if (answer !== undefined) {
+            if (question.kind === "mcq" && typeof answer === "number") {
+              // For MCQ, answer is index, map to option text
+              selectedOption = question.options[answer].text;
+            } else if (question.kind === "msq" && Array.isArray(answer)) {
+              // For MSQ, answer is array of indices, map to option texts
+              selectedOption = answer.map(idx => question.options[idx].text).join(', ');
+            } else if (
+              (question.kind === "theory" || question.kind === "coding") &&
+              typeof answer === "string"
+            ) {
+              // For theory and coding, answer is text
+              textAnswer = answer;
+            }
+          }
+
+          return {
+            questionId: question._id.toString(),
+            selectedOption,
+            textAnswer,
+          };
+        }),
+        timeSpent,
+        tabViolationCount: violationCount,
+        tabViolations: violations.map((violation) => ({
+          timestamp:
+            violation.timestamp instanceof Date
+              ? violation.timestamp.toISOString()
+              : String(violation.timestamp),
+          violationType: String(violation.violationType),
+          details: String(violation.details),
+          tabCount: Number(violation.tabCount),
+        })),
+        cancelledDueToViolation: cancelledDueToViolation || violationCount >= 3,
+        autoSubmit,
+        permissions: {
+          camera: String(cameraPermission),
+          microphone: String(microphonePermission),
+          location: String(locationPermission),
+        },
+      };
+
+      const safeJSONStringify = (obj) => {
+        const seen = new WeakSet();
+        return JSON.stringify(obj, (key, value) => {
+          if (typeof value === "object" && value !== null) {
+            if (seen.has(value)) {
+              return "[Circular]";
+            }
+            seen.add(value);
+          }
+          if (
+            value &&
+            typeof value === "object" &&
+            (value instanceof HTMLElement ||
+              value instanceof Event ||
+              value.nodeType !== undefined)
+          ) {
+            return "[DOM Element]";
+          }
+          return value;
+        });
+      };
+
+      const response = await apiRequest("/test-submissions", {
+        method: "POST",
+        body: safeJSONStringify(submissionData),
+      });
+
+      // Exit fullscreen mode before navigating
+      await exitFullscreen();
+
+      setIsSubmitting(false);
+      navigate(`/student/assignments`);
+    } catch (error) {
+      console.error("Test submission failed:", error);
+      alert(error.message || "Failed to submit test");
+      setIsSubmitting(false);
+      navigate("/student/assignments");
+    }
+  };
+
 
 
   useEffect(() => {
@@ -850,101 +945,6 @@ const TakeTest = () => {
     setTimeout(() => {
       requestFullscreen();
     }, 100); // Small delay to ensure modal is closed
-  };
-
-  const submitTest = async (
-    cancelledDueToViolation = false,
-    autoSubmit = false
-  ) => {
-    setIsSubmitting(true);
-    try {
-      const submissionData = {
-        assignmentId,
-        responses: test.questions.map((question) => {
-          const answer = answers[question._id];
-          let selectedOption = undefined;
-          let textAnswer = undefined;
-
-          if (answer !== undefined) {
-            if (question.kind === "mcq" && typeof answer === "number") {
-              // For MCQ, answer is index, map to option text
-              selectedOption = question.options[answer].text;
-            } else if (question.kind === "msq" && Array.isArray(answer)) {
-              // For MSQ, answer is array of indices, map to option texts
-              selectedOption = answer.map(idx => question.options[idx].text).join(', ');
-            } else if (
-              (question.kind === "theory" || question.kind === "coding") &&
-              typeof answer === "string"
-            ) {
-              // For theory and coding, answer is text
-              textAnswer = answer;
-            }
-          }
-
-          return {
-            questionId: question._id.toString(),
-            selectedOption,
-            textAnswer,
-          };
-        }),
-        timeSpent,
-        tabViolationCount: violationCount,
-        tabViolations: violations.map((violation) => ({
-          timestamp:
-            violation.timestamp instanceof Date
-              ? violation.timestamp.toISOString()
-              : String(violation.timestamp),
-          violationType: String(violation.violationType),
-          details: String(violation.details),
-          tabCount: Number(violation.tabCount),
-        })),
-        cancelledDueToViolation: cancelledDueToViolation || violationCount >= 3,
-        autoSubmit,
-        permissions: {
-          camera: String(cameraPermission),
-          microphone: String(microphonePermission),
-          location: String(locationPermission),
-        },
-      };
-
-      const safeJSONStringify = (obj) => {
-        const seen = new WeakSet();
-        return JSON.stringify(obj, (key, value) => {
-          if (typeof value === "object" && value !== null) {
-            if (seen.has(value)) {
-              return "[Circular]";
-            }
-            seen.add(value);
-          }
-          if (
-            value &&
-            typeof value === "object" &&
-            (value instanceof HTMLElement ||
-              value instanceof Event ||
-              value.nodeType !== undefined)
-          ) {
-            return "[DOM Element]";
-          }
-          return value;
-        });
-      };
-
-      const response = await apiRequest("/test-submissions", {
-        method: "POST",
-        body: safeJSONStringify(submissionData),
-      });
-
-      // Exit fullscreen mode before navigating
-      await exitFullscreen();
-
-      setIsSubmitting(false);
-      navigate(`/student/assignments`);
-    } catch (error) {
-      console.error("Test submission failed:", error);
-      alert(error.message || "Failed to submit test");
-      setIsSubmitting(false);
-      navigate("/student/assignments");
-    }
   };
 
   const handleSubmitClick = () => {
