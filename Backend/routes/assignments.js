@@ -58,7 +58,7 @@ router.get("/student", authenticateToken, async (req, res, next) => {
       .select("testId mentorId status startTime duration deadline startedAt completedAt score autoScore mentorScore mentorFeedback reviewStatus timeSpent createdAt")
       .populate({
         path: "testId",
-        select: "title type instructions timeLimit subject",
+        select: "title type instructions timeLimit subject questions",
         match: { type: { $ne: "practice" } } // Exclude practice tests from assignments
       })
       .populate("mentorId", "name email")
@@ -68,11 +68,22 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     // Filter out assignments where testId is null (due to the match filter above)
     const filteredAssignments = assignments.filter(assignment => assignment.testId !== null);
 
-    // console.log(`📊 Found ${filteredAssignments.length} assignments in ${Date.now() - startTime}ms`);
+    // Transform assignments to include question count but exclude question content
+    const assignmentsWithQuestionCount = filteredAssignments.map(assignment => ({
+      ...assignment,
+      testId: {
+        ...assignment.testId,
+        questionCount: assignment.testId.questions ? assignment.testId.questions.length : 0,
+        // Exclude the actual questions array for performance
+        questions: undefined
+      }
+    }));
+
+    // console.log(`📊 Found ${assignmentsWithQuestionCount.length} assignments in ${Date.now() - startTime}ms`);
 
     // ULTRA FAST: Auto-start logic - batch update instead of individual updates
     const now = new Date();
-    const assignmentsToAutoStart = filteredAssignments.filter(assignment => 
+    const assignmentsToAutoStart = assignmentsWithQuestionCount.filter(assignment => 
       assignment.status === "Assigned" &&
       assignment.duration === assignment.testId.timeLimit &&
       now >= new Date(assignment.startTime) &&
@@ -102,9 +113,9 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     }
 
     const totalTime = Date.now() - startTime;
-    // console.log(`✅ ULTRA FAST student assignments completed in ${totalTime}ms - Found ${filteredAssignments.length} assignments`);
+    // console.log(`✅ ULTRA FAST student assignments completed in ${totalTime}ms - Found ${assignmentsWithQuestionCount.length} assignments`);
 
-    res.json(filteredAssignments);
+    res.json(assignmentsWithQuestionCount);
   } catch (error) {
     console.error('❌ Error in student assignments:', error);
     next(error);
