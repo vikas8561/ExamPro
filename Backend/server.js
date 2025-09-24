@@ -9,6 +9,10 @@ const { Server } = require("socket.io");
 
 dotenv.config();
 
+// WebSocket Connection Management for 500+ users
+let activeConnections = 0;
+const MAX_CONNECTIONS = 600; // 20% buffer over 500 users
+
 // Enhanced Memory Management for 500+ users
 const memoryUsage = () => {
   const used = process.memoryUsage();
@@ -243,10 +247,6 @@ app.use("/api/time", require("./routes/time"));
 
 // Make io available to routes
 app.set('io', io);
-
-// WebSocket Connection Management for 500+ users
-let activeConnections = 0;
-const MAX_CONNECTIONS = 600; // 20% buffer over 500 users
 
 // Socket.IO connection handling with limits
 io.on('connection', (socket) => {
