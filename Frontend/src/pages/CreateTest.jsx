@@ -642,171 +642,346 @@ export default function CreateTest() {
 
           {/* Assignment Options Section */}
           <div className="bg-slate-800 p-6 rounded-lg">
-            <h2 className="text-xl font-semibold mb-4">Assignment Options</h2>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 bg-blue-600 rounded-lg">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+                </svg>
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold">Assignment Options</h2>
+                <p className="text-sm text-slate-400">Configure how and when to assign this test</p>
+              </div>
+            </div>
 
-            <div className="space-y-4">
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  id="assignToAll"
-                  checked={assignmentOptions.assignToAll}
-                  onChange={(e) =>
-                    setAssignmentOptions((prev) => ({
-                      ...prev,
-                      assignToAll: e.target.checked,
-                    }))
-                  }
-                  className="mr-3 h-4 w-4"
-                />
-                <label htmlFor="assignToAll" className="text-sm font-medium">
-                  Assign to all students immediately
-                </label>
+            <div className="space-y-6">
+              {/* Enable Assignment Toggle */}
+              <div className="bg-slate-700 p-4 rounded-lg border border-slate-600">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-green-600 rounded-lg">
+                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <label htmlFor="assignToAll" className="text-lg font-medium cursor-pointer">
+                        Enable Assignment
+                      </label>
+                      <p className="text-sm text-slate-400">Assign this test to students immediately after creation</p>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      id="assignToAll"
+                      checked={assignmentOptions.assignToAll}
+                      onChange={(e) =>
+                        setAssignmentOptions((prev) => ({
+                          ...prev,
+                          assignToAll: e.target.checked,
+                        }))
+                      }
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
               </div>
 
               {assignmentOptions.assignToAll && (
-                <>
+                <div className="space-y-6">
                   {/* Assignment Mode Selection */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Assignment Mode
-                    </label>
-                    <div className="grid grid-cols-2 gap-4">
-                      <label className="flex items-center">
-                        <input
-                          type="radio"
-                          value="all"
-                          checked={assignmentMode === "all"}
-                          onChange={() => setAssignmentMode("all")}
-                          className="mr-2"
-                        />
-                        Assign to All Students
-                      </label>
-                      <label className="flex items-center">
-                        <input
-                          type="radio"
-                          value="manual"
-                          checked={assignmentMode === "manual"}
-                          onChange={() => setAssignmentMode("manual")}
-                          className="mr-2"
-                        />
-                        Assign to Specific Students
-                      </label>
-                      <label className="flex items-center">
-                        <input
-                          type="radio"
-                          value="ru"
-                          checked={assignmentMode === "ru"}
-                          onChange={() => setAssignmentMode("ru")}
-                          className="mr-2"
-                        />
-                        Assign to RU Students
-                      </label>
-                      <label className="flex items-center">
-                        <input
-                          type="radio"
-                          value="su"
-                          checked={assignmentMode === "su"}
-                          onChange={() => setAssignmentMode("su")}
-                          className="mr-2"
-                        />
-                        Assign to SU Students
-                      </label>
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="p-1 bg-purple-600 rounded">
+                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                        </svg>
+                      </div>
+                      <h3 className="text-lg font-medium">Assignment Mode</h3>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {/* All Students Option */}
+                      <div 
+                        className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+                          assignmentMode === "all" 
+                            ? "border-blue-500 bg-blue-900/20" 
+                            : "border-slate-600 bg-slate-700 hover:border-slate-500"
+                        }`}
+                        onClick={() => setAssignmentMode("all")}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                            assignmentMode === "all" 
+                              ? "border-blue-500 bg-blue-500" 
+                              : "border-slate-400"
+                          }`}>
+                            {assignmentMode === "all" && (
+                              <div className="w-2 h-2 bg-white rounded-full"></div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                            </svg>
+                            <span className="font-medium">All Students</span>
+                          </div>
+                        </div>
+                        <p className="text-sm text-slate-400 mt-1 ml-7">Assign to all registered students</p>
+                      </div>
+
+                      {/* Specific Students Option */}
+                      <div 
+                        className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+                          assignmentMode === "manual" 
+                            ? "border-blue-500 bg-blue-900/20" 
+                            : "border-slate-600 bg-slate-700 hover:border-slate-500"
+                        }`}
+                        onClick={() => setAssignmentMode("manual")}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                            assignmentMode === "manual" 
+                              ? "border-blue-500 bg-blue-500" 
+                              : "border-slate-400"
+                          }`}>
+                            {assignmentMode === "manual" && (
+                              <div className="w-2 h-2 bg-white rounded-full"></div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                            </svg>
+                            <span className="font-medium">Specific Students</span>
+                          </div>
+                        </div>
+                        <p className="text-sm text-slate-400 mt-1 ml-7">Choose individual students</p>
+                      </div>
+
+                      {/* RU Students Option */}
+                      <div 
+                        className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+                          assignmentMode === "ru" 
+                            ? "border-blue-500 bg-blue-900/20" 
+                            : "border-slate-600 bg-slate-700 hover:border-slate-500"
+                        }`}
+                        onClick={() => setAssignmentMode("ru")}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                            assignmentMode === "ru" 
+                              ? "border-blue-500 bg-blue-500" 
+                              : "border-slate-400"
+                          }`}>
+                            {assignmentMode === "ru" && (
+                              <div className="w-2 h-2 bg-white rounded-full"></div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <svg className="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                            </svg>
+                            <span className="font-medium">RU Students</span>
+                          </div>
+                        </div>
+                        <p className="text-sm text-slate-400 mt-1 ml-7">Assign to RU category students only</p>
+                      </div>
+
+                      {/* SU Students Option */}
+                      <div 
+                        className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+                          assignmentMode === "su" 
+                            ? "border-blue-500 bg-blue-900/20" 
+                            : "border-slate-600 bg-slate-700 hover:border-slate-500"
+                        }`}
+                        onClick={() => setAssignmentMode("su")}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                            assignmentMode === "su" 
+                              ? "border-blue-500 bg-blue-500" 
+                              : "border-slate-400"
+                          }`}>
+                            {assignmentMode === "su" && (
+                              <div className="w-2 h-2 bg-white rounded-full"></div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                            </svg>
+                            <span className="font-medium">SU Students</span>
+                          </div>
+                        </div>
+                        <p className="text-sm text-slate-400 mt-1 ml-7">Assign to SU category students only</p>
+                      </div>
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Start Time *
-                    </label>
-                    <input
-                      type="datetime-local"
-                      value={assignmentOptions.startTime}
-                      onChange={(e) =>
-                        setAssignmentOptions((prev) => ({
-                          ...prev,
-                          startTime: e.target.value,
-                        }))
-                      }
-                      className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Duration (minutes) *
-                    </label>
-                    <input
-                      type="number"
-                      value={assignmentOptions.duration}
-                      onChange={(e) =>
-                        setAssignmentOptions((prev) => ({
-                          ...prev,
-                          duration: e.target.value,
-                        }))
-                      }
-                      className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
-                      min="1"
-                      required
-                    />
+                  {/* Time Configuration */}
+                  <div className="bg-slate-700 p-4 rounded-lg border border-slate-600">
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="p-1 bg-yellow-600 rounded">
+                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <h3 className="text-lg font-medium">Test Schedule</h3>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+                          <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          Start Time *
+                        </label>
+                        <input
+                          type="datetime-local"
+                          value={assignmentOptions.startTime}
+                          onChange={(e) =>
+                            setAssignmentOptions((prev) => ({
+                              ...prev,
+                              startTime: e.target.value,
+                            }))
+                          }
+                          className="w-full p-3 bg-slate-600 border border-slate-500 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                          required
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+                          <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Duration (minutes) *
+                        </label>
+                        <input
+                          type="number"
+                          value={assignmentOptions.duration}
+                          onChange={(e) =>
+                            setAssignmentOptions((prev) => ({
+                              ...prev,
+                              duration: e.target.value,
+                            }))
+                          }
+                          className="w-full p-3 bg-slate-600 border border-slate-500 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                          min="1"
+                          placeholder="Enter duration in minutes"
+                          required
+                        />
+                      </div>
+                    </div>
                   </div>
 
                   {/* Student Selection (Manual Mode Only) */}
                   {assignmentMode === "manual" && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Select Students ({selectedStudents.length} selected)
-                      </label>
+                    <div className="bg-slate-700 p-4 rounded-lg border border-slate-600">
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className="p-1 bg-indigo-600 rounded">
+                          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                        </div>
+                        <h3 className="text-lg font-medium">Student Selection</h3>
+                        <span className="ml-auto px-3 py-1 bg-blue-600 text-white text-sm rounded-full">
+                          {selectedStudents.length} selected
+                        </span>
+                      </div>
 
                       {/* Search and Selection Controls */}
-                      <div className="flex gap-2 mb-3">
-                        <input
-                          type="text"
-                          placeholder="Search students..."
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                          className="flex-1 p-2 bg-slate-700 border border-slate-600 rounded-md text-white"
-                        />
+                      <div className="flex gap-3 mb-4">
+                        <div className="flex-1 relative">
+                          <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                          </svg>
+                          <input
+                            type="text"
+                            placeholder="Search students by name or email..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 bg-slate-600 border border-slate-500 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all text-white"
+                          />
+                        </div>
                         <button
                           type="button"
                           onClick={selectAllStudents}
-                          className="px-3 py-2 bg-blue-600 text-white rounded text-sm cursor-pointer"
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
                         >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
                           Select All
                         </button>
                         <button
                           type="button"
                           onClick={clearAllSelections}
-                          className="px-3 py-2 bg-gray-600 text-white rounded text-sm cursor-pointer"
+                          className="px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
                         >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
                           Clear All
                         </button>
                       </div>
 
                       {/* Students List */}
-                      <div className="border border-slate-600 rounded max-h-48 overflow-y-auto bg-slate-700">
+                      <div className="border border-slate-500 rounded-lg max-h-48 overflow-y-auto bg-slate-600">
                         {filteredStudents.length === 0 ? (
-                          <div className="p-3 text-center text-gray-400">
-                            No students found
+                          <div className="p-6 text-center text-slate-400">
+                            <svg className="w-8 h-8 mx-auto mb-2 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                            </svg>
+                            <p className="text-sm">No students found</p>
+                            <p className="text-xs text-slate-500 mt-1">Try adjusting your search terms</p>
                           </div>
                         ) : (
                           filteredStudents.map((student) => (
                             <label
                               key={student._id}
-                              className="flex items-center p-3 border-b border-slate-600 last:border-b-0 hover:bg-slate-600 cursor-pointer"
+                              className={`flex items-center p-3 border-b border-slate-500 last:border-b-0 hover:bg-slate-500 cursor-pointer transition-colors ${
+                                selectedStudents.includes(student._id) ? 'bg-blue-900/20' : ''
+                              }`}
                             >
-                              <input
-                                type="checkbox"
-                                checked={selectedStudents.includes(student._id)}
-                                onChange={() =>
-                                  toggleStudentSelection(student._id)
-                                }
-                                className="mr-3"
-                              />
-                              <div>
-                                <div className="font-medium text-white">
-                                  {student.name}
+                              <div className="relative">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedStudents.includes(student._id)}
+                                  onChange={() =>
+                                    toggleStudentSelection(student._id)
+                                  }
+                                  className="sr-only peer"
+                                />
+                                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                                  selectedStudents.includes(student._id)
+                                    ? 'border-blue-500 bg-blue-500'
+                                    : 'border-slate-400 hover:border-slate-300'
+                                }`}>
+                                  {selectedStudents.includes(student._id) && (
+                                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  )}
                                 </div>
-                                <div className="text-sm text-gray-400">
+                              </div>
+                              <div className="ml-3 flex-1">
+                                <div className="font-medium text-white flex items-center gap-2">
+                                  {student.name}
+                                  {selectedStudents.includes(student._id) && (
+                                    <span className="px-2 py-0.5 bg-blue-600 text-white text-xs rounded-full">
+                                      Selected
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-sm text-slate-400 flex items-center gap-2">
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                  </svg>
                                   {student.email}
                                 </div>
                               </div>
@@ -816,7 +991,7 @@ export default function CreateTest() {
                       </div>
                     </div>
                   )}
-                </>
+                </div>
               )}
             </div>
           </div>
