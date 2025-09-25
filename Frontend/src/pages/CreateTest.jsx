@@ -296,6 +296,37 @@ export default function CreateTest() {
     }));
   };
 
+  const duplicateQuestion = (id) => {
+    const questionToDuplicate = form.questions.find(q => q.id === id);
+    if (questionToDuplicate) {
+      const duplicatedQuestion = {
+        ...questionToDuplicate,
+        id: crypto.randomUUID(),
+        text: questionToDuplicate.text + " (Copy)",
+      };
+      
+      setForm((prev) => ({
+        ...prev,
+        questions: [...prev.questions, duplicatedQuestion],
+      }));
+    }
+  };
+
+  const moveQuestion = (fromIndex, toIndex) => {
+    if (fromIndex === toIndex) return;
+    
+    setForm((prev) => {
+      const newQuestions = [...prev.questions];
+      const [movedQuestion] = newQuestions.splice(fromIndex, 1);
+      newQuestions.splice(toIndex, 0, movedQuestion);
+      return {
+        ...prev,
+        questions: newQuestions,
+      };
+    });
+  };
+
+
   const handleQuestionsUpload = (uploadedQuestions) => {
     const normalized = uploadedQuestions.map((q) => ({
       ...q,
@@ -483,36 +514,58 @@ export default function CreateTest() {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Basic Test Info */}
-          <div className="bg-slate-800 p-6 rounded-lg">
-            <h2 className="text-xl font-semibold mb-4">Test Information</h2>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-600/50 p-6 rounded-xl">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2 bg-blue-600/20 rounded-lg">
+            <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
         <div>
-          <label className="block text-sm font-medium mb-2">
+            <h2 className="text-xl font-semibold">Test Information</h2>
+            <p className="text-sm text-slate-400">Configure the basic details of your test</p>
+          </div>
+        </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-500/30">
+          <label className="block text-sm font-medium mb-3 text-slate-200">
             Test Title *
           </label>
+          <div className="relative">
           <input
             type="text"
             value={form.title}
             onChange={(e) =>
               setForm((prev) => ({ ...prev, title: e.target.value }))
             }
-            className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
+              className="w-full p-4 bg-slate-600/50 border border-slate-500/50 rounded-lg focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200"
+              placeholder="Enter test title..."
             required
           />
+            <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+              <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+              </svg>
+            </div>
+          </div>
+          <div className="mt-2 text-xs text-slate-400">
+            {form.title.length} characters
+          </div>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium mb-2">
+        <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-500/30">
+          <label className="block text-sm font-medium mb-3 text-slate-200">
             Subject *
           </label>
           <div className="flex gap-2 items-center">
+            <div className="flex-1 relative">
             <select
               value={form.subject}
               onChange={(e) =>
                 setForm((prev) => ({ ...prev, subject: e.target.value }))
               }
-              className="flex-1 p-3 bg-slate-700 border border-slate-600 rounded-md"
+                className="w-full p-4 bg-slate-600/50 border border-slate-500/50 rounded-lg focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200 appearance-none cursor-pointer"
               required
             >
               <option value="" disabled>
@@ -524,25 +577,34 @@ export default function CreateTest() {
                 </option>
               ))}
             </select>
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
             <button
               type="button"
               onClick={() => setShowSubjectModal(true)}
-              className="px-3 py-2 bg-blue-600 rounded text-white text-sm"
+              className="px-4 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all duration-200 hover:scale-105 shadow-lg hover:shadow-xl flex items-center gap-2"
               title="Add Subject"
             >
-              +
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
             </button>
           </div>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium mb-2">
+        <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-500/30">
+          <label className="block text-sm font-medium mb-3 text-slate-200">
             Test Type
           </label>
+          <div className="relative">
           <select
             value={form.type}
             onChange={(e) => handleTestTypeChange(e.target.value)}
-            className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
+              className="w-full p-4 bg-slate-600/50 border border-slate-500/50 rounded-lg focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200 appearance-none cursor-pointer"
           >
             <option value="mixed">Mixed (All Types)</option>
             <option value="mcq">MCQ Only</option>
@@ -550,41 +612,70 @@ export default function CreateTest() {
             <option value="theory">Theory Only</option>
             <option value="practice">Practice Test (MCQ Only)</option>
           </select>
+            <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
+              <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+          </div>
           
           {/* Show allowed question types */}
-          <div className="mt-2 text-sm text-slate-400">
-            <span className="font-medium">Allowed question types:</span>{" "}
+          <div className="mt-3 p-3 bg-slate-600/30 rounded-lg border border-slate-500/30">
+            <div className="flex items-center gap-2 mb-2">
+              <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="text-sm font-medium text-slate-300">Allowed question types:</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
             {getAllowedQuestionTypes(form.type).map(type => {
-              const typeLabels = {
-                mcq: "MCQ",
-                coding: "Coding", 
-                theory: "Theory"
-              };
-              return typeLabels[type] || type;
-            }).join(", ")}
+                const typeConfig = {
+                  mcq: { label: "MCQ", color: "bg-blue-600/20 text-blue-300 border-blue-500/30" },
+                  coding: { label: "Coding", color: "bg-orange-600/20 text-orange-300 border-orange-500/30" },
+                  theory: { label: "Theory", color: "bg-red-600/20 text-red-300 border-red-500/30" }
+                };
+                const config = typeConfig[type] || { label: type, color: "bg-gray-600/20 text-gray-300 border-gray-500/30" };
+                return (
+                  <span key={type} className={`px-2 py-1 rounded-full text-xs font-medium border ${config.color}`}>
+                    {config.label}
+                  </span>
+                );
+              })}
+            </div>
           </div>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium mb-2">
+        <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-500/30">
+          <label className="block text-sm font-medium mb-3 text-slate-200">
             Time Limit (minutes)
           </label>
+          <div className="relative">
           <input
             type="number"
             min="1"
+              max="300"
             value={form.timeLimit}
             onChange={(e) =>
               setForm((prev) => ({ ...prev, timeLimit: e.target.value }))
             }
-            className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
-          />
+              className="w-full p-4 bg-slate-600/50 border border-slate-500/50 rounded-lg focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200"
+              placeholder="30"
+            />
+            <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 text-sm">
+              min
+            </div>
+          </div>
+          <div className="mt-2 text-xs text-slate-400">
+            Duration students have to complete the exam
+          </div>
         </div>
 
         {form.type !== "practice" && (
-          <div>
-            <label className="block text-sm font-medium mb-2">
+          <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-500/30">
+            <label className="block text-sm font-medium mb-3 text-slate-200">
               Negative Marking (%)
             </label>
+            <div className="relative">
             <select
               value={form.negativeMarkingPercent}
               onChange={(e) =>
@@ -593,7 +684,7 @@ export default function CreateTest() {
                   negativeMarkingPercent: Number(e.target.value),
                 }))
               }
-              className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
+                className="w-full p-4 bg-slate-600/50 border border-slate-500/50 rounded-lg focus:ring-2 focus:ring-red-500/50 focus:border-red-500/50 transition-all duration-200 appearance-none cursor-pointer"
             >
               <option value={0}>No Negative Marking</option>
               <option value={0.25}>25%</option>
@@ -601,40 +692,72 @@ export default function CreateTest() {
               <option value={0.75}>75%</option>
               <option value={1}>100%</option>
             </select>
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
+            <div className="mt-2 text-xs text-slate-400">
+              {form.negativeMarkingPercent === 0 ? "No penalty for wrong answers" : 
+               `${Math.round(form.negativeMarkingPercent * 100)}% penalty for wrong answers`}
+            </div>
           </div>
         )}
 
         {form.type !== "practice" && (
-          <div>
-            <label className="block text-sm font-medium mb-2">
+          <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-500/30">
+            <label className="block text-sm font-medium mb-3 text-slate-200">
               Allowed Tab Switches
             </label>
+            <div className="relative">
             <input
               type="number"
-              min="0"
+                min="-1"
+                max="10"
               value={form.allowedTabSwitches}
               onChange={(e) =>
                 setForm((prev) => ({ ...prev, allowedTabSwitches: e.target.value }))
               }
-              className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
-            />
+                className="w-full p-4 bg-slate-600/50 border border-slate-500/50 rounded-lg focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50 transition-all duration-200"
+                placeholder="0"
+              />
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 text-sm">
+                {form.allowedTabSwitches == -1 ? "∞" : "times"}
+              </div>
+            </div>
+            <div className="mt-2 text-xs text-slate-400">
+              {form.allowedTabSwitches == 0 ? "No tab switching allowed" : 
+               form.allowedTabSwitches == -1 ? "Unlimited tab switching allowed" :
+               `Students can switch tabs ${form.allowedTabSwitches} time${form.allowedTabSwitches != 1 ? 's' : ''}`}
+            </div>
           </div>
         )}
       </div>
 
-            <div className="mt-4">
-              <label className="block text-sm font-medium mb-2">
-                Instructions
+            <div className="mt-6">
+              <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-500/30">
+                <label className="block text-sm font-medium mb-3 text-slate-200">
+                  Test Instructions
               </label>
+                <div className="relative">
               <textarea
                 value={form.instructions}
                 onChange={(e) =>
                   setForm((prev) => ({ ...prev, instructions: e.target.value }))
                 }
-                rows={3}
-                className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md"
-                placeholder="Enter test instructions..."
-              />
+                    rows={4}
+                    className="w-full p-4 bg-slate-600/50 border border-slate-500/50 rounded-lg focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200 resize-none"
+                    placeholder="Enter detailed instructions for students taking this test..."
+                  />
+                  <div className="absolute bottom-3 right-3 text-xs text-slate-400">
+                    {form.instructions.length} characters
+                  </div>
+                </div>
+                <div className="mt-2 text-xs text-slate-400">
+                  Provide clear instructions about test rules, time limits, and any special requirements
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1001,9 +1124,13 @@ export default function CreateTest() {
           <div className="bg-slate-800 p-6 rounded-lg">
             {/* Warning for incompatible questions */}
             {form.questions.some(q => !isQuestionTypeAllowed(q.kind)) && (
-              <div className="mb-4 p-3 bg-red-900 border border-red-700 rounded-md">
-                <div className="flex items-center gap-2">
-                  <span className="text-red-400">⚠️</span>
+              <div className="mb-4 p-4 bg-red-900/50 border border-red-700/50 rounded-lg backdrop-blur-sm">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-red-600/20 rounded-full">
+                    <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                    </svg>
+                  </div>
                   <span className="text-red-200 text-sm">
                     Some questions are incompatible with the current test type. 
                     Change the test type or remove incompatible questions.
@@ -1013,13 +1140,35 @@ export default function CreateTest() {
             )}
             
             <div className="flex justify-between items-center mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-600/20 rounded-lg">
+                  <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <div>
               <h2 className="text-xl font-semibold">Questions</h2>
-              <div className="flex gap-2 flex-wrap">
+                  <p className="text-sm text-slate-400">{form.questions.length} question{form.questions.length !== 1 ? 's' : ''} added</p>
+                </div>
+              </div>
+              <div className="flex gap-3 flex-wrap">
                 {getAllowedQuestionTypes(form.type).map((questionType) => {
                   const buttonConfig = {
-                    mcq: { label: "Add MCQ", className: "bg-blue-600 hover:bg-blue-700" },
-                    coding: { label: "Add Coding", className: "bg-orange-600 hover:bg-orange-700" },
-                    theory: { label: "Add Theory", className: "bg-red-600 hover:bg-red-700" },
+                    mcq: { 
+                      label: "Add MCQ", 
+                      className: "bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 hover:scale-105 active:scale-95 transition-all duration-200",
+                      icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    },
+                    coding: { 
+                      label: "Add Coding", 
+                      className: "bg-violet-500 hover:bg-violet-600 active:bg-violet-700 hover:scale-105 active:scale-95 transition-all duration-200",
+                      icon: "M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"
+                    },
+                    theory: { 
+                      label: "Add Theory", 
+                      className: "bg-rose-500 hover:bg-rose-600 active:bg-rose-700 hover:scale-105 active:scale-95 transition-all duration-200",
+                      icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    },
                   };
 
                   const config = buttonConfig[questionType];
@@ -1030,9 +1179,12 @@ export default function CreateTest() {
                       key={questionType}
                       type="button"
                       onClick={() => addQuestion(questionType)}
-                      className={`px-4 py-2 ${config.className} rounded-md cursor-pointer`}
+                      className={`px-5 py-3 ${config.className} rounded-lg cursor-pointer flex items-center gap-2 font-medium text-white shadow-md hover:shadow-lg`}
                     >
-                      {config.label}
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={config.icon} />
+                      </svg>
+                      <span>{config.label}</span>
                     </button>
                   );
                 })}
@@ -1055,40 +1207,103 @@ export default function CreateTest() {
               form.questions.map((question, index) => (
               <div
                 key={question.id}
-                className="bg-slate-700 p-4 rounded-lg mb-4"
+                className="bg-slate-700/50 backdrop-blur-sm border border-slate-600/50 p-6 rounded-xl mb-6 hover:bg-slate-700/70 transition-all duration-300 hover:shadow-lg hover:shadow-slate-900/20 group"
               >
-                <div className="flex justify-between items-center mb-4">
+                <div className="flex justify-between items-start mb-6">
+                  <div className="flex items-center gap-4">
                   <div className="flex items-center gap-3">
-                    <h3 className="font-semibold">Question {index + 1}</h3>
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${
-                      question.kind === "mcq" ? "bg-blue-600 text-white" :
-                      question.kind === "coding" ? "bg-orange-600 text-white" :
-                      question.kind === "theory" ? "bg-red-600 text-white" :
-                      "bg-gray-600 text-white"
-                    }`}>
-                      {question.kind === "mcq" ? "MCQ" :
-                       question.kind === "coding" ? "Coding" :
-                       question.kind === "theory" ? "Theory" :
+                      <div className="p-2 bg-slate-600/50 rounded-lg">
+                        <span className="text-lg font-bold text-slate-300">#{index + 1}</span>
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-lg">Question {index + 1}</h3>
+                        <p className="text-sm text-slate-400">{question.points} point{question.points !== 1 ? 's' : ''}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-2 ${
+                        question.kind === "mcq" ? "bg-blue-600/20 text-blue-300 border border-blue-500/30" :
+                        question.kind === "coding" ? "bg-orange-600/20 text-orange-300 border border-orange-500/30" :
+                        question.kind === "theory" ? "bg-red-600/20 text-red-300 border border-red-500/30" :
+                        "bg-gray-600/20 text-gray-300 border border-gray-500/30"
+                      }`}>
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={
+                            question.kind === "mcq" ? "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" :
+                            question.kind === "coding" ? "M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" :
+                            question.kind === "theory" ? "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" :
+                            "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                          } />
+                        </svg>
+                        {question.kind === "mcq" ? "Multiple Choice" :
+                         question.kind === "coding" ? "Coding Problem" :
+                         question.kind === "theory" ? "Theory Question" :
                        question.kind}
                     </span>
                     {!isQuestionTypeAllowed(question.kind) && (
-                      <span className="px-2 py-1 rounded text-xs font-medium bg-red-800 text-red-200">
+                        <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-red-800/30 text-red-300 border border-red-500/30 flex items-center gap-2">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                          </svg>
                         Incompatible with {form.type} test
                       </span>
                     )}
                   </div>
+                  </div>
+                  <div className="flex items-center gap-1">
                   <button
                     type="button"
-                    onClick={() => removeQuestion(question.id)}
-                    className="text-red-400 hover:text-red-300 cursor-pointer"
-                  >
-                    Remove
+                      onClick={() => moveQuestion(index, index - 1)}
+                      disabled={index === 0}
+                      className="p-2 text-slate-400 hover:text-slate-300 hover:bg-slate-600/20 rounded-lg transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                      title="Move up"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveQuestion(index, index + 1)}
+                      disabled={index === form.questions.length - 1}
+                      className="p-2 text-slate-400 hover:text-slate-300 hover:bg-slate-600/20 rounded-lg transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                      title="Move down"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    <div className="w-px h-6 bg-slate-600 mx-1"></div>
+                    <button
+                      type="button"
+                      onClick={() => duplicateQuestion(question.id)}
+                      className="p-2 text-slate-400 hover:text-blue-400 hover:bg-blue-600/20 rounded-lg transition-all duration-200 group/btn"
+                      title="Duplicate question"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm('Are you sure you want to remove this question?')) {
+                          removeQuestion(question.id);
+                        }
+                      }}
+                      className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-600/20 rounded-lg transition-all duration-200 group/btn"
+                      title="Remove question"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
                   </button>
+                  </div>
                 </div>
 
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
+                <div className="space-y-6">
+                  <div className="bg-slate-600/30 rounded-lg p-4 border border-slate-500/30">
+                    <label className="block text-sm font-medium mb-3 text-slate-200">
                       Question Text *
                     </label>
                     <textarea
@@ -1096,38 +1311,80 @@ export default function CreateTest() {
                       onChange={(e) =>
                         updateQuestion(question.id, "text", e.target.value)
                       }
-                      className="w-full p-3 bg-slate-600 border border-slate-500 rounded-md"
-                      rows={2}
+                      className="w-full p-4 bg-slate-700/50 border border-slate-500/50 rounded-lg focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200 resize-none"
+                      rows={3}
+                      placeholder="Enter your question here..."
                       required
                     />
+                    <div className="mt-2 text-xs text-slate-400">
+                      {question.text.length} characters
+                    </div>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-slate-600/30 rounded-lg p-4 border border-slate-500/30">
+                      <label className="block text-sm font-medium mb-3 text-slate-200">
                       Points
                     </label>
+                      <div className="relative">
                     <input
                       type="number"
                       min="1"
+                          max="100"
                       value={question.points}
                       onChange={(e) =>
                         updateQuestion(question.id, "points", e.target.value)
                       }
-                      className="w-full p-3 bg-slate-600 border border-slate-500 rounded-md"
-                    />
+                          className="w-full p-3 bg-slate-700/50 border border-slate-500/50 rounded-lg focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200"
+                          placeholder="1"
+                        />
+                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 text-sm">
+                          pts
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="bg-slate-600/30 rounded-lg p-4 border border-slate-500/30">
+                      <label className="block text-sm font-medium mb-3 text-slate-200">
+                        Question Type
+                      </label>
+                      <div className="flex items-center gap-2 p-3 bg-slate-700/50 rounded-lg">
+                        <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={
+                            question.kind === "mcq" ? "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" :
+                            question.kind === "coding" ? "M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" :
+                            question.kind === "theory" ? "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" :
+                            "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                          } />
+                        </svg>
+                        <span className="text-slate-300 text-sm">
+                          {question.kind === "mcq" ? "Multiple Choice" :
+                           question.kind === "coding" ? "Coding Problem" :
+                           question.kind === "theory" ? "Theory Question" :
+                           question.kind}
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
                   {question.kind === "mcq" && (
                     <>
-                      <div>
-                        <label className="block text-sm font-medium mb-2">
-                          Options
+                      <div className="bg-slate-600/30 rounded-lg p-4 border border-slate-500/30">
+                        <div className="flex items-center justify-between mb-4">
+                          <label className="block text-sm font-medium text-slate-200">
+                            Multiple Choice Options
                         </label>
+                          <div className="text-xs text-slate-400">
+                            Select the correct answer
+                          </div>
+                        </div>
+                        <div className="space-y-3">
                         {question.options.map((option, optIndex) => (
                           <div
                             key={optIndex}
-                            className="flex items-center mb-2"
+                              className="flex items-center gap-3 p-3 bg-slate-700/50 rounded-lg border border-slate-500/30 hover:bg-slate-700/70 transition-all duration-200 group"
                           >
+                              <div className="flex items-center">
                             <input
                               type="radio"
                               name={`answer-${question.id}`}
@@ -1135,8 +1392,10 @@ export default function CreateTest() {
                               onChange={() =>
                                 updateQuestion(question.id, "answer", option)
                               }
-                              className="mr-3"
+                                  className="w-4 h-4 text-blue-600 bg-slate-700 border-slate-500 focus:ring-blue-500 focus:ring-2"
                             />
+                              </div>
+                              <div className="flex-1">
                             <input
                               type="text"
                               value={option}
@@ -1147,11 +1406,36 @@ export default function CreateTest() {
                                   e.target.value
                                 )
                               }
-                              className="flex-1 p-2 bg-slate-600 border border-slate-500 rounded-md"
-                              placeholder={`Option ${optIndex + 1}`}
-                            />
+                                  className="w-full p-2 bg-slate-600/50 border border-slate-500/50 rounded-md focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200"
+                                  placeholder={`Option ${String.fromCharCode(65 + optIndex)}`}
+                                />
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs text-slate-400 px-2 py-1 bg-slate-600/50 rounded">
+                                  {String.fromCharCode(65 + optIndex)}
+                                </span>
+                                {question.answer === option && (
+                                  <div className="flex items-center gap-1 text-green-400 text-xs">
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                    Correct
+                                  </div>
+                                )}
+                              </div>
                           </div>
                         ))}
+                        </div>
+                        {!question.answer && (
+                          <div className="mt-3 p-2 bg-yellow-900/20 border border-yellow-500/30 rounded-lg">
+                            <div className="flex items-center gap-2 text-yellow-300 text-sm">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                              </svg>
+                              Please select the correct answer
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </>
                   )}
@@ -1210,44 +1494,67 @@ export default function CreateTest() {
 
                   {question.kind === "coding" && (
                     <>
-
+                      <div className="bg-slate-600/30 rounded-lg p-4 border border-slate-500/30">
+                        <div className="flex justify-between items-center mb-4">
                       <div>
-                        <div className="flex justify-between items-center mb-2">
-                          <label className="block text-sm font-medium">
-                            Examples (Optional)
+                            <label className="block text-sm font-medium text-slate-200">
+                              Test Cases & Examples
                           </label>
+                            <p className="text-xs text-slate-400 mt-1">
+                              Add input/output examples to help students understand the problem
+                            </p>
+                          </div>
                           <button
                             type="button"
                             onClick={() => addExample(question.id)}
-                            className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm rounded cursor-pointer"
+                            className="px-5 py-2.5 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white text-sm rounded-xl cursor-pointer flex items-center gap-2 transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-green-500/25 font-medium relative overflow-hidden group"
                           >
-                            Add Example
+                            <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                            <div className="relative flex items-center gap-2">
+                              <div className="p-0.5 bg-white/20 rounded-lg">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                </svg>
+                              </div>
+                              <span>Add Example</span>
+                            </div>
                           </button>
                         </div>
 
+                        <div className="space-y-4">
                         {(question.examples || []).map((example, exIndex) => (
                           <div
                             key={exIndex}
-                            className="bg-slate-600 p-3 rounded mb-2"
-                          >
-                            <div className="flex justify-between items-center mb-2">
-                              <span className="text-sm font-medium">
-                                Example {exIndex + 1}
+                              className="bg-slate-700/50 p-4 rounded-lg border border-slate-500/30 hover:bg-slate-700/70 transition-all duration-200 group"
+                            >
+                              <div className="flex justify-between items-center mb-4">
+                                <div className="flex items-center gap-2">
+                                  <div className="p-1 bg-slate-600/50 rounded">
+                                    <span className="text-sm font-medium text-slate-300">
+                                      #{exIndex + 1}
                               </span>
+                                  </div>
+                                  <span className="text-sm font-medium text-slate-200">
+                                    Test Case {exIndex + 1}
+                                  </span>
+                                </div>
                               <button
                                 type="button"
                                 onClick={() =>
                                   removeExample(question.id, exIndex)
                                 }
-                                className="text-red-400 hover:text-red-300 text-sm cursor-pointer"
+                                  className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-600/20 rounded-lg transition-all duration-200"
+                                  title="Remove example"
                               >
-                                Remove
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
                               </button>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               <div>
-                                <label className="block text-xs font-medium mb-1 text-gray-300">
+                                  <label className="block text-sm font-medium mb-2 text-slate-200">
                                   Input
                                 </label>
                                 <textarea
@@ -1260,15 +1567,15 @@ export default function CreateTest() {
                                       e.target.value
                                     )
                                   }
-                                  className="w-full p-2 bg-slate-500 border border-slate-400 rounded text-sm"
-                                  rows={2}
+                                    className="w-full p-3 bg-slate-600/50 border border-slate-500/50 rounded-lg focus:ring-2 focus:ring-green-500/50 focus:border-green-500/50 transition-all duration-200 font-mono text-sm"
+                                    rows={3}
                                   placeholder="Enter input example..."
                                 />
                               </div>
 
                               <div>
-                                <label className="block text-xs font-medium mb-1 text-gray-300">
-                                  Output
+                                  <label className="block text-sm font-medium mb-2 text-slate-200">
+                                    Expected Output
                                 </label>
                                 <textarea
                                   value={example.output}
@@ -1280,8 +1587,8 @@ export default function CreateTest() {
                                       e.target.value
                                     )
                                   }
-                                  className="w-full p-2 bg-slate-500 border border-slate-400 rounded text-sm"
-                                  rows={2}
+                                    className="w-full p-3 bg-slate-600/50 border border-slate-500/50 rounded-lg focus:ring-2 focus:ring-green-500/50 focus:border-green-500/50 transition-all duration-200 font-mono text-sm"
+                                    rows={3}
                                   placeholder="Enter expected output..."
                                 />
                               </div>
@@ -1290,123 +1597,33 @@ export default function CreateTest() {
                         ))}
 
                         {(question.examples || []).length === 0 && (
-                          <div className="text-center text-gray-400 text-sm py-4">
-                            No examples added yet. Click "Add Example" to add
-                            input/output examples.
+                            <div className="text-center py-8 text-slate-400">
+                              <div className="p-4 bg-slate-700/30 rounded-lg border border-slate-500/30">
+                                <svg className="w-12 h-12 mx-auto mb-3 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                <div className="text-sm font-medium mb-1">No examples added yet</div>
+                                <div className="text-xs">Click "Add Example" to add input/output examples</div>
+                              </div>
                           </div>
                         )}
+                        </div>
                       </div>
                     </>
                   )}
 
                   {question.kind === "theory" && (
-                    <>
-                      <div>
-                        <label className="block text-sm font-medium mb-2">
-                          Answer
-                        </label>
-                        <textarea
-                          value={question.answer || ""}
-                          onChange={(e) =>
-                            updateQuestion(
-                              question.id,
-                              "answer",
-                              e.target.value
-                            )
-                          }
-                          className="w-full p-3 bg-slate-600 border border-slate-500 rounded-md"
-                          rows={3}
-                          placeholder="Enter answer here..."
-                          required
-                        />
-                      </div>
-
-                      <div>
-                        <div className="flex justify-between items-center mb-2">
-                          <label className="block text-sm font-medium">
-                            Examples (Optional)
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() => addExample(question.id)}
-                            className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm rounded cursor-pointer"
-                          >
-                            Add Example
-                          </button>
+                    <div className="bg-slate-600/30 rounded-lg p-4 border border-slate-500/30">
+                      <div className="text-center py-8 text-slate-400">
+                        <div className="p-4 bg-slate-700/30 rounded-lg border border-slate-500/30">
+                          <svg className="w-12 h-12 mx-auto mb-3 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          <div className="text-sm font-medium mb-1">Theory Question</div>
+                          <div className="text-xs">Students will provide written answers to this question</div>
                         </div>
-
-                        {(question.examples || []).map((example, exIndex) => (
-                          <div
-                            key={exIndex}
-                            className="bg-slate-600 p-3 rounded mb-2"
-                          >
-                            <div className="flex justify-between items-center mb-2">
-                              <span className="text-sm font-medium">
-                                Example {exIndex + 1}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  removeExample(question.id, exIndex)
-                                }
-                                className="text-red-400 hover:text-red-300 text-sm cursor-pointer"
-                              >
-                                Remove
-                              </button>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                              <div>
-                                <label className="block text-xs font-medium mb-1 text-gray-300">
-                                  Input
-                                </label>
-                                <textarea
-                                  value={example.input}
-                                  onChange={(e) =>
-                                    updateExample(
-                                      question.id,
-                                      exIndex,
-                                      "input",
-                                      e.target.value
-                                    )
-                                  }
-                                  className="w-full p-2 bg-slate-500 border border-slate-400 rounded text-sm"
-                                  rows={2}
-                                  placeholder="Enter input example..."
-                                />
-                              </div>
-
-                              <div>
-                                <label className="block text-xs font-medium mb-1 text-gray-300">
-                                  Output
-                                </label>
-                                <textarea
-                                  value={example.output}
-                                  onChange={(e) =>
-                                    updateExample(
-                                      question.id,
-                                      exIndex,
-                                      "output",
-                                      e.target.value
-                                    )
-                                  }
-                                  className="w-full p-2 bg-slate-500 border border-slate-400 rounded text-sm"
-                                  rows={2}
-                                  placeholder="Enter expected output..."
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-
-                        {(question.examples || []).length === 0 && (
-                          <div className="text-center text-gray-400 text-sm py-4">
-                            No examples added yet. Click "Add Example" to add
-                            input/output examples.
-                          </div>
-                        )}
                       </div>
-                    </>
+                    </div>
                   )}
                 </div>
               </div>

@@ -36,14 +36,47 @@ const TakeTest = () => {
   const fullscreenTimeoutRef = useRef(null);
   const debounceTimers = useRef({});
 
-  // Cleanup debounce timers on unmount
+  // Cleanup debounce timers on unmount and save pending answers
   useEffect(() => {
+    const handleBeforeUnload = async (event) => {
+      // Save any pending answers before page unload
+      const pendingSaves = Object.entries(debounceTimers.current).map(async ([questionId, timer]) => {
+        if (timer) {
+          clearTimeout(timer);
+          const question = test?.questions?.find((q) => q._id === questionId);
+          if (question && (question.kind === "theory" || question.kind === "coding")) {
+            const answerValue = answers[questionId];
+            let selectedOption = undefined;
+            let textAnswer = undefined;
+            let hasAnswer = false;
+
+            if (question.kind === "theory" || question.kind === "coding") {
+              // Always set textAnswer to the current value (even if empty)
+              textAnswer = answerValue || "";
+              hasAnswer = answerValue && answerValue.trim() !== "";
+            }
+
+            // Force save the current answer
+            await saveAnswerToBackend(questionId, selectedOption, textAnswer, hasAnswer);
+          }
+        }
+      });
+
+      // Wait for all saves to complete
+      await Promise.all(pendingSaves);
+    };
+
+    // Add event listener for page unload
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
     return () => {
+      // Cleanup
+      window.removeEventListener('beforeunload', handleBeforeUnload);
       Object.values(debounceTimers.current).forEach(timer => {
         if (timer) clearTimeout(timer);
       });
     };
-  }, []);
+  }, [test, answers]);
 
   useEffect(() => {
     const checkExistingTest = async () => {
@@ -155,7 +188,7 @@ const TakeTest = () => {
     try {
       const submissionData = {
         assignmentId,
-        responses: test.questions.map((question) => {
+        responses: test?.questions?.map((question) => {
           const answer = answers[question._id];
           let selectedOption = undefined;
           let textAnswer = undefined;
@@ -786,37 +819,53 @@ const TakeTest = () => {
 
         if (answersData && answersData.length > 0) {
           const existingAnswers = {};
+          
+          // Group responses by questionId to handle multiple saves
+          const responsesByQuestion = {};
           answersData.forEach((response) => {
+            if (!responsesByQuestion[response.questionId]) {
+              responsesByQuestion[response.questionId] = [];
+            }
+            responsesByQuestion[response.questionId].push(response);
+          });
+
+          // Process each question's responses
+          Object.entries(responsesByQuestion).forEach(([questionId, responses]) => {
             const question = assignmentData.testId.questions.find(
-              (q) => q._id.toString() === response.questionId
+              (q) => q._id.toString() === questionId
             );
 
-            if (response.selectedOption && question) {
-              if (false) { // MSQ removed
-                // For MSQ, selectedOption is a comma-separated string, parse it back to indices
-                const selectedTexts = response.selectedOption.split(',').map(text => text.trim());
-                const indices = selectedTexts.map(text => {
-                  return question.options.findIndex(opt => opt.text === text);
-                }).filter(index => index !== -1);
+            if (!question) return;
 
-                if (indices.length > 0) {
-                  existingAnswers[response.questionId] = indices;
-                }
-              } else {
-                // For MCQ, find the single index
+            // For theory and coding questions, get the longest/most complete answer
+            if (question.kind === "theory" || question.kind === "coding") {
+              const textAnswers = responses
+                .filter(r => r.textAnswer !== undefined && r.textAnswer !== null)
+                .map(r => r.textAnswer);
+              
+              if (textAnswers.length > 0) {
+                // Get the longest answer (most complete)
+                const longestAnswer = textAnswers.reduce((longest, current) => 
+                  current.length > longest.length ? current : longest
+                );
+                console.log(`📥 Loading theory answer for question ${questionId}:`, longestAnswer);
+                existingAnswers[questionId] = longestAnswer;
+              }
+            } else if (question.kind === "mcq") {
+              // For MCQ, get the last response (most recent)
+              const mcqResponse = responses.find(r => r.selectedOption);
+              if (mcqResponse) {
                 const index = question.options.findIndex(
-                  (opt) => opt.text === response.selectedOption
+                  (opt) => opt.text === mcqResponse.selectedOption
                 );
                 if (index !== -1) {
-                  existingAnswers[response.questionId] = index;
+                  existingAnswers[questionId] = index;
                 }
               }
-            } else if (response.textAnswer) {
-              existingAnswers[response.questionId] = response.textAnswer;
             }
           });
           setAnswers(existingAnswers);
-(
+          console.log(
             `[TakeTest] Restored ${
               Object.keys(existingAnswers).length
             } answers from existing answers`
@@ -873,10 +922,12 @@ const TakeTest = () => {
   };
 
   const handleAnswerChange = async (questionId, answerValue) => {
-    const question = test.questions.find((q) => q._id === questionId);
+    const question = test?.questions?.find((q) => q._id === questionId);
     let selectedOption = undefined;
     let textAnswer = undefined;
     let hasAnswer = false;
+
+    console.log(`🔄 handleAnswerChange called for question ${questionId}:`, { answerValue, questionKind: question?.kind });
 
     if (question.kind === "mcq") {
       // For MCQ, answerValue is the index (number)
@@ -894,10 +945,10 @@ const TakeTest = () => {
       }));
     } else if (question.kind === "theory" || question.kind === "coding") {
       // For theory and coding, answerValue is the text (string)
-      if (answerValue && answerValue.trim() !== "") {
-        textAnswer = answerValue;
-        hasAnswer = true;
-      }
+      // Always set textAnswer to the current value (even if empty)
+      textAnswer = answerValue || "";
+      hasAnswer = answerValue && answerValue.trim() !== "";
+      
       setAnswers((prev) => ({
         ...prev,
         [questionId]: answerValue,
@@ -920,15 +971,26 @@ const TakeTest = () => {
       debounceTimers.current[questionId] = setTimeout(async () => {
         await saveAnswerToBackend(questionId, selectedOption, textAnswer, hasAnswer);
       }, 1000); // Wait 1 second after user stops typing
+    } else if (question.kind === "theory") {
+      // For theory questions, debounce with shorter delay to preserve more content
+      console.log(`⏰ Setting debounce timer for theory question ${questionId}, textAnswer:`, textAnswer);
+      debounceTimers.current[questionId] = setTimeout(async () => {
+        console.log(`⏰ Debounce timer triggered for theory question ${questionId}`);
+        await saveAnswerToBackend(questionId, selectedOption, textAnswer, hasAnswer);
+      }, 500); // Wait 500ms after user stops typing
     } else {
-      // For MCQ and theory questions, save immediately
+      // For MCQ questions, save immediately
       await saveAnswerToBackend(questionId, selectedOption, textAnswer, hasAnswer);
     }
   };
 
   const saveAnswerToBackend = async (questionId, selectedOption, textAnswer, hasAnswer) => {
-    // Only save to backend if there's an actual answer
-    if (hasAnswer) {
+    // For theory and coding questions, always save to backend (even empty answers)
+    // This ensures that partial answers are preserved and answers are cleared properly
+    const question = test?.questions?.find((q) => q._id === questionId);
+    const shouldSave = question && (question.kind === "theory" || question.kind === "coding") ? true : hasAnswer;
+
+    if (shouldSave) {
       // Sanitize selectedOption to extract plain text from HTML if needed
       let sanitizedSelectedOption = selectedOption;
       if (typeof selectedOption === "object" && selectedOption !== null) {
@@ -948,33 +1010,72 @@ const TakeTest = () => {
       }
 
       try {
+        const payload = {
+          assignmentId,
+          questionId,
+          selectedOption: sanitizedSelectedOption,
+          textAnswer: textAnswer || "", // Ensure textAnswer is always a string
+        };
+        
+        console.log(`🔄 Saving answer for question ${questionId}:`, payload);
+        
         await apiRequest("/answers", {
           method: "POST",
-          body: JSON.stringify({
-            assignmentId,
-            questionId,
-            selectedOption: sanitizedSelectedOption,
-            textAnswer,
-          }),
+          body: JSON.stringify(payload),
         });
+        console.log(`✅ Answer saved successfully for question ${questionId}:`, payload);
       } catch (error) {
-        console.error("Failed to save answer:", error);
+        console.error("❌ Failed to save answer:", error);
         // Don't show alert for coding questions as it's too frequent
         // The answer will be saved on next successful attempt
       }
     }
   };
 
-  const handleNextQuestion = () => {
-    if (currentQuestion < test.questions.length - 1) {
+  const saveCurrentQuestionAnswer = async () => {
+    const currentQ = test?.questions?.[currentQuestion];
+    if (currentQ && (currentQ.kind === "theory" || currentQ.kind === "coding")) {
+      const answerValue = answers[currentQ._id];
+      let selectedOption = undefined;
+      let textAnswer = undefined;
+      let hasAnswer = false;
+
+      if (currentQ.kind === "theory" || currentQ.kind === "coding") {
+        // Always set textAnswer to the current value (even if empty)
+        textAnswer = answerValue || "";
+        hasAnswer = answerValue && answerValue.trim() !== "";
+      }
+
+      // Clear any pending debounce timer and save immediately
+      if (debounceTimers.current[currentQ._id]) {
+        clearTimeout(debounceTimers.current[currentQ._id]);
+        delete debounceTimers.current[currentQ._id];
+      }
+
+      await saveAnswerToBackend(currentQ._id, selectedOption, textAnswer, hasAnswer);
+    }
+  };
+
+  const handleNextQuestion = async () => {
+    if (currentQuestion < (test?.questions?.length || 0) - 1) {
+      // Save current question answer before navigating
+      await saveCurrentQuestionAnswer();
       setCurrentQuestion((prev) => prev + 1);
     }
   };
 
-  const handlePreviousQuestion = () => {
+  const handlePreviousQuestion = async () => {
     if (currentQuestion > 0) {
+      // Save current question answer before navigating
+      await saveCurrentQuestionAnswer();
       setCurrentQuestion((prev) => prev - 1);
     }
+  };
+
+  const handleQuestionNavigation = async (questionIndex) => {
+    // Save current question answer before navigating
+    await saveCurrentQuestionAnswer();
+    setCurrentQuestion(questionIndex);
   };
 
   const handleTimeUp = async () => {
@@ -1141,7 +1242,18 @@ const TakeTest = () => {
     );
   }
 
-  const question = test.questions[currentQuestion];
+  const question = test?.questions?.[currentQuestion];
+
+  // Don't render question content if question is not loaded yet
+  if (!question) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-xl">Loading question...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -1162,7 +1274,7 @@ const TakeTest = () => {
           <div>
             <h1 className="text-2xl font-bold">{test.title}</h1>
             <p className="text-slate-400">
-              Question {currentQuestion + 1} of {test.questions.length}
+              Question {currentQuestion + 1} of {test?.questions?.length || 0}
             </p>
           </div>
 
@@ -1274,10 +1386,10 @@ const TakeTest = () => {
 
             <div className="bg-slate-800 rounded-lg p-6 flex flex-col gap-2 max-h-[calc(100vh-160px)] overflow-y-auto scrollbar-hide order-last" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
               <div className="flex flex-col gap-2 overflow-y-auto scrollbar-hide">
-                {test.questions.map((q, index) => (
+                {test?.questions?.map((q, index) => (
                   <button
                     key={q._id}
-                    onClick={() => setCurrentQuestion(index)}
+                    onClick={() => handleQuestionNavigation(index)}
                   className={`w-8 min-w-[40px] h-12 rounded-md text-sm font-semibold cursor-pointer transition-all duration-200 hover:scale-105 border-2 ${
                       currentQuestion === index
                         ? "bg-blue-600 text-white border-blue-400 shadow-lg"
@@ -1313,7 +1425,7 @@ const TakeTest = () => {
                 </button>
                 <button
                   onClick={handleNextQuestion}
-                  disabled={currentQuestion === test.questions.length - 1}
+                  disabled={currentQuestion === (test?.questions?.length || 0) - 1}
                   className="flex-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
                 >
                   Next
@@ -1434,7 +1546,7 @@ const TakeTest = () => {
                 </button>
                 <button
                   onClick={handleNextQuestion}
-                  disabled={currentQuestion === test.questions.length - 1}
+                  disabled={currentQuestion === (test?.questions?.length || 0) - 1}
                   className="flex-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
                 >
                   Next
@@ -1451,10 +1563,10 @@ const TakeTest = () => {
 
             <div className="bg-slate-800 rounded-lg p-6 flex flex-col gap-2 max-h-[calc(100vh-160px)] overflow-y-auto scrollbar-hide order-last" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
               <div className="flex flex-col gap-2 overflow-y-auto scrollbar-hide">
-                {test.questions.map((q, index) => (
+                {test?.questions?.map((q, index) => (
                   <button
                     key={q._id}
-                    onClick={() => setCurrentQuestion(index)}
+                    onClick={() => handleQuestionNavigation(index)}
                     className={`w-8 min-w-[40px] h-12 rounded-md text-sm font-semibold cursor-pointer transition-all duration-200 hover:scale-105 border-2 ${
                       currentQuestion === index
                         ? "bg-blue-600 text-white border-blue-400 shadow-lg"
@@ -1623,10 +1735,10 @@ const TakeTest = () => {
                   className="grid grid-cols-5 gap-2 mb-6 scrollbar-hide"
                   style={{ maxHeight: "21vh", overflowY: "auto" }}
                 >
-                  {test.questions.map((q, index) => (
+                  {test?.questions?.map((q, index) => (
                     <button
                       key={q._id}
-                      onClick={() => setCurrentQuestion(index)}
+                      onClick={() => handleQuestionNavigation(index)}
                       className={`w-8 h-8 rounded-lg text-sm font-semibold cursor-pointer transition-all duration-200 hover:scale-105 border-2 ${
                         currentQuestion === index
                           ? "bg-blue-600 text-white border-blue-400 shadow-lg"
@@ -1653,7 +1765,7 @@ const TakeTest = () => {
 
                   <button
                     onClick={handleNextQuestion}
-                    disabled={currentQuestion === test.questions.length - 1}
+                    disabled={currentQuestion === (test?.questions?.length || 0) - 1}
                     className="w-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
                   >
                     Next
@@ -1689,7 +1801,7 @@ const TakeTest = () => {
                           return false;
                         }).length
                       }
-                      /{test.questions.length}
+                      /{test?.questions?.length || 0}
                     </span>
                   </div>
                   <div className="w-full bg-slate-700 rounded-full h-2">
@@ -1712,7 +1824,7 @@ const TakeTest = () => {
                             }
                             return false;
                           }).length /
-                            test.questions.length) *
+                            (test?.questions?.length || 0)) *
                           100
                         }%`,
                       }}
