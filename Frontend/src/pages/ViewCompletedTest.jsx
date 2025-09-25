@@ -136,7 +136,7 @@ const ViewCompletedTest = () => {
           {/* Score Summary */}
           <div className="bg-slate-800 shadow-lg rounded-xl p-6 mb-8 border border-slate-700">
             <h3 className="text-xl font-semibold text-white mb-4">Test Results</h3>
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 text-center">
+            <div className="grid grid-cols-6 gap-4 text-center">
               <div>
                 <div className="text-2xl font-bold text-blue-400">{totalQuestions}</div>
                 <div className="text-slate-400">Total Questions</div>

@@ -40,30 +40,33 @@ const ViewTestResults = () => {
     <div className="test-results">
       <h2>Test Results</h2>
       <div className="summary">
-        <div className="grid grid-cols-6 gap-4 text-center">
-          <div>
-            <div className="text-2xl font-bold text-blue-400">{test.questions.length}</div>
-            <div className="text-slate-400">Total Questions</div>
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-green-400">{responses.filter(r => r.isCorrect).length}</div>
-            <div className="text-slate-400">MCQ Correct</div>
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-red-400">{responses.filter(r => !r.isCorrect && r.selectedOption).length}</div>
-            <div className="text-slate-400">MCQ Incorrect</div>
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-yellow-400">{responses.filter(r => !r.selectedOption && !r.textAnswer).length}</div>
-            <div className="text-slate-400">MCQ Not Answered</div>
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-purple-400">{responses.filter(r => r.textAnswer).length}</div>
-            <div className="text-slate-400">Coding/Theory Questions</div>
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-white">{finalScore}</div>
-            <div className="text-slate-400">Final Score</div>
+        <div className="bg-slate-800 shadow-lg rounded-xl p-6 mb-8 border border-slate-700">
+          <h3 className="text-xl font-semibold text-white mb-4">Test Results</h3>
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 text-center">
+            <div>
+              <div className="text-2xl font-bold text-blue-400">{test.questions.length}</div>
+              <div className="text-slate-400">Total Questions</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-green-400">{responses.filter(r => r.isCorrect).length}</div>
+              <div className="text-slate-400">MCQ Correct</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-red-400">{responses.filter(r => !r.isCorrect && r.selectedOption).length}</div>
+              <div className="text-slate-400">MCQ Incorrect</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-yellow-400">{responses.filter(r => !r.selectedOption && !r.textAnswer).length}</div>
+              <div className="text-slate-400">MCQ Not Answered</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-purple-400">{responses.filter(r => r.textAnswer).length}</div>
+              <div className="text-slate-400">Coding/Theory Questions</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-white">{finalScore}</div>
+              <div className="text-slate-400">Final Score</div>
+            </div>
           </div>
         </div>
       </div>
@@ -76,9 +79,9 @@ const ViewTestResults = () => {
           return (
             <div key={question._id} className="question">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                <h3>
-                  Q{index + 1}: {question.text}
-                </h3>
+              <h3>
+                Q{index + 1}: {question.text}
+              </h3>
                 <span style={{
                   padding: '4px 8px',
                   borderRadius: '12px',
@@ -93,13 +96,13 @@ const ViewTestResults = () => {
               
               {question.kind === 'mcq' ? (
                 <>
-                  <p>
-                    Your Answer:{" "}
-                    <span style={{ color: response?.selectedOption ? "green" : "red" }}>
-                      {response?.selectedOption || "Not answered"}
-                    </span>
-                  </p>
-                  <p>Correct Answer: {question.answer}</p>
+              <p>
+                Your Answer:{" "}
+                <span style={{ color: response?.selectedOption ? "green" : "red" }}>
+                  {response?.selectedOption || "Not answered"}
+                </span>
+              </p>
+              <p>Correct Answer: {question.answer}</p>
                 </>
               ) : (
                 <div>
