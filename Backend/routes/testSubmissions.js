@@ -230,16 +230,33 @@ router.post("/", authenticateToken, async (req, res, next) => {
     const { assignmentId, responses, timeSpent, permissions, tabViolationCount, tabViolations, cancelledDueToViolation, autoSubmit } = req.body;
     const userId = req.user.userId;
 
+    // Debug logging for incoming data
+    console.log("🔍 Test submission data:", {
+      assignmentId,
+      userId,
+      responsesCount: responses?.length,
+      responses: responses?.map(r => ({
+        questionId: r.questionId,
+        questionIdType: typeof r.questionId,
+        hasSelectedOption: !!r.selectedOption,
+        hasTextAnswer: !!r.textAnswer
+      }))
+    });
+
     if (!assignmentId || !responses) {
       return res.status(400).json({ message: "assignmentId and responses are required" });
     }
 
     // Get assignment to check if test time has expired
+    console.log("🔍 Looking up assignment:", assignmentId);
     const assignment = await Assignment.findById(assignmentId);
     
     if (!assignment) {
+      console.error("❌ Assignment not found:", assignmentId);
       return res.status(404).json({ message: "Assignment not found" });
     }
+    
+    console.log("✅ Assignment found:", assignment._id);
 
     // Check if test time has expired (skip for auto-submit)
     if (!autoSubmit) {
@@ -310,6 +327,14 @@ router.post("/", authenticateToken, async (req, res, next) => {
       maxScore += question.points;
 
       const userResponse = responses.find(r => r.questionId === question._id.toString());
+      
+      // Debug logging for questionId matching
+      console.log(`🔍 Processing question ${question._id} (${question.kind}):`, {
+        questionId: question._id,
+        questionIdString: question._id.toString(),
+        userResponseFound: !!userResponse,
+        userResponseQuestionId: userResponse?.questionId
+      });
 
       // Check if response exists and has actual content
       const hasResponse = userResponse && (userResponse.selectedOption !== null && userResponse.selectedOption !== undefined) ||
@@ -324,7 +349,11 @@ router.post("/", authenticateToken, async (req, res, next) => {
           isCorrect: false,
           points: 0,
           autoGraded: false,
-          geminiFeedback: null
+          geminiFeedback: null,
+          correctAnswer: null,
+          errorAnalysis: null,
+          improvementSteps: null,
+          topicRecommendations: []
         });
         continue;
       }
