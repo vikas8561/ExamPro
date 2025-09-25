@@ -152,7 +152,7 @@ const ViewTestResults = () => {
                   )}
 
                   {/* Improvement Steps */}
-                  {response.improvementSteps && (
+                  {response.improvementSteps && response.improvementSteps.length > 0 && (
                     <div style={{
                       backgroundColor: '#78350f',
                       borderLeft: '4px solid #f59e0b',
@@ -163,10 +163,17 @@ const ViewTestResults = () => {
                       <div style={{
                         color: '#fde68a',
                         fontSize: '14px',
-                        lineHeight: '1.5',
-                        whiteSpace: 'pre-wrap'
+                        lineHeight: '1.5'
                       }}>
-                        {response.improvementSteps}
+                        {Array.isArray(response.improvementSteps) ? (
+                          <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                            {response.improvementSteps.map((step, index) => (
+                              <li key={index} style={{ marginBottom: '4px' }}>{step}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <div style={{ whiteSpace: 'pre-wrap' }}>{response.improvementSteps}</div>
+                        )}
                       </div>
                     </div>
                   )}

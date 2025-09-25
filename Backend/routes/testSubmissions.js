@@ -25,21 +25,21 @@ async function evaluateWithGemini(questionText, studentAnswer, maxPoints) {
           feedback: "Good understanding of the concept. Well-structured answer.",
           correctAnswer: "The correct answer would be...",
           errorAnalysis: "Your answer shows good understanding but could be more detailed.",
-          improvementSteps: "1. Add more examples 2. Explain the reasoning 3. Provide code snippets if applicable",
+          improvementSteps: ["1. Add more examples", "2. Explain the reasoning", "3. Provide code snippets if applicable"],
           topicRecommendations: ["Advanced concepts", "Practical applications", "Best practices"]
         },
         {
           feedback: "Partial understanding shown. Could be more detailed.",
           correctAnswer: "Here's the complete correct answer...",
           errorAnalysis: "Your answer covers the basics but misses some key points.",
-          improvementSteps: "1. Review the fundamentals 2. Study more examples 3. Practice implementation",
+          improvementSteps: ["1. Review the fundamentals", "2. Study more examples", "3. Practice implementation"],
           topicRecommendations: ["Fundamentals review", "Example problems", "Hands-on practice"]
         },
         {
           feedback: "Basic knowledge demonstrated. Needs improvement in depth.",
           correctAnswer: "The comprehensive answer includes...",
           errorAnalysis: "Your answer shows you understand the basics but need deeper knowledge.",
-          improvementSteps: "1. Study the theory more thoroughly 2. Work through examples 3. Ask for clarification",
+          improvementSteps: ["1. Study the theory more thoroughly", "2. Work through examples", "3. Ask for clarification"],
           topicRecommendations: ["Core concepts", "Theory fundamentals", "Problem-solving techniques"]
         }
       ];
@@ -159,7 +159,7 @@ RESPONSE FORMAT (JSON only, no additional text):
         feedback: "AI evaluation completed but response format was unexpected. Please review manually.",
         correctAnswer: "Unable to generate correct answer due to parsing error.",
         errorAnalysis: "Response parsing failed. Please contact instructor.",
-        improvementSteps: "Please review your answer and consult with your instructor.",
+        improvementSteps: ["Please review your answer and consult with your instructor."],
         topicRecommendations: ["General review of the subject matter"]
       };
     }
@@ -174,7 +174,9 @@ RESPONSE FORMAT (JSON only, no additional text):
     evaluation.feedback = evaluation.feedback || "No feedback provided.";
     evaluation.correctAnswer = evaluation.correctAnswer || "Correct answer not provided.";
     evaluation.errorAnalysis = evaluation.errorAnalysis || "Error analysis not provided.";
-    evaluation.improvementSteps = evaluation.improvementSteps || "Improvement steps not provided.";
+    evaluation.improvementSteps = Array.isArray(evaluation.improvementSteps) 
+      ? evaluation.improvementSteps 
+      : ["Improvement steps not provided."];
     evaluation.topicRecommendations = Array.isArray(evaluation.topicRecommendations) 
       ? evaluation.topicRecommendations 
       : ["General study of the subject matter"];
@@ -218,7 +220,7 @@ RESPONSE FORMAT (JSON only, no additional text):
       feedback: errorMessage,
       correctAnswer: "Unable to generate correct answer due to technical error.",
       errorAnalysis: "Error analysis unavailable due to technical issues.",
-      improvementSteps: "Please contact your instructor for guidance.",
+      improvementSteps: ["Please contact your instructor for guidance."],
       topicRecommendations: ["General review of the subject matter"]
     };
   }
@@ -371,10 +373,10 @@ router.post("/", authenticateToken, async (req, res, next) => {
           points: 0,
           autoGraded: false,
           geminiFeedback: null,
-          correctAnswer: null,
-          errorAnalysis: null,
-          improvementSteps: null,
-          topicRecommendations: []
+        correctAnswer: null,
+        errorAnalysis: null,
+        improvementSteps: [],
+        topicRecommendations: []
         });
         continue;
       }
@@ -467,6 +469,21 @@ router.post("/", authenticateToken, async (req, res, next) => {
       autoSubmit: autoSubmit || false
     };
 
+    // Debug logging for submission data
+    console.log("🔍 Submission data before save:", {
+      assignmentId: assignmentId,
+      assignmentIdType: typeof assignmentId,
+      testId: assignmentWithTest.testId._id,
+      testIdType: typeof assignmentWithTest.testId._id,
+      userId: userId,
+      userIdType: typeof userId,
+      responsesCount: processedResponses.length,
+      firstResponse: processedResponses[0] ? {
+        questionId: processedResponses[0].questionId,
+        questionIdType: typeof processedResponses[0].questionId
+      } : null
+    });
+
     // Add permission data if provided
     if (permissions) {
       // Handle both old and new permission formats
@@ -493,11 +510,27 @@ router.post("/", authenticateToken, async (req, res, next) => {
       };
     }
 
-    const submission = await TestSubmission.findOneAndUpdate(
-      { assignmentId, userId },
-      submissionData,
-      { upsert: true, new: true }
-    );
+    console.log("🔍 About to save to database with query:", { assignmentId, userId });
+    console.log("🔍 Submission data keys:", Object.keys(submissionData));
+    
+    let submission;
+    try {
+      submission = await TestSubmission.findOneAndUpdate(
+        { assignmentId, userId },
+        submissionData,
+        { upsert: true, new: true }
+      );
+      console.log("✅ Database save successful:", submission._id);
+    } catch (dbError) {
+      console.error("❌ Database save failed:", dbError);
+      console.error("❌ Error details:", {
+        name: dbError.name,
+        message: dbError.message,
+        code: dbError.code,
+        keyValue: dbError.keyValue
+      });
+      throw dbError;
+    }
 
     // Update assignment status
     assignment.status = "Completed";

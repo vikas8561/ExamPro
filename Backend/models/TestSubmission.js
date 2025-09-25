@@ -10,7 +10,7 @@ const ResponseSchema = new mongoose.Schema({
   geminiFeedback: { type: String, default: null },
   correctAnswer: { type: String, default: null },
   errorAnalysis: { type: String, default: null },
-  improvementSteps: { type: String, default: null },
+  improvementSteps: { type: [String], default: [] },
   topicRecommendations: { type: [String], default: [] }
 }, { _id: false });
 

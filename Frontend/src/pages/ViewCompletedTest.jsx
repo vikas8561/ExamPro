@@ -258,11 +258,19 @@ const ViewCompletedTest = () => {
                       )}
 
                       {/* Improvement Steps */}
-                      {q.improvementSteps && (
+                      {q.improvementSteps && q.improvementSteps.length > 0 && (
                         <div className="p-4 bg-yellow-900/20 border-l-4 border-yellow-500 rounded">
                           <h5 className="text-yellow-300 font-semibold mb-2">🚀 How to Improve:</h5>
-                          <div className="text-yellow-200 text-sm leading-relaxed whitespace-pre-wrap">
-                            {q.improvementSteps}
+                          <div className="text-yellow-200 text-sm leading-relaxed">
+                            {Array.isArray(q.improvementSteps) ? (
+                              <ul className="list-disc list-inside space-y-1">
+                                {q.improvementSteps.map((step, index) => (
+                                  <li key={index}>{step}</li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <div className="whitespace-pre-wrap">{q.improvementSteps}</div>
+                            )}
                           </div>
                         </div>
                       )}
