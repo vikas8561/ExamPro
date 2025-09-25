@@ -72,9 +72,13 @@ const ViewCompletedTest = () => {
 
   const { test, submission, showResults, message } = testData;
 
-  const correctCount = test.questions.filter(q => q.isCorrect).length;
-  const incorrectCount = test.questions.filter(q => q.selectedOption && !q.isCorrect).length;
-  const notAnsweredCount = test.questions.filter(q => !q.selectedOption).length;
+  // Calculate counts based on question types
+  const mcqQuestions = test.questions.filter(q => q.kind === "mcq");
+  const codingTheoryQuestions = test.questions.filter(q => q.kind === "coding" || q.kind === "theory");
+  
+  const correctCount = mcqQuestions.filter(q => q.isCorrect).length;
+  const incorrectCount = mcqQuestions.filter(q => q.selectedOption && !q.isCorrect).length;
+  const notAnsweredCount = mcqQuestions.filter(q => !q.selectedOption).length;
   const totalQuestions = test.questions.length;
 
   // Check if results should be shown
@@ -137,18 +141,28 @@ const ViewCompletedTest = () => {
                 <div className="text-2xl font-bold text-blue-400">{totalQuestions}</div>
                 <div className="text-slate-400">Total Questions</div>
               </div>
-              <div>
-                <div className="text-2xl font-bold text-green-400">{correctCount}</div>
-                <div className="text-slate-400">Correct Answers</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-red-400">{incorrectCount}</div>
-                <div className="text-slate-400">Incorrect Answers</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-yellow-400">{notAnsweredCount}</div>
-                <div className="text-slate-400">Not Answered</div>
-              </div>
+              {mcqQuestions.length > 0 && (
+                <>
+                  <div>
+                    <div className="text-2xl font-bold text-green-400">{correctCount}</div>
+                    <div className="text-slate-400">MCQ Correct</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-red-400">{incorrectCount}</div>
+                    <div className="text-slate-400">MCQ Incorrect</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-yellow-400">{notAnsweredCount}</div>
+                    <div className="text-slate-400">MCQ Not Answered</div>
+                  </div>
+                </>
+              )}
+              {codingTheoryQuestions.length > 0 && (
+                <div>
+                  <div className="text-2xl font-bold text-purple-400">{codingTheoryQuestions.length}</div>
+                  <div className="text-slate-400">Coding/Theory Questions</div>
+                </div>
+              )}
               <div>
                 <div className="text-2xl font-bold text-white">{submission.totalScore}</div>
                 <div className="text-slate-400">Final Score</div>
@@ -166,25 +180,39 @@ const ViewCompletedTest = () => {
 
               return (
                 <div key={q._id} className="bg-slate-800 shadow-md rounded-lg p-6 border border-slate-700">
-                  <h4 className="text-lg font-semibold text-white mb-3">
-                    Q{index + 1}: {q.text}
-                  </h4>
-
-                  <div className="space-y-2">
-                    <div>
-                      <span className="font-medium text-slate-300">Your Answer: </span>
-                      <span className={`ml-2 font-semibold ${
-                        q.isCorrect ? "text-green-400" : "text-red-400"
+                  <div className="flex justify-between items-start mb-3">
+                    <h4 className="text-lg font-semibold text-white">
+                      Q{index + 1}: {q.text}
+                    </h4>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        q.kind === "mcq" ? "bg-blue-900/50 text-blue-300" :
+                        q.kind === "coding" ? "bg-purple-900/50 text-purple-300" :
+                        "bg-pink-900/50 text-pink-300"
                       }`}>
-                        {q.kind === "mcq" ? studentAnswer : (
-                          <div className="bg-slate-700 p-3 rounded mt-1 whitespace-pre-wrap">
-                            {studentAnswer}
-                          </div>
-                        )}
+                        {q.kind === "mcq" ? "MCQ" : q.kind === "coding" ? "Coding" : "Theory"}
                       </span>
                     </div>
+                  </div>
 
-                    {q.answer && (
+                  <div className="space-y-3">
+                    <div>
+                      <span className="font-medium text-slate-300">Your Answer: </span>
+                      {q.kind === "mcq" ? (
+                        <span className={`ml-2 font-semibold ${
+                          q.isCorrect ? "text-green-400" : "text-red-400"
+                        }`}>
+                          {studentAnswer}
+                        </span>
+                      ) : (
+                        <div className="bg-slate-700 p-3 rounded mt-1 whitespace-pre-wrap text-slate-200">
+                          {studentAnswer}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Show correct answer only for MCQ questions */}
+                    {q.kind === "mcq" && q.answer && (
                       <div>
                         <span className="font-medium text-slate-300">Correct Answer: </span>
                         <span className="ml-2 font-semibold text-green-400">{q.answer}</span>
@@ -202,21 +230,43 @@ const ViewCompletedTest = () => {
                     </div>
                   </div>
 
-                  {q.isCorrect && (
-                    <div className="mt-3 p-2 bg-green-900/20 border-l-4 border-green-500 rounded">
-                      <p className="text-sm text-green-300 font-medium">✓ Correct Answer</p>
+                  {/* Show feedback for coding and theory questions */}
+                  {(q.kind === "coding" || q.kind === "theory") && q.geminiFeedback && (
+                    <div className="mt-4 p-4 bg-blue-900/20 border-l-4 border-blue-500 rounded">
+                      <h5 className="text-blue-300 font-semibold mb-2">Feedback:</h5>
+                      <p className="text-blue-200 text-sm leading-relaxed">{q.geminiFeedback}</p>
                     </div>
                   )}
 
-                  {!q.isCorrect && (q.selectedOption || q.textAnswer) && (
-                    <div className="mt-3 p-2 bg-red-900/20 border-l-4 border-red-500 rounded">
-                      <p className="text-sm text-red-300 font-medium">✗ Incorrect Answer</p>
-                    </div>
+                  {/* Show right/wrong status only for MCQ questions */}
+                  {q.kind === "mcq" && (
+                    <>
+                      {q.isCorrect && (
+                        <div className="mt-3 p-2 bg-green-900/20 border-l-4 border-green-500 rounded">
+                          <p className="text-sm text-green-300 font-medium">✓ Correct Answer</p>
+                        </div>
+                      )}
+
+                      {!q.isCorrect && q.selectedOption && (
+                        <div className="mt-3 p-2 bg-red-900/20 border-l-4 border-red-500 rounded">
+                          <p className="text-sm text-red-300 font-medium">✗ Incorrect Answer</p>
+                        </div>
+                      )}
+
+                      {!q.selectedOption && (
+                        <div className="mt-3 p-2 bg-yellow-900/20 border-l-4 border-yellow-500 rounded">
+                          <p className="text-sm text-yellow-300 font-medium">⚠ Not Answered</p>
+                        </div>
+                      )}
+                    </>
                   )}
 
-                  {!q.selectedOption && !q.textAnswer && (
-                    <div className="mt-3 p-2 bg-yellow-900/20 border-l-4 border-yellow-500 rounded">
-                      <p className="text-sm text-yellow-300 font-medium">⚠ Not Answered</p>
+                  {/* Show status for coding/theory questions */}
+                  {(q.kind === "coding" || q.kind === "theory") && (
+                    <div className="mt-3 p-2 bg-slate-700/50 border-l-4 border-slate-500 rounded">
+                      <p className="text-sm text-slate-300 font-medium">
+                        {q.textAnswer ? "✓ Answer Submitted" : "⚠ Not Answered"}
+                      </p>
                     </div>
                   )}
                 </div>

@@ -150,21 +150,21 @@ const PracticeTestResults = () => {
             <div className="text-3xl font-bold text-green-400 mb-2">
               {submission.correctCount}
             </div>
-            <div className="text-slate-300">Correct</div>
+            <div className="text-slate-300">MCQ Correct</div>
           </div>
 
           <div className="bg-red-900/50 rounded-lg p-6">
             <div className="text-3xl font-bold text-red-400 mb-2">
               {submission.incorrectCount}
             </div>
-            <div className="text-slate-300">Incorrect</div>
+            <div className="text-slate-300">MCQ Incorrect</div>
           </div>
 
           <div className="bg-slate-700 rounded-lg p-6">
             <div className="text-3xl font-bold text-slate-400 mb-2">
               {submission.notAnsweredCount}
             </div>
-            <div className="text-slate-300">Not Answered</div>
+            <div className="text-slate-300">MCQ Not Answered</div>
           </div>
         </div>
 
@@ -188,14 +188,26 @@ const PracticeTestResults = () => {
                     <h4 className="text-lg font-semibold">
                       Question {index + 1}
                     </h4>
-                    <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      response?.isCorrect 
-                        ? "bg-green-900/50 text-green-300" 
-                        : (response?.selectedOption || response?.textAnswer)
-                        ? "bg-red-900/50 text-red-300"
-                        : "bg-slate-700 text-slate-300"
-                    }`}>
-                      {response?.isCorrect ? "Correct" : (response?.selectedOption || response?.textAnswer) ? "Incorrect" : "Not Answered"}
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        question.kind === "mcq" ? "bg-blue-900/50 text-blue-300" :
+                        question.kind === "coding" ? "bg-purple-900/50 text-purple-300" :
+                        "bg-pink-900/50 text-pink-300"
+                      }`}>
+                        {question.kind === "mcq" ? "MCQ" : question.kind === "coding" ? "Coding" : "Theory"}
+                      </span>
+                      {/* Show status only for MCQ questions */}
+                      {question.kind === "mcq" && (
+                        <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+                          response?.isCorrect 
+                            ? "bg-green-900/50 text-green-300" 
+                            : (response?.selectedOption)
+                            ? "bg-red-900/50 text-red-300"
+                            : "bg-slate-700 text-slate-300"
+                        }`}>
+                          {response?.isCorrect ? "Correct" : (response?.selectedOption) ? "Incorrect" : "Not Answered"}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -203,44 +215,76 @@ const PracticeTestResults = () => {
                     {question.text}
                   </p>
 
-                  <div className="space-y-2">
-                    {question.options?.map((option, optionIndex) => (
-                      <div
-                        key={optionIndex}
-                        className={`p-3 rounded-md border-2 ${
-                          response?.selectedOption === option.text
-                            ? response?.isCorrect
-                              ? "border-green-500 bg-green-900/20"
-                              : "border-red-500 bg-red-900/20"
-                            : "border-slate-600"
-                        }`}
-                      >
-                        <div className="flex items-center">
-                          <div className={`w-4 h-4 rounded-full border-2 mr-3 ${
+                  {/* Show options only for MCQ questions */}
+                  {question.kind === "mcq" && question.options && (
+                    <div className="space-y-2">
+                      {question.options.map((option, optionIndex) => (
+                        <div
+                          key={optionIndex}
+                          className={`p-3 rounded-md border-2 ${
                             response?.selectedOption === option.text
                               ? response?.isCorrect
-                                ? "border-green-500 bg-green-500"
-                                : "border-red-500 bg-red-500"
-                              : "border-slate-400"
-                          }`}>
+                                ? "border-green-500 bg-green-900/20"
+                                : "border-red-500 bg-red-900/20"
+                              : "border-slate-600"
+                          }`}
+                        >
+                          <div className="flex items-center">
+                            <div className={`w-4 h-4 rounded-full border-2 mr-3 ${
+                              response?.selectedOption === option.text
+                                ? response?.isCorrect
+                                  ? "border-green-500 bg-green-500"
+                                  : "border-red-500 bg-red-500"
+                                : "border-slate-400"
+                            }`}>
+                              {response?.selectedOption === option.text && (
+                                <div className="w-2 h-2 rounded-full bg-white m-0.5"></div>
+                              )}
+                            </div>
+                            <span className="text-slate-200">{option.text}</span>
                             {response?.selectedOption === option.text && (
-                              <div className="w-2 h-2 rounded-full bg-white m-0.5"></div>
+                              <span className="ml-auto text-sm font-medium">
+                                {response?.isCorrect ? "✓ Your Answer" : "✗ Your Answer"}
+                              </span>
                             )}
                           </div>
-                          <span className="text-slate-200">{option.text}</span>
-                          {response?.selectedOption === option.text && (
-                            <span className="ml-auto text-sm font-medium">
-                              {response?.isCorrect ? "✓ Your Answer" : "✗ Your Answer"}
-                            </span>
-                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Show text answer for coding and theory questions */}
+                  {(question.kind === "coding" || question.kind === "theory") && (
+                    <div className="space-y-3">
+                      <div>
+                        <span className="font-medium text-slate-300">Your Answer: </span>
+                        <div className="bg-slate-700 p-3 rounded mt-1 whitespace-pre-wrap text-slate-200">
+                          {response?.textAnswer || "No answer provided"}
                         </div>
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  )}
 
                   <div className="mt-4 text-sm text-slate-400">
                     Points: {response?.pointsEarned || 0} / {question.points || 1}
                   </div>
+
+                  {/* Show feedback for coding and theory questions */}
+                  {(question.kind === "coding" || question.kind === "theory") && question.geminiFeedback && (
+                    <div className="mt-4 p-4 bg-blue-900/20 border-l-4 border-blue-500 rounded">
+                      <h5 className="text-blue-300 font-semibold mb-2">Feedback:</h5>
+                      <p className="text-blue-200 text-sm leading-relaxed">{question.geminiFeedback}</p>
+                    </div>
+                  )}
+
+                  {/* Show status for coding/theory questions */}
+                  {(question.kind === "coding" || question.kind === "theory") && (
+                    <div className="mt-3 p-2 bg-slate-700/50 border-l-4 border-slate-500 rounded">
+                      <p className="text-sm text-slate-300 font-medium">
+                        {response?.textAnswer ? "✓ Answer Submitted" : "⚠ Not Answered"}
+                      </p>
+                    </div>
+                  )}
                 </div>
               );
             })}

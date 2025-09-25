@@ -7,10 +7,10 @@ const { authenticateToken, requireRole } = require("../middleware/auth");
 
 // Gemini API function for grading theory and coding questions
 async function evaluateWithGemini(questionText, studentAnswer, maxPoints) {
-  // console.log("🔍 DEBUG: evaluateWithGemini called with:");
-  // console.log("Question:", questionText.substring(0, 100) + "...");
-  // console.log("Answer:", studentAnswer.substring(0, 100) + "...");
-  // console.log("Max Points:", maxPoints);
+  console.log("🔍 DEBUG: evaluateWithGemini called with:");
+  console.log("Question:", questionText.substring(0, 100) + "...");
+  console.log("Answer:", studentAnswer.substring(0, 100) + "...");
+  console.log("Max Points:", maxPoints);
 
   try {
     // Check if API key is available
@@ -22,7 +22,7 @@ async function evaluateWithGemini(questionText, studentAnswer, maxPoints) {
       };
     }
 
-    // console.log("✅ API key found, initializing Gemini...");
+    console.log("✅ API key found, initializing Gemini...");
 
     // Import required packages at the top of the file
     const { GoogleGenerativeAI } = require("@google/generative-ai");
@@ -31,7 +31,7 @@ async function evaluateWithGemini(questionText, studentAnswer, maxPoints) {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-    // console.log("✅ Gemini model initialized, creating prompt...");
+    console.log("✅ Gemini model initialized, creating prompt...");
 
     // For now, using mock implementation - replace with actual API call
     const prompt = `
@@ -54,7 +54,7 @@ async function evaluateWithGemini(questionText, studentAnswer, maxPoints) {
       }
     `;
 
-    // console.log("📤 Using mock Gemini evaluation...");
+    console.log("📤 Using mock Gemini evaluation...");
 
     // Mock evaluation logic - replace with actual API call when ready
     const feedbackOptions = [
@@ -73,7 +73,7 @@ async function evaluateWithGemini(questionText, studentAnswer, maxPoints) {
     // Assign random marks between 0 and maxPoints
     const marks = Math.floor(Math.random() * (maxPoints + 1));
 
-    // console.log("✅ Mock evaluation result:", { marks, feedback: randomFeedback });
+    console.log("✅ Mock evaluation result:", { marks, feedback: randomFeedback });
 
     return {
       marks,
@@ -210,13 +210,16 @@ router.post("/", authenticateToken, async (req, res, next) => {
           points = -(question.points * negativeMarkingPercent);
           incorrectCount++;
         }
-      } else if (question.kind === "theoretical" || question.kind === "coding") {
+      } else if (question.kind === "theory" || question.kind === "coding") {
         // Theoretical and coding questions are graded by Gemini AI
+        console.log(`🔍 Processing ${question.kind} question:`, question._id);
         if (userResponse.textAnswer && userResponse.textAnswer.trim() !== "") {
+          console.log("📝 Text answer found, calling Gemini evaluation...");
           try {
             const geminiResult = await evaluateWithGemini(question.text, userResponse.textAnswer, question.points);
             points = geminiResult.marks;
             geminiFeedback = geminiResult.feedback;
+            console.log("✅ Gemini evaluation completed:", { points, geminiFeedback });
           } catch (error) {
             console.error("Error evaluating with Gemini:", error);
             points = 0;
@@ -224,6 +227,7 @@ router.post("/", authenticateToken, async (req, res, next) => {
           }
           isCorrect = false; // Not applicable for theory/coding
         } else {
+          console.log("❌ No text answer provided for theory/coding question");
           notAnsweredCount++;
           points = 0;
           geminiFeedback = null;
@@ -451,8 +455,8 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
         };
 
         // Debug logging for theory/coding questions
-        if (question.kind === "theoretical" || question.kind === "coding") {
-          // console.log(`DEBUG: Question ${question._id} - kind: ${question.kind}, geminiFeedback:`, response?.geminiFeedback);
+        if (question.kind === "theory" || question.kind === "coding") {
+          console.log(`DEBUG: Question ${question._id} - kind: ${question.kind}, geminiFeedback:`, response?.geminiFeedback);
         }
 
         return mergedQuestion;

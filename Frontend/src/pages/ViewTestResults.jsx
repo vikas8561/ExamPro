@@ -51,21 +51,81 @@ const ViewTestResults = () => {
 
           return (
             <div key={question._id} className="question">
-              <h3>
-                Q{index + 1}: {question.text}
-              </h3>
-              <p>
-                Your Answer:{" "}
-                <span style={{ color: response?.selectedOption ? "green" : "red" }}>
-                  {response?.selectedOption || "Not answered"}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <h3>
+                  Q{index + 1}: {question.text}
+                </h3>
+                <span style={{
+                  padding: '4px 8px',
+                  borderRadius: '12px',
+                  fontSize: '12px',
+                  fontWeight: '500',
+                  backgroundColor: question.kind === 'mcq' ? '#1e3a8a' : question.kind === 'coding' ? '#7c3aed' : '#be185d',
+                  color: question.kind === 'mcq' ? '#93c5fd' : question.kind === 'coding' ? '#c4b5fd' : '#f9a8d4'
+                }}>
+                  {question.kind === 'mcq' ? 'MCQ' : question.kind === 'coding' ? 'Coding' : 'Theory'}
                 </span>
-              </p>
-              <p>Correct Answer: {question.answer}</p>
+              </div>
+              
+              {question.kind === 'mcq' ? (
+                <>
+                  <p>
+                    Your Answer:{" "}
+                    <span style={{ color: response?.selectedOption ? "green" : "red" }}>
+                      {response?.selectedOption || "Not answered"}
+                    </span>
+                  </p>
+                  <p>Correct Answer: {question.answer}</p>
+                </>
+              ) : (
+                <div>
+                  <p>Your Answer:</p>
+                  <div style={{
+                    backgroundColor: '#374151',
+                    padding: '12px',
+                    borderRadius: '6px',
+                    marginTop: '4px',
+                    whiteSpace: 'pre-wrap',
+                    color: '#e5e7eb'
+                  }}>
+                    {response?.textAnswer || "No answer provided"}
+                  </div>
+                </div>
+              )}
+              
               <p>
                 Points Earned: {response?.points ?? 0} / {question.points || 1}
               </p>
-              {response?.geminiFeedback && (
-                <p>Feedback: {response.geminiFeedback}</p>
+              
+              {/* Show feedback for coding and theory questions */}
+              {(question.kind === 'coding' || question.kind === 'theory') && response?.geminiFeedback && (
+                <div style={{
+                  backgroundColor: '#1e3a8a',
+                  borderLeft: '4px solid #3b82f6',
+                  padding: '16px',
+                  borderRadius: '6px',
+                  marginTop: '12px'
+                }}>
+                  <h5 style={{ color: '#93c5fd', fontWeight: '600', marginBottom: '8px' }}>Feedback:</h5>
+                  <p style={{ color: '#bfdbfe', fontSize: '14px', lineHeight: '1.5' }}>
+                    {response.geminiFeedback}
+                  </p>
+                </div>
+              )}
+              
+              {/* Show status for coding/theory questions */}
+              {(question.kind === 'coding' || question.kind === 'theory') && (
+                <div style={{
+                  backgroundColor: '#374151',
+                  borderLeft: '4px solid #6b7280',
+                  padding: '8px',
+                  borderRadius: '6px',
+                  marginTop: '12px'
+                }}>
+                  <p style={{ color: '#d1d5db', fontSize: '14px', fontWeight: '500' }}>
+                    {response?.textAnswer ? "✓ Answer Submitted" : "⚠ Not Answered"}
+                  </p>
+                </div>
               )}
             </div>
           );
