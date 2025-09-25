@@ -13,6 +13,8 @@ const TakePracticeTest = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
   const [previousResponsesLoaded, setPreviousResponsesLoaded] = useState(false);
+  const [hasPreviousAttempt, setHasPreviousAttempt] = useState(false);
+  const [showRestoreNotification, setShowRestoreNotification] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [timeSpent, setTimeSpent] = useState(0);
   const [testStarted, setTestStarted] = useState(false);
@@ -55,25 +57,42 @@ const TakePracticeTest = () => {
       setTimeRemaining(totalSeconds);
       setTestStarted(true);
       
-      // Fetch user's previous attempts to load their last responses
-      const attemptsData = await apiRequest(`/practice-tests/${testId}/attempts`);
-      const attempts = attemptsData.submissions || [];
-      
-      if (attempts.length > 0) {
-        // Get the latest attempt
-        const latestAttempt = attempts[0]; // They are sorted by attemptNumber descending
+      // Fetch user's current attempt data to load their last responses
+      try {
+        const currentAttemptData = await apiRequest(`/practice-tests/${testId}/current-attempt`);
+        console.log('Current attempt data received:', currentAttemptData);
         
-        // Load the responses from the latest attempt
-        const previousAnswers = {};
-        if (latestAttempt.responses) {
-          latestAttempt.responses.forEach(response => {
+        if (currentAttemptData.hasPreviousAttempt && currentAttemptData.responses) {
+          // Load the responses from the current attempt
+          const previousAnswers = {};
+          console.log('Processing responses:', currentAttemptData.responses);
+          currentAttemptData.responses.forEach(response => {
+            console.log('Processing response:', response);
             if (response.selectedOption) {
-              previousAnswers[response.questionId] = response.selectedOption;
+              // Convert questionId to string to ensure proper matching
+              const questionIdStr = response.questionId.toString();
+              previousAnswers[questionIdStr] = response.selectedOption;
             }
           });
+          
+          setAnswers(previousAnswers);
+          setHasPreviousAttempt(true);
+          setPreviousResponsesLoaded(true);
+          setShowRestoreNotification(true);
+          console.log('Previous responses loaded:', previousAnswers);
+          
+          // Auto-hide notification after 5 seconds
+          setTimeout(() => {
+            setShowRestoreNotification(false);
+          }, 5000);
+        } else {
+          console.log('No previous attempt found, starting fresh');
+          setHasPreviousAttempt(false);
+          setPreviousResponsesLoaded(true);
         }
-        
-        setAnswers(previousAnswers);
+      } catch (attemptError) {
+        console.warn("Could not fetch previous attempt data:", attemptError);
+        // Continue without previous responses
         setPreviousResponsesLoaded(true);
       }
       
@@ -185,6 +204,26 @@ const TakePracticeTest = () => {
       </div>
 
       <div className="max-w-6xl mx-auto p-6">
+        {/* Restore Notification */}
+        {showRestoreNotification && (
+          <div className="mb-4 bg-green-900/50 border border-green-500/30 text-green-300 px-4 py-3 rounded-lg flex items-center justify-between">
+            <div className="flex items-center">
+              <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+              Your previous answers have been restored. You can modify them as needed.
+            </div>
+            <button
+              onClick={() => setShowRestoreNotification(false)}
+              className="text-green-400 hover:text-green-300 ml-4"
+            >
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
+        )}
+        
         <div className="flex flex-col lg:flex-row gap-6">
           {/* Main Question Area */}
           <div className="lg:w-3/4">
@@ -194,6 +233,11 @@ const TakePracticeTest = () => {
                 <h2 className="text-xl font-semibold">
                   Question {currentQuestion + 1} of {totalQuestions}
                 </h2>
+                {hasPreviousAttempt && (
+                  <div className="text-sm text-green-400 bg-green-900/20 px-3 py-1 rounded-full border border-green-500/30">
+                    Previous answers loaded
+                  </div>
+                )}
               </div>
 
               {/* Question Text */}

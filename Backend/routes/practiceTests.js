@@ -108,6 +108,8 @@ router.get("/:testId/current-attempt", authenticateToken, async (req, res, next)
       testId,
       userId
     }).select('responses attemptNumber isCompleted savedAt');
+    
+    console.log('Current attempt found:', currentAttempt);
 
     if (!currentAttempt) {
       return res.json({
@@ -120,7 +122,7 @@ router.get("/:testId/current-attempt", authenticateToken, async (req, res, next)
     // Return the previous attempt data for restoration
     res.json({
       hasPreviousAttempt: true,
-      responses: currentAttempt.responses,
+      responses: currentAttempt.responses || [],
       attemptNumber: currentAttempt.attemptNumber,
       isCompleted: currentAttempt.isCompleted,
       lastSavedAt: currentAttempt.savedAt
