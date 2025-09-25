@@ -40,8 +40,32 @@ const ViewTestResults = () => {
     <div className="test-results">
       <h2>Test Results</h2>
       <div className="summary">
-        <p>Total Questions: {test.questions.length}</p>
-        <p>Final Score: {finalScore}</p>
+        <div className="grid grid-cols-6 gap-4 text-center">
+          <div>
+            <div className="text-2xl font-bold text-blue-400">{test.questions.length}</div>
+            <div className="text-slate-400">Total Questions</div>
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-green-400">{responses.filter(r => r.isCorrect).length}</div>
+            <div className="text-slate-400">MCQ Correct</div>
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-red-400">{responses.filter(r => !r.isCorrect && r.selectedOption).length}</div>
+            <div className="text-slate-400">MCQ Incorrect</div>
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-yellow-400">{responses.filter(r => !r.selectedOption && !r.textAnswer).length}</div>
+            <div className="text-slate-400">MCQ Not Answered</div>
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-purple-400">{responses.filter(r => r.textAnswer).length}</div>
+            <div className="text-slate-400">Coding/Theory Questions</div>
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-white">{finalScore}</div>
+            <div className="text-slate-400">Final Score</div>
+          </div>
+        </div>
       </div>
       <div className="questions">
         {test.questions.map((question, index) => {
