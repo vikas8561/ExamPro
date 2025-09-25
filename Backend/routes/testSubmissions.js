@@ -243,12 +243,33 @@ router.post("/", authenticateToken, async (req, res, next) => {
       }))
     });
 
+    // Validate responses format
+    if (!Array.isArray(responses)) {
+      console.error("❌ Responses is not an array:", responses);
+      return res.status(400).json({ message: "Responses must be an array" });
+    }
+
+    // Validate each response
+    for (const response of responses) {
+      if (!response.questionId || typeof response.questionId !== 'string' || response.questionId.length !== 24) {
+        console.error("❌ Invalid questionId in response:", response.questionId);
+        return res.status(400).json({ message: "Invalid question ID format in responses" });
+      }
+    }
+
     if (!assignmentId || !responses) {
       return res.status(400).json({ message: "assignmentId and responses are required" });
     }
 
     // Get assignment to check if test time has expired
-    console.log("🔍 Looking up assignment:", assignmentId);
+    console.log("🔍 Looking up assignment:", assignmentId, "Type:", typeof assignmentId);
+    
+    // Validate assignmentId format
+    if (!assignmentId || typeof assignmentId !== 'string' || assignmentId.length !== 24) {
+      console.error("❌ Invalid assignmentId format:", assignmentId);
+      return res.status(400).json({ message: "Invalid assignment ID format" });
+    }
+    
     const assignment = await Assignment.findById(assignmentId);
     
     if (!assignment) {
