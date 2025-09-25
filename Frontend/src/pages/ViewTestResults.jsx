@@ -97,19 +97,108 @@ const ViewTestResults = () => {
                 Points Earned: {response?.points ?? 0} / {question.points || 1}
               </p>
               
-              {/* Show feedback for coding and theory questions */}
+              {/* Show comprehensive feedback for coding and theory questions */}
               {(question.kind === 'coding' || question.kind === 'theory') && response?.geminiFeedback && (
-                <div style={{
-                  backgroundColor: '#1e3a8a',
-                  borderLeft: '4px solid #3b82f6',
-                  padding: '16px',
-                  borderRadius: '6px',
-                  marginTop: '12px'
-                }}>
-                  <h5 style={{ color: '#93c5fd', fontWeight: '600', marginBottom: '8px' }}>Feedback:</h5>
-                  <p style={{ color: '#bfdbfe', fontSize: '14px', lineHeight: '1.5' }}>
-                    {response.geminiFeedback}
-                  </p>
+                <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {/* Main Feedback */}
+                  <div style={{
+                    backgroundColor: '#1e3a8a',
+                    borderLeft: '4px solid #3b82f6',
+                    padding: '16px',
+                    borderRadius: '6px'
+                  }}>
+                    <h5 style={{ color: '#93c5fd', fontWeight: '600', marginBottom: '8px' }}>📝 Feedback:</h5>
+                    <p style={{ color: '#bfdbfe', fontSize: '14px', lineHeight: '1.5' }}>
+                      {response.geminiFeedback}
+                    </p>
+                  </div>
+
+                  {/* Correct Answer */}
+                  {response.correctAnswer && (
+                    <div style={{
+                      backgroundColor: '#064e3b',
+                      borderLeft: '4px solid #10b981',
+                      padding: '16px',
+                      borderRadius: '6px'
+                    }}>
+                      <h5 style={{ color: '#6ee7b7', fontWeight: '600', marginBottom: '8px' }}>✅ Correct Answer:</h5>
+                      <div style={{
+                        color: '#a7f3d0',
+                        fontSize: '14px',
+                        lineHeight: '1.5',
+                        whiteSpace: 'pre-wrap',
+                        backgroundColor: '#374151',
+                        padding: '12px',
+                        borderRadius: '4px'
+                      }}>
+                        {response.correctAnswer}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Error Analysis */}
+                  {response.errorAnalysis && (
+                    <div style={{
+                      backgroundColor: '#7f1d1d',
+                      borderLeft: '4px solid #ef4444',
+                      padding: '16px',
+                      borderRadius: '6px'
+                    }}>
+                      <h5 style={{ color: '#fca5a5', fontWeight: '600', marginBottom: '8px' }}>🔍 What's Wrong:</h5>
+                      <p style={{ color: '#fecaca', fontSize: '14px', lineHeight: '1.5' }}>
+                        {response.errorAnalysis}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Improvement Steps */}
+                  {response.improvementSteps && (
+                    <div style={{
+                      backgroundColor: '#78350f',
+                      borderLeft: '4px solid #f59e0b',
+                      padding: '16px',
+                      borderRadius: '6px'
+                    }}>
+                      <h5 style={{ color: '#fcd34d', fontWeight: '600', marginBottom: '8px' }}>🚀 How to Improve:</h5>
+                      <div style={{
+                        color: '#fde68a',
+                        fontSize: '14px',
+                        lineHeight: '1.5',
+                        whiteSpace: 'pre-wrap'
+                      }}>
+                        {response.improvementSteps}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Topic Recommendations */}
+                  {response.topicRecommendations && response.topicRecommendations.length > 0 && (
+                    <div style={{
+                      backgroundColor: '#581c87',
+                      borderLeft: '4px solid #8b5cf6',
+                      padding: '16px',
+                      borderRadius: '6px'
+                    }}>
+                      <h5 style={{ color: '#c4b5fd', fontWeight: '600', marginBottom: '8px' }}>📚 Focus Areas:</h5>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                        {response.topicRecommendations.map((topic, index) => (
+                          <span
+                            key={index}
+                            style={{
+                              padding: '4px 12px',
+                              backgroundColor: '#7c3aed',
+                              color: '#e9d5ff',
+                              fontSize: '12px',
+                              borderRadius: '16px',
+                              border: '1px solid #8b5cf6'
+                            }}
+                          >
+                            {topic}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               

@@ -12,8 +12,54 @@ async function evaluateWithGemini(questionText, studentAnswer, maxPoints) {
   console.log("Answer:", studentAnswer.substring(0, 100) + "...");
   console.log("Max Points:", maxPoints);
 
+  // Configuration: Set to false to use mock evaluation instead of real Gemini API
+  const USE_REAL_GEMINI = true;
+
   try {
-    // Check if API key is available
+    // Use mock evaluation if configured
+    if (!USE_REAL_GEMINI) {
+      console.log("🎭 Using mock evaluation (USE_REAL_GEMINI = false)");
+      
+      const feedbackOptions = [
+        {
+          feedback: "Good understanding of the concept. Well-structured answer.",
+          correctAnswer: "The correct answer would be...",
+          errorAnalysis: "Your answer shows good understanding but could be more detailed.",
+          improvementSteps: "1. Add more examples 2. Explain the reasoning 3. Provide code snippets if applicable",
+          topicRecommendations: ["Advanced concepts", "Practical applications", "Best practices"]
+        },
+        {
+          feedback: "Partial understanding shown. Could be more detailed.",
+          correctAnswer: "Here's the complete correct answer...",
+          errorAnalysis: "Your answer covers the basics but misses some key points.",
+          improvementSteps: "1. Review the fundamentals 2. Study more examples 3. Practice implementation",
+          topicRecommendations: ["Fundamentals review", "Example problems", "Hands-on practice"]
+        },
+        {
+          feedback: "Basic knowledge demonstrated. Needs improvement in depth.",
+          correctAnswer: "The comprehensive answer includes...",
+          errorAnalysis: "Your answer shows you understand the basics but need deeper knowledge.",
+          improvementSteps: "1. Study the theory more thoroughly 2. Work through examples 3. Ask for clarification",
+          topicRecommendations: ["Core concepts", "Theory fundamentals", "Problem-solving techniques"]
+        }
+      ];
+
+      const randomOption = feedbackOptions[Math.floor(Math.random() * feedbackOptions.length)];
+      const marks = Math.floor(Math.random() * (maxPoints + 1));
+
+      console.log("✅ Mock evaluation result:", { marks, ...randomOption });
+
+      return {
+        marks,
+        feedback: randomOption.feedback,
+        correctAnswer: randomOption.correctAnswer,
+        errorAnalysis: randomOption.errorAnalysis,
+        improvementSteps: randomOption.improvementSteps,
+        topicRecommendations: randomOption.topicRecommendations
+      };
+    }
+
+    // Check if API key is available for real Gemini API
     if (!process.env.GEMINI_API_KEY) {
       console.error("❌ ERROR: GEMINI_API_KEY not found in environment variables");
       return {
@@ -33,60 +79,147 @@ async function evaluateWithGemini(questionText, studentAnswer, maxPoints) {
 
     console.log("✅ Gemini model initialized, creating prompt...");
 
-    // For now, using mock implementation - replace with actual API call
+    // Create a comprehensive prompt for Gemini evaluation
     const prompt = `
-      You are an AI evaluator for educational assessments. Evaluate the following student answer for a programming/theory question.
+You are an expert educational evaluator and tutor. Please provide a comprehensive evaluation of the following student answer.
 
-      Question: ${questionText}
+QUESTION:
+${questionText}
 
-      Student Answer: ${studentAnswer}
+STUDENT ANSWER:
+${studentAnswer}
 
-      Maximum Points: ${maxPoints}
+MAXIMUM POINTS: ${maxPoints}
 
-      Please provide:
-      1. A score between 0 and ${maxPoints} based on correctness, completeness, and quality
-      2. Constructive feedback explaining the evaluation
+EVALUATION REQUIREMENTS:
+1. SCORE: Assign a score between 0 and ${maxPoints} based on correctness, completeness, clarity, and depth
+2. FEEDBACK: Provide detailed constructive feedback
+3. CORRECT ANSWER: If the student's answer is incorrect or incomplete, provide the correct/complete answer
+4. ERROR ANALYSIS: Explain what is wrong with the student's answer and why
+5. IMPROVEMENT GUIDANCE: Suggest specific steps to improve the answer
+6. TOPIC RECOMMENDATIONS: Recommend 2-3 specific topics/concepts the student should focus on to improve
 
-      Format your response as JSON:
-      {
-        "score": <number>,
-        "feedback": "<detailed feedback text>"
-      }
+EVALUATION CRITERIA:
+- Correctness: Is the answer factually correct?
+- Completeness: Does it address all parts of the question?
+- Clarity: Is the explanation clear and well-structured?
+- Depth: Does it show understanding beyond surface level?
+- Examples: Are relevant examples provided (if applicable)?
+
+INSTRUCTIONS:
+- Be encouraging but honest about areas needing improvement
+- Provide specific, actionable feedback
+- Include code examples if it's a programming question
+- Suggest concrete study topics and resources
+- Keep the tone supportive and educational
+
+RESPONSE FORMAT (JSON only, no additional text):
+{
+  "score": <number between 0 and ${maxPoints}>,
+  "feedback": "<detailed, constructive feedback about strengths and areas for improvement>",
+  "correctAnswer": "<the correct/complete answer to the question>",
+  "errorAnalysis": "<explanation of what is wrong with the student's answer and why>",
+  "improvementSteps": "<specific steps the student should take to improve>",
+  "topicRecommendations": ["<topic 1>", "<topic 2>", "<topic 3>"]
+}
     `;
 
-    console.log("📤 Using mock Gemini evaluation...");
+    console.log("📤 Calling actual Gemini API...");
 
-    // Mock evaluation logic - replace with actual API call when ready
-    const feedbackOptions = [
-      "Good understanding of the concept. Well-structured answer.",
-      "Partial understanding shown. Could be more detailed.",
-      "Basic knowledge demonstrated. Needs improvement in depth.",
-      "Excellent explanation with examples. Shows strong grasp.",
-      "Answer lacks clarity. Please elaborate more.",
-      "Correct approach but minor errors in implementation.",
-      "Comprehensive answer covering all key points.",
-      "Needs more specific examples to support the explanation."
-    ];
+    // Call the actual Gemini API with timeout protection
+    const result = await Promise.race([
+      model.generateContent(prompt),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Gemini API timeout after 30 seconds')), 30000)
+      )
+    ]);
+    
+    const response = await result.response;
+    const text = response.text();
 
-    const randomFeedback = feedbackOptions[Math.floor(Math.random() * feedbackOptions.length)];
+    console.log("📥 Raw Gemini response:", text);
 
-    // Assign random marks between 0 and maxPoints
-    const marks = Math.floor(Math.random() * (maxPoints + 1));
+    // Parse the JSON response from Gemini
+    let evaluation;
+    try {
+      // Extract JSON from the response (in case there's extra text)
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        evaluation = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error("No JSON found in response");
+      }
+    } catch (parseError) {
+      console.error("❌ Error parsing Gemini response:", parseError);
+      console.error("Raw response:", text);
+      
+      // Fallback to a default response if parsing fails
+      evaluation = {
+        score: Math.floor(maxPoints * 0.5), // Give 50% of max points as fallback
+        feedback: "AI evaluation completed but response format was unexpected. Please review manually.",
+        correctAnswer: "Unable to generate correct answer due to parsing error.",
+        errorAnalysis: "Response parsing failed. Please contact instructor.",
+        improvementSteps: "Please review your answer and consult with your instructor.",
+        topicRecommendations: ["General review of the subject matter"]
+      };
+    }
 
-    console.log("✅ Mock evaluation result:", { marks, feedback: randomFeedback });
+    // Validate and sanitize the response
+    if (typeof evaluation.score !== 'number' || evaluation.score < 0 || evaluation.score > maxPoints) {
+      console.warn("⚠️ Invalid score from Gemini, clamping to valid range");
+      evaluation.score = Math.max(0, Math.min(maxPoints, evaluation.score || 0));
+    }
+
+    // Ensure all required fields exist with fallbacks
+    evaluation.feedback = evaluation.feedback || "No feedback provided.";
+    evaluation.correctAnswer = evaluation.correctAnswer || "Correct answer not provided.";
+    evaluation.errorAnalysis = evaluation.errorAnalysis || "Error analysis not provided.";
+    evaluation.improvementSteps = evaluation.improvementSteps || "Improvement steps not provided.";
+    evaluation.topicRecommendations = Array.isArray(evaluation.topicRecommendations) 
+      ? evaluation.topicRecommendations 
+      : ["General study of the subject matter"];
+
+    console.log("✅ Gemini evaluation result:", {
+      marks: evaluation.score,
+      feedback: evaluation.feedback.substring(0, 100) + "...",
+      hasCorrectAnswer: !!evaluation.correctAnswer,
+      hasErrorAnalysis: !!evaluation.errorAnalysis,
+      hasImprovementSteps: !!evaluation.improvementSteps,
+      topicCount: evaluation.topicRecommendations.length
+    });
 
     return {
-      marks,
-      feedback: randomFeedback
+      marks: evaluation.score,
+      feedback: evaluation.feedback,
+      correctAnswer: evaluation.correctAnswer,
+      errorAnalysis: evaluation.errorAnalysis,
+      improvementSteps: evaluation.improvementSteps,
+      topicRecommendations: evaluation.topicRecommendations
     };
 
   } catch (error) {
     console.error("❌ Error evaluating with Gemini API:", error);
     console.error("Error details:", error.message);
     console.error("Error stack:", error.stack);
+    
+    // Provide more specific error messages based on error type
+    let errorMessage = "Evaluation failed due to technical error. Please contact instructor.";
+    
+    if (error.message.includes('timeout')) {
+      errorMessage = "Evaluation timed out. Please try again or contact instructor.";
+    } else if (error.message.includes('API key') || error.message.includes('authentication')) {
+      errorMessage = "AI evaluation service is temporarily unavailable. Please contact instructor.";
+    } else if (error.message.includes('quota') || error.message.includes('limit')) {
+      errorMessage = "AI evaluation service is temporarily at capacity. Please contact instructor.";
+    }
+    
     return {
       marks: 0,
-      feedback: "Evaluation failed due to technical error. Please contact instructor."
+      feedback: errorMessage,
+      correctAnswer: "Unable to generate correct answer due to technical error.",
+      errorAnalysis: "Error analysis unavailable due to technical issues.",
+      improvementSteps: "Please contact your instructor for guidance.",
+      topicRecommendations: ["General review of the subject matter"]
     };
   }
 }
@@ -199,6 +332,7 @@ router.post("/", authenticateToken, async (req, res, next) => {
       let isCorrect = false;
       let points = 0;
       let geminiFeedback = null;
+      let geminiResult = null;
 
       if (question.kind === "mcq") {
         isCorrect = userResponse.selectedOption === question.answer;
@@ -216,14 +350,22 @@ router.post("/", authenticateToken, async (req, res, next) => {
         if (userResponse.textAnswer && userResponse.textAnswer.trim() !== "") {
           console.log("📝 Text answer found, calling Gemini evaluation...");
           try {
-            const geminiResult = await evaluateWithGemini(question.text, userResponse.textAnswer, question.points);
+            geminiResult = await evaluateWithGemini(question.text, userResponse.textAnswer, question.points);
             points = geminiResult.marks;
             geminiFeedback = geminiResult.feedback;
-            console.log("✅ Gemini evaluation completed:", { points, geminiFeedback });
+            console.log("✅ Gemini evaluation completed:", { 
+              points, 
+              feedback: geminiFeedback.substring(0, 100) + "...",
+              hasCorrectAnswer: !!geminiResult.correctAnswer,
+              hasErrorAnalysis: !!geminiResult.errorAnalysis,
+              hasImprovementSteps: !!geminiResult.improvementSteps,
+              topicCount: geminiResult.topicRecommendations?.length || 0
+            });
           } catch (error) {
             console.error("Error evaluating with Gemini:", error);
             points = 0;
             geminiFeedback = "Evaluation failed. Please contact instructor.";
+            geminiResult = null;
           }
           isCorrect = false; // Not applicable for theory/coding
         } else {
@@ -244,7 +386,11 @@ router.post("/", authenticateToken, async (req, res, next) => {
         isCorrect,
         points,
         autoGraded: question.kind === "mcq",
-        geminiFeedback
+        geminiFeedback,
+        correctAnswer: geminiResult?.correctAnswer || null,
+        errorAnalysis: geminiResult?.errorAnalysis || null,
+        improvementSteps: geminiResult?.improvementSteps || null,
+        topicRecommendations: geminiResult?.topicRecommendations || []
       });
     }
 
@@ -451,7 +597,11 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
           isCorrect: submission.mentorReviewed ? response?.isCorrect : false,
           points: submission.mentorReviewed ? response?.points : 0,
           autoGraded: response?.autoGraded || false,
-          geminiFeedback: response?.geminiFeedback || null
+          geminiFeedback: response?.geminiFeedback || null,
+          correctAnswer: response?.correctAnswer || null,
+          errorAnalysis: response?.errorAnalysis || null,
+          improvementSteps: response?.improvementSteps || null,
+          topicRecommendations: response?.topicRecommendations || []
         };
 
         // Debug logging for theory/coding questions

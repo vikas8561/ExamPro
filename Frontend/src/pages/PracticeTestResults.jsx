@@ -269,22 +269,7 @@ const PracticeTestResults = () => {
                     Points: {response?.pointsEarned || 0} / {question.points || 1}
                   </div>
 
-                  {/* Show feedback for coding and theory questions */}
-                  {(question.kind === "coding" || question.kind === "theory") && question.geminiFeedback && (
-                    <div className="mt-4 p-4 bg-blue-900/20 border-l-4 border-blue-500 rounded">
-                      <h5 className="text-blue-300 font-semibold mb-2">Feedback:</h5>
-                      <p className="text-blue-200 text-sm leading-relaxed">{question.geminiFeedback}</p>
-                    </div>
-                  )}
-
-                  {/* Show status for coding/theory questions */}
-                  {(question.kind === "coding" || question.kind === "theory") && (
-                    <div className="mt-3 p-2 bg-slate-700/50 border-l-4 border-slate-500 rounded">
-                      <p className="text-sm text-slate-300 font-medium">
-                        {response?.textAnswer ? "✓ Answer Submitted" : "⚠ Not Answered"}
-                      </p>
-                    </div>
-                  )}
+                  {/* Practice tests only have MCQ questions, so no comprehensive feedback needed */}
                 </div>
               );
             })}

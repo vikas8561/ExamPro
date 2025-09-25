@@ -7,7 +7,11 @@ const ResponseSchema = new mongoose.Schema({
   isCorrect: { type: Boolean, default: false },
   points: { type: Number, default: 0 },
   autoGraded: { type: Boolean, default: false },
-  geminiFeedback: { type: String, default: null }
+  geminiFeedback: { type: String, default: null },
+  correctAnswer: { type: String, default: null },
+  errorAnalysis: { type: String, default: null },
+  improvementSteps: { type: String, default: null },
+  topicRecommendations: { type: [String], default: [] }
 }, { _id: false });
 
 const TabViolationSchema = new mongoose.Schema({

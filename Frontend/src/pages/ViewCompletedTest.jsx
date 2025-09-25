@@ -230,11 +230,59 @@ const ViewCompletedTest = () => {
                     </div>
                   </div>
 
-                  {/* Show feedback for coding and theory questions */}
+                  {/* Show comprehensive feedback for coding and theory questions */}
                   {(q.kind === "coding" || q.kind === "theory") && q.geminiFeedback && (
-                    <div className="mt-4 p-4 bg-blue-900/20 border-l-4 border-blue-500 rounded">
-                      <h5 className="text-blue-300 font-semibold mb-2">Feedback:</h5>
-                      <p className="text-blue-200 text-sm leading-relaxed">{q.geminiFeedback}</p>
+                    <div className="mt-4 space-y-4">
+                      {/* Main Feedback */}
+                      <div className="p-4 bg-blue-900/20 border-l-4 border-blue-500 rounded">
+                        <h5 className="text-blue-300 font-semibold mb-2">📝 Feedback:</h5>
+                        <p className="text-blue-200 text-sm leading-relaxed">{q.geminiFeedback}</p>
+                      </div>
+
+                      {/* Correct Answer */}
+                      {q.correctAnswer && (
+                        <div className="p-4 bg-green-900/20 border-l-4 border-green-500 rounded">
+                          <h5 className="text-green-300 font-semibold mb-2">✅ Correct Answer:</h5>
+                          <div className="text-green-200 text-sm leading-relaxed whitespace-pre-wrap bg-slate-800/50 p-3 rounded">
+                            {q.correctAnswer}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Error Analysis */}
+                      {q.errorAnalysis && (
+                        <div className="p-4 bg-red-900/20 border-l-4 border-red-500 rounded">
+                          <h5 className="text-red-300 font-semibold mb-2">🔍 What's Wrong:</h5>
+                          <p className="text-red-200 text-sm leading-relaxed">{q.errorAnalysis}</p>
+                        </div>
+                      )}
+
+                      {/* Improvement Steps */}
+                      {q.improvementSteps && (
+                        <div className="p-4 bg-yellow-900/20 border-l-4 border-yellow-500 rounded">
+                          <h5 className="text-yellow-300 font-semibold mb-2">🚀 How to Improve:</h5>
+                          <div className="text-yellow-200 text-sm leading-relaxed whitespace-pre-wrap">
+                            {q.improvementSteps}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Topic Recommendations */}
+                      {q.topicRecommendations && q.topicRecommendations.length > 0 && (
+                        <div className="p-4 bg-purple-900/20 border-l-4 border-purple-500 rounded">
+                          <h5 className="text-purple-300 font-semibold mb-2">📚 Focus Areas:</h5>
+                          <div className="flex flex-wrap gap-2">
+                            {q.topicRecommendations.map((topic, index) => (
+                              <span
+                                key={index}
+                                className="px-3 py-1 bg-purple-800/50 text-purple-200 text-xs rounded-full border border-purple-600/30"
+                              >
+                                {topic}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
