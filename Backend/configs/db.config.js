@@ -4,8 +4,8 @@ async function connectDB(uri) {
   mongoose.set("strictQuery", true);
   await mongoose.connect(uri, {
     // Connection Pool Settings for 250+ users
-    maxPoolSize: 500,        // Maximum 500 connections (free tier limit)
-    minPoolSize: 200,        // Keep 200 connections always ready
+    maxPoolSize: 400,        // Maximum 500 connections (free tier limit)
+    minPoolSize: 125,        // Keep 200 connections always ready
     maxIdleTimeMS: 120000,   // Keep connections for 2 minutes
     
     // Timeout Settings (optimized for high load)
