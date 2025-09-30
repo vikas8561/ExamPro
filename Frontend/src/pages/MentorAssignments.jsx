@@ -174,17 +174,20 @@ export default function MentorAssignments() {
 
   // Pagination functions
   const getFilteredAssignments = () => {
-    const uniqueAssignments = Array.from(new Map(assignments.map(a => [a.testId?._id, a])).values());
+    // Show all assignments, not just unique by testId, so we can see all students
+    const allAssignments = assignments;
     
     if (!searchTerm.trim()) {
-      return uniqueAssignments;
+      return allAssignments;
     }
     
     const searchLower = searchTerm.toLowerCase();
-    return uniqueAssignments.filter(assignment => 
+    return allAssignments.filter(assignment => 
       (assignment.testId?.title || '').toLowerCase().includes(searchLower) ||
       (assignment.testId?.subject || '').toLowerCase().includes(searchLower) ||
       (assignment.testId?.type || '').toLowerCase().includes(searchLower) ||
+      (assignment.userId?.name || '').toLowerCase().includes(searchLower) ||
+      (assignment.userId?.email || '').toLowerCase().includes(searchLower) ||
       (assignment.createdAt ? new Date(assignment.createdAt).toLocaleDateString() : '').includes(searchLower)
     );
   };
@@ -382,7 +385,7 @@ export default function MentorAssignments() {
             </div>
             <input
               type="text"
-              placeholder="Search tests by name, subject, type, or date..."
+              placeholder="Search by student name, test name, subject, type, or date..."
               value={searchTerm}
               onChange={(e) => handleSearchChange(e.target.value)}
               className="block w-80 pl-10 pr-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
@@ -400,7 +403,7 @@ export default function MentorAssignments() {
           </div>
           {searchTerm && (
             <div className="text-sm text-slate-400 bg-slate-700 px-3 py-1 rounded-lg">
-              {getUniqueAssignmentsCount()} result{getUniqueAssignmentsCount() !== 1 ? 's' : ''}
+              {getFilteredAssignments().length} result{getFilteredAssignments().length !== 1 ? 's' : ''}
             </div>
           )}
         </div>
@@ -411,7 +414,10 @@ export default function MentorAssignments() {
           <table className="w-full">
             <thead className="bg-gradient-to-r from-slate-800 to-slate-700 sticky top-0 shadow-lg">
               <tr className="text-left text-slate-200 border-b border-slate-600">
+                <th className="p-4 font-semibold text-sm uppercase tracking-wide">Student Name</th>
                 <th className="p-4 font-semibold text-sm uppercase tracking-wide">Test Name</th>
+                <th className="p-4 font-semibold text-sm uppercase tracking-wide">Status</th>
+                <th className="p-4 font-semibold text-sm uppercase tracking-wide">Score</th>
                 <th className="p-4 font-semibold text-sm uppercase tracking-wide">Test Date</th>
                 <th className="p-4 font-semibold text-sm uppercase tracking-wide text-center">Actions</th>
               </tr>
@@ -419,32 +425,57 @@ export default function MentorAssignments() {
             <tbody>
               {getPaginatedAssignments().map((assignment) => (
                 <tr key={assignment._id} className="border-b border-slate-700 hover:bg-slate-700 transition-colors duration-200">
+                  <td className="p-4 text-slate-200 font-medium">{assignment.userId?.name || "Unknown Student"}</td>
                   <td className="p-4 text-slate-200 font-medium">{assignment.testId?.title || "Unknown Test"}</td>
+                  <td className="p-4 text-slate-300">
+                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                      assignment.status === "Completed" ? 'bg-green-900 text-green-300' :
+                      assignment.status === "In Progress" ? 'bg-yellow-900 text-yellow-300' :
+                      assignment.status === "Assigned" ? 'bg-blue-900 text-blue-300' :
+                      'bg-gray-900 text-gray-300'
+                    }`}>
+                      {assignment.status}
+                    </span>
+                  </td>
+                  <td className="p-4 text-slate-300">
+                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                      assignment.score !== null && assignment.score !== undefined ? (
+                        (() => {
+                          const percentage = assignment.maxScore > 0 ? (assignment.score / assignment.maxScore) * 100 : 0;
+                          if (percentage >= 80) return 'bg-green-900 text-green-300';
+                          if (percentage >= 60) return 'bg-yellow-900 text-yellow-300';
+                          if (percentage >= 40) return 'bg-orange-900 text-orange-300';
+                          if (percentage > 0) return 'bg-red-900 text-red-300';
+                          return 'bg-gray-900 text-gray-300';
+                        })()
+                      ) : 'bg-gray-900 text-gray-300'
+                    }`}>
+                      {assignment.score !== null && assignment.score !== undefined ? 
+                        (assignment.maxScore !== null && assignment.maxScore !== undefined ? 
+                          `${assignment.score} out of ${assignment.maxScore}` : 
+                          assignment.score
+                        ) : "N/A"}
+                    </span>
+                  </td>
                   <td className="p-4 text-slate-300">{assignment.createdAt ? new Date(assignment.createdAt).toLocaleDateString() : "N/A"}</td>
                   <td className="p-4 text-center">
-                    <button
-                    onClick={() => {
-                      setSelectedTest(assignment.testId);
-                      setShowModal(true);
-                      resetFilters(); // Reset filters when opening a new test
-                    }}
-                    className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2 rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 active:scale-95 font-medium"
-                  >
-                    <span className="flex items-center gap-2">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                      </svg>
-                    View Details
-                    </span>
-                  </button>
+                    {assignment.status === "Completed" ? (
+                      <button
+                        onClick={() => navigate(`/mentor/view-test/${assignment._id}`)}
+                        className="bg-gradient-to-r from-green-600 to-green-700 text-white px-3 py-1.5 rounded-lg hover:from-green-700 hover:to-green-800 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 active:scale-95 font-medium text-sm"
+                      >
+                        View Results
+                      </button>
+                    ) : (
+                      <span className="text-slate-400 text-sm">Not Available</span>
+                    )}
                   </td>
                 </tr>
               ))}
-              {getUniqueAssignmentsCount() === 0 && (
+              {getFilteredAssignments().length === 0 && (
                 <tr>
                   <td
-                    colSpan="3"
+                    colSpan="6"
                     className="p-8 text-center text-slate-400"
                   >
                     <div className="text-4xl mb-3">
@@ -476,9 +507,9 @@ export default function MentorAssignments() {
         <div className="flex-shrink-0">
           <Pagination
             currentPage={currentPage}
-            totalPages={getTotalPages(getUniqueAssignmentsCount())}
+            totalPages={getTotalPages(getFilteredAssignments().length)}
             onPageChange={(page) => handlePageChange(page, false)}
-            totalItems={getUniqueAssignmentsCount()}
+            totalItems={getFilteredAssignments().length}
             itemsPerPage={itemsPerPage}
           />
         </div>

@@ -66,7 +66,7 @@ router.get("/assignments", authenticateToken, async (req, res) => {
     
     // MEMORY OPTIMIZED: Add pagination to prevent memory issues
     const page = parseInt(req.query.page) || 0;
-    const limit = Math.min(parseInt(req.query.limit) || 50, 100); // Max 100 records
+    const limit = Math.min(parseInt(req.query.limit) || 200, 500); // Max 500 records to show all SU students
     const skip = page * limit;
 
     // ULTRA FAST: Get assignments with MINIMAL population (NO questions!)
@@ -80,7 +80,14 @@ router.get("/assignments", authenticateToken, async (req, res) => {
       .skip(skip)
       .lean(); // Use lean() for 2x faster queries
 
-    // console.log(`📊 Found ${assignments.length} assignments in ${Date.now() - startTime}ms`);
+    console.log(`📊 Found ${assignments.length} assignments in ${Date.now() - startTime}ms`);
+    console.log('Sample assignments:', assignments.slice(0, 3).map(a => ({ 
+      id: a._id, 
+      testTitle: a.testId?.title,
+      studentName: a.userId?.name,
+      status: a.status, 
+      mentorId: a.mentorId
+    })));
     // Sample assignment data logging disabled
     // const sampleAssignments = assignments.slice(0, 2).map(a => ({ 
     //   id: a._id, 
@@ -98,7 +105,7 @@ router.get("/assignments", authenticateToken, async (req, res) => {
       .select('assignmentId submittedAt totalScore maxScore')
       .lean();
     
-    // console.log(`📊 Found ${submissions.length} submissions in ${Date.now() - startTime}ms`);
+    console.log(`📊 Found ${submissions.length} submissions in ${Date.now() - startTime}ms`);
     // console.log('Sample submission data:', submissions.slice(0, 2));
     // All submission data logging disabled
     // const allSubmissionData = submissions.map(sub => ({ 
