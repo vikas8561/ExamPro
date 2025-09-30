@@ -21,8 +21,8 @@ router.get("/dashboard", authenticateToken, async (req, res) => {
     const mentorId = req.user.userId;
     // console.log('Fetching dashboard for mentor:', mentorId);
     
-    // Get all assignments where this mentor is assigned
-    const assignments = await Assignment.find({ mentorId })
+    // Get all assignments so mentors can see all student submissions
+    const assignments = await Assignment.find({})
       .populate("testId", "title type instructions timeLimit")
       .populate("userId", "name email")
       .sort({ createdAt: -1 });
@@ -70,12 +70,8 @@ router.get("/assignments", authenticateToken, async (req, res) => {
     const skip = page * limit;
 
     // ULTRA FAST: Get assignments with MINIMAL population (NO questions!)
-    const assignments = await Assignment.find({
-      $or: [
-        { mentorId: req.user.userId },
-        { mentorId: null }
-      ]
-    })
+    // Show ALL assignments so mentors can see all student submissions
+    const assignments = await Assignment.find({})
       .populate("testId", "title type instructions timeLimit") // NO questions!
       .populate("userId", "name email")
       .select("testId userId mentorId status startTime duration deadline startedAt completedAt score autoScore mentorScore mentorFeedback reviewStatus timeSpent createdAt")
@@ -382,8 +378,8 @@ router.get("/submissions/pending", authenticateToken, async (req, res, next) => 
     const mentorId = req.user.userId;
     // console.log(`Fetching pending submissions for mentor: ${mentorId}`);
 
-    // Find assignments assigned to this mentor
-    const assignments = await Assignment.find({ mentorId });
+    // Find all assignments so mentors can see all pending submissions
+    const assignments = await Assignment.find({});
     // console.log(`Found ${assignments.length} assignments for mentor ${mentorId}`);
     
     const assignmentIds = assignments.map(a => a._id);

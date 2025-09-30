@@ -17,12 +17,8 @@ router.get("/assignments", authenticateToken, async (req, res) => {
     const skip = page * limit;
 
     // STEP 1: Get assignments with MINIMAL population (no questions!)
-    const assignments = await Assignment.find({
-      $or: [
-        { mentorId: mentorId },
-        { mentorId: null }
-      ]
-    })
+    // Show ALL assignments so mentors can see all student submissions
+    const assignments = await Assignment.find({})
       .populate({
         path: "testId",
         select: "title type instructions timeLimit",
