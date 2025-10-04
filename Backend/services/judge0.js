@@ -9,9 +9,10 @@ const fetchFn = async (...args) => {
   return nodeFetch(...args);
 };
 
-const JUDGE0_BASE_URL = process.env.JUDGE0_BASE_URL || 'https://judge0-ce.p.rapidapi.com';
-const JUDGE0_HOST = process.env.JUDGE0_RAPIDAPI_HOST || 'judge0-ce.p.rapidapi.com';
-const JUDGE0_KEY = process.env.JUDGE0_RAPIDAPI_KEY || process.env.JUDGE0_API_KEY || '';
+const JUDGE0_BASE_URL = process.env.JUDGE0_BASE_URL || 'https://judge0-render-5nl0.onrender.com';
+// Removed RapidAPI host and key since self-hosted Judge0 does not require them
+// const JUDGE0_HOST = process.env.JUDGE0_RAPIDAPI_HOST || 'judge0-ce.p.rapidapi.com';
+// const JUDGE0_KEY = process.env.JUDGE0_RAPIDAPI_KEY || process.env.JUDGE0_API_KEY || '';
 
 function mapLanguageToJudge0Id(language) {
   const map = {
@@ -36,10 +37,11 @@ async function createSubmission({ sourceCode, language, stdin, expectedOutput, c
   const headers = {
     'content-type': 'application/json',
   };
-  if (JUDGE0_KEY) {
-    headers['X-RapidAPI-Key'] = JUDGE0_KEY;
-    headers['X-RapidAPI-Host'] = JUDGE0_HOST;
-  }
+  // Removed RapidAPI headers for self-hosted Judge0
+  // if (JUDGE0_KEY) {
+  //   headers['X-RapidAPI-Key'] = JUDGE0_KEY;
+  //   headers['X-RapidAPI-Host'] = JUDGE0_HOST;
+  // }
 
   const body = {
     source_code: sourceCode || '',

@@ -50,8 +50,8 @@ export default function TakeCodingTest() {
   const activeQ = codingQuestions[activeIndex];
 
   const fontSizeMap = {
-    'small': 16,
-    'medium': 18,
+    'small': 18,
+    'medium': 22,
     'large': 25,
     'extra-large': 30
   };
