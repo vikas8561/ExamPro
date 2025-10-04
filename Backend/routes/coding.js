@@ -10,23 +10,40 @@ const { runAgainstCases } = require('../services/judge0');
 router.post('/run', authenticateToken, async (req, res, next) => {
   try {
     const { testId, questionId, sourceCode, language } = req.body;
+    console.log('Run request:', { testId, questionId, language, sourceCodeLength: sourceCode?.length });
+
     if (!testId || !questionId || !sourceCode) {
       return res.status(400).json({ message: 'testId, questionId and sourceCode are required' });
     }
 
     const test = await Test.findById(testId);
-    if (!test) return res.status(404).json({ message: 'Test not found' });
+    if (!test) {
+      console.log('Test not found:', testId);
+      return res.status(404).json({ message: 'Test not found' });
+    }
+
     const question = test.questions.id(questionId);
     if (!question || question.kind !== 'coding') {
+      console.log('Coding question not found:', questionId, question?.kind);
       return res.status(400).json({ message: 'Coding question not found' });
     }
 
     const visibleCases = (question.visibleTestCases || []).map(c => ({ input: c.input, output: c.output }));
+    console.log('Visible cases count:', visibleCases.length);
+
+    if (visibleCases.length === 0) {
+      return res.json({ results: [], passed: 0, total: 0 });
+    }
+
     const results = await runAgainstCases({ sourceCode, language, cases: visibleCases });
     const passed = results.filter(r => r.passed).length;
+    console.log('Run results:', { passed, total: results.length });
+
     res.json({ results, passed, total: results.length });
   } catch (err) {
-    next(err);
+    console.error('Error in /coding/run:', err.message, err.stack);
+    // Return a more user-friendly error instead of 500
+    res.status(500).json({ message: 'Code execution failed. Please try again later.' });
   }
 });
 
