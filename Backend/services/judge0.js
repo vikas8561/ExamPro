@@ -11,7 +11,7 @@ const fetchFn = async (...args) => {
 };
 
 // Use environment variable or default to your Render worker URL
-const JUDGE0_BASE_URL = process.env.JUDGE0_BASE_URL || 'https://judge0-render-5.onrender.com';
+const JUDGE0_BASE_URL = process.env.JUDGE0_BASE_URL || 'https://judge0-render-1-y413.onrender.com';
 
 // Map common language names to Judge0 language IDs
 function mapLanguageToJudge0Id(language) {
