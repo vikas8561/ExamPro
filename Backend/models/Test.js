@@ -13,6 +13,24 @@ const ExampleSchema = new mongoose.Schema(
   { _id: false }
 );
 
+// Test case schemas for coding questions
+const VisibleTestCaseSchema = new mongoose.Schema(
+  {
+    input: { type: String, required: true },
+    output: { type: String, required: true }
+  },
+  { _id: true }
+);
+
+const HiddenTestCaseSchema = new mongoose.Schema(
+  {
+    input: { type: String, required: true },
+    output: { type: String, required: true },
+    marks: { type: Number, default: 1, min: 0 }
+  },
+  { _id: true }
+);
+
 const QuestionSchema = new mongoose.Schema(
   {
     kind: { type: String, enum: ["mcq", "theory", "coding"], required: true },
@@ -23,6 +41,9 @@ const QuestionSchema = new mongoose.Schema(
     guidelines: { type: String, default: "" },
     examples: { type: [ExampleSchema], default: [] },
     points: { type: Number, default: 1, min: 0 },
+    // Coding-only fields
+    visibleTestCases: { type: [VisibleTestCaseSchema], default: [] },
+    hiddenTestCases: { type: [HiddenTestCaseSchema], default: [] },
   },
   { _id: true }
 );
@@ -75,6 +96,15 @@ TestSchema.path("questions").validate(function (questions) {
     if (q.kind === "mcq") {
       if (!Array.isArray(q.options) || q.options.length < 2) return false;
       if (!q.answer || typeof q.answer !== "string") return false;
+    }
+    if (q.kind === "coding") {
+      // Hidden test cases can assign marks; total question points can be inferred on submit
+      if (!Array.isArray(q.hiddenTestCases)) return false;
+      // Ensure marks are non-negative numbers
+      for (const h of q.hiddenTestCases) {
+        if (typeof h.marks !== "number" || h.marks < 0) return false;
+      }
+      if (!Array.isArray(q.visibleTestCases)) return false;
     }
   }
   return true;

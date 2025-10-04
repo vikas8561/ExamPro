@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import apiRequest from "../services/api";
-import Editor from "@monaco-editor/react";
+import Judge0CodeEditor from "../components/Judge0CodeEditor";
 
 const TakeTest = () => {
   const [timeRemaining, setTimeRemaining] = useState(0);
@@ -1498,18 +1498,19 @@ const TakeTest = () => {
                 </div>
               )}
 
-              {question.examples && question.examples.length > 0 && (
+              {question.visibleTestCases && question.visibleTestCases.length > 0 && (
                 <div className="bg-slate-700 p-4 rounded-lg mb-4 scrollbar-hide" style={{maxHeight: '16rem', overflowY: 'auto'}}>
-                  {question.examples.map((example, idx) => (
+                  <div className="text-slate-300 font-semibold mb-2">Normal Test Cases</div>
+                  {question.visibleTestCases.map((tc, idx) => (
                     <div key={idx} className="mb-3 p-3 bg-slate-600 rounded">
-                      <div className="mb-1 font-semibold text-slate-300">Example {idx + 1}:</div>
+                      <div className="mb-1 font-semibold text-slate-300">Case {idx + 1}:</div>
                       <div className="mb-1 font-semibold text-slate-300">Input:</div>
                       <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
-                        {example.input}
+                        {tc.input}
                       </pre>
                       <div className="mt-2 mb-1 font-semibold text-slate-300">Output:</div>
                       <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
-                        {example.output}
+                        {tc.output}
                       </pre>
                     </div>
                   ))}
@@ -1519,21 +1520,14 @@ const TakeTest = () => {
 
             <div className="bg-slate-800 rounded-lg p-6 flex flex-col" style={{ height: '70vh' }}>
               <div className="flex-1">
-                <Editor
-                  height="100%"
-                  defaultLanguage={question.language || "javascript"}
-                  value={answers[question._id] || ""}
-                  onChange={(value) => handleAnswerChange(question._id, value)}
-                  theme="vs-dark"
-                  options={{
-                    minimap: { enabled: false },
-                    fontSize: 14,
-                    lineNumbers: "on",
-                    automaticLayout: true,
-                    scrollBeyondLastLine: false,
-                    wordWrap: "on",
-                    padding: { top: 16, bottom: 16 },
-                  }}
+                <Judge0CodeEditor
+                  testId={test._id}
+                  questionId={question._id}
+                  assignmentId={assignmentId}
+                  initialLanguage="python"
+                  initialCode={answers[question._id] || ""}
+                  onRun={(res)=>{/* optional hook */}}
+                  onSubmit={(res)=>{/* optional hook */}}
                 />
               </div>
               <div className="flex justify-between mt-4 gap-4">

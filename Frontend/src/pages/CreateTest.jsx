@@ -22,6 +22,8 @@ const emptyQuestion = (kind) => ({
   }),
   ...(kind === "coding" && {
     examples: [],
+    visibleTestCases: [{ input: "", output: "" }],
+    hiddenTestCases: [{ input: "", output: "", marks: 1 }],
   }),
 });
 
@@ -98,6 +100,8 @@ export default function CreateTest() {
 
           ...(q.kind === "coding" && {
             examples: q.examples || [],
+            visibleTestCases: (q.visibleTestCases || []).map(tc => ({ input: tc.input, output: tc.output })),
+            hiddenTestCases: (q.hiddenTestCases || []).map(tc => ({ input: tc.input, output: tc.output, marks: tc.marks || 0 })),
           }),
           ...(q.kind === "theory" && {
             // No guidelines field
@@ -415,6 +419,8 @@ export default function CreateTest() {
 
           ...(q.kind === "coding" && {
             examples: q.examples || [],
+            visibleTestCases: (q.visibleTestCases || []).map(tc => ({ input: tc.input, output: tc.output })),
+            hiddenTestCases: (q.hiddenTestCases || []).map(tc => ({ input: tc.input, output: tc.output, marks: Number(tc.marks || 0) })),
           }),
           ...(q.kind === "theory" && {
             // No guidelines field
@@ -670,7 +676,7 @@ export default function CreateTest() {
           </div>
         </div>
 
-        {form.type !== "practice" && (
+        {form.type !== "practice" && form.type !== "coding" && (
           <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-500/30">
             <label className="block text-sm font-medium mb-3 text-slate-200">
               Negative Marking (%)
@@ -1521,6 +1527,14 @@ export default function CreateTest() {
                           </button>
                         </div>
 
+                        {/* Coding scoring note */}
+                        <div className="bg-slate-600/30 rounded-lg p-4 border border-slate-500/30 mb-4">
+                          <label className="block text-sm font-medium mb-2 text-slate-200">Scoring</label>
+                          <div className="text-xs text-slate-300">
+                            Final marks are based on passed hidden test cases. Set marks per hidden case below. Students can code in any supported language.
+                          </div>
+                        </div>
+
                         <div className="space-y-4">
                         {(question.examples || []).map((example, exIndex) => (
                           <div
@@ -1607,6 +1621,101 @@ export default function CreateTest() {
                               </div>
                           </div>
                         )}
+                        </div>
+
+                        {/* Visible (Normal) Test Cases for Run */}
+                        <div className="bg-slate-600/30 rounded-lg p-4 border border-slate-500/30 mt-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <label className="block text-sm font-medium text-slate-200">Visible Test Cases (Run)</label>
+                            <button
+                              type="button"
+                              onClick={() => updateQuestion(question.id, 'visibleTestCases', [...(question.visibleTestCases || []), { input: '', output: '' }])}
+                              className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-xs"
+                            >Add Visible Case</button>
+                          </div>
+                          <div className="space-y-3">
+                            {(question.visibleTestCases || []).map((tc, i) => (
+                              <div key={i} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <textarea
+                                  value={tc.input}
+                                  onChange={(e) => {
+                                    const next = [...(question.visibleTestCases || [])];
+                                    next[i] = { ...next[i], input: e.target.value };
+                                    updateQuestion(question.id, 'visibleTestCases', next);
+                                  }}
+                                  className="p-3 bg-slate-700/50 border border-slate-500/50 rounded-lg font-mono text-sm"
+                                  rows={3}
+                                  placeholder="Input"
+                                />
+                                <textarea
+                                  value={tc.output}
+                                  onChange={(e) => {
+                                    const next = [...(question.visibleTestCases || [])];
+                                    next[i] = { ...next[i], output: e.target.value };
+                                    updateQuestion(question.id, 'visibleTestCases', next);
+                                  }}
+                                  className="p-3 bg-slate-700/50 border border-slate-500/50 rounded-lg font-mono text-sm"
+                                  rows={3}
+                                  placeholder="Expected Output"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Hidden Test Cases for Submit (with Marks) */}
+                        <div className="bg-slate-600/30 rounded-lg p-4 border border-slate-500/30 mt-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <label className="block text-sm font-medium text-slate-200">Hidden Test Cases (Submit)</label>
+                            <button
+                              type="button"
+                              onClick={() => updateQuestion(question.id, 'hiddenTestCases', [...(question.hiddenTestCases || []), { input: '', output: '', marks: 1 }])}
+                              className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-xs"
+                            >Add Hidden Case</button>
+                          </div>
+                          <div className="space-y-3">
+                            {(question.hiddenTestCases || []).map((tc, i) => (
+                              <div key={i} className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <textarea
+                                  value={tc.input}
+                                  onChange={(e) => {
+                                    const next = [...(question.hiddenTestCases || [])];
+                                    next[i] = { ...next[i], input: e.target.value };
+                                    updateQuestion(question.id, 'hiddenTestCases', next);
+                                  }}
+                                  className="p-3 bg-slate-700/50 border border-slate-500/50 rounded-lg font-mono text-sm"
+                                  rows={3}
+                                  placeholder="Input"
+                                />
+                                <textarea
+                                  value={tc.output}
+                                  onChange={(e) => {
+                                    const next = [...(question.hiddenTestCases || [])];
+                                    next[i] = { ...next[i], output: e.target.value };
+                                    updateQuestion(question.id, 'hiddenTestCases', next);
+                                  }}
+                                  className="p-3 bg-slate-700/50 border border-slate-500/50 rounded-lg font-mono text-sm"
+                                  rows={3}
+                                  placeholder="Expected Output"
+                                />
+                                <div>
+                                  <label className="block text-xs text-slate-400 mb-1">Marks</label>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    value={tc.marks ?? 1}
+                                    onChange={(e) => {
+                                      const next = [...(question.hiddenTestCases || [])];
+                                      next[i] = { ...next[i], marks: Number(e.target.value) };
+                                      updateQuestion(question.id, 'hiddenTestCases', next);
+                                    }}
+                                    className="p-3 bg-slate-700/50 border border-slate-500/50 rounded-lg w-full"
+                                    placeholder="Marks"
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     </>

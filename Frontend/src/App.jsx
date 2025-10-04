@@ -16,6 +16,8 @@ import TakeTest from "./pages/TakeTest";
 import PracticeTests from "./pages/PracticeTests";
 import TakePracticeTest from "./pages/TakePracticeTest";
 import PracticeTestResults from "./pages/PracticeTestResults";
+import StudentCodingTests from "./pages/StudentCodingTests";
+import TakeCodingTest from "./pages/TakeCodingTest";
 import StudentSidebar from "./components/StudentSidebar";
 import MentorLayout from "./components/MentorLayout";
 import MentorAssignments from "./pages/MentorAssignments";
@@ -80,7 +82,7 @@ const AdminLayout = () => {
 // Student Layout Component with routes
 const StudentRoutes = () => {
   const location = useLocation();
-  const isTakeTest = location.pathname.includes('/take-test');
+  const isTakeTest = location.pathname.includes('/take-test') || location.pathname.includes('/take-coding');
 
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
 
@@ -112,6 +114,8 @@ const StudentRoutes = () => {
         <Routes>
           <Route path="/" element={<StudentDashboard />} />
           <Route path="/assignments" element={<StudentAssignments />} />
+          <Route path="/coding-tests" element={<StudentCodingTests />} />
+          <Route path="/take-coding/:testId" element={<TakeCodingTest />} />
           <Route path="/practice-tests" element={<PracticeTests />} />
           <Route path="/practice-test/:testId" element={<TakePracticeTest />} />
           <Route path="/practice-test-results/:testId" element={<PracticeTestResults />} />
