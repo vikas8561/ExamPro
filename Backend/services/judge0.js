@@ -55,6 +55,7 @@ async function createSubmission({ sourceCode, language, stdin, expectedOutput, c
   const res = await fetchFn(url, { method: 'POST', headers, body: JSON.stringify(body) });
   if (!res.ok) {
     const text = await res.text();
+    console.error(`Judge0 API error response: ${res.status} ${text}`);
     throw new Error(`Judge0 error: ${res.status} ${text}`);
   }
   return res.json();

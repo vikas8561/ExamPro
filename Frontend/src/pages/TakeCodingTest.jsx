@@ -13,7 +13,8 @@ export default function TakeCodingTest() {
   const [languageByQ, setLanguageByQ] = useState({});
   const [runResults, setRunResults] = useState(null);
   const [submitResults, setSubmitResults] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loadingRun, setLoadingRun] = useState(false);
+  const [loadingSubmit, setLoadingSubmit] = useState(false);
   const [manualCases, setManualCases] = useState([]);
   const [fontSize, setFontSize] = useState('medium');
   const [editorTheme, setEditorTheme] = useState('vs-dark');
@@ -124,7 +125,7 @@ int main() {
 
   const runCode = async () => {
     if (!activeQ) return;
-    setLoading(true);
+    setLoadingRun(true);
     try {
       const resp = await apiRequest('/coding/run', {
         method: 'POST',
@@ -145,13 +146,13 @@ int main() {
       console.error(e);
       alert('Run failed');
     } finally {
-      setLoading(false);
+      setLoadingRun(false);
     }
   };
 
   const submitCode = async () => {
     if (!activeQ) return;
-    setLoading(true);
+    setLoadingSubmit(true);
     try {
       const resp = await apiRequest('/coding/submit', {
         method: 'POST',
@@ -168,7 +169,7 @@ int main() {
       console.error(e);
       alert('Submit failed');
     } finally {
-      setLoading(false);
+      setLoadingSubmit(false);
     }
   };
 
@@ -408,30 +409,6 @@ int main() {
             }}
           />
           <div className="h-[30%] overflow-auto border-t border-slate-700 p-2">
-            {runResults && (
-              <div className="mb-3">
-                <div className="font-medium mb-1">Run Results: {runResults.passed}/{runResults.total} passed</div>
-                <div className="space-y-2 text-xs">
-                  {runResults.results.map((r, i) => (
-                    <div key={i} className={`p-2 rounded border ${r.passed ? 'border-emerald-700 bg-emerald-900/20' : 'border-red-700 bg-red-900/20'}`}>
-                      <div className="flex justify-between"><span>Case {i+1}</span><span>{r.passed ? 'Passed' : 'Failed'}</span></div>
-                      <div className="mt-1 text-slate-400">Input</div>
-                      <pre className="whitespace-pre-wrap">{r.input}</pre>
-                      <div className="mt-1 text-slate-400">Expected</div>
-                      <pre className="whitespace-pre-wrap">{r.expected}</pre>
-                      {r.stdout && <>
-                        <div className="mt-1 text-slate-400">Output</div>
-                        <pre className="whitespace-pre-wrap">{r.stdout}</pre>
-                      </>}
-                      {r.stderr && <>
-                        <div className="mt-1 text-slate-400">Error</div>
-                        <pre className="whitespace-pre-wrap">{r.stderr}</pre>
-                      </>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
             {submitResults && (
               <div className="mb-3">
                 <div className="font-medium mb-1">Hidden Cases: {submitResults.passedCount}/{submitResults.totalHidden} passed</div>
@@ -441,10 +418,10 @@ int main() {
             <div className="p-2 border-t border-slate-700 flex justify-end space-x-2">
               <button
                 onClick={runCode}
-                disabled={loading}
+                disabled={loadingRun}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded disabled:opacity-50 transition-all duration-200 flex items-center gap-2 disabled:cursor-not-allowed"
               >
-                {loading ? (
+                {loadingRun ? (
                   <>
                     Running...
                   </>
@@ -456,10 +433,10 @@ int main() {
               </button>
               <button
                 onClick={submitCode}
-                disabled={loading}
+                disabled={loadingSubmit}
                 className="px-4 py-2 bg-white text-black hover:bg-gray-100 rounded disabled:opacity-50 transition-all duration-200 flex items-center gap-2 disabled:cursor-not-allowed"
               >
-                {loading ? (
+                {loadingSubmit ? (
                   <>
                     Submitting...
                   </>
@@ -478,24 +455,35 @@ int main() {
             <div className="mb-4">
               <h3 className="font-medium text-white mb-2">Test Cases</h3>
               <div className="flex space-x-2 mb-2 overflow-x-auto max-w-full no-scrollbar">
-                {activeQ.visibleTestCases.map((_, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setActiveTestCaseIndex(idx)}
-                    className={`px-3 py-1 rounded-t-lg text-sm font-medium whitespace-nowrap ${
-                      activeTestCaseIndex === idx
-                        ? 'bg-slate-700 text-white'
-                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
-                    }`}
-                  >
-                    Case {idx + 1}
-                  </button>
-                ))}
+                {activeQ.visibleTestCases.map((_, idx) => {
+                  const isCorrect = runResults ? runResults.results[idx]?.stdout?.trim() === activeQ.visibleTestCases[idx].output?.trim() : null;
+                  const isSelected = activeTestCaseIndex === idx;
+                  let bgClass, textClass;
+                  if (runResults) {
+                    if (isSelected) {
+                      bgClass = 'bg-slate-600';
+                      textClass = 'text-white';
+                    } else {
+                      bgClass = isCorrect ? 'bg-green-600' : 'bg-red-600';
+                      textClass = 'text-white';
+                    }
+                  } else {
+                    bgClass = 'bg-slate-800';
+                    textClass = 'text-slate-400';
+                  }
+                  const hoverClass = isSelected ? '' : 'hover:bg-slate-700 hover:text-white';
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => setActiveTestCaseIndex(idx)}
+                      className={`px-3 py-1 rounded-t-lg text-sm font-medium whitespace-nowrap ${bgClass} ${textClass} ${hoverClass}`}
+                    >
+                      Case {idx + 1}
+                    </button>
+                  );
+                })}
               </div>
               <div className="bg-slate-800 border border-slate-700 rounded p-2 overflow-auto max-h-37">
-                {/* <div className="mb-2">
-                  <span className="text-sm font-medium text-slate-300">Case {activeTestCaseIndex + 1}</span>
-                </div> */}
                 <div className="space-y-2">
                   <div>
                     <div className="text-xs text-slate-400 mb-1">Input:</div>
@@ -512,9 +500,17 @@ int main() {
                   <div>
                     <div className="text-xs text-slate-400 mb-1">Your Output:</div>
                     <pre className="bg-slate-900 border border-slate-600 rounded p-1 text-xs text-slate-200 whitespace-pre-wrap overflow-auto max-h-32">
-                      {runResults?.results[activeTestCaseIndex]?.stdout || 'Run code to see output'}
+                      {runResults?.results[activeTestCaseIndex]?.stdout || runResults?.results[activeTestCaseIndex]?.stderr || 'Run code to see output'}
                     </pre>
                   </div>
+                  {runResults && (
+                    <div>
+                      <div className="text-xs text-slate-400 mb-1">Result:</div>
+                      <div className={`text-sm font-semibold ${runResults.results[activeTestCaseIndex]?.stdout?.trim() === activeQ.visibleTestCases[activeTestCaseIndex].output?.trim() ? 'text-green-400' : 'text-red-400'}`}>
+                        {runResults.results[activeTestCaseIndex]?.stdout?.trim() === activeQ.visibleTestCases[activeTestCaseIndex].output?.trim() ? 'Correct' : 'Incorrect'}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
