@@ -280,6 +280,11 @@ const StudentAssignments = () => {
   };
 
   const filteredAssignments = assignments.filter((assignment) => {
+    // Exclude coding tests from assigned tests section
+    if (assignment.testId?.type === 'coding') {
+      return false;
+    }
+
     // Status filter
     if (statusFilter !== 'all' && assignment.status !== statusFilter) {
       return false;
