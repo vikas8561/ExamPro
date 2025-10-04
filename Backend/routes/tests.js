@@ -61,6 +61,22 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
     // Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
+    // Process questions to ensure test cases are properly formatted
+    const processedQuestions = (Array.isArray(questions) ? questions : []).map(q => {
+      if (q.kind === 'coding') {
+        return {
+          ...q,
+          visibleTestCases: (q.visibleTestCases || []).filter(tc =>
+            tc && tc.input && tc.input.trim() && tc.output && tc.output.trim()
+          ),
+          hiddenTestCases: (q.hiddenTestCases || []).filter(tc =>
+            tc && tc.input && tc.input.trim() && tc.output && tc.output.trim()
+          )
+        };
+      }
+      return q;
+    });
+
     const testData = {
       title: title.trim(),
       subject: subject || "",
@@ -70,7 +86,7 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
       negativeMarkingPercent: Number(negativeMarkingPercent || 0),
       allowedTabSwitches: Number(allowedTabSwitches || 0),
       otp: otp,
-      questions: Array.isArray(questions) ? questions : [],
+      questions: processedQuestions,
       createdBy: req.user.userId
     };
 
@@ -116,7 +132,25 @@ router.put("/:id", authenticateToken, requireRole("admin"), async (req, res, nex
     if (timeLimit) updateData.timeLimit = Number(timeLimit);
     if (negativeMarkingPercent !== undefined) updateData.negativeMarkingPercent = Number(negativeMarkingPercent);
     if (allowedTabSwitches !== undefined) updateData.allowedTabSwitches = Number(allowedTabSwitches);
-    if (questions) updateData.questions = questions;
+
+    // Process questions to ensure test cases are properly formatted
+    if (questions) {
+      updateData.questions = questions.map(q => {
+        if (q.kind === 'coding') {
+          return {
+            ...q,
+            visibleTestCases: (q.visibleTestCases || []).filter(tc =>
+              tc && tc.input && tc.input.trim() && tc.output && tc.output.trim()
+            ),
+            hiddenTestCases: (q.hiddenTestCases || []).filter(tc =>
+              tc && tc.input && tc.input.trim() && tc.output && tc.output.trim()
+            )
+          };
+        }
+        return q;
+      });
+    }
+
     if (status) updateData.status = status;
 
     // Handle practice test specific settings
