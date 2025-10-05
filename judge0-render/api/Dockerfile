@@ -13,10 +13,11 @@ RUN apt-get update && apt-get install -y \
     libcap2-bin \
     libcap-dev \
     pkg-config \
+    libsystemd-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install isolate for code sandboxing
-RUN git clone --depth 1 https://github.com/ioi/isolate.git /tmp/isolate && \
+# Install isolate for code sandboxing (use stable version)
+RUN git clone --depth 1 --branch v1.9.1 https://github.com/ioi/isolate.git /tmp/isolate && \
     cd /tmp/isolate && \
     make isolate && \
     cp isolate /usr/local/bin/ && \
