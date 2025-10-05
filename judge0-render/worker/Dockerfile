@@ -21,7 +21,10 @@ RUN git clone --depth 1 https://github.com/ioi/isolate.git /tmp/isolate && \
     make isolate && \
     cp isolate /usr/local/bin/ && \
     mkdir -p /usr/local/etc/isolate && \
-    cp default.cf /usr/local/etc/isolate/ && \
+    echo "box_root=/tmp/isolate" > /usr/local/etc/isolate/default.cf && \
+    echo "box_id=0" >> /usr/local/etc/isolate/default.cf && \
+    echo "box_path=/tmp/isolate/0/box" >> /usr/local/etc/isolate/default.cf && \
+    echo "isolate_path=/usr/local/bin/isolate" >> /usr/local/etc/isolate/default.cf && \
     rm -rf /tmp/isolate
 
 # Create necessary directories
