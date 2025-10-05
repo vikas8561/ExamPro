@@ -20,6 +20,8 @@ RUN git clone --depth 1 https://github.com/ioi/isolate.git /tmp/isolate && \
     cd /tmp/isolate && \
     make isolate && \
     cp isolate /usr/local/bin/ && \
+    mkdir -p /usr/local/etc/isolate && \
+    cp default.cf /usr/local/etc/isolate/ && \
     rm -rf /tmp/isolate
 
 # Create necessary directories
