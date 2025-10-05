@@ -40,8 +40,7 @@ router.post('/test', async (req, res, next) => {
 });
 
 // Run code against visible test cases (student preview)
-// Temporarily remove auth for debugging
-router.post('/run', async (req, res, next) => {
+router.post('/run', authenticateToken, async (req, res, next) => {
   try {
     console.log('=== /coding/run endpoint called ===');
     console.log('🔐 Authenticated user:', req.user);
@@ -49,32 +48,63 @@ router.post('/run', async (req, res, next) => {
     const { testId, questionId, sourceCode, language } = req.body;
     console.log('Run request:', { testId, questionId, language, sourceCodeLength: sourceCode?.length });
 
+    // Enhanced validation
     if (!testId || !questionId || !sourceCode) {
+      console.log('❌ Missing required fields:', { testId: !!testId, questionId: !!questionId, sourceCode: !!sourceCode });
       return res.status(400).json({ message: 'testId, questionId and sourceCode are required' });
     }
 
+    // Validate ObjectId format
+    if (!testId.match(/^[0-9a-fA-F]{24}$/)) {
+      console.log('❌ Invalid testId format:', testId);
+      return res.status(400).json({ message: 'Invalid testId format' });
+    }
+
+    if (!questionId.match(/^[0-9a-fA-F]{24}$/)) {
+      console.log('❌ Invalid questionId format:', questionId);
+      return res.status(400).json({ message: 'Invalid questionId format' });
+    }
+
+    console.log('🔍 Fetching test from database...');
     const test = await Test.findById(testId);
     if (!test) {
-      console.log('Test not found:', testId);
+      console.log('❌ Test not found:', testId);
       return res.status(404).json({ message: 'Test not found' });
     }
+    console.log('✅ Test found:', test.title);
 
+    console.log('🔍 Looking for question in test...');
     const question = test.questions.id(questionId);
-    if (!question || question.kind !== 'coding') {
-      console.log('Coding question not found:', questionId, question?.kind);
-      return res.status(400).json({ message: 'Coding question not found' });
+    if (!question) {
+      console.log('❌ Question not found in test:', questionId);
+      console.log('Available question IDs:', test.questions.map(q => q._id));
+      return res.status(404).json({ message: 'Question not found in test' });
     }
+
+    if (question.kind !== 'coding') {
+      console.log('❌ Question is not a coding question:', question.kind);
+      return res.status(400).json({ message: 'Question is not a coding question' });
+    }
+    console.log('✅ Coding question found:', question.text.substring(0, 50) + '...');
+
+    // Use question's language if not provided in request
+    const questionLanguage = language || question.language || 'python';
+    console.log('🔤 Using language:', questionLanguage);
 
     const visibleCases = (question.visibleTestCases || []).map(c => ({ input: c.input, output: c.output }));
-    console.log('Visible cases count:', visibleCases.length);
+    console.log('📋 Visible test cases:', visibleCases.length);
+    console.log('📋 Test cases data:', visibleCases);
 
     if (visibleCases.length === 0) {
-      return res.json({ results: [], passed: 0, total: 0 });
+      console.log('⚠️ No visible test cases found');
+      return res.json({ results: [], passed: 0, total: 0, message: 'No visible test cases available' });
     }
 
-    const results = await runAgainstCases({ sourceCode, language, cases: visibleCases });
+    console.log('🚀 Running code against test cases...');
+    const results = await runAgainstCases({ sourceCode, language: questionLanguage, cases: visibleCases });
     const passed = results.filter(r => r.passed).length;
-    console.log('Run results:', { passed, total: results.length });
+    console.log('✅ Run results:', { passed, total: results.length });
+    console.log('📊 Detailed results:', results);
 
     res.json({ results, passed, total: results.length });
   } catch (err) {

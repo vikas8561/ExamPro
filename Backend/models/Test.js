@@ -42,6 +42,7 @@ const QuestionSchema = new mongoose.Schema(
     examples: { type: [ExampleSchema], default: [] },
     points: { type: Number, default: 1, min: 0 },
     // Coding-only fields
+    language: { type: String, default: "python", enum: ["python", "javascript", "java", "cpp", "c", "go"] },
     visibleTestCases: { type: [VisibleTestCaseSchema], default: [] },
     hiddenTestCases: { type: [HiddenTestCaseSchema], default: [] },
   },

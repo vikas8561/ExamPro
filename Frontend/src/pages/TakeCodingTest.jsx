@@ -42,7 +42,9 @@ export default function TakeCodingTest() {
         const langs = {};
         (t.questions || []).forEach(q => {
           if (q.kind === 'coding') {
+            // Use question's language from database, fallback to 'python'
             langs[q._id] = q.language || 'python';
+            console.log(`🔤 Question ${q._id} language: ${langs[q._id]}`);
             // Provide basic code template for the language
             initial[q._id] = getLanguageTemplate(langs[q._id]);
           }
@@ -158,13 +160,17 @@ int main() {
     setRunResults(null); // Clear previous results to ensure UI updates
     setActiveTestCaseIndex(0); // Reset to first test case to show updated output
     try {
+      // Use question's language from database, fallback to user's selection, then default to python
+      const questionLanguage = activeQ.language || languageByQ[activeQ._id] || 'python';
+      console.log(`🔤 Using language for question ${activeQ._id}: ${questionLanguage}`);
+      
       const resp = await apiRequest('/coding/run', {
         method: 'POST',
         body: JSON.stringify({
           testId: test._id,
           questionId: activeQ._id,
           sourceCode: codeByQ[activeQ._id] || '',
-          language: languageByQ[activeQ._id] || activeQ.language
+          language: questionLanguage
         })
       });
       // Append manual cases locally by re-running expected comparison client-side (simple equality)
@@ -226,16 +232,20 @@ int main() {
     
     setLoadingSubmit(true);
     try {
-      const resp = await apiRequest('/coding/submit', {
-        method: 'POST',
-        body: JSON.stringify({
-          assignmentId: null,
-          // If you require assignment, replace null with actual assignment id
-          questionId: activeQ._id,
-          sourceCode: codeByQ[activeQ._id] || '',
-          language: languageByQ[activeQ._id] || activeQ.language
-        })
-      });
+        // Use question's language from database, fallback to user's selection, then default to python
+        const questionLanguage = activeQ.language || languageByQ[activeQ._id] || 'python';
+        console.log(`🔤 Using language for submission ${activeQ._id}: ${questionLanguage}`);
+        
+        const resp = await apiRequest('/coding/submit', {
+          method: 'POST',
+          body: JSON.stringify({
+            assignmentId: null,
+            // If you require assignment, replace null with actual assignment id
+            questionId: activeQ._id,
+            sourceCode: codeByQ[activeQ._id] || '',
+            language: questionLanguage
+          })
+        });
       setSubmitResults(resp);
       setActiveTab('submissions'); // Automatically switch to submissions tab
     } catch (e) {
