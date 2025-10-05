@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     libpq-dev \
     libcap2-bin \
+    libcap-dev \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 # Install isolate for code sandboxing

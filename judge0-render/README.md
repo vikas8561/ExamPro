@@ -50,7 +50,7 @@ The deployment consists of:
 3. Configure the service:
    - **Name**: `judge0-api`
    - **Root Directory**: `judge0-render/api`
-   - **Dockerfile Path**: `judge0-render/api/Dockerfile`
+   - **Environment**: Docker
    - **Plan**: Starter
    - **Region**: Oregon (or your preferred region)
 
@@ -58,7 +58,7 @@ The deployment consists of:
    - `RAILS_ENV`: `production`
    - `RACK_ENV`: `production`
    - `DATABASE_URL`: (from your PostgreSQL database)
-   - `REDIS_URL`: (from your Redis instance)
+   - `REDIS_URL`: (from your Key-Value store)
    - `PORT`: `2358`
 
 5. Click "Create Web Service"
@@ -70,13 +70,13 @@ The deployment consists of:
 3. Configure the service:
    - **Name**: `judge0-worker`
    - **Root Directory**: `judge0-render/worker`
-   - **Dockerfile Path**: `judge0-render/worker/Dockerfile`
+   - **Environment**: Docker
    - **Plan**: Starter
    - **Region**: Oregon (or your preferred region)
 
 4. Add environment variables:
    - `DATABASE_URL`: (from your PostgreSQL database)
-   - `REDIS_URL`: (from your Redis instance)
+   - `REDIS_URL`: (from your Key-Value store)
    - `PORT`: `2358`
 
 5. Click "Create Background Worker"
