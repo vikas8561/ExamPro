@@ -15,8 +15,14 @@ const fetchFn = async (...args) => {
 const JUDGE0_INSTANCES = [
   process.env.JUDGE0_BASE_URL || 'https://judge0-api-b0cf.onrender.com',
   'https://judge0-ce.p.rapidapi.com',
-  'https://judge0-api.p.rapidapi.com'
+  'https://judge0-ce.p.rapidapi.com/submissions'
 ];
+
+// Local execution fallback for when all Judge0 instances fail
+const { exec } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 
 let currentInstanceIndex = 0;
 const JUDGE0_BASE_URL = JUDGE0_INSTANCES[currentInstanceIndex];
@@ -29,6 +35,94 @@ function switchToNextInstance() {
   const newInstance = JUDGE0_INSTANCES[currentInstanceIndex];
   console.log(`🔄 Switching from ${oldInstance} to ${newInstance}`);
   return newInstance;
+}
+
+// Local execution fallback function
+async function executeLocally({ sourceCode, language, stdin, expectedOutput }) {
+  return new Promise((resolve, reject) => {
+    const tempDir = os.tmpdir();
+    const timestamp = Date.now();
+    
+    let filename, command;
+    
+    switch (language.toLowerCase()) {
+      case 'python':
+        filename = `temp_${timestamp}.py`;
+        command = `python3 "${path.join(tempDir, filename)}"`;
+        break;
+      case 'javascript':
+        filename = `temp_${timestamp}.js`;
+        command = `node "${path.join(tempDir, filename)}"`;
+        break;
+      case 'java':
+        filename = `Temp_${timestamp}.java`;
+        command = `cd "${tempDir}" && javac "${filename}" && java "Temp_${timestamp}"`;
+        break;
+      case 'cpp':
+        filename = `temp_${timestamp}.cpp`;
+        command = `cd "${tempDir}" && g++ "${filename}" -o "temp_${timestamp}" && "./temp_${timestamp}"`;
+        break;
+      case 'c':
+        filename = `temp_${timestamp}.c`;
+        command = `cd "${tempDir}" && gcc "${filename}" -o "temp_${timestamp}" && "./temp_${timestamp}"`;
+        break;
+      default:
+        reject(new Error(`Unsupported language: ${language}`));
+        return;
+    }
+    
+    const filePath = path.join(tempDir, filename);
+    
+    // Write code to file
+    fs.writeFileSync(filePath, sourceCode);
+    
+    // Execute with timeout
+    const timeout = 5000; // 5 seconds
+    const child = exec(command, { timeout }, (error, stdout, stderr) => {
+      // Clean up files
+      try {
+        fs.unlinkSync(filePath);
+        if (language === 'java' || language === 'cpp' || language === 'c') {
+          const executableName = language === 'java' ? `Temp_${timestamp}.class` : `temp_${timestamp}`;
+          const executablePath = path.join(tempDir, executableName);
+          if (fs.existsSync(executablePath)) {
+            fs.unlinkSync(executablePath);
+          }
+        }
+      } catch (cleanupError) {
+        console.warn('Cleanup error:', cleanupError.message);
+      }
+      
+      if (error) {
+        resolve({
+          status: { id: 6, description: 'Runtime Error' },
+          stdout: stdout || '',
+          stderr: stderr || error.message,
+          time: null,
+          memory: null,
+          message: error.message
+        });
+      } else {
+        const output = stdout.trim();
+        const isAccepted = output === expectedOutput;
+        
+        resolve({
+          status: { id: isAccepted ? 3 : 4, description: isAccepted ? 'Accepted' : 'Wrong Answer' },
+          stdout: output,
+          stderr: stderr || '',
+          time: null,
+          memory: null,
+          message: isAccepted ? 'Accepted' : 'Wrong Answer'
+        });
+      }
+    });
+    
+    // Send input to stdin if provided
+    if (stdin) {
+      child.stdin.write(stdin);
+      child.stdin.end();
+    }
+  });
 }
 
 // Map common language names to Judge0 language IDs
@@ -279,6 +373,38 @@ async function runAgainstCases({ sourceCode, language, cases }) {
           continue;
         } catch (retryErr) {
           console.error('Retry also failed:', retryErr.message);
+          
+          // If all Judge0 instances failed, try local execution as last resort
+          if (retryErr.message.includes('401') || retryErr.message.includes('Invalid API key')) {
+            console.log('🔄 All Judge0 instances failed, trying local execution...');
+            try {
+              const localResult = await executeLocally({
+                sourceCode,
+                language,
+                stdin: testCase.input,
+                expectedOutput: testCase.output,
+              });
+              
+              const isAccepted = localResult.status.id === 3;
+              
+              results.push({
+                input: testCase.input,
+                expected: testCase.output,
+                stdout: localResult.stdout || '',
+                stderr: localResult.stderr || '',
+                time: localResult.time,
+                memory: localResult.memory,
+                status: localResult.status,
+                passed: isAccepted,
+                marks: testCase.marks ?? 0,
+              });
+              
+              console.log(`✅ Local execution successful for test case ${i + 1}`);
+              continue;
+            } catch (localErr) {
+              console.error('Local execution also failed:', localErr.message);
+            }
+          }
         }
       }
 

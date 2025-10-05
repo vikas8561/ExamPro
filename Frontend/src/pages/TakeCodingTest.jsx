@@ -80,6 +80,17 @@ export default function TakeCodingTest() {
             console.log('✅ Assignment loaded:', assignmentData);
             setAssignment(assignmentData);
             
+            // Check if assignment is already completed
+            if (assignmentData.status === 'Completed') {
+              console.log('📋 Assignment already completed, redirecting to results...');
+              setError('This test has already been completed. Redirecting to results...');
+              setTimeout(() => {
+                nav(`/student/view-test/${assignmentData._id}`);
+              }, 2000);
+              setLoading(false);
+              return;
+            }
+            
             // Load test from assignment
             const t = await apiRequest(`/tests/${assignmentData.testId._id}`);
             console.log('✅ Test loaded:', t);
@@ -430,6 +441,16 @@ export default function TakeCodingTest() {
       console.log('🚀 assignment state:', assignment);
       console.log('🚀 assignment._id:', assignment?._id);
       
+      // Check if assignment is already completed
+      if (assignment?.status === 'Completed') {
+        console.log('❌ Cannot start completed test');
+        setOtpError('This test has already been completed. Redirecting to results...');
+        setTimeout(() => {
+          nav(`/student/view-test/${assignment._id}`);
+        }, 2000);
+        return;
+      }
+      
       // Use assignmentId from URL, fallback to assignment._id
       const finalAssignmentId = assignmentId || assignment?._id;
       
@@ -470,6 +491,16 @@ export default function TakeCodingTest() {
       }, 100);
     } catch (error) {
       console.error("Error starting test:", error);
+      
+      // Handle completed test error
+      if (error.message === "Test already completed") {
+        setOtpError("This test has already been completed. Redirecting to results...");
+        setTimeout(() => {
+          nav(`/student/view-test/${assignment?._id}`);
+        }, 2000);
+        return;
+      }
+      
       setOtpError(error.message || "Failed to start test");
     }
   };
