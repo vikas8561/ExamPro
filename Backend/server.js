@@ -99,6 +99,12 @@ app.use(cors({
       return callback(null, true);
     }
 
+    // For development, be more permissive
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`✅ CORS allowing request from: ${origin} (development mode)`);
+      return callback(null, true);
+    }
+
     // Allow exact matches OR any Vercel subdomain OR localhost
     if (allowedOrigins.includes(origin) || 
         origin.endsWith(".vercel.app") || 
@@ -129,6 +135,7 @@ app.use(cors({
 
 // Fallback CORS for development - more permissive
 if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV !== 'production') {
+  console.log('🔧 Development mode: Using permissive CORS');
   app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');

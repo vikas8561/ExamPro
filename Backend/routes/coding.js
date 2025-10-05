@@ -6,6 +6,16 @@ const Assignment = require('../models/Assignment');
 const TestSubmission = require('../models/TestSubmission');
 const { runAgainstCases } = require('../services/judge0');
 
+// Health check endpoint
+router.get('/health', (req, res) => {
+  res.json({ 
+    status: 'healthy', 
+    service: 'coding routes',
+    timestamp: new Date().toISOString(),
+    routes: ['/health', '/test', '/run', '/submit']
+  });
+});
+
 // Test endpoint without authentication
 router.post('/test', async (req, res, next) => {
   try {
@@ -32,6 +42,7 @@ router.post('/test', async (req, res, next) => {
 // Run code against visible test cases (student preview)
 router.post('/run', authenticateToken, async (req, res, next) => {
   try {
+    console.log('=== /coding/run endpoint called ===');
     const { testId, questionId, sourceCode, language } = req.body;
     console.log('Run request:', { testId, questionId, language, sourceCodeLength: sourceCode?.length });
 
@@ -64,9 +75,16 @@ router.post('/run', authenticateToken, async (req, res, next) => {
 
     res.json({ results, passed, total: results.length });
   } catch (err) {
-    console.error('Error in /coding/run:', err.message, err.stack);
+    console.error('=== ERROR in /coding/run ===');
+    console.error('Error message:', err.message);
+    console.error('Error stack:', err.stack);
+    console.error('Request body:', req.body);
+    console.error('Request headers:', req.headers);
     // Return a more user-friendly error instead of 500
-    res.status(500).json({ message: 'Code execution failed. Please try again later.' });
+    res.status(500).json({ 
+      message: 'Code execution failed. Please try again later.',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 });
 
