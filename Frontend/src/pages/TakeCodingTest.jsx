@@ -156,10 +156,12 @@ int main() {
     } catch (e) {
       console.error(e);
       
-      // Check if it's a 503 service suspended error
+      // Check for specific error types
       let errorMessage = 'Code execution failed. Please try again later.';
       if (e.message && e.message.includes('503')) {
         errorMessage = 'Judge0 service is temporarily unavailable (sleeping). Please wait a moment and try again.';
+      } else if (e.message && e.message.includes('429')) {
+        errorMessage = 'Too many requests sent too quickly. Please wait a moment and try again.';
       } else if (e.message && e.message.includes('Judge0 error')) {
         errorMessage = 'Code execution service error. Please try again.';
       }
@@ -201,10 +203,12 @@ int main() {
     } catch (e) {
       console.error(e);
       
-      // Check if it's a 503 service suspended error
+      // Check for specific error types
       let errorMessage = 'Submit failed. Please try again later.';
       if (e.message && e.message.includes('503')) {
         errorMessage = 'Judge0 service is temporarily unavailable (sleeping). Please wait a moment and try again.';
+      } else if (e.message && e.message.includes('429')) {
+        errorMessage = 'Too many requests sent too quickly. Please wait a moment and try again.';
       } else if (e.message && e.message.includes('Judge0 error')) {
         errorMessage = 'Code execution service error. Please try again.';
       }

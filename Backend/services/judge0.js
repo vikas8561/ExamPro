@@ -70,10 +70,12 @@ async function createSubmission({
       if (!createRes.ok) {
         const text = await createRes.text();
         
-        // Handle 503 Service Suspended errors with retry
-        if (createRes.status === 503 && attempt < maxRetries) {
-          console.warn(`Judge0 service suspended (attempt ${attempt}/${maxRetries}), retrying in ${attempt * 2} seconds...`);
-          await new Promise(resolve => setTimeout(resolve, attempt * 2000)); // Exponential backoff
+        // Handle 503 Service Suspended and 429 Rate Limiting errors with retry
+        if ((createRes.status === 503 || createRes.status === 429) && attempt < maxRetries) {
+          const errorType = createRes.status === 503 ? 'service suspended' : 'rate limited';
+          const delay = createRes.status === 429 ? attempt * 5000 : attempt * 2000; // Longer delay for rate limiting
+          console.warn(`Judge0 ${errorType} (attempt ${attempt}/${maxRetries}), retrying in ${delay/1000} seconds...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }
         
@@ -93,10 +95,12 @@ async function createSubmission({
         
         const resultRes = await fetchFn(`${JUDGE0_BASE_URL}/api/v1/submissions/${submissionId}`);
         if (!resultRes.ok) {
-          // Handle 503 errors during polling
-          if (resultRes.status === 503 && attempt < maxRetries) {
-            console.warn(`Judge0 service suspended during polling (attempt ${attempt}/${maxRetries}), retrying...`);
-            await new Promise(resolve => setTimeout(resolve, attempt * 2000));
+          // Handle 503 and 429 errors during polling
+          if ((resultRes.status === 503 || resultRes.status === 429) && attempt < maxRetries) {
+            const errorType = resultRes.status === 503 ? 'service suspended' : 'rate limited';
+            const delay = resultRes.status === 429 ? attempt * 5000 : attempt * 2000;
+            console.warn(`Judge0 ${errorType} during polling (attempt ${attempt}/${maxRetries}), retrying in ${delay/1000} seconds...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
             continue;
           }
           throw new Error(`Failed to get submission result: ${resultRes.status}`);
@@ -163,10 +167,20 @@ function getStatusId(status) {
 }
 
 // Run code against multiple test cases
-// Run code against multiple test cases in parallel
+// Run code against multiple test cases with rate limiting protection
 async function runAgainstCases({ sourceCode, language, cases }) {
-  const promises = cases.map(async (testCase) => {
+  const results = [];
+  
+  // Process test cases sequentially to avoid rate limiting
+  for (let i = 0; i < cases.length; i++) {
+    const testCase = cases[i];
+    
     try {
+      // Add delay between submissions to prevent rate limiting
+      if (i > 0) {
+        await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay between requests
+      }
+      
       const submission = await createSubmission({
         sourceCode,
         language,
@@ -181,7 +195,7 @@ async function runAgainstCases({ sourceCode, language, cases }) {
       const isAccepted =
         statusId === 3 || (statusId === 1 && stdout.trim() === expected.trim());
 
-      return {
+      results.push({
         input: testCase.input,
         expected: testCase.output,
         stdout,
@@ -191,11 +205,11 @@ async function runAgainstCases({ sourceCode, language, cases }) {
         status: submission.status,
         passed: isAccepted,
         marks: testCase.marks ?? 0,
-      };
+      });
     } catch (err) {
       console.error('Judge0 submission failed:', err.message);
 
-      return {
+      results.push({
         input: testCase.input,
         expected: testCase.output,
         stdout: '',
@@ -205,12 +219,10 @@ async function runAgainstCases({ sourceCode, language, cases }) {
         status: { description: 'Internal Error' },
         passed: false,
         marks: testCase.marks ?? 0,
-      };
+      });
     }
-  });
+  }
 
-  // Run all test case promises in parallel
-  const results = await Promise.all(promises);
   return results;
 }
 
