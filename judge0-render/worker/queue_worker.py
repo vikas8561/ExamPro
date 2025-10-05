@@ -94,10 +94,11 @@ def run_isolate(args):
         }
 
 def execute_code(submission_id, source_code, language_id, stdin, expected_output):
-    """Execute code using subprocess (simplified version)"""
+    """Execute code using subprocess (simplified version) - UPDATED v2.0"""
     try:
         import tempfile
         import os
+        logger.info(f"🚀 Using NEW subprocess execution for submission {submission_id}")
         
         # Map language IDs to file extensions and commands
         language_config = {
