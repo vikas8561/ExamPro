@@ -141,7 +141,20 @@ def execute_code(submission_id, source_code, language_id, stdin, expected_output
             try:
                 # Compile if needed
                 if config["compile"]:
-                    compile_cmd = [cmd.replace("main.c", file_path).replace("main.cpp", file_path).replace("main.cs", file_path).replace("Main.java", file_path).replace("main.ts", file_path) for cmd in config["compile"]]
+                    compile_cmd = []
+                    for cmd in config["compile"]:
+                        if "main.c" in cmd:
+                            compile_cmd.append(cmd.replace("main.c", file_path))
+                        elif "main.cpp" in cmd:
+                            compile_cmd.append(cmd.replace("main.cpp", file_path))
+                        elif "main.cs" in cmd:
+                            compile_cmd.append(cmd.replace("main.cs", file_path))
+                        elif "Main.java" in cmd:
+                            compile_cmd.append(cmd.replace("Main.java", file_path))
+                        elif "main.ts" in cmd:
+                            compile_cmd.append(cmd.replace("main.ts", file_path))
+                        else:
+                            compile_cmd.append(cmd)
                     compile_result = subprocess.run(
                         compile_cmd,
                         cwd=temp_dir,
@@ -163,7 +176,16 @@ def execute_code(submission_id, source_code, language_id, stdin, expected_output
                         }
                 
                 # Run the code
-                run_cmd = [cmd.replace("main.py", file_path).replace("main.js", file_path).replace("main.go", file_path) for cmd in config["run"]]
+                run_cmd = []
+                for cmd in config["run"]:
+                    if "main.py" in cmd:
+                        run_cmd.append(cmd.replace("main.py", file_path))
+                    elif "main.js" in cmd:
+                        run_cmd.append(cmd.replace("main.js", file_path))
+                    elif "main.go" in cmd:
+                        run_cmd.append(cmd.replace("main.go", file_path))
+                    else:
+                        run_cmd.append(cmd)
                 run_result = subprocess.run(
                     run_cmd,
                     cwd=temp_dir,
