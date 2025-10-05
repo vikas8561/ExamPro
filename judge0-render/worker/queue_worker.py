@@ -94,18 +94,21 @@ def run_isolate(args):
         }
 
 def execute_code(submission_id, source_code, language_id, stdin, expected_output):
-    """Execute code using isolate"""
+    """Execute code using subprocess (simplified version)"""
     try:
+        import tempfile
+        import os
+        
         # Map language IDs to file extensions and commands
         language_config = {
-            50: {"ext": "c", "cmd": ["gcc", "-o", "main", "main.c", "&&", "./main"]},
-            54: {"ext": "cpp", "cmd": ["g++", "-o", "main", "main.cpp", "&&", "./main"]},
-            51: {"ext": "cs", "cmd": ["mcs", "main.cs", "&&", "mono", "main.exe"]},
-            60: {"ext": "go", "cmd": ["go", "run", "main.go"]},
-            62: {"ext": "java", "cmd": ["javac", "Main.java", "&&", "java", "Main"]},
-            63: {"ext": "js", "cmd": ["node", "main.js"]},
-            71: {"ext": "py", "cmd": ["python3", "main.py"]},
-            74: {"ext": "ts", "cmd": ["tsc", "main.ts", "&&", "node", "main.js"]}
+            50: {"ext": "c", "compile": ["gcc", "-o", "main", "main.c"], "run": ["./main"]},
+            54: {"ext": "cpp", "compile": ["g++", "-o", "main", "main.cpp"], "run": ["./main"]},
+            51: {"ext": "cs", "compile": ["mcs", "main.cs"], "run": ["mono", "main.exe"]},
+            60: {"ext": "go", "compile": None, "run": ["go", "run", "main.go"]},
+            62: {"ext": "java", "compile": ["javac", "Main.java"], "run": ["java", "Main"]},
+            63: {"ext": "js", "compile": None, "run": ["node", "main.js"]},
+            71: {"ext": "py", "compile": None, "run": ["python3", "main.py"]},
+            74: {"ext": "ts", "compile": ["tsc", "main.ts"], "run": ["node", "main.js"]}
         }
         
         if language_id not in language_config:
@@ -121,76 +124,80 @@ def execute_code(submission_id, source_code, language_id, stdin, expected_output
         config = language_config[language_id]
         filename = f"main.{config['ext']}"
         
-        # Create isolate environment
-        isolate_result = run_isolate(["--init"])
-        if isolate_result["return_code"] != 0:
-            return {
-                "status": "Internal Error",
-                "stdout": "",
-                "stderr": f"Failed to initialize isolate: {isolate_result['stderr']}",
-                "compile_output": "",
-                "time": None,
-                "memory": None
-            }
-        
-        box_id = isolate_result["stdout"].strip()
-        
-        try:
+        # Create temporary directory for execution
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_path = os.path.join(temp_dir, filename)
+            
             # Write source code to file
-            with open(f"/tmp/isolate/{box_id}/box/{filename}", "w") as f:
+            with open(file_path, "w") as f:
                 f.write(source_code)
             
-            # Write input to stdin file
-            with open(f"/tmp/isolate/{box_id}/box/stdin", "w") as f:
-                f.write(stdin)
-            
-            # Execute code
-            cmd = ["--run", f"--box-id={box_id}"] + config["cmd"]
-            exec_result = run_isolate(cmd)
-            
-            # Read output files
             stdout = ""
             stderr = ""
             compile_output = ""
+            status = "Accepted"
             
             try:
-                with open(f"/tmp/isolate/{box_id}/box/stdout", "r") as f:
-                    stdout = f.read()
-            except:
-                pass
-            
-            try:
-                with open(f"/tmp/isolate/{box_id}/box/stderr", "r") as f:
-                    stderr = f.read()
-            except:
-                pass
-            
-            # Determine status
-            if exec_result["return_code"] == 0:
-                if expected_output and stdout.strip() != expected_output.strip():
+                # Compile if needed
+                if config["compile"]:
+                    compile_cmd = [cmd.replace("main.c", file_path).replace("main.cpp", file_path).replace("main.cs", file_path).replace("Main.java", file_path).replace("main.ts", file_path) for cmd in config["compile"]]
+                    compile_result = subprocess.run(
+                        compile_cmd,
+                        cwd=temp_dir,
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                    
+                    if compile_result.returncode != 0:
+                        status = "Compilation Error"
+                        compile_output = compile_result.stderr
+                        return {
+                            "status": status,
+                            "stdout": "",
+                            "stderr": "",
+                            "compile_output": compile_output,
+                            "time": "0.001",
+                            "memory": 1024
+                        }
+                
+                # Run the code
+                run_cmd = [cmd.replace("main.py", file_path).replace("main.js", file_path).replace("main.go", file_path) for cmd in config["run"]]
+                run_result = subprocess.run(
+                    run_cmd,
+                    cwd=temp_dir,
+                    input=stdin,
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                
+                stdout = run_result.stdout
+                stderr = run_result.stderr
+                
+                # Determine status
+                if run_result.returncode != 0:
+                    status = "Runtime Error"
+                elif expected_output and stdout.strip() != expected_output.strip():
                     status = "Wrong Answer"
                 else:
                     status = "Accepted"
-            else:
-                if "compilation" in stderr.lower() or "error" in stderr.lower():
-                    status = "Compilation Error"
-                    compile_output = stderr
-                    stderr = ""
-                else:
-                    status = "Runtime Error"
+                
+            except subprocess.TimeoutExpired:
+                status = "Time Limit Exceeded"
+                stderr = "Execution timeout"
+            except Exception as e:
+                status = "Runtime Error"
+                stderr = str(e)
             
             return {
                 "status": status,
                 "stdout": stdout,
                 "stderr": stderr,
                 "compile_output": compile_output,
-                "time": "0.001",  # Placeholder
-                "memory": 1024    # Placeholder
+                "time": "0.001",
+                "memory": 1024
             }
-            
-        finally:
-            # Clean up isolate environment
-            run_isolate(["--cleanup", f"--box-id={box_id}"])
             
     except Exception as e:
         logger.error(f"Error executing code: {e}")
