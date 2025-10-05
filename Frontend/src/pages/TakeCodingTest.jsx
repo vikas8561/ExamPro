@@ -23,6 +23,7 @@ export default function TakeCodingTest() {
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
   const [lastSaved, setLastSaved] = useState(null);
   const [activeTestCaseIndex, setActiveTestCaseIndex] = useState(0);
+  const [outputVersion, setOutputVersion] = useState(0);
 
   useEffect(() => {
     const load = async () => {
@@ -133,6 +134,8 @@ int main() {
   const runCode = async () => {
     if (!activeQ) return;
     setLoadingRun(true);
+    setRunResults(null); // Clear previous results to ensure UI updates
+    setActiveTestCaseIndex(0); // Reset to first test case to show updated output
     try {
       const resp = await apiRequest('/coding/run', {
         method: 'POST',
@@ -149,9 +152,21 @@ int main() {
         appended.push({ input: tc.input, expected: tc.output, stdout: '', stderr: '', passed: false, status: { description: 'Manual' }, marks: 0 });
       });
       setRunResults({ ...resp, results: appended });
+      setOutputVersion(v => v + 1); // Force re-render of output section
     } catch (e) {
       console.error(e);
       alert('Run failed');
+      // Set error results to show in UI
+      const errorResults = (activeQ?.visibleTestCases || []).map(tc => ({
+        input: tc.input,
+        expected: tc.output,
+        stdout: '',
+        stderr: 'Code execution failed. Please try again later.',
+        passed: false,
+        status: { description: 'Error' }
+      }));
+      setRunResults({ results: errorResults, passed: 0, total: errorResults.length });
+      setOutputVersion(v => v + 1); // Force re-render of output section
     } finally {
       setLoadingRun(false);
     }
@@ -648,7 +663,7 @@ int main() {
                       </svg>
                       Your Output:
                     </div>
-                    <pre className="bg-gradient-to-r from-slate-900 to-slate-950 border border-slate-600 rounded-lg p-3 text-sm text-slate-200 whitespace-pre-wrap overflow-x-auto shadow-inner">
+                    <pre key={`output-${outputVersion}-${activeTestCaseIndex}`} className="bg-gradient-to-r from-slate-900 to-slate-950 border border-slate-600 rounded-lg p-3 text-sm text-slate-200 whitespace-pre-wrap overflow-x-auto shadow-inner">
                       {runResults?.results[activeTestCaseIndex]?.stdout || runResults?.results[activeTestCaseIndex]?.stderr || 'Run code to see output'}
                     </pre>
                   </div>
