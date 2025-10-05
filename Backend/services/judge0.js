@@ -31,7 +31,7 @@ function mapLanguageToJudge0Id(language) {
   return map[String(language || '').toLowerCase()] || 71; // default to Python3
 }
 
-// Create a single submission to Judge0
+// Create a single submission to Judge0 with retry logic
 async function createSubmission({
   sourceCode,
   language,
@@ -42,75 +42,109 @@ async function createSubmission({
 }) {
   const language_id = mapLanguageToJudge0Id(language);
   
-  // First, create the submission
-  const createUrl = `${JUDGE0_BASE_URL}/api/v1/submissions`;
-  const headers = {
-    'Content-Type': 'application/json',
-  };
-
-  const body = {
-    source_code: sourceCode || '',
-    language_id,
-    stdin: stdin ?? '',
-    expected_output: expectedOutput ?? '',
-  };
-
-  const createRes = await fetchFn(createUrl, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  });
-
-  if (!createRes.ok) {
-    const text = await createRes.text();
-    console.error(`Judge0 API error response: ${createRes.status} ${text}`);
-    throw new Error(`Judge0 error: ${createRes.status} ${text}`);
-  }
-
-  const submission = await createRes.json();
-  const submissionId = submission.id;
-
-  // Poll for result (with timeout)
-  const maxAttempts = 60; // 60 seconds max wait
-  let attempts = 0;
+  // Retry logic for 503 errors (service suspended/sleeping)
+  const maxRetries = 3;
+  let lastError;
   
-  while (attempts < maxAttempts) {
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
-    
-    const resultRes = await fetchFn(`${JUDGE0_BASE_URL}/api/v1/submissions/${submissionId}`);
-    if (!resultRes.ok) {
-      throw new Error(`Failed to get submission result: ${resultRes.status}`);
-    }
-    
-    const result = await resultRes.json();
-    
-    // Check if processing is complete
-    if (result.status && result.status !== 'In Queue' && result.status !== 'Processing') {
-      return {
-        status: { id: getStatusId(result.status), description: result.status },
-        stdout: result.stdout || '',
-        stderr: result.stderr || '',
-        compile_output: result.compile_output || '',
-        time: result.time,
-        memory: result.memory,
-        message: result.message || '',
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // First, create the submission
+      const createUrl = `${JUDGE0_BASE_URL}/api/v1/submissions`;
+      const headers = {
+        'Content-Type': 'application/json',
       };
+
+      const body = {
+        source_code: sourceCode || '',
+        language_id,
+        stdin: stdin ?? '',
+        expected_output: expectedOutput ?? '',
+      };
+
+      const createRes = await fetchFn(createUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+
+      if (!createRes.ok) {
+        const text = await createRes.text();
+        
+        // Handle 503 Service Suspended errors with retry
+        if (createRes.status === 503 && attempt < maxRetries) {
+          console.warn(`Judge0 service suspended (attempt ${attempt}/${maxRetries}), retrying in ${attempt * 2} seconds...`);
+          await new Promise(resolve => setTimeout(resolve, attempt * 2000)); // Exponential backoff
+          continue;
+        }
+        
+        console.error(`Judge0 API error response: ${createRes.status} ${text}`);
+        throw new Error(`Judge0 error: ${createRes.status} ${text}`);
+      }
+
+      const submission = await createRes.json();
+      const submissionId = submission.id;
+
+      // Poll for result (with timeout)
+      const maxAttempts = 60; // 60 seconds max wait
+      let attempts = 0;
+      
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+        
+        const resultRes = await fetchFn(`${JUDGE0_BASE_URL}/api/v1/submissions/${submissionId}`);
+        if (!resultRes.ok) {
+          // Handle 503 errors during polling
+          if (resultRes.status === 503 && attempt < maxRetries) {
+            console.warn(`Judge0 service suspended during polling (attempt ${attempt}/${maxRetries}), retrying...`);
+            await new Promise(resolve => setTimeout(resolve, attempt * 2000));
+            continue;
+          }
+          throw new Error(`Failed to get submission result: ${resultRes.status}`);
+        }
+        
+        const result = await resultRes.json();
+        
+        // Check if processing is complete
+        if (result.status && result.status !== 'In Queue' && result.status !== 'Processing') {
+          return {
+            status: { id: getStatusId(result.status), description: result.status },
+            stdout: result.stdout || '',
+            stderr: result.stderr || '',
+            compile_output: result.compile_output || '',
+            time: result.time,
+            memory: result.memory,
+            message: result.message || '',
+          };
+        }
+        
+        attempts++;
+      }
+      
+      // Timeout - return a timeout status instead of throwing
+      console.warn(`Submission ${submissionId} timed out after ${maxAttempts} seconds`);
+      return {
+        status: { id: 13, description: 'Time Limit Exceeded' },
+        stdout: '',
+        stderr: 'Code execution timed out. The worker service may not be running.',
+        compile_output: '',
+        time: null,
+        memory: null,
+        message: 'Execution timeout - worker service may be unavailable',
+      };
+      
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxRetries) {
+        console.warn(`Judge0 request failed (attempt ${attempt}/${maxRetries}): ${error.message}`);
+        await new Promise(resolve => setTimeout(resolve, attempt * 2000));
+        continue;
+      }
+      throw error;
     }
-    
-    attempts++;
   }
   
-  // Timeout - return a timeout status instead of throwing
-  console.warn(`Submission ${submissionId} timed out after ${maxAttempts} seconds`);
-  return {
-    status: { id: 13, description: 'Time Limit Exceeded' },
-    stdout: '',
-    stderr: 'Code execution timed out. The worker service may not be running.',
-    compile_output: '',
-    time: null,
-    memory: null,
-    message: 'Execution timeout - worker service may be unavailable',
-  };
+  // If we get here, all retries failed
+  throw lastError || new Error('Judge0 service unavailable after multiple retries');
 }
 
 // Helper function to map status strings to IDs

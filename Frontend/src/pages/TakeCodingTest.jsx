@@ -155,13 +155,23 @@ int main() {
       setOutputVersion(v => v + 1); // Force re-render of output section
     } catch (e) {
       console.error(e);
-      alert('Run failed');
+      
+      // Check if it's a 503 service suspended error
+      let errorMessage = 'Code execution failed. Please try again later.';
+      if (e.message && e.message.includes('503')) {
+        errorMessage = 'Judge0 service is temporarily unavailable (sleeping). Please wait a moment and try again.';
+      } else if (e.message && e.message.includes('Judge0 error')) {
+        errorMessage = 'Code execution service error. Please try again.';
+      }
+      
+      alert(`Run failed: ${errorMessage}`);
+      
       // Set error results to show in UI
       const errorResults = (activeQ?.visibleTestCases || []).map(tc => ({
         input: tc.input,
         expected: tc.output,
         stdout: '',
-        stderr: 'Code execution failed. Please try again later.',
+        stderr: errorMessage,
         passed: false,
         status: { description: 'Error' }
       }));
@@ -190,7 +200,16 @@ int main() {
       setActiveTab('submissions'); // Automatically switch to submissions tab
     } catch (e) {
       console.error(e);
-      alert('Submit failed');
+      
+      // Check if it's a 503 service suspended error
+      let errorMessage = 'Submit failed. Please try again later.';
+      if (e.message && e.message.includes('503')) {
+        errorMessage = 'Judge0 service is temporarily unavailable (sleeping). Please wait a moment and try again.';
+      } else if (e.message && e.message.includes('Judge0 error')) {
+        errorMessage = 'Code execution service error. Please try again.';
+      }
+      
+      alert(`Submit failed: ${errorMessage}`);
     } finally {
       setLoadingSubmit(false);
     }
