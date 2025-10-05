@@ -9,6 +9,8 @@ import json
 import time
 import signal
 import sys
+import threading
+from flask import Flask, jsonify
 from psycopg2 import pool
 import redis
 
@@ -273,6 +275,34 @@ def process_queue():
     
     logger.info("🛑 Queue processor stopped")
 
+# Flask app for health checks
+app = Flask(__name__)
+
+@app.route("/")
+def health_check():
+    """Health check endpoint"""
+    try:
+        # Test database connection
+        conn = db_pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute("SELECT NOW();")
+            result = cur.fetchone()
+        db_pool.putconn(conn)
+        
+        # Test Redis connection
+        redis_status = "connected" if redis_client and redis_client.ping() else "disconnected"
+        
+        return jsonify({
+            "status": "healthy",
+            "service": "Judge0 Queue Worker",
+            "database": "connected",
+            "redis": redis_status,
+            "timestamp": str(result[0])
+        })
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return jsonify({"status": "unhealthy", "error": str(e)}), 500
+
 def main():
     """Main function"""
     logger.info("🚀 Starting Judge0 Queue Worker")
@@ -281,8 +311,15 @@ def main():
         # Initialize connections
         init_connections()
         
-        # Start processing queue
-        process_queue()
+        # Start queue processor in background thread
+        queue_thread = threading.Thread(target=process_queue, daemon=True)
+        queue_thread.start()
+        logger.info("🔄 Queue processor started in background")
+        
+        # Start Flask app for health checks
+        port = int(os.environ.get("PORT", 2358))
+        logger.info(f"🌐 Starting health check server on port {port}")
+        app.run(host="0.0.0.0", port=port, debug=False)
         
     except KeyboardInterrupt:
         logger.info("🛑 Interrupted by user")

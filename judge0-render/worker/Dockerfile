@@ -36,8 +36,8 @@ COPY . .
 # Create /box directory with proper permissions
 RUN mkdir -p /box && chmod 755 /box
 
-# Expose port
+# Expose port for health checks
 EXPOSE 2358
 
-# Start the queue worker
+# Start the queue worker with health check server
 CMD ["python", "queue_worker.py"]
