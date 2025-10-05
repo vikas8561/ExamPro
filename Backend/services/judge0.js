@@ -1,5 +1,5 @@
 // judge0.js
-// Self-hosted Judge0 integration for Render
+// RapidAPI Judge0 integration
 
 // Node >=18 has global fetch, fallback to node-fetch if needed
 const fetchFn = async (...args) => {
@@ -10,8 +10,9 @@ const fetchFn = async (...args) => {
   return nodeFetch(...args);
 };
 
-// Use environment variable or default to your Render worker URL
-const JUDGE0_BASE_URL = process.env.JUDGE0_BASE_URL || 'https://judge0-render-1-y413.onrender.com';
+// Use environment variable or default to RapidAPI Judge0 endpoint
+const JUDGE0_BASE_URL = process.env.JUDGE0_BASE_URL || 'https://judge0-ce.p.rapidapi.com';
+const JUDGE0_API_KEY = process.env.JUDGE0_API_KEY || '3f9b7f97d4msh09614f6a8e0549ap1a2f44jsn21675a256ff5';
 
 // Map common language names to Judge0 language IDs
 function mapLanguageToJudge0Id(language) {
@@ -44,6 +45,8 @@ async function createSubmission({
 
   const headers = {
     'Content-Type': 'application/json',
+    'X-RapidAPI-Key': JUDGE0_API_KEY,
+    'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com',
   };
 
   const body = {
