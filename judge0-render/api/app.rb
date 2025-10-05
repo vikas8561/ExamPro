@@ -219,4 +219,5 @@ if __FILE__ == $0
   puts "Starting Judge0 API on port #{port}"
   set :port, port
   set :bind, '0.0.0.0'
+  set :server, 'puma'
 end
