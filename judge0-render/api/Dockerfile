@@ -31,7 +31,7 @@ WORKDIR /app
 
 # Copy Gemfile and install dependencies
 COPY Gemfile* ./
-RUN bundle config set --local without 'development test' && bundle install
+RUN bundle install
 
 # Copy application code
 COPY . .
@@ -42,9 +42,5 @@ RUN mkdir -p /box && chmod 755 /box
 # Expose port
 EXPOSE 2358
 
-# Set environment variables
-ENV RAILS_ENV=production
-ENV RACK_ENV=production
-
 # Start the application
-CMD ["bundle", "exec", "puma", "-C", "config/puma.rb"]
+CMD ["ruby", "app.rb"]
