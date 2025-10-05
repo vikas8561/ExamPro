@@ -115,7 +115,7 @@ const StudentRoutes = () => {
           <Route path="/" element={<StudentDashboard />} />
           <Route path="/assignments" element={<StudentAssignments />} />
           <Route path="/coding-tests" element={<StudentCodingTests />} />
-          <Route path="/take-coding/:testId" element={<TakeCodingTest />} />
+          <Route path="/take-coding/:assignmentId" element={<TakeCodingTest />} />
           <Route path="/practice-tests" element={<PracticeTests />} />
           <Route path="/practice-test/:testId" element={<TakePracticeTest />} />
           <Route path="/practice-test-results/:testId" element={<PracticeTestResults />} />

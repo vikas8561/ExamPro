@@ -81,7 +81,7 @@ export default function TakeCodingTest() {
             setAssignment(assignmentData);
             
             // Load test from assignment
-            const t = await apiRequest(`/tests/${assignmentData.testId}`);
+            const t = await apiRequest(`/tests/${assignmentData.testId._id}`);
             console.log('✅ Test loaded:', t);
             setTest(t);
             

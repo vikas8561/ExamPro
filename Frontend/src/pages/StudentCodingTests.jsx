@@ -305,7 +305,7 @@ export default function StudentCodingTests() {
 
                   {assignment.status === "Assigned" && isTestAvailable(assignment.startTime, assignment.duration) && (
                     <button
-                      onClick={() => handleStartTest(assignment.testId._id)}
+                      onClick={() => handleStartTest(assignment._id)}
                       className="w-full bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white py-3 px-4 rounded-xl font-semibold transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl"
                       style={{ border: '2px solid transparent', zIndex: 9999, position: 'relative' }}
                     >
@@ -333,7 +333,7 @@ export default function StudentCodingTests() {
                       </button>
                     ) : (
                       <button
-                        onClick={() => nav(`/student/take-coding/${assignment.testId._id}`)}
+                        onClick={() => nav(`/student/take-coding/${assignment._id}`)}
                         className="w-full bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white py-3 px-4 rounded-xl font-semibold transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl"
                         style={{ border: '2px solid transparent', zIndex: 9999, position: 'relative' }}
                       >

@@ -11,8 +11,23 @@ const fetchFn = async (...args) => {
 };
 
 // Use environment variable or default to deployed Judge0 endpoint
-const JUDGE0_BASE_URL = process.env.JUDGE0_BASE_URL || 'https://judge0-api-b0cf.onrender.com';
+// Fallback to multiple Judge0 instances for reliability
+const JUDGE0_INSTANCES = [
+  process.env.JUDGE0_BASE_URL || 'https://judge0-api-b0cf.onrender.com',
+  'https://judge0-ce.p.rapidapi.com',
+  'https://judge0-api.p.rapidapi.com'
+];
+
+let currentInstanceIndex = 0;
+const JUDGE0_BASE_URL = JUDGE0_INSTANCES[currentInstanceIndex];
 const JUDGE0_API_KEY = process.env.JUDGE0_API_KEY || ''; // Not needed for our deployed API
+
+// Function to switch to next Judge0 instance
+function switchToNextInstance() {
+  currentInstanceIndex = (currentInstanceIndex + 1) % JUDGE0_INSTANCES.length;
+  console.log(`🔄 Switching to Judge0 instance: ${JUDGE0_INSTANCES[currentInstanceIndex]}`);
+  return JUDGE0_INSTANCES[currentInstanceIndex];
+}
 
 // Map common language names to Judge0 language IDs
 function mapLanguageToJudge0Id(language) {
@@ -48,8 +63,9 @@ async function createSubmission({
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // First, create the submission
-      const createUrl = `${JUDGE0_BASE_URL}/api/v1/submissions`;
+      // Use current instance URL
+      const currentUrl = JUDGE0_INSTANCES[currentInstanceIndex];
+      const createUrl = `${currentUrl}/api/v1/submissions`;
       const headers = {
         'Content-Type': 'application/json',
       };
@@ -93,7 +109,7 @@ async function createSubmission({
       while (attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
         
-        const resultRes = await fetchFn(`${JUDGE0_BASE_URL}/api/v1/submissions/${submissionId}`);
+        const resultRes = await fetchFn(`${JUDGE0_INSTANCES[currentInstanceIndex]}/api/v1/submissions/${submissionId}`);
         if (!resultRes.ok) {
           // Handle 503 and 429 errors during polling
           if ((resultRes.status === 503 || resultRes.status === 429) && attempt < maxRetries) {
@@ -140,6 +156,12 @@ async function createSubmission({
       lastError = error;
       if (attempt < maxRetries) {
         console.warn(`Judge0 request failed (attempt ${attempt}/${maxRetries}): ${error.message}`);
+        
+        // If it's a 503 error (service suspended), try switching to next instance
+        if (error.message.includes('503') || error.message.includes('Service Suspended')) {
+          switchToNextInstance();
+        }
+        
         await new Promise(resolve => setTimeout(resolve, attempt * 2000));
         continue;
       }
