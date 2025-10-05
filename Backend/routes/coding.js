@@ -6,6 +6,29 @@ const Assignment = require('../models/Assignment');
 const TestSubmission = require('../models/TestSubmission');
 const { runAgainstCases } = require('../services/judge0');
 
+// Test endpoint without authentication
+router.post('/test', async (req, res, next) => {
+  try {
+    const { sourceCode, language } = req.body;
+    console.log('Test request:', { language, sourceCodeLength: sourceCode?.length });
+
+    if (!sourceCode) {
+      return res.status(400).json({ message: 'sourceCode is required' });
+    }
+
+    // Simple test case
+    const testCases = [{ input: '3', output: 'Prime' }];
+    const results = await runAgainstCases({ sourceCode, language: language || 'python', cases: testCases });
+    const passed = results.filter(r => r.passed).length;
+    console.log('Test results:', { passed, total: results.length });
+
+    res.json({ results, passed, total: results.length });
+  } catch (err) {
+    console.error('Error in /coding/test:', err.message, err.stack);
+    res.status(500).json({ message: 'Code execution failed. Please try again later.' });
+  }
+});
+
 // Run code against visible test cases (student preview)
 router.post('/run', authenticateToken, async (req, res, next) => {
   try {

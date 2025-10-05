@@ -26,6 +26,14 @@ export default function TakeCodingTest() {
   const [outputVersion, setOutputVersion] = useState(0);
 
   useEffect(() => {
+    // Check authentication first
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert('Please log in to access coding tests. You will be redirected to the login page.');
+      window.location.href = '/login';
+      return;
+    }
+
     const load = async () => {
       try {
         const t = await apiRequest(`/tests/${testId}`);
@@ -43,6 +51,10 @@ export default function TakeCodingTest() {
         setCodeByQ(initial);
       } catch (e) {
         console.error(e);
+        if (e.message && e.message.includes('Authentication required')) {
+          alert('Your session has expired. Please log in again.');
+          window.location.href = '/login';
+        }
       }
     };
     load();
@@ -133,6 +145,15 @@ int main() {
 
   const runCode = async () => {
     if (!activeQ) return;
+    
+    // Check authentication before making request
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert('Please log in to run code. You will be redirected to the login page.');
+      window.location.href = '/login';
+      return;
+    }
+    
     setLoadingRun(true);
     setRunResults(null); // Clear previous results to ensure UI updates
     setActiveTestCaseIndex(0); // Reset to first test case to show updated output
@@ -158,7 +179,11 @@ int main() {
       
       // Check for specific error types
       let errorMessage = 'Code execution failed. Please try again later.';
-      if (e.message && e.message.includes('503')) {
+      if (e.message && e.message.includes('401')) {
+        errorMessage = 'Authentication required. Please log in again.';
+      } else if (e.message && e.message.includes('403')) {
+        errorMessage = 'Access denied. Please check your permissions.';
+      } else if (e.message && e.message.includes('503')) {
         errorMessage = 'Judge0 service is temporarily unavailable (sleeping). Please wait a moment and try again.';
       } else if (e.message && e.message.includes('429')) {
         errorMessage = 'Too many requests sent too quickly. Please wait a moment and try again.';
@@ -186,6 +211,15 @@ int main() {
 
   const submitCode = async () => {
     if (!activeQ) return;
+    
+    // Check authentication before making request
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert('Please log in to submit code. You will be redirected to the login page.');
+      window.location.href = '/login';
+      return;
+    }
+    
     setLoadingSubmit(true);
     try {
       const resp = await apiRequest('/coding/submit', {
@@ -205,7 +239,11 @@ int main() {
       
       // Check for specific error types
       let errorMessage = 'Submit failed. Please try again later.';
-      if (e.message && e.message.includes('503')) {
+      if (e.message && e.message.includes('401')) {
+        errorMessage = 'Authentication required. Please log in again.';
+      } else if (e.message && e.message.includes('403')) {
+        errorMessage = 'Access denied. Please check your permissions.';
+      } else if (e.message && e.message.includes('503')) {
         errorMessage = 'Judge0 service is temporarily unavailable (sleeping). Please wait a moment and try again.';
       } else if (e.message && e.message.includes('429')) {
         errorMessage = 'Too many requests sent too quickly. Please wait a moment and try again.';

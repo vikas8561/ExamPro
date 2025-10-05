@@ -3,7 +3,37 @@ const API_BASE_URL = 'https://cg-test-app.onrender.com/api';
 
 // Get auth token from localStorage
 const getAuthToken = () => {
-  return localStorage.getItem('token');
+  const token = localStorage.getItem('token');
+  if (!token) {
+    console.warn('No auth token found in localStorage');
+    return null;
+  }
+  
+  // Check if token is expired (basic check)
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    const currentTime = Date.now() / 1000;
+    if (payload.exp && payload.exp < currentTime) {
+      console.warn('Auth token has expired');
+      // Clear expired token
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      localStorage.removeItem('userId');
+      return null;
+    }
+  } catch (error) {
+    console.warn('Invalid token format:', error);
+    return null;
+  }
+  
+  return token;
+};
+
+// Check if user is authenticated
+const isAuthenticated = () => {
+  const token = getAuthToken();
+  const user = localStorage.getItem('user');
+  return !!(token && user);
 };
 
 // Create headers with auth token
@@ -41,8 +71,11 @@ const apiRequest = async (endpoint, options = {}) => {
     
     // Handle authentication errors
     if (response.status === 401) {
-      // Don't auto-logout, just throw error
-      throw new Error('Authentication required');
+      // Clear potentially invalid token
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      localStorage.removeItem('userId');
+      throw new Error('Authentication required - please log in again');
     }
     
     if (response.status === 403) {
