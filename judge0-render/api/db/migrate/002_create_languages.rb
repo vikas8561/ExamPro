@@ -1,4 +1,4 @@
-class CreateLanguages < ActiveRecord::Migration[7.0]
+class CreateLanguages < ActiveRecord::Migration[6.1]
   def change
     create_table :languages do |t|
       t.integer :id, null: false, primary_key: true
