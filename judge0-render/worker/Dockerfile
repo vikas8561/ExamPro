@@ -39,5 +39,5 @@ RUN mkdir -p /box && chmod 755 /box
 # Expose port
 EXPOSE 2358
 
-# Start the worker
-CMD ["gunicorn", "--bind", "0.0.0.0:2358", "--workers", "4", "worker:app"]
+# Start the queue worker
+CMD ["python", "queue_worker.py"]
