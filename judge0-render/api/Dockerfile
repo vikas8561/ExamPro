@@ -17,8 +17,10 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install isolate for code sandboxing (use stable version)
-RUN git clone --depth 1 --branch v1.9.1 https://github.com/ioi/isolate.git /tmp/isolate && \
+RUN git clone --depth 1 --branch master https://github.com/ioi/isolate.git /tmp/isolate && \
     cd /tmp/isolate && \
+    # Apply patch to fix SYS_quotactl_fd issue
+    sed -i 's/SYS_quotactl_fd/SYS_quotactl/g' rules.c && \
     make isolate && \
     cp isolate /usr/local/bin/ && \
     rm -rf /tmp/isolate
