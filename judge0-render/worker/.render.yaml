@@ -1,0 +1,37 @@
+# .render.yaml
+services:
+  - type: redis
+    name: judge0-redis
+    plan: free
+    region: oregon
+    env: internal  # internal URL only accessible to services in same region
+
+  - type: postgres
+    name: judge0-postgres
+    plan: free
+    region: oregon
+    databaseName: judge0_db
+    user: judge0_user
+    password: securepassword123
+    internal: true  # internal URL for private access
+
+  - type: web_service
+    name: judge0-worker
+    region: oregon
+    env: docker
+    dockerfilePath: ./Dockerfile
+    branch: main
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: judge0-postgres
+          property: internalConnectionString
+      - key: REDIS_URL
+        fromDatabase:
+          name: judge0-redis
+          property: internalConnectionString
+      - key: WORKER_PORT
+        value: "2358"
+    healthCheckPath: "/"
+    numInstances: 1
