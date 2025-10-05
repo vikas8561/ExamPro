@@ -21,7 +21,7 @@ services:
           property: connectionString
       - key: REDIS_URL
         fromService:
-          type: redis
+          type: keyvalue
           name: judge0-redis
           property: connectionString
       - key: PORT
@@ -45,7 +45,7 @@ services:
           property: connectionString
       - key: REDIS_URL
         fromService:
-          type: redis
+          type: keyvalue
           name: judge0-redis
           property: connectionString
       - key: PORT
@@ -57,6 +57,6 @@ databases:
     region: oregon
 
   - name: judge0-redis
-    type: redis
+    type: keyvalue
     plan: starter
     region: oregon

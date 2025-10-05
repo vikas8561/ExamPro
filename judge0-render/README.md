@@ -8,7 +8,7 @@ The deployment consists of:
 - **Judge0 API**: Ruby on Rails API server
 - **Judge0 Worker**: Python Flask worker for code execution
 - **PostgreSQL Database**: For storing submissions and results
-- **Redis**: For job queue management
+- **Key-Value Store**: For job queue management (Redis-compatible)
 
 ## Features
 
@@ -35,12 +35,12 @@ The deployment consists of:
 5. Click "Create Database"
 6. Note down the connection string
 
-### Step 2: Deploy Redis
+### Step 2: Deploy Key-Value Store (Redis Alternative)
 
-1. Click "New +" → "Redis"
+1. Click "New +" → "Key Value"
 2. Name it `judge0-redis`
 3. Choose the "Starter" plan
-4. Click "Create Redis"
+4. Click "Create Key Value Store"
 5. Note down the connection string
 
 ### Step 3: Deploy the API
@@ -183,9 +183,9 @@ const getResult = async (submissionId) => {
    - Ensure DATABASE_URL is correctly set
    - Check if the database is accessible
 
-2. **Redis Connection Issues**
+2. **Key-Value Store Connection Issues**
    - Ensure REDIS_URL is correctly set
-   - Verify Redis instance is running
+   - Verify Key-Value store is running
 
 3. **Code Execution Issues**
    - Check if isolate is properly installed
