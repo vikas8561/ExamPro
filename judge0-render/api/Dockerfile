@@ -1,5 +1,5 @@
 # Judge0 API Dockerfile for Render Deployment
-FROM ruby:3.1-slim
+FROM ruby:3.0-slim
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
