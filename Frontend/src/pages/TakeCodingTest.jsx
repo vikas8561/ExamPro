@@ -6,6 +6,9 @@ import LazyMonacoEditor from '../components/LazyMonacoEditor';
 export default function TakeCodingTest() {
   const { assignmentId } = useParams();
   const nav = useNavigate();
+  
+  // Debug logging for assignmentId
+  console.log('🔍 TakeCodingTest component - assignmentId from useParams:', assignmentId);
   const [test, setTest] = useState(null);
   const [assignment, setAssignment] = useState(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -53,6 +56,8 @@ export default function TakeCodingTest() {
   const debounceTimers = useRef({});
 
   useEffect(() => {
+    console.log('🔄 useEffect triggered with assignmentId:', assignmentId);
+    
     // Check authentication first
     const token = localStorage.getItem('token');
     if (!token) {
@@ -420,13 +425,24 @@ export default function TakeCodingTest() {
 
   const startTest = async () => {
     try {
-      console.log('🚀 Starting test with assignmentId:', assignmentId);
-      if (!assignmentId) {
+      console.log('🚀 startTest called');
+      console.log('🚀 assignmentId from useParams:', assignmentId);
+      console.log('🚀 assignment state:', assignment);
+      console.log('🚀 assignment._id:', assignment?._id);
+      
+      // Use assignmentId from URL, fallback to assignment._id
+      const finalAssignmentId = assignmentId || assignment?._id;
+      
+      if (!finalAssignmentId) {
+        console.error('❌ No assignment ID available!');
+        console.error('❌ assignmentId from URL:', assignmentId);
+        console.error('❌ assignment._id:', assignment?._id);
         setOtpError('Assignment ID not found');
         return;
       }
       
-      const response = await apiRequest(`/assignments/${assignmentId}/start`, {
+      console.log('✅ Using assignmentId:', finalAssignmentId);
+      const response = await apiRequest(`/assignments/${finalAssignmentId}/start`, {
         method: 'POST',
         body: JSON.stringify({
           permissions: {
@@ -471,13 +487,21 @@ export default function TakeCodingTest() {
     }
 
     try {
-      console.log('🔐 Verifying OTP with assignmentId:', assignmentId);
-      if (!assignmentId) {
+      console.log('🔐 Verifying OTP');
+      console.log('🔐 assignmentId from URL:', assignmentId);
+      console.log('🔐 assignment._id:', assignment?._id);
+      
+      // Use assignmentId from URL, fallback to assignment._id
+      const finalAssignmentId = assignmentId || assignment?._id;
+      
+      if (!finalAssignmentId) {
+        console.error('❌ No assignment ID available for OTP verification!');
         setOtpError('Assignment ID not found');
         return;
       }
       
-      const response = await apiRequest(`/assignments/${assignmentId}/start`, {
+      console.log('✅ Using assignmentId for OTP:', finalAssignmentId);
+      const response = await apiRequest(`/assignments/${finalAssignmentId}/start`, {
         method: 'POST',
         body: JSON.stringify({
           permissions: {
@@ -511,13 +535,21 @@ export default function TakeCodingTest() {
 
   const loadExistingTestData = async () => {
     try {
-      console.log('📋 Loading existing test data with assignmentId:', assignmentId);
-      if (!assignmentId) {
+      console.log('📋 Loading existing test data');
+      console.log('📋 assignmentId from URL:', assignmentId);
+      console.log('📋 assignment._id:', assignment?._id);
+      
+      // Use assignmentId from URL, fallback to assignment._id
+      const finalAssignmentId = assignmentId || assignment?._id;
+      
+      if (!finalAssignmentId) {
+        console.error('❌ No assignment ID available for resume!');
         setError('Assignment ID not found');
         return;
       }
       
-      const response = await apiRequest(`/assignments/${assignmentId}/resume`);
+      console.log('✅ Using assignmentId for resume:', finalAssignmentId);
+      const response = await apiRequest(`/assignments/${finalAssignmentId}/resume`);
       const { timeRemaining: remainingSeconds } = response;
       setTimeRemaining(remainingSeconds);
       setTestStarted(true);
