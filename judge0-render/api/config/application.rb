@@ -1,8 +1,5 @@
 require_relative "boot"
 
-# Ensure Logger is loaded before Rails
-require "logger"
-
 require "rails/all"
 
 # Require the gems listed in Gemfile, including any gems
@@ -12,7 +9,7 @@ Bundler.require(*Rails.groups)
 module Judge0Api
   class Application < Rails::Application
     # Initialize configuration defaults for originally generated Rails version.
-    config.load_defaults 6.1
+    config.load_defaults 6.0
 
     # Configuration for the application, engines, and railties goes here.
     #

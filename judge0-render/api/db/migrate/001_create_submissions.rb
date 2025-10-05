@@ -1,4 +1,4 @@
-class CreateSubmissions < ActiveRecord::Migration[6.1]
+class CreateSubmissions < ActiveRecord::Migration[6.0]
   def change
     create_table :submissions do |t|
       t.text :source_code, null: false
