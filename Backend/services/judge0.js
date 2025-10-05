@@ -24,9 +24,11 @@ const JUDGE0_API_KEY = process.env.JUDGE0_API_KEY || ''; // Not needed for our d
 
 // Function to switch to next Judge0 instance
 function switchToNextInstance() {
+  const oldInstance = JUDGE0_INSTANCES[currentInstanceIndex];
   currentInstanceIndex = (currentInstanceIndex + 1) % JUDGE0_INSTANCES.length;
-  console.log(`🔄 Switching to Judge0 instance: ${JUDGE0_INSTANCES[currentInstanceIndex]}`);
-  return JUDGE0_INSTANCES[currentInstanceIndex];
+  const newInstance = JUDGE0_INSTANCES[currentInstanceIndex];
+  console.log(`🔄 Switching from ${oldInstance} to ${newInstance}`);
+  return newInstance;
 }
 
 // Map common language names to Judge0 language IDs
@@ -66,6 +68,7 @@ async function createSubmission({
       // Use current instance URL
       const currentUrl = JUDGE0_INSTANCES[currentInstanceIndex];
       const createUrl = `${currentUrl}/api/v1/submissions`;
+      console.log(`🚀 Using Judge0 instance: ${currentUrl} (attempt ${attempt}/${maxRetries})`);
       const headers = {
         'Content-Type': 'application/json',
       };
@@ -91,6 +94,12 @@ async function createSubmission({
           const errorType = createRes.status === 503 ? 'service suspended' : 'rate limited';
           const delay = createRes.status === 429 ? attempt * 5000 : attempt * 2000; // Longer delay for rate limiting
           console.warn(`Judge0 ${errorType} (attempt ${attempt}/${maxRetries}), retrying in ${delay/1000} seconds...`);
+          
+          // If it's a 503 error, switch to next instance
+          if (createRes.status === 503) {
+            switchToNextInstance();
+          }
+          
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }
@@ -116,6 +125,12 @@ async function createSubmission({
             const errorType = resultRes.status === 503 ? 'service suspended' : 'rate limited';
             const delay = resultRes.status === 429 ? attempt * 5000 : attempt * 2000;
             console.warn(`Judge0 ${errorType} during polling (attempt ${attempt}/${maxRetries}), retrying in ${delay/1000} seconds...`);
+            
+            // If it's a 503 error, switch to next instance
+            if (resultRes.status === 503) {
+              switchToNextInstance();
+            }
+            
             await new Promise(resolve => setTimeout(resolve, delay));
             continue;
           }
@@ -158,7 +173,7 @@ async function createSubmission({
         console.warn(`Judge0 request failed (attempt ${attempt}/${maxRetries}): ${error.message}`);
         
         // If it's a 503 error (service suspended), try switching to next instance
-        if (error.message.includes('503') || error.message.includes('Service Suspended')) {
+        if (error.message.includes('503') || error.message.includes('Service Suspended') || error.message.includes('<!DOCTYPE html>')) {
           switchToNextInstance();
         }
         
