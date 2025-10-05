@@ -5,6 +5,7 @@ require 'json'
 require 'redis'
 
 # Configure CORS
+register Sinatra::Cors
 set :allow_origin, "*"
 set :allow_methods, "GET,HEAD,POST,PUT,DELETE,OPTIONS"
 set :allow_headers, "content-type,if-modified-since,allow,authorization,x-requested-with"

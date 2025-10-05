@@ -4,6 +4,7 @@ ruby '3.0.7'
 
 gem 'sinatra'
 gem 'sinatra-contrib'
+gem 'sinatra-cors'
 gem 'pg'
 gem 'redis'
 gem 'json'
