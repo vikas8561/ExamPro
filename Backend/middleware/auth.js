@@ -3,26 +3,45 @@ const User = require('../models/User');
 
 // Authentication middleware
 const authenticateToken = async (req, res, next) => {
+  // Skip authentication for OPTIONS requests (CORS preflight)
+  if (req.method === 'OPTIONS') {
+    console.log('🔧 Skipping auth for OPTIONS request');
+    return next();
+  }
+
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
+  console.log('🔐 Auth middleware - Method:', req.method);
+  console.log('🔐 Auth middleware - Token present:', !!token);
+
   if (!token) {
+    console.log('❌ No token provided');
     return res.status(401).json({ message: 'Access token required' });
   }
 
   try {
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    console.log('✅ Token verified for user:', decoded.userId);
     
     // Check if token is in user's active sessions
     const user = await User.findById(decoded.userId);
-    if (!user || !user.activeSessions.includes(token)) {
+    if (!user) {
+      console.log('❌ User not found:', decoded.userId);
+      return res.status(403).json({ message: 'User not found' });
+    }
+    
+    if (!user.activeSessions || !user.activeSessions.includes(token)) {
+      console.log('❌ Token not in active sessions. User sessions:', user.activeSessions?.length || 0);
       return res.status(403).json({ message: 'Invalid or expired session' });
     }
     
+    console.log('✅ Authentication successful for user:', decoded.userId);
     req.user = decoded;
     next();
   } catch (err) {
+    console.log('❌ Token verification failed:', err.message);
     return res.status(403).json({ message: 'Invalid or expired token' });
   }
 };

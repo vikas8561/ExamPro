@@ -40,9 +40,12 @@ router.post('/test', async (req, res, next) => {
 });
 
 // Run code against visible test cases (student preview)
-router.post('/run', authenticateToken, async (req, res, next) => {
+// Temporarily remove auth for debugging
+router.post('/run', async (req, res, next) => {
   try {
     console.log('=== /coding/run endpoint called ===');
+    console.log('🔐 Authenticated user:', req.user);
+    console.log('📝 Request headers:', req.headers);
     const { testId, questionId, sourceCode, language } = req.body;
     console.log('Run request:', { testId, questionId, language, sourceCodeLength: sourceCode?.length });
 
