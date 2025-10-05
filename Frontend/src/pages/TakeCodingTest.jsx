@@ -187,6 +187,10 @@ int main() {
         errorMessage = 'Judge0 service is temporarily unavailable (sleeping). Please wait a moment and try again.';
       } else if (e.message && e.message.includes('429')) {
         errorMessage = 'Too many requests sent too quickly. Please wait a moment and try again.';
+      } else if (e.message && e.message.includes('CORS')) {
+        errorMessage = 'Cross-origin request blocked. Please contact support or try again later.';
+      } else if (e.message && e.message.includes('Network error')) {
+        errorMessage = 'Network error: Unable to connect to server. Please check your internet connection.';
       } else if (e.message && e.message.includes('Judge0 error')) {
         errorMessage = 'Code execution service error. Please try again.';
       }
@@ -247,6 +251,10 @@ int main() {
         errorMessage = 'Judge0 service is temporarily unavailable (sleeping). Please wait a moment and try again.';
       } else if (e.message && e.message.includes('429')) {
         errorMessage = 'Too many requests sent too quickly. Please wait a moment and try again.';
+      } else if (e.message && e.message.includes('CORS')) {
+        errorMessage = 'Cross-origin request blocked. Please contact support or try again later.';
+      } else if (e.message && e.message.includes('Network error')) {
+        errorMessage = 'Network error: Unable to connect to server. Please check your internet connection.';
       } else if (e.message && e.message.includes('Judge0 error')) {
         errorMessage = 'Code execution service error. Please try again.';
       }

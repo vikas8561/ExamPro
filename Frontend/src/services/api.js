@@ -127,6 +127,14 @@ const apiRequest = async (endpoint, options = {}) => {
         !error.message.includes("404")) {
       console.error('API request failed:', error);
     }
+    
+    // Handle specific error types
+    if (error.message.includes('Failed to fetch') || error.message.includes('ERR_FAILED')) {
+      throw new Error('Network error: Unable to connect to server. Please check your internet connection and try again.');
+    } else if (error.message.includes('CORS')) {
+      throw new Error('CORS error: Cross-origin request blocked. Please contact support.');
+    }
+    
     throw error;
   }
 };
