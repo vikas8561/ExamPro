@@ -245,6 +245,42 @@ async function runAgainstCases({ sourceCode, language, cases }) {
       });
     } catch (err) {
       console.error('Judge0 submission failed:', err.message);
+      
+      // If it's a 503 error, try switching to next instance and retry once
+      if (err.message.includes('503') || err.message.includes('Service Suspended') || err.message.includes('<!DOCTYPE html>')) {
+        console.log('🔄 503 error detected in runAgainstCases, switching instance and retrying...');
+        switchToNextInstance();
+        
+        try {
+          // Retry with new instance
+          const retrySubmission = await createSubmission({
+            sourceCode,
+            language,
+            stdin: testCase.input,
+            expectedOutput: testCase.output,
+          });
+
+          const retryStatusId = retrySubmission.status?.id;
+          const isAccepted = retryStatusId === 3; // Accepted status
+
+          results.push({
+            input: testCase.input,
+            expected: testCase.output,
+            stdout: retrySubmission.stdout || '',
+            stderr: retrySubmission.stderr || '',
+            time: retrySubmission.time,
+            memory: retrySubmission.memory,
+            status: retrySubmission.status,
+            passed: isAccepted,
+            marks: testCase.marks ?? 0,
+          });
+          
+          console.log(`✅ Retry successful for test case ${i + 1}`);
+          continue;
+        } catch (retryErr) {
+          console.error('Retry also failed:', retryErr.message);
+        }
+      }
 
       results.push({
         input: testCase.input,
