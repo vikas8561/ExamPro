@@ -1,38 +1,45 @@
-# Use the official prebuilt Judge0 image
-# Use an alternative base image that does not include lua or require chown
-FROM ubuntu:22.04
+# Judge0 API Dockerfile for Render Deployment
+FROM ruby:3.1-slim
 
-# Install necessary dependencies for Judge0 runtime environment
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
     git \
-    libcap2-bin \
-    gcc \
-    g++ \
-    make \
     wget \
     unzip \
     ca-certificates \
-    sudo \
+    libpq-dev \
+    libcap2-bin \
     && rm -rf /var/lib/apt/lists/*
 
-# Create /box directory for isolate sandbox
-RUN mkdir -p /box
+# Install isolate for code sandboxing
+RUN git clone --depth 1 https://github.com/ioi/isolate.git /tmp/isolate && \
+    cd /tmp/isolate && \
+    make isolate && \
+    cp isolate /usr/local/bin/ && \
+    rm -rf /tmp/isolate
 
-# Expose the API port
-EXPOSE 2358
-
-# Copy the rest of the Judge0 API files (adjust as needed)
-COPY . /app
-
-# Set working directory
+# Create necessary directories
+RUN mkdir -p /box /app
 WORKDIR /app
 
-# Install any additional dependencies or build steps here if needed
+# Copy Gemfile and install dependencies
+COPY Gemfile* ./
+RUN bundle install --without development test
 
-# Default command to run the Judge0 API (adjust as needed)
-CMD ["./start-judge0-api.sh"]
+# Copy application code
+COPY . .
 
-# Fix permissions for /box directory to avoid root issues
-RUN chown -R 1000:1000 /box || true
+# Create /box directory with proper permissions
+RUN mkdir -p /box && chmod 755 /box
+
+# Expose port
+EXPOSE 2358
+
+# Set environment variables
+ENV RAILS_ENV=production
+ENV RACK_ENV=production
+
+# Start the application
+CMD ["bundle", "exec", "puma", "-C", "config/puma.rb"]

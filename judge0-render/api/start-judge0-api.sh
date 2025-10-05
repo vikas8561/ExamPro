@@ -1,13 +1,12 @@
 #!/bin/bash
 set -e
 
-# Create /box directory if it doesn't exist
+# Create necessary directories
 mkdir -p /box
+chmod 755 /box
 
-# Set permissions for /box directory to allow non-root access
-chown -R 1000:1000 /box || true
-chmod -R 755 /box || true
+# Set up database
+bundle exec rails db:create db:migrate
 
-# Start the Judge0 API server without sudo or root privileges
-# Adjust this command as needed to start your API server
+# Start the Judge0 API server
 exec bundle exec puma -C config/puma.rb
