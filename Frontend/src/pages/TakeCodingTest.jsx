@@ -63,12 +63,21 @@ export default function TakeCodingTest() {
 
         const load = async () => {
           try {
+            console.log('📋 Loading assignment with ID:', assignmentId);
+            if (!assignmentId) {
+              setError('Assignment ID not found in URL');
+              setLoading(false);
+              return;
+            }
+            
             // Load assignment first
             const assignmentData = await apiRequest(`/assignments/${assignmentId}`);
+            console.log('✅ Assignment loaded:', assignmentData);
             setAssignment(assignmentData);
             
             // Load test from assignment
             const t = await apiRequest(`/tests/${assignmentData.testId}`);
+            console.log('✅ Test loaded:', t);
             setTest(t);
             
             const initial = {};
@@ -84,8 +93,11 @@ export default function TakeCodingTest() {
             });
             setLanguageByQ(langs);
             setCodeByQ(initial);
+            setLoading(false);
           } catch (e) {
-            console.error(e);
+            console.error('Error loading assignment/test:', e);
+            setError(e.message || 'Failed to load assignment');
+            setLoading(false);
             if (e.message && e.message.includes('Authentication required')) {
               alert('Your session has expired. Please log in again.');
               window.location.href = '/login';
@@ -408,6 +420,12 @@ export default function TakeCodingTest() {
 
   const startTest = async () => {
     try {
+      console.log('🚀 Starting test with assignmentId:', assignmentId);
+      if (!assignmentId) {
+        setOtpError('Assignment ID not found');
+        return;
+      }
+      
       const response = await apiRequest(`/assignments/${assignmentId}/start`, {
         method: 'POST',
         body: JSON.stringify({
@@ -453,6 +471,12 @@ export default function TakeCodingTest() {
     }
 
     try {
+      console.log('🔐 Verifying OTP with assignmentId:', assignmentId);
+      if (!assignmentId) {
+        setOtpError('Assignment ID not found');
+        return;
+      }
+      
       const response = await apiRequest(`/assignments/${assignmentId}/start`, {
         method: 'POST',
         body: JSON.stringify({
@@ -487,6 +511,12 @@ export default function TakeCodingTest() {
 
   const loadExistingTestData = async () => {
     try {
+      console.log('📋 Loading existing test data with assignmentId:', assignmentId);
+      if (!assignmentId) {
+        setError('Assignment ID not found');
+        return;
+      }
+      
       const response = await apiRequest(`/assignments/${assignmentId}/resume`);
       const { timeRemaining: remainingSeconds } = response;
       setTimeRemaining(remainingSeconds);
@@ -735,7 +765,7 @@ int main() {
     }
   };
 
-      if (showPermissionModal) {
+      if (showPermissionModal && assignment) {
         return (
           <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-4">
             <div className="bg-slate-800 rounded-lg p-8 max-w-md w-full">
