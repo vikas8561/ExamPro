@@ -1,12 +1,13 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import apiRequest from '../services/api';
 import LazyMonacoEditor from '../components/LazyMonacoEditor';
 
 export default function TakeCodingTest() {
-  const { testId } = useParams();
+  const { assignmentId } = useParams();
   const nav = useNavigate();
   const [test, setTest] = useState(null);
+  const [assignment, setAssignment] = useState(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [activeTab, setActiveTab] = useState('description');
   const [codeByQ, setCodeByQ] = useState({});
@@ -24,6 +25,32 @@ export default function TakeCodingTest() {
   const [lastSaved, setLastSaved] = useState(null);
   const [activeTestCaseIndex, setActiveTestCaseIndex] = useState(0);
   const [outputVersion, setOutputVersion] = useState(0);
+  
+  // Proctoring system state (same as TakeTest.jsx)
+  const [timeRemaining, setTimeRemaining] = useState(0);
+  const [timeSpent, setTimeSpent] = useState(0);
+  const [permissionsGranted, setPermissionsGranted] = useState(false);
+  const [cameraPermission, setCameraPermission] = useState("prompt");
+  const [microphonePermission, setMicrophonePermission] = useState("prompt");
+  const [locationPermission, setLocationPermission] = useState("prompt");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [testStarted, setTestStarted] = useState(false);
+  const startRequestMade = useRef(false);
+  const [violationCount, setViolationCount] = useState(0);
+  const [showResumeModal, setShowResumeModal] = useState(false);
+  const [showSubmitConfirmModal, setShowSubmitConfirmModal] = useState(false);
+  const [violations, setViolations] = useState([]);
+  const [stream, setStream] = useState(null);
+  const [isVideoActive, setIsVideoActive] = useState(false);
+  const videoRef = useRef(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPermissionModal, setShowPermissionModal] = useState(true);
+  const [otpInput, setOtpInput] = useState("");
+  const [otpError, setOtpError] = useState("");
+  const [permissionsAttempted, setPermissionsAttempted] = useState(false);
+  const fullscreenTimeoutRef = useRef(null);
+  const debounceTimers = useRef({});
 
   useEffect(() => {
     // Check authentication first
@@ -34,33 +61,467 @@ export default function TakeCodingTest() {
       return;
     }
 
-    const load = async () => {
-      try {
-        const t = await apiRequest(`/tests/${testId}`);
-        setTest(t);
-        const initial = {};
-        const langs = {};
-        (t.questions || []).forEach(q => {
-          if (q.kind === 'coding') {
-            // Use question's language from database, fallback to 'python'
-            langs[q._id] = q.language || 'python';
-            console.log(`🔤 Question ${q._id} language: ${langs[q._id]}`);
-            // Provide basic code template for the language
-            initial[q._id] = getLanguageTemplate(langs[q._id]);
+        const load = async () => {
+          try {
+            // Load assignment first
+            const assignmentData = await apiRequest(`/assignments/${assignmentId}`);
+            setAssignment(assignmentData);
+            
+            // Load test from assignment
+            const t = await apiRequest(`/tests/${assignmentData.testId}`);
+            setTest(t);
+            
+            const initial = {};
+            const langs = {};
+            (t.questions || []).forEach(q => {
+              if (q.kind === 'coding') {
+                // Use question's language from database, fallback to 'python'
+                langs[q._id] = q.language || 'python';
+                console.log(`🔤 Question ${q._id} language: ${langs[q._id]}`);
+                // Provide basic code template for the language
+                initial[q._id] = getLanguageTemplate(langs[q._id]);
+              }
+            });
+            setLanguageByQ(langs);
+            setCodeByQ(initial);
+          } catch (e) {
+            console.error(e);
+            if (e.message && e.message.includes('Authentication required')) {
+              alert('Your session has expired. Please log in again.');
+              window.location.href = '/login';
+            }
           }
+        };
+        load();
+      }, [assignmentId]);
+
+  // Proctoring system functions (same as TakeTest.jsx)
+  const requestFullscreen = async () => {
+    try {
+      if (document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+      } else if (document.documentElement.webkitRequestFullscreen) {
+        // Safari
+        await document.documentElement.webkitRequestFullscreen();
+      } else if (document.documentElement.msRequestFullscreen) {
+        // IE/Edge
+        await document.documentElement.msRequestFullscreen();
+      }
+    } catch (error) {
+      console.error("Failed to enter fullscreen mode:", error);
+      // Continue with test even if fullscreen fails
+    }
+  };
+
+  const exitFullscreen = async () => {
+    try {
+      if (document.exitFullscreen) {
+        await document.exitFullscreen();
+      } else if (document.webkitExitFullscreen) {
+        // Safari
+        await document.webkitExitFullscreen();
+      } else if (document.msExitFullscreen) {
+        // IE/Edge
+        await document.msExitFullscreen();
+      }
+    } catch (error) {
+      console.error("Failed to exit fullscreen mode:", error);
+      // Continue with navigation even if fullscreen exit fails
+    }
+  };
+
+  const submitTest = async (cancelledDueToViolation = false, autoSubmit = false) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
+    try {
+      const submissionData = {
+        assignmentId: assignment._id,
+        responses: Object.entries(codeByQ).map(([questionId, code]) => ({
+          questionId,
+          selectedOption: null,
+          textAnswer: code || '',
+          isCorrect: false,
+          points: 0,
+          autoGraded: false,
+          geminiFeedback: null,
+          correctAnswer: null,
+          errorAnalysis: null,
+          improvementSteps: [],
+          topicRecommendations: []
+        })),
+        totalScore: 0,
+        maxScore: 0,
+        submittedAt: new Date().toISOString(),
+        timeSpent,
+        mentorReviewed: false,
+        reviewStatus: 'Pending',
+        tabViolationCount: violationCount,
+        tabViolations: violations.map((violation) => ({
+          timestamp: violation.timestamp instanceof Date
+            ? violation.timestamp.toISOString()
+            : String(violation.timestamp),
+          violationType: String(violation.violationType),
+          details: String(violation.details),
+          tabCount: Number(violation.tabCount),
+        })),
+        cancelledDueToViolation: cancelledDueToViolation || (test?.allowedTabSwitches !== -1 && violationCount > (test?.allowedTabSwitches ?? 2)),
+        autoSubmit,
+        permissions: {
+          camera: String(cameraPermission),
+          microphone: String(microphonePermission),
+          location: String(locationPermission),
+        },
+      };
+
+      await apiRequest('/test-submissions', {
+        method: 'POST',
+        body: JSON.stringify(submissionData),
+      });
+
+      // Exit fullscreen mode before navigating
+      await exitFullscreen();
+
+      setIsSubmitting(false);
+      navigate(`/student/assignments`);
+    } catch (error) {
+      console.error('Error submitting test:', error);
+      setIsSubmitting(false);
+      alert('Failed to submit test. Please try again.');
+    }
+  };
+
+  // Tab switch detection
+  useEffect(() => {
+    if (!testStarted) return;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        console.log('Tab switch violation triggered!');
+        setViolationCount(prev => {
+          const newViolationCount = prev + 1;
+          
+          const violation = {
+            timestamp: new Date(),
+            violationType: "tab_switch",
+            details: `Tab switched - violation ${newViolationCount}`,
+            tabCount: newViolationCount,
+          };
+          
+          setViolations(prevViolations => [...prevViolations, violation]);
+
+          // Get the allowed tab switches from test data, default to 2 if not available
+          const allowedSwitches = test?.allowedTabSwitches ?? 2;
+          
+          // For practice tests, allow unlimited switches but still track them
+          if (test?.isPracticeTest) {
+            console.log(`Practice test: Tab switch ${newViolationCount} recorded (unlimited allowed)`);
+          } else {
+            // For regular tests, enforce the limit
+            if (newViolationCount >= allowedSwitches) {
+              alert(
+                `Test cancelled due to tab violations (${newViolationCount} violations detected, limit: ${allowedSwitches}).`
+              );
+              submitTest(true);
+            }
+          }
+          
+          return newViolationCount;
         });
-        setLanguageByQ(langs);
-        setCodeByQ(initial);
-      } catch (e) {
-        console.error(e);
-        if (e.message && e.message.includes('Authentication required')) {
-          alert('Your session has expired. Please log in again.');
-          window.location.href = '/login';
-        }
       }
     };
-    load();
-  }, [testId]);
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [testStarted, submitTest]);
+
+  // Fullscreen monitoring
+  useEffect(() => {
+    if (!testStarted) return;
+
+    const handleFullscreenChange = () => {
+      const isFullscreen = !!(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.msFullscreenElement
+      );
+      console.log('Fullscreen change detected:', isFullscreen);
+
+      if (!isFullscreen && testStarted && !isSubmitting) {
+        console.log('Fullscreen exit violation triggered!');
+        setViolationCount(prev => {
+          const newViolationCount = prev + 1;
+          
+          const violation = {
+            timestamp: new Date(),
+            violationType: "fullscreen_exit",
+            details: `Fullscreen exited - violation ${newViolationCount}`,
+            tabCount: newViolationCount,
+          };
+          setViolations(prevViolations => [...prevViolations, violation]);
+
+          // Get the allowed tab switches from test data, default to 2 if not available
+          const allowedSwitches = test?.allowedTabSwitches ?? 2;
+          
+          // For practice tests, allow unlimited switches but still track them
+          if (test?.isPracticeTest) {
+            console.log(`Practice test: Fullscreen exit ${newViolationCount} recorded (unlimited allowed)`);
+            if (newViolationCount < 3) { // Show resume modal for first few violations
+              setShowResumeModal(true);
+              // Clear existing timeout and set new one
+              if (fullscreenTimeoutRef.current) {
+                clearTimeout(fullscreenTimeoutRef.current);
+              }
+              fullscreenTimeoutRef.current = setTimeout(() => {
+                requestFullscreen();
+              }, 1000);
+            }
+          } else {
+            // For regular tests, enforce the limit
+            if (newViolationCount < allowedSwitches) {
+              setShowResumeModal(true);
+              // Clear existing timeout and set new one
+              if (fullscreenTimeoutRef.current) {
+                clearTimeout(fullscreenTimeoutRef.current);
+              }
+              fullscreenTimeoutRef.current = setTimeout(() => {
+                requestFullscreen();
+              }, 1000);
+            } else if (newViolationCount >= allowedSwitches) {
+              alert(
+                `Test cancelled due to violations (${newViolationCount} violations detected, limit: ${allowedSwitches}).`
+              );
+              submitTest(true);
+            }
+          }
+          
+          return newViolationCount;
+        });
+      }
+    };
+
+    // Add event listeners for fullscreen changes
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+    document.addEventListener("msfullscreenchange", handleFullscreenChange);
+
+    return () => {
+      // Clean up timeout on unmount
+      if (fullscreenTimeoutRef.current) {
+        clearTimeout(fullscreenTimeoutRef.current);
+      }
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("msfullscreenchange", handleFullscreenChange);
+    };
+  }, [testStarted, isSubmitting, submitTest, requestFullscreen]);
+
+  // Timer countdown
+  useEffect(() => {
+    if (!testStarted || timeRemaining <= 0) return;
+
+    const timer = setInterval(() => {
+      setTimeRemaining(prev => {
+        if (prev <= 1) {
+          // Time's up - auto submit
+          submitTest(false, true);
+          return 0;
+        }
+        return prev - 1;
+      });
+      setTimeSpent(prev => prev + 1);
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [testStarted, timeRemaining, submitTest]);
+
+  // Permission request functions
+  const requestCameraPermission = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      setCameraPermission("granted");
+      setStream(stream);
+      setIsVideoActive(true);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (error) {
+      console.error("Camera permission denied:", error);
+      setCameraPermission("denied");
+    }
+  };
+
+  const requestMicrophonePermission = async () => {
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      setMicrophonePermission("granted");
+    } catch (error) {
+      console.error("Microphone permission denied:", error);
+      setMicrophonePermission("denied");
+    }
+  };
+
+  const requestLocationPermission = async () => {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        setLocationPermission("denied");
+        reject(new Error("Geolocation not supported"));
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setLocationPermission("granted");
+          resolve(position);
+        },
+        (error) => {
+          console.error("Location permission denied:", error);
+          setLocationPermission("denied");
+          reject(error);
+        }
+      );
+    });
+  };
+
+  const requestPermissions = async () => {
+    setPermissionsAttempted(true);
+    await Promise.allSettled([
+      requestCameraPermission(),
+      requestMicrophonePermission(),
+      requestLocationPermission(),
+    ]);
+
+    if (
+      cameraPermission === "granted" &&
+      microphonePermission === "granted" &&
+      locationPermission === "granted"
+    ) {
+      setPermissionsGranted(true);
+      // Request fullscreen mode after all permissions are granted
+      setTimeout(async () => {
+        await requestFullscreen();
+      }, 100);
+    } else {
+      setPermissionsGranted(false);
+    }
+  };
+
+  const startTest = async () => {
+    try {
+      const response = await apiRequest(`/assignments/${assignmentId}/start`, {
+        method: 'POST',
+        body: JSON.stringify({
+          permissions: {
+            camera: cameraPermission,
+            microphone: microphonePermission,
+            location: locationPermission,
+          },
+          otp: otpInput.trim(),
+        }),
+      });
+
+      const { timeRemaining: remainingSeconds } = response;
+      setTimeRemaining(remainingSeconds);
+      setTestStarted(true);
+      setShowPermissionModal(false);
+      setLoading(false);
+
+      // Force fullscreen mode immediately
+      setTimeout(async () => {
+        try {
+          await requestFullscreen();
+        } catch (error) {
+          console.error("Fullscreen failed, but continuing with test:", error);
+        }
+      }, 100);
+    } catch (error) {
+      console.error("Error starting test:", error);
+      setOtpError(error.message || "Failed to start test");
+    }
+  };
+
+  const verifyOTP = async () => {
+    if (!otpInput.trim()) {
+      if (!permissionsGranted) {
+        setOtpError("Please enter the OTP");
+        return;
+      }
+      // Allow empty OTP if permissions are granted (auto-start)
+    } else if (otpInput.length !== 6 || !/^\d{6}$/.test(otpInput)) {
+      setOtpError("OTP must be 6 digits");
+      return;
+    }
+
+    try {
+      const response = await apiRequest(`/assignments/${assignmentId}/start`, {
+        method: 'POST',
+        body: JSON.stringify({
+          permissions: {
+            camera: cameraPermission,
+            microphone: microphonePermission,
+            location: locationPermission,
+          },
+          otp: otpInput.trim(),
+        }),
+      });
+
+      const { timeRemaining: remainingSeconds } = response;
+      setTimeRemaining(remainingSeconds);
+      setTestStarted(true);
+      setShowPermissionModal(false);
+      setLoading(false);
+    } catch (error) {
+      if (error.message === "Test already started") {
+        await loadExistingTestData();
+      } else if (
+        error.message === "Invalid OTP" ||
+        error.message === "OTP required"
+      ) {
+        setOtpError(error.message);
+      } else {
+        console.error("Error starting test:", error);
+        setOtpError(error.message || "Failed to start test");
+      }
+    }
+  };
+
+  const loadExistingTestData = async () => {
+    try {
+      const response = await apiRequest(`/assignments/${assignmentId}/resume`);
+      const { timeRemaining: remainingSeconds } = response;
+      setTimeRemaining(remainingSeconds);
+      setTestStarted(true);
+      setShowPermissionModal(false);
+      setLoading(false);
+
+      // Request fullscreen mode when resuming existing test
+      setTimeout(async () => {
+        await requestFullscreen();
+      }, 100);
+    } catch (error) {
+      console.error("Error loading test data:", error);
+      setError(error.message || "Failed to load test data");
+      setLoading(false);
+    }
+  };
+
+  const handleResumeTest = () => {
+    setShowResumeModal(false);
+    // Immediately return to fullscreen mode when resuming
+    setTimeout(() => {
+      requestFullscreen();
+    }, 100);
+  };
+
+  const handleSubmitClick = () => {
+    setShowSubmitConfirmModal(true);
+  };
+
+  const handleConfirmSubmit = () => {
+    setIsSubmitting(true);
+    setShowSubmitConfirmModal(false);
+    submitTest();
+  };
 
   const codingQuestions = useMemo(() => (test?.questions || []).filter(q => q.kind === 'coding'), [test]);
   const activeQ = codingQuestions[activeIndex];
@@ -167,7 +628,7 @@ int main() {
       const resp = await apiRequest('/coding/run', {
         method: 'POST',
         body: JSON.stringify({
-          testId: test._id,
+          assignmentId: assignment?._id,
           questionId: activeQ._id,
           sourceCode: codeByQ[activeQ._id] || '',
           language: questionLanguage
@@ -239,8 +700,7 @@ int main() {
         const resp = await apiRequest('/coding/submit', {
           method: 'POST',
           body: JSON.stringify({
-            assignmentId: null,
-            // If you require assignment, replace null with actual assignment id
+            assignmentId: assignment?._id,
             questionId: activeQ._id,
             sourceCode: codeByQ[activeQ._id] || '',
             language: questionLanguage
@@ -275,14 +735,177 @@ int main() {
     }
   };
 
-  if (!test) return <div className="p-6">Loading...</div>;
+      if (showPermissionModal) {
+        return (
+          <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-4">
+            <div className="bg-slate-800 rounded-lg p-8 max-w-md w-full">
+              <h2 className="text-2xl font-bold mb-6 text-center">Test Permissions</h2>
+              
+              <div className="space-y-4 mb-6">
+                <div className="flex justify-between items-center">
+                  <span>Camera Permission:</span>
+                  <span className={`px-2 py-1 rounded text-sm ${
+                    cameraPermission === "granted" ? "bg-green-600" :
+                    cameraPermission === "denied" ? "bg-red-600" : "bg-yellow-600"
+                  }`}>
+                    {cameraPermission}
+                  </span>
+                </div>
 
-  return (
+                <div className="flex justify-between items-center">
+                  <span>Microphone Permission:</span>
+                  <span className={`px-2 py-1 rounded text-sm ${
+                    microphonePermission === "granted" ? "bg-green-600" :
+                    microphonePermission === "denied" ? "bg-red-600" : "bg-yellow-600"
+                  }`}>
+                    {microphonePermission}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <span>Location Permission:</span>
+                  <span className={`px-2 py-1 rounded text-sm ${
+                    locationPermission === "granted" ? "bg-green-600" :
+                    locationPermission === "denied" ? "bg-red-600" : "bg-yellow-600"
+                  }`}>
+                    {locationPermission}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                {permissionsAttempted && permissionsGranted ? (
+                  <div className="text-green-400 text-center mb-4">
+                    All permissions granted! Click the button below to start the test.
+                  </div>
+                ) : permissionsAttempted && !permissionsGranted ? (
+                  <div className="text-red-400 text-center mb-4">
+                    Some permissions were denied. You can still proceed, but you need to provide an OTP to start the test.
+                  </div>
+                ) : null}
+
+                {(!permissionsGranted || !permissionsAttempted) && (
+                  <button
+                    onClick={requestPermissions}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-md font-semibold mb-4"
+                  >
+                    Request Permissions
+                  </button>
+                )}
+
+                {permissionsAttempted && permissionsGranted && (
+                  <button
+                    onClick={startTest}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-md font-semibold"
+                  >
+                    Start Test
+                  </button>
+                )}
+
+                {permissionsAttempted && !permissionsGranted && (
+                  <>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium mb-2">Enter OTP</label>
+                      <input
+                        type="text"
+                        value={otpInput}
+                        onChange={(e) => setOtpInput(e.target.value)}
+                        placeholder="Enter 6-digit OTP"
+                        className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        maxLength={6}
+                      />
+                      {otpError && (
+                        <p className="text-red-400 text-sm mt-1">{otpError}</p>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={verifyOTP}
+                      className="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-md font-semibold"
+                    >
+                      Verify OTP & Start Test
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      if (showResumeModal) {
+        return (
+          <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-4">
+            <div className="bg-slate-800 rounded-lg p-8 max-w-md w-full">
+              <h2 className="text-2xl font-bold mb-6 text-center">Resume Test</h2>
+              <p className="text-slate-300 mb-6">
+                You have switched tabs/windows {violationCount} time(s) during this test.
+                {test?.allowedTabSwitches !== undefined && test.allowedTabSwitches !== -1 && (
+                  <span className="block text-slate-400 text-sm mt-1">
+                    Allowed switches: {test.allowedTabSwitches}
+                  </span>
+                )}
+                {test?.isPracticeTest
+                  ? "This is a practice test - tab switching is allowed but monitored."
+                  : violationCount === 1
+                  ? "First warning: Please remain focused on the test."
+                  : violationCount < (test?.allowedTabSwitches ?? 2)
+                  ? `Warning: ${violationCount} of ${test?.allowedTabSwitches ?? 2} allowed switches used.`
+                  : "Final warning: This is your last allowed switch."}
+              </p>
+              <button
+                onClick={handleResumeTest}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-md font-semibold"
+              >
+                Resume Test
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      if (showSubmitConfirmModal) {
+        return (
+          <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-4">
+            <div className="bg-slate-800 rounded-lg p-8 max-w-md w-full">
+              <h2 className="text-2xl font-bold mb-6 text-center">Confirm Submission</h2>
+              <p className="text-slate-300 mb-6">
+                Are you sure you want to submit your test? This action cannot be undone.
+              </p>
+              <div className="flex space-x-4">
+                <button
+                  onClick={() => setShowSubmitConfirmModal(false)}
+                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-3 rounded-md font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmSubmit}
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-md font-semibold"
+                >
+                  Submit Test
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      if (loading) return <div className="p-6">Loading...</div>;
+      if (error) return <div className="p-6 text-red-400">Error: {error}</div>;
+      if (!test) return <div className="p-6">Loading...</div>;
+
+      return (
     <div className="h-[calc(100vh-64px)] flex">
       <div className="w-1/2 border-r border-slate-700 overflow-auto p-4 flex flex-col">
         <div className="mb-3">
           <div className="flex items-center justify-between mb-2">
             <div className="text-xs text-slate-400">Question {activeIndex + 1} of {codingQuestions.length}</div>
+            {testStarted && (
+              <div className="text-sm font-semibold text-yellow-400">
+                Time Remaining: {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}
+              </div>
+            )}
           </div>
           <div className="flex items-center justify-between">
             <div className="text-lg font-semibold flex items-center gap-2">
@@ -318,15 +941,15 @@ int main() {
                 </svg>
               </button>
             </div>
-            <button
-              onClick={()=>nav(-1)}
-              className="px-4 py-2 bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 text-white rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg shadow-red-500/30 flex items-center gap-2"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-              End Test
-            </button>
+                <button
+                  onClick={handleSubmitClick}
+                  className="px-4 py-2 bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 text-white rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg shadow-red-500/30 flex items-center gap-2"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                  Submit Test
+                </button>
           </div>
           <div className="flex flex-wrap gap-2 mt-2">
             {activeQ?.difficulty && (

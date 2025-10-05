@@ -40,25 +40,24 @@ router.post('/test', async (req, res, next) => {
 });
 
 // Run code against visible test cases (student preview)
-// Temporarily remove auth for testing - will re-enable after deployment
-router.post('/run', async (req, res, next) => {
+router.post('/run', authenticateToken, async (req, res, next) => {
   try {
     console.log('=== /coding/run endpoint called ===');
     console.log('🔐 Authenticated user:', req.user);
     console.log('📝 Request headers:', req.headers);
-    const { testId, questionId, sourceCode, language } = req.body;
-    console.log('Run request:', { testId, questionId, language, sourceCodeLength: sourceCode?.length });
+    const { assignmentId, questionId, sourceCode, language } = req.body;
+    console.log('Run request:', { assignmentId, questionId, language, sourceCodeLength: sourceCode?.length });
 
     // Enhanced validation
-    if (!testId || !questionId || !sourceCode) {
-      console.log('❌ Missing required fields:', { testId: !!testId, questionId: !!questionId, sourceCode: !!sourceCode });
-      return res.status(400).json({ message: 'testId, questionId and sourceCode are required' });
+    if (!assignmentId || !questionId || !sourceCode) {
+      console.log('❌ Missing required fields:', { assignmentId: !!assignmentId, questionId: !!questionId, sourceCode: !!sourceCode });
+      return res.status(400).json({ message: 'assignmentId, questionId and sourceCode are required' });
     }
 
     // Validate ObjectId format
-    if (!testId.match(/^[0-9a-fA-F]{24}$/)) {
-      console.log('❌ Invalid testId format:', testId);
-      return res.status(400).json({ message: 'Invalid testId format' });
+    if (!assignmentId.match(/^[0-9a-fA-F]{24}$/)) {
+      console.log('❌ Invalid assignmentId format:', assignmentId);
+      return res.status(400).json({ message: 'Invalid assignmentId format' });
     }
 
     if (!questionId.match(/^[0-9a-fA-F]{24}$/)) {
@@ -66,19 +65,26 @@ router.post('/run', async (req, res, next) => {
       return res.status(400).json({ message: 'Invalid questionId format' });
     }
 
-    console.log('🔍 Fetching test from database...');
-    const test = await Test.findById(testId);
-    if (!test) {
-      console.log('❌ Test not found:', testId);
-      return res.status(404).json({ message: 'Test not found' });
+    console.log('🔍 Fetching assignment from database...');
+    const assignment = await Assignment.findById(assignmentId).populate('testId');
+    if (!assignment) {
+      console.log('❌ Assignment not found:', assignmentId);
+      return res.status(404).json({ message: 'Assignment not found' });
     }
-    console.log('✅ Test found:', test.title);
+
+    // Check if assignment belongs to the authenticated user
+    if (assignment.userId.toString() !== req.user.userId) {
+      console.log('❌ Assignment does not belong to user:', { assignmentUserId: assignment.userId, requestUserId: req.user.userId });
+      return res.status(403).json({ message: 'Access denied. Assignment does not belong to you.' });
+    }
+
+    console.log('✅ Assignment found:', assignment.testId.title);
 
     console.log('🔍 Looking for question in test...');
-    const question = test.questions.id(questionId);
+    const question = assignment.testId.questions.id(questionId);
     if (!question) {
       console.log('❌ Question not found in test:', questionId);
-      console.log('Available question IDs:', test.questions.map(q => q._id));
+      console.log('Available question IDs:', assignment.testId.questions.map(q => q._id));
       return res.status(404).json({ message: 'Question not found in test' });
     }
 
@@ -123,8 +129,7 @@ router.post('/run', async (req, res, next) => {
 });
 
 // Submit code against hidden test cases (final grading for one question)
-// Temporarily remove auth for testing - will re-enable after deployment
-router.post('/submit', async (req, res, next) => {
+router.post('/submit', authenticateToken, async (req, res, next) => {
   try {
     console.log('=== /coding/submit endpoint called ===');
     console.log('🔐 Authenticated user:', req.user);
