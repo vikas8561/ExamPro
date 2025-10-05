@@ -1,2 +1,2 @@
-# Redis configuration
-Redis.current = Redis.new(url: ENV['REDIS_URL'] || 'redis://localhost:6379')
+# Redis client (avoid deprecated Redis.current)
+REDIS = Redis.new(url: ENV['REDIS_URL'] || 'redis://localhost:6379')
