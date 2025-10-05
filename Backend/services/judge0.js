@@ -10,9 +10,9 @@ const fetchFn = async (...args) => {
   return nodeFetch(...args);
 };
 
-// Use environment variable or default to RapidAPI Judge0 endpoint
-const JUDGE0_BASE_URL = process.env.JUDGE0_BASE_URL || 'https://judge0-ce.p.rapidapi.com';
-const JUDGE0_API_KEY = process.env.JUDGE0_API_KEY || '3f9b7f97d4msh09614f6a8e0549ap1a2f44jsn21675a256ff5';
+// Use environment variable or default to deployed Judge0 endpoint
+const JUDGE0_BASE_URL = process.env.JUDGE0_BASE_URL || 'https://judge0-api-b0cf.onrender.com';
+const JUDGE0_API_KEY = process.env.JUDGE0_API_KEY || ''; // Not needed for our deployed API
 
 // Map common language names to Judge0 language IDs
 function mapLanguageToJudge0Id(language) {
@@ -41,36 +41,91 @@ async function createSubmission({
   memoryLimit = '512000',
 }) {
   const language_id = mapLanguageToJudge0Id(language);
-  const url = `${JUDGE0_BASE_URL}/submissions?base64_encoded=false&wait=true`;
-
+  
+  // First, create the submission
+  const createUrl = `${JUDGE0_BASE_URL}/api/v1/submissions`;
   const headers = {
     'Content-Type': 'application/json',
-    'X-RapidAPI-Key': JUDGE0_API_KEY,
-    'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com',
   };
 
   const body = {
     source_code: sourceCode || '',
     language_id,
     stdin: stdin ?? '',
-    expected_output: expectedOutput ?? undefined,
-    cpu_time_limit: cpuTimeLimit,
-    memory_limit: memoryLimit,
+    expected_output: expectedOutput ?? '',
   };
 
-  const res = await fetchFn(url, {
+  const createRes = await fetchFn(createUrl, {
     method: 'POST',
     headers,
     body: JSON.stringify(body),
   });
 
-  if (!res.ok) {
-    const text = await res.text();
-    console.error(`Judge0 API error response: ${res.status} ${text}`);
-    throw new Error(`Judge0 error: ${res.status} ${text}`);
+  if (!createRes.ok) {
+    const text = await createRes.text();
+    console.error(`Judge0 API error response: ${createRes.status} ${text}`);
+    throw new Error(`Judge0 error: ${createRes.status} ${text}`);
   }
 
-  return res.json();
+  const submission = await createRes.json();
+  const submissionId = submission.id;
+
+  // Poll for result (with timeout)
+  const maxAttempts = 60; // 60 seconds max wait
+  let attempts = 0;
+  
+  while (attempts < maxAttempts) {
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+    
+    const resultRes = await fetchFn(`${JUDGE0_BASE_URL}/api/v1/submissions/${submissionId}`);
+    if (!resultRes.ok) {
+      throw new Error(`Failed to get submission result: ${resultRes.status}`);
+    }
+    
+    const result = await resultRes.json();
+    
+    // Check if processing is complete
+    if (result.status && result.status !== 'In Queue' && result.status !== 'Processing') {
+      return {
+        status: { id: getStatusId(result.status), description: result.status },
+        stdout: result.stdout || '',
+        stderr: result.stderr || '',
+        compile_output: result.compile_output || '',
+        time: result.time,
+        memory: result.memory,
+        message: result.message || '',
+      };
+    }
+    
+    attempts++;
+  }
+  
+  // Timeout - return a timeout status instead of throwing
+  console.warn(`Submission ${submissionId} timed out after ${maxAttempts} seconds`);
+  return {
+    status: { id: 13, description: 'Time Limit Exceeded' },
+    stdout: '',
+    stderr: 'Code execution timed out. The worker service may not be running.',
+    compile_output: '',
+    time: null,
+    memory: null,
+    message: 'Execution timeout - worker service may be unavailable',
+  };
+}
+
+// Helper function to map status strings to IDs
+function getStatusId(status) {
+  const statusMap = {
+    'Accepted': 3,
+    'Wrong Answer': 4,
+    'Time Limit Exceeded': 5,
+    'Compilation Error': 6,
+    'Runtime Error': 11,
+    'Internal Error': 13,
+    'In Queue': 1,
+    'Processing': 2,
+  };
+  return statusMap[status] || 13; // Default to Internal Error
 }
 
 // Run code against multiple test cases

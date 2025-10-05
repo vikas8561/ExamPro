@@ -5,7 +5,7 @@ This repository contains a complete Judge0 setup optimized for deployment on Ren
 ## Architecture
 
 The deployment consists of:
-- **Judge0 API**: Ruby on Rails API server
+- **Judge0 API**: Sinatra-based API server
 - **Judge0 Worker**: Python Flask worker for code execution
 - **PostgreSQL Database**: For storing submissions and results
 - **Key-Value Store**: For job queue management (Redis-compatible)
@@ -81,17 +81,9 @@ The deployment consists of:
 
 5. Click "Create Background Worker"
 
-### Step 5: Initialize the Database
+### Step 5: Database Initialization
 
-Once the API is deployed, you need to run the database migrations:
-
-1. Go to your API service dashboard
-2. Click on "Shell"
-3. Run the following commands:
-   ```bash
-   bundle exec rails db:create
-   bundle exec rails db:migrate
-   ```
+The database tables are automatically created when the API starts. You should see "Database initialized successfully" in the logs. No manual database setup is required.
 
 ## API Usage
 
