@@ -28,7 +28,7 @@ WORKDIR /app
 
 # Copy Gemfile and install dependencies
 COPY Gemfile* ./
-RUN bundle install --without development test
+RUN bundle config set --local without 'development test' && bundle install
 
 # Copy application code
 COPY . .
