@@ -58,6 +58,12 @@ services:
           name: judge0-redis
           property: connectionString
       
+      # Additional Redis Configuration for Judge0
+      - key: REDIS_DB
+        value: "0"
+      - key: REDIS_NAMESPACE
+        value: "resque:"
+      
       # Judge0 Configuration
       - key: JUDGE0_VERSION
         value: "1.13.1"
@@ -161,3 +167,15 @@ services:
         value: "1"
       - key: DATABASE_POOL
         value: "10"
+      
+      # Rails Redis Configuration
+      - key: REDIS_URL_RESQUE
+        fromService:
+          type: redis
+          name: judge0-redis
+          property: connectionString
+      - key: REDIS_URL_RESQUE_SCHEDULER
+        fromService:
+          type: redis
+          name: judge0-redis
+          property: connectionString
