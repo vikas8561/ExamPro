@@ -106,39 +106,39 @@ services:
       - key: DISABLE_IMPLICIT_BASE64_ENCODING
         value: "false"
       
-      # Judge0 Workers Configuration (512MB RAM + Free Redis - 200 students)
+      # Judge0 Workers Configuration (Ultra-minimal for shared resources)
       - key: INTERVAL
-        value: "0.3"
+        value: "1.0"
       - key: COUNT
         value: "1"
       - key: MAX_QUEUE_SIZE
-        value: "50"
+        value: "20"
       
-      # Submission Configuration (Optimized for 512MB RAM)
+      # Submission Configuration (Ultra-minimal for shared resources)
       - key: CPU_TIME_LIMIT
-        value: "2"
-      - key: MAX_CPU_TIME_LIMIT
-        value: "8"
-      - key: CPU_EXTRA_TIME
         value: "1"
+      - key: MAX_CPU_TIME_LIMIT
+        value: "5"
+      - key: CPU_EXTRA_TIME
+        value: "0.5"
       - key: MAX_CPU_EXTRA_TIME
-        value: "2"
+        value: "1"
       - key: WALL_TIME_LIMIT
-        value: "6"
+        value: "4"
       - key: MAX_WALL_TIME_LIMIT
-        value: "12"
+        value: "8"
       - key: MEMORY_LIMIT
-        value: "32000"
+        value: "16000"
       - key: MAX_MEMORY_LIMIT
-        value: "128000"
-      - key: STACK_LIMIT
-        value: "32000"
-      - key: MAX_STACK_LIMIT
         value: "64000"
+      - key: STACK_LIMIT
+        value: "16000"
+      - key: MAX_STACK_LIMIT
+        value: "32000"
       - key: MAX_PROCESSES_AND_OR_THREADS
-        value: "30"
+        value: "20"
       - key: MAX_MAX_PROCESSES_AND_OR_THREADS
-        value: "60"
+        value: "30"
       - key: ENABLE_PER_PROCESS_AND_THREAD_TIME_LIMIT
         value: "false"
       - key: ALLOW_ENABLE_PER_PROCESS_AND_THREAD_TIME_LIMIT
@@ -148,9 +148,9 @@ services:
       - key: ALLOW_ENABLE_PER_PROCESS_AND_THREAD_MEMORY_LIMIT
         value: "true"
       - key: MAX_FILE_SIZE
-        value: "512"
+        value: "256"
       - key: MAX_MAX_FILE_SIZE
-        value: "2048"
+        value: "1024"
       - key: NUMBER_OF_RUNS
         value: "1"
       - key: MAX_NUMBER_OF_RUNS
@@ -164,13 +164,13 @@ services:
       - key: ENABLE_NETWORK
         value: "false"
       
-      # Rails Configuration (512MB RAM - 200 students)
+      # Rails Configuration (Ultra-minimal for shared resources)
       - key: RAILS_MAX_THREADS
         value: "1"
       - key: RAILS_SERVER_PROCESSES
         value: "1"
       - key: DATABASE_POOL
-        value: "5"
+        value: "3"
       
       # Resque Redis Configuration (Judge0 uses these specific variables)
       - key: RESQUE_REDIS
