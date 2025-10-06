@@ -2,6 +2,9 @@
 # Based on official Judge0 repository structure
 FROM judge0/judge0:latest
 
+# Set environment variable to force Redis connection to Render
+ENV REDIS_URL=redis://red-d3h1lch5pdvs73essm20:6379
+
 # Expose port 2358 (Judge0 standard port)
 EXPOSE 2358
 

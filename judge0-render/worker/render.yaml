@@ -5,7 +5,7 @@ services:
     name: judge0-worker
     env: docker
     dockerfilePath: ./Dockerfile
-    plan: standard
+    plan: starter
     region: oregon
     envVars:
       # Rails Configuration
@@ -58,6 +58,10 @@ services:
           name: judge0-redis
           property: connectionString
       
+      # Direct Redis URL override (forces connection to Render Redis)
+      - key: REDIS_URL_OVERRIDE
+        value: "redis://red-d3h1lch5pdvs73essm20:6379"
+      
       # Additional Redis Configuration for Judge0
       - key: REDIS_DB
         value: "0"
@@ -102,13 +106,13 @@ services:
       - key: DISABLE_IMPLICIT_BASE64_ENCODING
         value: "false"
       
-      # Judge0 Workers Configuration (Standard Plan - 200 students)
+      # Judge0 Workers Configuration (512MB RAM + Free Redis - 200 students)
       - key: INTERVAL
-        value: "0.1"
+        value: "0.3"
       - key: COUNT
-        value: "3"
+        value: "1"
       - key: MAX_QUEUE_SIZE
-        value: "300"
+        value: "50"
       
       # Submission Configuration
       - key: CPU_TIME_LIMIT
@@ -160,21 +164,28 @@ services:
       - key: ENABLE_NETWORK
         value: "false"
       
-      # Rails Configuration (Standard Plan - 200 students)
+      # Rails Configuration (512MB RAM - 200 students)
       - key: RAILS_MAX_THREADS
-        value: "4"
+        value: "1"
       - key: RAILS_SERVER_PROCESSES
         value: "1"
       - key: DATABASE_POOL
-        value: "15"
+        value: "5"
       
-      # Rails Redis Configuration
+      # Rails Redis Configuration (Judge0 expects these specific names)
       - key: REDIS_URL_RESQUE
         fromService:
           type: redis
           name: judge0-redis
           property: connectionString
       - key: REDIS_URL_RESQUE_SCHEDULER
+        fromService:
+          type: redis
+          name: judge0-redis
+          property: connectionString
+      
+      # Alternative Redis connection methods for Judge0
+      - key: RESQUE_REDIS
         fromService:
           type: redis
           name: judge0-redis
