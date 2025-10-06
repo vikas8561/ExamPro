@@ -9,8 +9,14 @@ ENV REDIS_PORT=6379
 ENV RESQUE_REDIS=redis://red-d3h1lch5pdvs73essm20:6379
 ENV RESQUE_REDIS_SCHEDULER=redis://red-d3h1lch5pdvs73essm20:6379
 
-# Use official Judge0 workers script with port binding
-# Environment variables will be injected by Render
-ENV PORT=2358
-EXPOSE 2358
-CMD ["/api/scripts/workers"]
+# Copy startup script
+COPY start-worker.sh /start-worker.sh
+
+# Make startup script executable
+RUN chmod +x /start-worker.sh
+
+# Worker doesn't need port binding - it's a background service
+# No EXPOSE needed for workers
+
+# Use custom startup script for worker
+CMD ["/start-worker.sh"]

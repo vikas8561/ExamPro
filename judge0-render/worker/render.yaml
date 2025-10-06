@@ -7,14 +7,13 @@ services:
     dockerfilePath: ./Dockerfile
     plan: standard # Optimized for 200-300 students
     region: oregon
+    # Worker doesn't need port binding - it's a background service
     envVars:
       # Rails Configuration
       - key: RAILS_ENV
         value: production
       - key: SECRET_KEY_BASE
         generateValue: true
-      - key: PORT
-        value: "2358"
       
       # PostgreSQL Configuration (from database service)
       - key: POSTGRES_HOST
