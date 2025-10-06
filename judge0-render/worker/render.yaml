@@ -5,7 +5,7 @@ services:
     name: judge0-worker
     env: docker
     dockerfilePath: ./Dockerfile
-    plan: starter
+    plan: standard
     region: oregon
     envVars:
       # Rails Configuration
@@ -102,13 +102,13 @@ services:
       - key: DISABLE_IMPLICIT_BASE64_ENCODING
         value: "false"
       
-      # Judge0 Workers Configuration (Optimized for 200 students)
+      # Judge0 Workers Configuration (Standard Plan - 200 students)
       - key: INTERVAL
         value: "0.1"
       - key: COUNT
-        value: "2"
+        value: "3"
       - key: MAX_QUEUE_SIZE
-        value: "200"
+        value: "300"
       
       # Submission Configuration
       - key: CPU_TIME_LIMIT
@@ -160,13 +160,13 @@ services:
       - key: ENABLE_NETWORK
         value: "false"
       
-      # Rails Configuration (Optimized for 200 students)
+      # Rails Configuration (Standard Plan - 200 students)
       - key: RAILS_MAX_THREADS
-        value: "2"
+        value: "4"
       - key: RAILS_SERVER_PROCESSES
         value: "1"
       - key: DATABASE_POOL
-        value: "10"
+        value: "15"
       
       # Rails Redis Configuration
       - key: REDIS_URL_RESQUE
