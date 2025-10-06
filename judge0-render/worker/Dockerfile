@@ -1,11 +1,10 @@
-# Simple Judge0 Worker using official image
-FROM judge0/judge0:1.13.0
+# Official Judge0 Worker for Render Deployment
+# Based on official Judge0 repository structure
+FROM judge0/judge0:latest
 
-# Copy worker files to a safe location
-COPY . /opt/worker/
+# Copy configuration file to the correct location
+COPY judge0.conf /judge0.conf
 
-# Install Python dependencies
-RUN pip3 install -r /opt/worker/requirements.txt
-
-# Start worker from the copied location
-CMD ["python3", "/opt/worker/queue_worker_official.py"]
+# Use official Judge0 workers script
+# This script manages Resque workers and job processing
+CMD ["/api/scripts/workers"]

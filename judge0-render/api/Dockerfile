@@ -1,17 +1,13 @@
-# Official Judge0 Docker image with all language compilers already installed
-FROM judge0/judge0:1.13.0
+# Official Judge0 API Server for Render Deployment
+# Based on official Judge0 repository structure
+FROM judge0/judge0:latest
 
-# The official Judge0 image already includes:
-# - Python 3.8.1
-# - Node.js 12.14.0 (JavaScript)
-# - OpenJDK 13.0.1 (Java)
-# - GCC 9.2.0 (C/C++)
-# - Go 1.13.5
-# - Ruby 2.7.0
-# - And many more languages
+# Copy configuration file to the correct location
+COPY judge0.conf /judge0.conf
 
-# Expose port
+# Expose port 2358 (Judge0 standard port)
 EXPOSE 2358
 
-# Start Judge0 API
-CMD ["bundle", "exec", "puma", "-C", "config/puma.rb"]
+# Use official Judge0 server script
+# This script handles database migration and Rails server startup
+CMD ["/api/scripts/server"]

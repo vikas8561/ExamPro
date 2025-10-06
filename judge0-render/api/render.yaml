@@ -1,26 +1,62 @@
 # Render configuration for Judge0 API service
+# Based on official Judge0 repository structure
 services:
   - type: web
-    name: judge0-api-full
+    name: judge0-api
     env: docker
     dockerfilePath: ./Dockerfile
     plan: starter
     region: oregon
     envVars:
-      - key: PORT
-        value: 2358
+      # Rails Configuration
       - key: RAILS_ENV
         value: production
       - key: RACK_ENV
         value: production
-      - key: DATABASE_URL
+      - key: PORT
+        value: 2358
+      - key: SECRET_KEY_BASE
+        generateValue: true
+      
+      # PostgreSQL Configuration (from database service)
+      - key: POSTGRES_HOST
         fromDatabase:
           name: judge0-db
-          property: connectionString
-      - key: REDIS_URL
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: judge0-db
+          property: port
+      - key: POSTGRES_DB
+        fromDatabase:
+          name: judge0-db
+          property: database
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: judge0-db
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: judge0-db
+          property: password
+      
+      # Redis Configuration (from redis service)
+      - key: REDIS_HOST
         fromService:
           type: redis
           name: judge0-redis
-          property: connectionString
-      - key: SECRET_KEY_BASE
-        generateValue: true
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: judge0-redis
+          property: port
+      - key: REDIS_PASSWORD
+        fromService:
+          type: redis
+          name: judge0-redis
+          property: password
+      
+      # Judge0 Configuration
+      - key: JUDGE0_VERSION
+        value: "1.13.1"
