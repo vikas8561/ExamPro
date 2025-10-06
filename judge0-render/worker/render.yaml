@@ -114,31 +114,31 @@ services:
       - key: MAX_QUEUE_SIZE
         value: "50"
       
-      # Submission Configuration
+      # Submission Configuration (Optimized for 512MB RAM)
       - key: CPU_TIME_LIMIT
-        value: "3"
+        value: "2"
       - key: MAX_CPU_TIME_LIMIT
-        value: "10"
+        value: "8"
       - key: CPU_EXTRA_TIME
         value: "1"
       - key: MAX_CPU_EXTRA_TIME
-        value: "3"
+        value: "2"
       - key: WALL_TIME_LIMIT
-        value: "8"
+        value: "6"
       - key: MAX_WALL_TIME_LIMIT
-        value: "15"
+        value: "12"
       - key: MEMORY_LIMIT
-        value: "64000"
+        value: "32000"
       - key: MAX_MEMORY_LIMIT
-        value: "256000"
-      - key: STACK_LIMIT
-        value: "64000"
-      - key: MAX_STACK_LIMIT
         value: "128000"
+      - key: STACK_LIMIT
+        value: "32000"
+      - key: MAX_STACK_LIMIT
+        value: "64000"
       - key: MAX_PROCESSES_AND_OR_THREADS
-        value: "60"
+        value: "30"
       - key: MAX_MAX_PROCESSES_AND_OR_THREADS
-        value: "120"
+        value: "60"
       - key: ENABLE_PER_PROCESS_AND_THREAD_TIME_LIMIT
         value: "false"
       - key: ALLOW_ENABLE_PER_PROCESS_AND_THREAD_TIME_LIMIT
@@ -148,9 +148,9 @@ services:
       - key: ALLOW_ENABLE_PER_PROCESS_AND_THREAD_MEMORY_LIMIT
         value: "true"
       - key: MAX_FILE_SIZE
-        value: "1024"
+        value: "512"
       - key: MAX_MAX_FILE_SIZE
-        value: "4096"
+        value: "2048"
       - key: NUMBER_OF_RUNS
         value: "1"
       - key: MAX_NUMBER_OF_RUNS
@@ -172,21 +172,14 @@ services:
       - key: DATABASE_POOL
         value: "5"
       
-      # Rails Redis Configuration (Judge0 expects these specific names)
-      - key: REDIS_URL_RESQUE
-        fromService:
-          type: redis
-          name: judge0-redis
-          property: connectionString
-      - key: REDIS_URL_RESQUE_SCHEDULER
-        fromService:
-          type: redis
-          name: judge0-redis
-          property: connectionString
-      
-      # Alternative Redis connection methods for Judge0
+      # Resque Redis Configuration (Judge0 uses these specific variables)
       - key: RESQUE_REDIS
-        fromService:
-          type: redis
-          name: judge0-redis
-          property: connectionString
+        value: "redis://red-d3h1lch5pdvs73essm20:6379"
+      - key: RESQUE_REDIS_SCHEDULER
+        value: "redis://red-d3h1lch5pdvs73essm20:6379"
+      
+      # Alternative Redis connection methods
+      - key: REDIS_URL_RESQUE
+        value: "redis://red-d3h1lch5pdvs73essm20:6379"
+      - key: REDIS_URL_RESQUE_SCHEDULER
+        value: "redis://red-d3h1lch5pdvs73essm20:6379"

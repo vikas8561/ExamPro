@@ -176,21 +176,14 @@ services:
       - key: DATABASE_POOL
         value: "10"
       
-      # Rails Redis Configuration (Judge0 expects these specific names)
-      - key: REDIS_URL_RESQUE
-        fromService:
-          type: redis
-          name: judge0-redis
-          property: connectionString
-      - key: REDIS_URL_RESQUE_SCHEDULER
-        fromService:
-          type: redis
-          name: judge0-redis
-          property: connectionString
-      
-      # Alternative Redis connection methods for Judge0
+      # Resque Redis Configuration (Judge0 uses these specific variables)
       - key: RESQUE_REDIS
-        fromService:
-          type: redis
-          name: judge0-redis
-          property: connectionString
+        value: "redis://red-d3h1lch5pdvs73essm20:6379"
+      - key: RESQUE_REDIS_SCHEDULER
+        value: "redis://red-d3h1lch5pdvs73essm20:6379"
+      
+      # Alternative Redis connection methods
+      - key: REDIS_URL_RESQUE
+        value: "redis://red-d3h1lch5pdvs73essm20:6379"
+      - key: REDIS_URL_RESQUE_SCHEDULER
+        value: "redis://red-d3h1lch5pdvs73essm20:6379"
