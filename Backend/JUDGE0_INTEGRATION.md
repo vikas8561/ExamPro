@@ -97,8 +97,8 @@ Frontend (React) → Backend (Node.js) → Judge0 API (Sinatra) → Judge0 Worke
 
 #### Backend
 ```bash
-JUDGE0_BASE_URL=https://judge0-api-b0cf.onrender.com
-JUDGE0_API_KEY=  # Not needed for deployed API
+JUDGE0_BASE_URL=https://judge0-api-b0cf.onrender.com  # Optional: defaults to deployed instance
+# No API key needed - uses free deployed Judge0 instance
 ```
 
 #### Judge0 API
@@ -189,15 +189,19 @@ const results = await runAgainstCases({
 
 ### Common Issues
 
-1. **Worker Service Not Running**
+1. **Invalid API Key Error (401)**
+   - Symptoms: "Invalid API key" error when running code
+   - Solution: ✅ FIXED - Removed RapidAPI dependencies, now uses free deployed Judge0 instance
+
+2. **Worker Service Not Running**
    - Symptoms: All submissions timeout
    - Solution: Deploy and start the Judge0 worker service
 
-2. **API Connection Issues**
+3. **API Connection Issues**
    - Symptoms: Network errors
    - Solution: Check JUDGE0_BASE_URL configuration
 
-3. **Language Not Supported**
+4. **Language Not Supported**
    - Symptoms: Invalid language ID errors
    - Solution: Check language mapping in `mapLanguageToJudge0Id`
 

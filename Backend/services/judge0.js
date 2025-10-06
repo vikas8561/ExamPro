@@ -1,5 +1,5 @@
 // judge0.js
-// RapidAPI Judge0 integration
+// Judge0 integration with local and deployed instances
 
 // Node >=18 has global fetch, fallback to node-fetch if needed
 const fetchFn = async (...args) => {
@@ -10,12 +10,11 @@ const fetchFn = async (...args) => {
   return nodeFetch(...args);
 };
 
-// Use environment variable or default to deployed Judge0 endpoint
-// Fallback to multiple Judge0 instances for reliability
+// Use FREE deployed Judge0 endpoint (no cost, no API key required)
+// Fallback to local Judge0 instance only if needed
 const JUDGE0_INSTANCES = [
-  process.env.JUDGE0_BASE_URL || 'https://judge0-api-b0cf.onrender.com',
-  'https://judge0-ce.p.rapidapi.com',
-  'https://judge0-ce.p.rapidapi.com/submissions'
+  process.env.JUDGE0_BASE_URL || 'https://judge0-api-b0cf.onrender.com',  // FREE deployed instance
+  'http://localhost:2358'  // Local fallback (optional)
 ];
 
 // Local execution fallback for when all Judge0 instances fail
@@ -26,7 +25,7 @@ const os = require('os');
 
 let currentInstanceIndex = 0;
 const JUDGE0_BASE_URL = JUDGE0_INSTANCES[currentInstanceIndex];
-const JUDGE0_API_KEY = process.env.JUDGE0_API_KEY || ''; // Not needed for our deployed API
+// No API key needed for deployed or local Judge0 instances
 
 // Function to switch to next Judge0 instance
 function switchToNextInstance() {

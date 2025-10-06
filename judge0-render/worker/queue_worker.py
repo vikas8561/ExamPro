@@ -45,8 +45,8 @@ def init_connections():
 
     try:
         db_pool = pool.SimpleConnectionPool(
-            minconn=2,
-            maxconn=10,
+            minconn=10,      # Increased minimum connections
+            maxconn=50,      # Increased maximum connections for 200+ users
             dsn=DATABASE_URL
         )
         logger.info("✅ Database connection pool created successfully")
@@ -192,7 +192,7 @@ def execute_code(submission_id, source_code, language_id, stdin, expected_output
                     input=stdin,
                     capture_output=True,
                     text=True,
-                    timeout=5
+                    timeout=10  # Increased timeout for complex code
                 )
                 
                 stdout = run_result.stdout
