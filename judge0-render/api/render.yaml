@@ -60,3 +60,101 @@ services:
       # Judge0 Configuration
       - key: JUDGE0_VERSION
         value: "1.13.1"
+      
+      # Judge0 Server Configuration
+      - key: JUDGE0_TELEMETRY_ENABLE
+        value: "false"
+      - key: RESTART_MAX_TRIES
+        value: "10"
+      - key: MAINTENANCE_MODE
+        value: "false"
+      - key: ENABLE_WAIT_RESULT
+        value: "true"
+      - key: ENABLE_COMPILER_OPTIONS
+        value: "true"
+      - key: ENABLE_COMMAND_LINE_ARGUMENTS
+        value: "true"
+      - key: ENABLE_SUBMISSION_DELETE
+        value: "false"
+      - key: ENABLE_BATCHED_SUBMISSIONS
+        value: "true"
+      - key: MAX_SUBMISSION_BATCH_SIZE
+        value: "20"
+      - key: ENABLE_CALLBACKS
+        value: "true"
+      - key: CALLBACKS_MAX_TRIES
+        value: "3"
+      - key: CALLBACKS_TIMEOUT
+        value: "5"
+      - key: ENABLE_ADDITIONAL_FILES
+        value: "true"
+      - key: SUBMISSION_CACHE_DURATION
+        value: "1"
+      - key: USE_DOCS_AS_HOMEPAGE
+        value: "false"
+      - key: DISABLE_IMPLICIT_BASE64_ENCODING
+        value: "false"
+      
+      # Judge0 Workers Configuration
+      - key: INTERVAL
+        value: "0.1"
+      - key: COUNT
+        value: "4"
+      - key: MAX_QUEUE_SIZE
+        value: "100"
+      
+      # Submission Configuration
+      - key: CPU_TIME_LIMIT
+        value: "5"
+      - key: MAX_CPU_TIME_LIMIT
+        value: "15"
+      - key: CPU_EXTRA_TIME
+        value: "1"
+      - key: MAX_CPU_EXTRA_TIME
+        value: "5"
+      - key: WALL_TIME_LIMIT
+        value: "10"
+      - key: MAX_WALL_TIME_LIMIT
+        value: "20"
+      - key: MEMORY_LIMIT
+        value: "128000"
+      - key: MAX_MEMORY_LIMIT
+        value: "512000"
+      - key: STACK_LIMIT
+        value: "64000"
+      - key: MAX_STACK_LIMIT
+        value: "128000"
+      - key: MAX_PROCESSES_AND_OR_THREADS
+        value: "60"
+      - key: MAX_MAX_PROCESSES_AND_OR_THREADS
+        value: "120"
+      - key: ENABLE_PER_PROCESS_AND_THREAD_TIME_LIMIT
+        value: "false"
+      - key: ALLOW_ENABLE_PER_PROCESS_AND_THREAD_TIME_LIMIT
+        value: "true"
+      - key: ENABLE_PER_PROCESS_AND_THREAD_MEMORY_LIMIT
+        value: "false"
+      - key: ALLOW_ENABLE_PER_PROCESS_AND_THREAD_MEMORY_LIMIT
+        value: "true"
+      - key: MAX_FILE_SIZE
+        value: "1024"
+      - key: MAX_MAX_FILE_SIZE
+        value: "4096"
+      - key: NUMBER_OF_RUNS
+        value: "1"
+      - key: MAX_NUMBER_OF_RUNS
+        value: "20"
+      - key: REDIRECT_STDERR_TO_STDOUT
+        value: "false"
+      - key: MAX_EXTRACT_SIZE
+        value: "10240"
+      - key: ALLOW_ENABLE_NETWORK
+        value: "true"
+      - key: ENABLE_NETWORK
+        value: "false"
+      
+      # Rails Configuration
+      - key: RAILS_MAX_THREADS
+        value: "4"
+      - key: RAILS_SERVER_PROCESSES
+        value: "2"
