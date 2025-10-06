@@ -183,3 +183,17 @@ services:
         value: "redis://red-d3h1lch5pdvs73essm20:6379"
       - key: REDIS_URL_RESQUE_SCHEDULER
         value: "redis://red-d3h1lch5pdvs73essm20:6379"
+      
+      # Additional Redis Configuration (Force Judge0 to use Render Redis)
+      - key: REDIS_HOST
+        value: "red-d3h1lch5pdvs73essm20"
+      - key: REDIS_PORT
+        value: "6379"
+      - key: REDIS_DB
+        value: "0"
+      - key: REDIS_PASSWORD
+        value: ""
+      - key: REDIS_NAMESPACE
+        value: "judge0"
+      - key: REDIS_SIDEKIQ_URL
+        value: "redis://red-d3h1lch5pdvs73essm20:6379"
