@@ -1,19 +1,13 @@
-# Official Judge0 Worker Docker image with all language compilers
+# Official Judge0 Worker Docker image with all language compilers already installed
 FROM judge0/judge0:1.13.0
 
-# Install all language compilers and worker dependencies
-RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip \
-    nodejs \
-    npm \
-    openjdk-11-jdk \
-    gcc \
-    g++ \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set JAVA_HOME
-ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+# The official Judge0 image already includes all compilers:
+# - Python 3.8.1
+# - Node.js 12.14.0 (JavaScript)
+# - OpenJDK 13.0.1 (Java)
+# - GCC 9.2.0 (C/C++)
+# - Go 1.13.5
+# - Ruby 2.7.0
 
 # Set working directory
 WORKDIR /app
@@ -21,8 +15,8 @@ WORKDIR /app
 # Copy worker files
 COPY . .
 
-# Install Python dependencies
+# Install Python dependencies (pip3 is already available)
 RUN pip3 install -r requirements.txt
 
-# Start worker
-CMD ["python3", "queue_worker.py"]
+# Start official worker
+CMD ["python3", "queue_worker_official.py"]
