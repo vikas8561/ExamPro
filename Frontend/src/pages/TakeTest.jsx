@@ -1524,7 +1524,7 @@ const TakeTest = () => {
                   testId={test._id}
                   questionId={question._id}
                   assignmentId={assignmentId}
-                  initialLanguage="python"
+                  initialLanguage={question.language || "python"}
                   initialCode={answers[question._id] || ""}
                   onRun={(res)=>{/* optional hook */}}
                   onSubmit={(res)=>{/* optional hook */}}

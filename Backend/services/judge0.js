@@ -10,10 +10,9 @@ const fetchFn = async (...args) => {
   return nodeFetch(...args);
 };
 
-// Use FREE deployed Judge0 endpoint (no cost, no API key required)
-// Fallback to local Judge0 instance only if needed
+// Use your deployed Judge0 instance on Render
 const JUDGE0_INSTANCES = [
-  process.env.JUDGE0_BASE_URL || 'https://judge0-api-b0cf.onrender.com',  // FREE deployed instance
+  process.env.JUDGE0_BASE_URL || 'https://judge0-api-b0cf.onrender.com',  // Your deployed instance
   'http://localhost:2358'  // Local fallback (optional)
 ];
 

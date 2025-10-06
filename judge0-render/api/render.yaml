@@ -1,12 +1,14 @@
+# Render configuration for Judge0 API service
 services:
   - type: web
-    name: judge0-api
+    name: judge0-api-full
     env: docker
     dockerfilePath: ./Dockerfile
     plan: starter
     region: oregon
-    branch: main
     envVars:
+      - key: PORT
+        value: 2358
       - key: RAILS_ENV
         value: production
       - key: RACK_ENV
@@ -17,18 +19,8 @@ services:
           property: connectionString
       - key: REDIS_URL
         fromService:
-          type: keyvalue
+          type: redis
           name: judge0-redis
           property: connectionString
-      - key: PORT
-        value: 2358
-
-databases:
-  - name: judge0-db
-    plan: starter
-    region: oregon
-
-  - name: judge0-redis
-    type: keyvalue
-    plan: starter
-    region: oregon
+      - key: SECRET_KEY_BASE
+        generateValue: true

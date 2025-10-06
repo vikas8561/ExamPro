@@ -94,9 +94,14 @@ router.post('/run', authenticateToken, async (req, res, next) => {
     }
     console.log('✅ Coding question found:', question.text.substring(0, 50) + '...');
 
-    // Use question's language if not provided in request
-    const questionLanguage = language || question.language || 'python';
-    console.log('🔤 Using language:', questionLanguage);
+    // Use student's selected language, fallback to question's language
+    const questionLanguage = language || question.language;
+    console.log('🔤 Using language:', questionLanguage, '(student selected:', language, ', question default:', question.language, ')');
+    
+    if (!questionLanguage) {
+      console.log('❌ No language specified by student or question');
+      return res.status(400).json({ message: 'Language must be specified' });
+    }
 
     const visibleCases = (question.visibleTestCases || []).map(c => ({ input: c.input, output: c.output }));
     console.log('📋 Visible test cases:', visibleCases.length);
@@ -168,8 +173,17 @@ router.post('/submit', authenticateToken, async (req, res, next) => {
       return res.status(400).json({ message: 'Coding question not found' });
     }
 
+    // Use student's selected language, fallback to question's language
+    const questionLanguage = language || question.language;
+    console.log('🔤 Submit - Using language:', questionLanguage, '(student selected:', language, ', question default:', question.language, ')');
+    
+    if (!questionLanguage) {
+      console.log('❌ No language specified by student or question');
+      return res.status(400).json({ message: 'Language must be specified' });
+    }
+
     const hiddenCases = (question.hiddenTestCases || []).map(c => ({ input: c.input, output: c.output, marks: c.marks }));
-    const results = await runAgainstCases({ sourceCode, language, cases: hiddenCases });
+    const results = await runAgainstCases({ sourceCode, language: questionLanguage, cases: hiddenCases });
     const passedCount = results.filter(r => r.passed).length;
     const totalMarks = hiddenCases.reduce((s, c) => s + (c.marks || 0), 0);
     const earnedMarks = results.reduce((s, r) => s + (r.passed ? (r.marks || 0) : 0), 0);

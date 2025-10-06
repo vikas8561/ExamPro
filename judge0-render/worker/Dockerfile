@@ -1,48 +1,28 @@
-# Judge0 Worker Dockerfile for Render Deployment
-FROM python:3.11-slim
+# Official Judge0 Worker Docker image with all language compilers
+FROM judge0/judge0:1.13.0
 
-# Install system dependencies
+# Install all language compilers and worker dependencies
 RUN apt-get update && apt-get install -y \
-    build-essential \
-    curl \
-    git \
-    wget \
-    unzip \
-    ca-certificates \
-    libpq-dev \
-    libcap2-bin \
-    libcap-dev \
-    pkg-config \
+    python3 \
+    python3-pip \
+    nodejs \
+    npm \
+    openjdk-11-jdk \
+    gcc \
+    g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Install isolate for code sandboxing
-RUN git clone --depth 1 https://github.com/ioi/isolate.git /tmp/isolate && \
-    cd /tmp/isolate && \
-    make isolate && \
-    cp isolate /usr/local/bin/ && \
-    mkdir -p /usr/local/etc/isolate && \
-    echo "box_root=/tmp/isolate" > /usr/local/etc/isolate/default.cf && \
-    echo "box_id=0" >> /usr/local/etc/isolate/default.cf && \
-    echo "box_path=/tmp/isolate/0/box" >> /usr/local/etc/isolate/default.cf && \
-    echo "isolate_path=/usr/local/bin/isolate" >> /usr/local/etc/isolate/default.cf && \
-    rm -rf /tmp/isolate
+# Set JAVA_HOME
+ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
 
-# Create necessary directories
-RUN mkdir -p /box /app
+# Set working directory
 WORKDIR /app
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
+# Copy worker files
 COPY . .
 
-# Create /box directory with proper permissions
-RUN mkdir -p /box && chmod 755 /box
+# Install Python dependencies
+RUN pip3 install -r requirements.txt
 
-# Expose port for health checks
-EXPOSE 2358
-
-# Start the queue worker with health check server
-CMD ["python", "queue_worker.py"]
+# Start worker
+CMD ["python3", "queue_worker.py"]

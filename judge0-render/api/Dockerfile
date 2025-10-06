@@ -1,46 +1,20 @@
-# Judge0 API Dockerfile for Render Deployment
-FROM ruby:3.0-slim
+# Official Judge0 Docker image with all language compilers
+FROM judge0/judge0:1.13.0
 
-# Install system dependencies
+# Install additional language compilers
 RUN apt-get update && apt-get install -y \
-    build-essential \
-    curl \
-    git \
-    wget \
-    unzip \
-    ca-certificates \
-    libpq-dev \
-    libcap2-bin \
-    libcap-dev \
-    pkg-config \
-    libsystemd-dev \
+    nodejs \
+    npm \
+    openjdk-11-jdk \
+    gcc \
+    g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Install isolate for code sandboxing (use stable version)
-RUN git clone --depth 1 --branch master https://github.com/ioi/isolate.git /tmp/isolate && \
-    cd /tmp/isolate && \
-    # Apply patch to fix SYS_quotactl_fd issue
-    sed -i 's/SYS_quotactl_fd/SYS_quotactl/g' rules.c && \
-    make isolate && \
-    cp isolate /usr/local/bin/ && \
-    rm -rf /tmp/isolate
-
-# Create necessary directories
-RUN mkdir -p /box /app
-WORKDIR /app
-
-# Copy Gemfile and install dependencies
-COPY Gemfile* ./
-RUN bundle install
-
-# Copy application code
-COPY . .
-
-# Create /box directory with proper permissions
-RUN mkdir -p /box && chmod 755 /box
+# Set JAVA_HOME
+ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
 
 # Expose port
 EXPOSE 2358
 
-# Start the application
-CMD ["ruby", "app.rb"]
+# Start Judge0 API
+CMD ["bundle", "exec", "puma", "-C", "config/puma.rb"]
