@@ -14,7 +14,7 @@ services:
       - key: RACK_ENV
         value: production
       - key: PORT
-        value: 2358
+        value: "2358"
       - key: SECRET_KEY_BASE
         generateValue: true
       

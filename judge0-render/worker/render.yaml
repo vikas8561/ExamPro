@@ -13,6 +13,8 @@ services:
         value: production
       - key: SECRET_KEY_BASE
         generateValue: true
+      - key: PORT
+        value: "2358"
       
       # PostgreSQL Configuration (from database service)
       - key: POSTGRES_HOST

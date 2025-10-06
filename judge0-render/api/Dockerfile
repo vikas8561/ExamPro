@@ -12,6 +12,8 @@ ENV RESQUE_REDIS_SCHEDULER=redis://red-d3h1lch5pdvs73essm20:6379
 # Expose port 2358 (Judge0 standard port)
 EXPOSE 2358
 
-# Use official Judge0 server script
+# Use official Judge0 server script with port binding
 # Configuration will be provided via environment variables
+ENV PORT=2358
+EXPOSE 2358
 CMD ["/api/scripts/server"]
