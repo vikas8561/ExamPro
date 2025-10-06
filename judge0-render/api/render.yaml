@@ -56,6 +56,11 @@ services:
           type: redis
           name: judge0-redis
           property: password
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: judge0-redis
+          property: connectionString
       
       # Judge0 Configuration
       - key: JUDGE0_VERSION
@@ -97,11 +102,11 @@ services:
       
       # Judge0 Workers Configuration
       - key: INTERVAL
-        value: "0.1"
+        value: "0.5"
       - key: COUNT
-        value: "4"
+        value: "1"
       - key: MAX_QUEUE_SIZE
-        value: "100"
+        value: "50"
       
       # Submission Configuration
       - key: CPU_TIME_LIMIT
