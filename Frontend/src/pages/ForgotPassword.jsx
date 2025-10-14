@@ -22,12 +22,21 @@ export default function ForgotPassword() {
     }
   }, [countdown, verificationEmail]);
 
+  // Handle navigation when countdown reaches 0
+  useEffect(() => {
+    if (countdown === 0 && verificationEmail) {
+      const timer = setTimeout(() => {
+        navigate('/login');
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [countdown, verificationEmail, navigate]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setSuccess('');
     setLoading(true);
-    setCountdown(5);
 
     if (newPassword !== confirmPassword) {
       setError('Passwords do not match');
@@ -44,13 +53,13 @@ export default function ForgotPassword() {
         confirmPassword,
       });
       setVerificationEmail(response.verificationSentTo);
-      setSuccess(`Verification email sent to ${response.verificationSentTo}. Redirecting to login page in ${countdown} seconds...`);
+      setCountdown(5);
+      
       // Start countdown for redirect
       const intervalId = setInterval(() => {
         setCountdown((prev) => {
           if (prev <= 1) {
             clearInterval(intervalId);
-            navigate('/login');
             return 0;
           }
           return prev - 1;
