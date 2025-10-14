@@ -14,8 +14,8 @@ const transporter = nodemailer.createTransport({
   port: process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : 587,
   secure: false, // true for 587, false for other ports
   auth: {
-    user: process.env.SMTP_USER || "vikas12252@gmail.com",
-    pass: process.env.SMTP_PASS || "vhvx alpp ubjy hmym",
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
   },
   tls: {
     rejectUnauthorized: false,
@@ -174,8 +174,19 @@ router.post("/forgot-password", async (req, res) => {
     // };
 
     try {
+      // Check if email configuration is available
+      if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+        console.warn('Email configuration missing - SMTP_USER or SMTP_PASS not set');
+        return res.json({
+          message: "Password reset initiated but email service not configured",
+          verificationSentTo: verificationEmail,
+          resetToken: resetToken, // For testing purposes
+          warning: "Email service not configured - please contact administrator"
+        });
+      }
+
       await transporter.sendMail(mailOptions);
-      // console.log('Reset email sent successfully');
+      console.log('Reset email sent successfully to:', verificationEmail);
       return res.json({
         message: "Password reset verification sent",
         verificationSentTo: verificationEmail,
@@ -188,7 +199,8 @@ router.post("/forgot-password", async (req, res) => {
       return res.status(500).json({
         message: 'Password reset initiated but email failed to send',
         error: emailError.message,
-        resetToken: resetToken // For testing purposes
+        resetToken: resetToken, // For testing purposes
+        verificationSentTo: verificationEmail
       });
     }
   } catch (err) {
