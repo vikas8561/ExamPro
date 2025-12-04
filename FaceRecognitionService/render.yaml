@@ -1,0 +1,12 @@
+# Render Blueprint for Face Recognition Service
+services:
+  - type: web
+    name: face-recognition-service
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    envVars:
+      - key: PORT
+        value: 5000
+    plan: starter  # Minimum 512MB RAM (upgrade to standard for 2GB if needed)
+

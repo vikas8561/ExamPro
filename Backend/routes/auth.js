@@ -308,6 +308,183 @@ router.post("/profile/image", authenticateToken, async (req, res) => {
   }
 });
 
+// Verify face match for test authentication
+router.post("/verify-face", authenticateToken, async (req, res) => {
+  try {
+    const { image } = req.body; // Base64 encoded image from camera
+    
+    if (!image) {
+      return res.status(400).json({ message: "Image is required" });
+    }
+
+    // Validate base64 image format
+    if (!image.startsWith('data:image/')) {
+      return res.status(400).json({ message: "Invalid image format" });
+    }
+
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Check if user has a profile image
+    if (!user.profileImage || !user.profileImageSaved) {
+      return res.status(400).json({ 
+        message: "No profile image found. Please upload a profile image first.",
+        match: false 
+      });
+    }
+
+    // Check if face recognition is enabled (development mode can bypass)
+    const faceRecognitionEnabled = process.env.FACE_RECOGNITION_ENABLED !== 'false';
+    const faceServiceUrl = process.env.FACE_RECOGNITION_SERVICE_URL || 'http://localhost:5000';
+    
+    // Development fallback: if service is disabled, allow test to proceed
+    // BUT ONLY if explicitly disabled - default is to require verification
+    if (!faceRecognitionEnabled) {
+      console.warn("⚠️ WARNING: Face recognition is DISABLED. Allowing test to proceed without verification.");
+      console.warn("⚠️ This should only be used for development/testing. In production, face verification must be enabled.");
+      return res.json({
+        match: true,
+        confidence: 1.0,
+        message: "Face verification bypassed (FACE_RECOGNITION_ENABLED=false)",
+        warning: "Face verification is disabled - this should not be used in production"
+      });
+    }
+    
+    // Call Python face recognition service
+    // Use built-in fetch if available (Node 18+), otherwise use node-fetch
+    let fetchFn;
+    if (typeof fetch !== 'undefined') {
+      fetchFn = fetch;
+    } else {
+      const nodeFetch = require('node-fetch');
+      fetchFn = nodeFetch.default || nodeFetch;
+    }
+    
+    // Check if fallback is enabled BEFORE making the request
+    const allowFallback = process.env.FACE_RECOGNITION_FALLBACK === 'true';
+    
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
+      const response = await fetchFn(`${faceServiceUrl}/verify-face`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          profileImage: user.profileImage,
+          capturedImage: image,
+        }),
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+
+      // Parse response even if status is not OK to get error details
+      let result;
+      try {
+        result = await response.json();
+      } catch (parseError) {
+        // If response is not JSON, treat as error
+        if (allowFallback) {
+          console.warn("⚠️ WARNING: Face recognition service returned non-JSON response. Allowing fallback.");
+          return res.json({
+            match: true,
+            confidence: 0.5,
+            message: "Face verification bypassed (service error, fallback enabled)",
+            warning: "Face recognition service returned invalid response. Test proceeding with fallback."
+          });
+        }
+        throw new Error(`Invalid response from face recognition service: ${response.statusText}`);
+      }
+      
+      // If service returned an error status, check for fallback
+      if (!response.ok) {
+        console.error("Face recognition service returned error:", result);
+        
+        // If fallback is enabled, allow verification to proceed
+        if (allowFallback) {
+          console.warn("⚠️ WARNING: Face recognition service unavailable. Allowing fallback (FACE_RECOGNITION_FALLBACK=true).");
+          console.warn("⚠️ This should only be used for development/testing. In production, face verification must work.");
+          return res.json({
+            match: true,
+            confidence: 0.5,
+            message: "Face verification bypassed (service unavailable, fallback enabled)",
+            warning: "Face recognition service is unavailable. Test proceeding with fallback."
+          });
+        }
+        
+        // Reject verification if fallback is not enabled
+        // Use the message from the service if available (it's user-friendly)
+        // Preserve the original status code from Python service (400, 500, etc.)
+        const statusCode = response.status >= 400 && response.status < 600 ? response.status : 400;
+        return res.status(statusCode).json({
+          match: false,
+          confidence: 0,
+          message: result.message || result.error || "Face verification failed. Please try again.",
+          error: result.error || `Service error: ${response.statusText}`
+        });
+      }
+      
+      // Strict validation: match must be explicitly true and confidence must meet threshold
+      const isValidMatch = result.match === true && 
+                          typeof result.confidence === 'number' && 
+                          result.confidence >= 0.7;
+      
+      if (!isValidMatch) {
+        console.log("Face verification failed:", {
+          match: result.match,
+          confidence: result.confidence,
+          threshold: result.threshold || 0.7
+        });
+      }
+      
+      res.json({
+        match: isValidMatch,
+        confidence: result.confidence || 0,
+        message: isValidMatch ? "Face verified successfully" : (result.message || "Face verification failed - faces do not match"),
+        threshold: result.threshold || 0.7
+      });
+    } catch (serviceError) {
+      console.error("Face recognition service error:", serviceError);
+      console.error("Service URL:", faceServiceUrl);
+      console.error("Error details:", {
+        name: serviceError.name,
+        message: serviceError.message,
+        code: serviceError.code
+      });
+      
+      // Only allow fallback if explicitly enabled (for development/testing)
+      if (allowFallback) {
+        console.warn("⚠️ WARNING: Face recognition service unavailable. Allowing fallback (FACE_RECOGNITION_FALLBACK=true).");
+        console.warn("⚠️ This should only be used for development/testing. In production, face verification must work.");
+        return res.json({
+          match: true,
+          confidence: 0.5,
+          message: "Face verification bypassed (service unavailable, fallback enabled)",
+          warning: "Face recognition service is unavailable. Test proceeding with fallback."
+        });
+      }
+      
+      // Reject verification if service is unavailable (default behavior)
+      console.error("Face recognition service error:", serviceError.message);
+      res.status(503).json({ 
+        message: "Face recognition service is temporarily unavailable. Please ensure the Python service is running on port 5000.",
+        match: false,
+        error: serviceError.message,
+        serviceUrl: faceServiceUrl,
+        help: "To start the service, run: cd FaceRecognitionService && python app.py"
+      });
+    }
+  } catch (err) {
+    console.error("Face verification error:", err);
+    res.status(500).json({ message: err.message, match: false });
+  }
+});
+
 // Update email with nodemailer verification
 router.post("/profile/update-email", authenticateToken, async (req, res) => {
   try {
