@@ -105,6 +105,17 @@ def cosine_similarity(embedding1, embedding2):
         print(f"Error calculating cosine similarity: {e}")
         return 0.0
 
+@app.route('/', methods=['GET'])
+def root():
+    """Root endpoint for Render health checks"""
+    return jsonify({
+        'status': 'healthy',
+        'service': 'face-recognition',
+        'model': 'VGG-Face' if FACE_RECOGNITION_AVAILABLE else 'fallback',
+        'available': FACE_RECOGNITION_AVAILABLE,
+        'message': 'Face Recognition Service is running'
+    })
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
@@ -269,11 +280,8 @@ def verify_face():
         }), 500
 
 if __name__ == '__main__':
+    # Render provides PORT environment variable automatically
     port = int(os.environ.get('PORT', 5000))
-    # Use gunicorn in production, Flask dev server in development
-    if os.environ.get('ENVIRONMENT') == 'production':
-        # Gunicorn will be used (specified in Procfile)
-        app.run(host='0.0.0.0', port=port, debug=False)
-    else:
-        app.run(host='0.0.0.0', port=port, debug=False)
+    # Must bind to 0.0.0.0 for Render to detect the port
+    app.run(host='0.0.0.0', port=port, debug=False)
 
