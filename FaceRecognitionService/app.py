@@ -3,15 +3,22 @@ Face Recognition Service using DeepFace (VGG-Face)
 This service compares a captured image with a user's profile image
 """
 
+# Suppress TensorFlow warnings and CUDA errors in production
+# MUST be set BEFORE importing TensorFlow/DeepFace
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress INFO and WARNING messages
+os.environ['CUDA_VISIBLE_DEVICES'] = ''  # Force CPU mode (Render doesn't have GPU)
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import os
 
 app = Flask(__name__)
 CORS(app)
 
 # Try to import face recognition libraries
 FACE_RECOGNITION_AVAILABLE = False
+MODEL_LOADED = False
+
 try:
     import cv2
     import numpy as np
@@ -20,14 +27,41 @@ try:
     from PIL import Image
     from deepface import DeepFace
     
-    print("DeepFace library loaded successfully!")
+    print("✅ DeepFace library loaded successfully!")
     FACE_RECOGNITION_AVAILABLE = True
+    
+    # Pre-load model at startup to cache it and avoid re-downloading
+    # This also helps catch model loading errors early
+    print("🔄 Pre-loading VGG-Face model (this may take a minute on first run)...")
+    try:
+        import tempfile
+        
+        # Create a minimal dummy image to trigger model download and caching
+        dummy_img = np.ones((100, 100, 3), dtype=np.uint8) * 255
+        dummy_path = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg')
+        cv2.imwrite(dummy_path.name, dummy_img)
+        
+        # This will download and cache the model if not already cached
+        DeepFace.represent(
+            img_path=dummy_path.name,
+            model_name='VGG-Face',
+            enforce_detection=False,  # Don't require face in dummy image
+            detector_backend='opencv'
+        )
+        
+        os.unlink(dummy_path.name)
+        MODEL_LOADED = True
+        print("✅ VGG-Face model pre-loaded and cached successfully!")
+    except Exception as model_error:
+        print(f"⚠️ Model pre-loading failed (will load on first request): {str(model_error)[:100]}")
+        MODEL_LOADED = False
+    
 except ImportError as e:
-    print(f"Warning: Face recognition libraries not available: {e}")
+    print(f"❌ Warning: Face recognition libraries not available: {e}")
     print("Service will run in fallback mode - rejecting all face verifications")
     FACE_RECOGNITION_AVAILABLE = False
 except Exception as e:
-    print(f"Warning: Could not initialize DeepFace: {e}")
+    print(f"❌ Warning: Could not initialize DeepFace: {e}")
     print("Service will run in fallback mode - rejecting all face verifications")
     FACE_RECOGNITION_AVAILABLE = False
 
@@ -300,8 +334,12 @@ def verify_face():
         }), 500
 
 if __name__ == '__main__':
-    # Render provides PORT environment variable automatically
+    # This block only runs when using 'python app.py' directly
+    # In production with gunicorn, this block is NOT executed
+    # Render should use Procfile which runs: gunicorn --bind 0.0.0.0:$PORT app:app
     port = int(os.environ.get('PORT', 5000))
-    # Must bind to 0.0.0.0 for Render to detect the port
+    print(f"⚠️ WARNING: Running with Flask development server (python app.py)")
+    print(f"⚠️ For production, use gunicorn: gunicorn --bind 0.0.0.0:{port} app:app")
+    print(f"⚠️ Or ensure Render uses the Procfile")
     app.run(host='0.0.0.0', port=port, debug=False)
 
