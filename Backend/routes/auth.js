@@ -367,7 +367,12 @@ router.post("/verify-face", authenticateToken, async (req, res) => {
     
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      // Increased timeout to handle:
+      // - Model download on first request (~10-15 seconds)
+      // - Cold starts on Render free tier (~30-60 seconds)
+      // - Face verification processing (~5-10 seconds)
+      const timeoutMs = parseInt(process.env.FACE_RECOGNITION_TIMEOUT_MS) || 90000; // 90 seconds default
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
       
       const response = await fetchFn(`${faceServiceUrl}/verify-face`, {
         method: 'POST',
@@ -457,6 +462,11 @@ router.post("/verify-face", authenticateToken, async (req, res) => {
         code: serviceError.code
       });
       
+      // Check if this is a timeout error
+      const isTimeout = serviceError.name === 'AbortError' || 
+                       serviceError.message.includes('aborted') ||
+                       serviceError.code === 20;
+      
       // Only allow fallback if explicitly enabled (for development/testing)
       if (allowFallback) {
         console.warn("⚠️ WARNING: Face recognition service unavailable. Allowing fallback (FACE_RECOGNITION_FALLBACK=true).");
@@ -470,13 +480,21 @@ router.post("/verify-face", authenticateToken, async (req, res) => {
       }
       
       // Reject verification if service is unavailable (default behavior)
+      let errorMessage = "Face recognition service is temporarily unavailable.";
+      if (isTimeout) {
+        errorMessage = "Face recognition service request timed out. This may happen if the service is starting up (downloading models) or waking from sleep. Please try again in a few moments.";
+      } else if (serviceError.message.includes('ECONNREFUSED') || serviceError.message.includes('fetch failed')) {
+        errorMessage = "Cannot connect to face recognition service. The service may be down or unreachable.";
+      }
+      
       console.error("Face recognition service error:", serviceError.message);
       res.status(503).json({ 
-        message: "Face recognition service is temporarily unavailable. Please ensure the Python service is running on port 5000.",
+        message: errorMessage,
         match: false,
         error: serviceError.message,
         serviceUrl: faceServiceUrl,
-        help: "To start the service, run: cd FaceRecognitionService && python app.py"
+        isTimeout: isTimeout,
+        help: isTimeout ? "The service may be downloading models (first request) or waking from sleep. Wait 30-60 seconds and try again." : "Please ensure the Python service is running and accessible."
       });
     }
   } catch (err) {

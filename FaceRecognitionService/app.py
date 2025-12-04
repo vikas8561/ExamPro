@@ -184,33 +184,53 @@ def verify_face():
             # Use DeepFace to verify faces directly
             # This is more accurate than comparing embeddings manually
             print("Verifying faces with DeepFace...")
-            try:
-                result = DeepFace.verify(
-                    img1_path=profile_path,
-                    img2_path=captured_path,
-                    model_name='VGG-Face',
-                    distance_metric='cosine',
-                    enforce_detection=True,
-                    detector_backend='opencv'
-                )
-            except Exception as e:
-                # Catch DeepFace exceptions and provide user-friendly messages
-                error_msg = str(e).lower()
-                error_full = str(e)
-                print(f"DeepFace error: {error_full}")
+            
+            # Try multiple detector backends - some work better than others
+            detector_backends = ['opencv', 'ssd', 'mtcnn', 'retinaface']
+            result = None
+            last_error = None
+            
+            for detector in detector_backends:
+                try:
+                    print(f"Trying detector backend: {detector}")
+                    result = DeepFace.verify(
+                        img1_path=profile_path,
+                        img2_path=captured_path,
+                        model_name='VGG-Face',
+                        distance_metric='cosine',
+                        enforce_detection=True,
+                        detector_backend=detector
+                    )
+                    print(f"✅ Successfully verified with detector: {detector}")
+                    break
+                except Exception as e:
+                    last_error = e
+                    error_msg = str(e).lower()
+                    print(f"❌ Detector {detector} failed: {str(e)[:100]}")
+                    # Continue to next detector if it's a face detection error
+                    if 'img1_path' in error_msg or 'img2_path' in error_msg or 'exception while processing' in error_msg:
+                        continue
+                    # For other errors, don't try other detectors
+                    break
+            
+            # If all detectors failed, provide helpful error message
+            if result is None:
+                error_msg = str(last_error).lower() if last_error else ""
+                error_full = str(last_error) if last_error else "Unknown error"
+                print(f"❌ All detectors failed. Last error: {error_full}")
                 
                 # Check for common error patterns - be more specific
                 if 'img1_path' in error_msg or ('exception while processing' in error_msg and 'img1' in error_msg):
-                    user_message = 'No face detected in your profile image. Please ensure your face is clearly visible.'
-                elif 'img2_path' in error_msg or ('exception while processing' in error_msg and 'img2' in error_msg) or 'exception while processing' in error_msg:
-                    user_message = 'No face detected in the captured image. Please ensure your face is clearly visible and try again.'
+                    user_message = 'No face detected in your profile image. The image may be corrupted or the face is not clearly visible. Please go to your profile section and upload a new profile image with your face clearly visible, well-lit, and facing forward.'
+                elif 'img2_path' in error_msg or ('exception while processing' in error_msg and 'img2' in error_msg):
+                    user_message = 'No face detected in the captured image. Please ensure your face is clearly visible, well-lit, and facing the camera directly.'
+                elif 'exception while processing' in error_msg:
+                    user_message = 'Face verification failed. Please ensure both your profile image and captured image contain clear, visible faces. You may need to upload a new profile image in the profile section.'
                 elif 'no face' in error_msg or 'face could not be detected' in error_msg or 'could not detect' in error_msg:
                     user_message = 'Could not detect a face in the image. Please ensure your face is clearly visible, well-lit, and facing the camera.'
                 else:
-                    # Default message for any other error
-                    user_message = 'Face verification failed. Please ensure your face is clearly visible and try again.'
+                    user_message = 'Face verification failed. Please ensure your face is clearly visible and try again. If this persists, you may need to upload a new profile image in the profile section.'
                 
-                # Return the user-friendly message
                 return jsonify({
                     'match': False,
                     'confidence': 0.0,
