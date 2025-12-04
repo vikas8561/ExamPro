@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import StatusPill from "../components/StatusPill";
+import { API_BASE_URL } from "../config/api";
 
 export default function Dashboard() {
   const [tests, setTests] = useState([]);
@@ -15,19 +16,19 @@ export default function Dashboard() {
       try {
         // Fetch data with limits to improve performance
         const [testsResponse, usersResponse, reviewsResponse] = await Promise.all([
-          fetch("https://cg-test-app.onrender.com/api/tests?limit=20", {
+          fetch(`${API_BASE_URL}/tests?limit=20`, {
             headers: {
               'Authorization': `Bearer ${token}`,
               'Content-Type': 'application/json'
             }
           }),
-          fetch("https://cg-test-app.onrender.com/api/users?limit=50", {
+          fetch(`${API_BASE_URL}/users?limit=50`, {
             headers: {
               'Authorization': `Bearer ${token}`,
               'Content-Type': 'application/json'
             }
           }),
-          fetch("https://cg-test-app.onrender.com/api/reviews?limit=10", {
+          fetch(`${API_BASE_URL}/reviews?limit=10`, {
             headers: {
               'Authorization': `Bearer ${token}`,
               'Content-Type': 'application/json'

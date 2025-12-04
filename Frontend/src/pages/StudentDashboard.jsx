@@ -3,6 +3,7 @@ import UpcomingTests from "../components/UpcomingTests";
 import RecentActivity from "../components/RecentActivity";
 import apiRequest from "../services/api";
 import { io } from "socket.io-client";
+import { BASE_URL } from "../config/api";
 
 const StudentDashboard = () => {
   const [assignedTests, setAssignedTests] = useState([]);
@@ -17,15 +18,17 @@ const StudentDashboard = () => {
     fetchRecentActivity();
 
     // Setup Socket.IO client - use the same base URL as API
-    const API_BASE_URL = 'https://cg-test-app.onrender.com/api';
-    const socketUrl = API_BASE_URL.replace('/api', ''); // Remove /api to get base URL
+    const socketUrl = BASE_URL; // Use BASE_URL from config (without /api)
+    console.log('Connecting to Socket.IO at:', socketUrl);
     const socket = io(socketUrl, {
       // ✅ Fixed: Add connection options for better cleanup
       autoConnect: true,
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
-      timeout: 20000
+      timeout: 20000,
+      transports: ['websocket', 'polling'], // Explicitly set transport methods
+      forceNew: false // Reuse existing connection if available
     });
 
     let pollInterval = null;

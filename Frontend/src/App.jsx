@@ -9,6 +9,8 @@ import CreateTest from "./pages/CreateTest";
 import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
+import VerifyEmail from "./pages/VerifyEmail";
+import VerifyPassword from "./pages/VerifyPassword";
 import StudentDashboard from "./pages/StudentDashboard";
 import StudentAssignments from "./pages/StudentAssignments";
 import StudentResults from "./pages/StudentResults";
@@ -18,6 +20,7 @@ import TakePracticeTest from "./pages/TakePracticeTest";
 import PracticeTestResults from "./pages/PracticeTestResults";
 import StudentCodingTests from "./pages/StudentCodingTests";
 import TakeCodingTest from "./pages/TakeCodingTest";
+import StudentProfile from "./pages/StudentProfile";
 import StudentSidebar from "./components/StudentSidebar";
 import MentorLayout from "./components/MentorLayout";
 import MentorAssignments from "./pages/MentorAssignments";
@@ -122,6 +125,7 @@ const StudentRoutes = () => {
           <Route path="/take-test/:assignmentId" element={<TakeTest />} />
           <Route path="/view-test/:assignmentId" element={<ViewCompletedTest />} />
           <Route path="/results" element={<StudentResults />} />
+          <Route path="/profile" element={<StudentProfile />} />
           <Route path="*" element={<div className="p-6">Not Found</div>} />
         </Routes>
       </main>
@@ -155,6 +159,8 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/verify-email" element={<VerifyEmail />} />
+      <Route path="/verify-password" element={<VerifyPassword />} />
 
       {/* Admin Routes */}
       <Route

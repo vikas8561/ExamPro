@@ -12,7 +12,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://cg-test-app.onrender.com',
+        target: process.env.VITE_BACKEND_URL || process.env.BACKEND_URL || 'https://cg-test-app.onrender.com',
         changeOrigin: true,
         secure: false,
       }

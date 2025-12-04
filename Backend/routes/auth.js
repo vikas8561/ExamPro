@@ -6,7 +6,7 @@ const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
 const router = express.Router();
 const User = require("../models/User");
-const { generateToken } = require("../middleware/auth");
+const { generateToken, authenticateToken } = require("../middleware/auth");
 
 // Configure nodemailer transporter for Gmail
 const transporter = nodemailer.createTransport({
@@ -251,6 +251,297 @@ router.post("/reset-password", async (req, res) => {
     await User.updateOne({ _id: user._id }, { $set: updateObj });
 
     res.json({ message: "Password and email updated successfully" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Get current user profile
+router.get("/profile", authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select("-password -activeSessions");
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Upload profile image (camera only, one-time)
+router.post("/profile/image", authenticateToken, async (req, res) => {
+  try {
+    const { image } = req.body; // Base64 encoded image
+    
+    if (!image) {
+      return res.status(400).json({ message: "Image is required" });
+    }
+
+    // Validate base64 image format
+    if (!image.startsWith('data:image/')) {
+      return res.status(400).json({ message: "Invalid image format. Only images from camera are allowed." });
+    }
+
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Check if profile image was already saved (one-time only)
+    if (user.profileImageSaved) {
+      return res.status(400).json({ message: "Profile image can only be saved once and cannot be changed" });
+    }
+
+    // Save the image
+    user.profileImage = image;
+    user.profileImageSaved = true;
+    await user.save();
+
+    res.json({ 
+      message: "Profile image saved successfully",
+      profileImage: user.profileImage,
+      profileImageSaved: user.profileImageSaved
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Update email with nodemailer verification
+router.post("/profile/update-email", authenticateToken, async (req, res) => {
+  try {
+    const { newEmail } = req.body;
+
+    if (!newEmail) {
+      return res.status(400).json({ message: "New email is required" });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(newEmail)) {
+      return res.status(400).json({ message: "Invalid email format" });
+    }
+
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Check if new email is already taken by another user
+    const existingUser = await User.findOne({ email: newEmail });
+    if (existingUser && existingUser._id.toString() !== user._id.toString()) {
+      return res.status(400).json({ message: "Email is already in use" });
+    }
+
+    // If email is the same, no need to update
+    if (user.email === newEmail) {
+      return res.status(400).json({ message: "New email is the same as current email" });
+    }
+
+    // Generate verification token
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    user.pendingEmail = newEmail;
+    user.resetPasswordToken = verificationToken;
+    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
+
+    await user.save();
+
+    // Send verification email
+    const verificationLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email?token=${verificationToken}`;
+    const mailOptions = {
+      from: process.env.SMTP_FROM || '"ExamPro Support" <support@example.com>',
+      to: newEmail,
+      subject: 'Email Update Verification',
+      html: `
+        <p>You requested to update your email address to ${newEmail}.</p>
+        <p>Please click the link below to verify your new email address:</p>
+        <a href="${verificationLink}">${verificationLink}</a>
+        <p>This link will expire in 1 hour.</p>
+        <p>If you did not request this, please ignore this email.</p>
+      `
+    };
+
+    try {
+      if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+        console.warn('Email configuration missing - SMTP_USER or SMTP_PASS not set');
+        return res.json({
+          message: "Email update initiated but email service not configured",
+          verificationToken: verificationToken, // For testing purposes
+          warning: "Email service not configured - please contact administrator"
+        });
+      }
+
+      await transporter.sendMail(mailOptions);
+      console.log('Email verification sent successfully to:', newEmail);
+      return res.json({
+        message: "Verification email sent to your new email address",
+        verificationToken: verificationToken // For testing purposes
+      });
+    } catch (emailError) {
+      console.error('Error sending verification email:', emailError);
+      return res.status(500).json({
+        message: 'Email update initiated but verification email failed to send',
+        error: emailError.message,
+        verificationToken: verificationToken // For testing purposes
+      });
+    }
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Verify email update
+router.post("/profile/verify-email", async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    // Find user by verification token
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: "Invalid or expired verification token" });
+    }
+
+    if (!user.pendingEmail) {
+      return res.status(400).json({ message: "No pending email change found" });
+    }
+
+    // Check if new email is already taken
+    const existingUser = await User.findOne({ email: user.pendingEmail });
+    if (existingUser && existingUser._id.toString() !== user._id.toString()) {
+      return res.status(400).json({ message: "New email is already in use" });
+    }
+
+    // Update email
+    user.email = user.pendingEmail;
+    user.pendingEmail = undefined;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+
+    res.json({ message: "Email updated successfully" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Change password with nodemailer verification
+router.post("/profile/change-password", authenticateToken, async (req, res) => {
+  try {
+    const { newPassword, confirmPassword } = req.body;
+
+    if (!newPassword || !confirmPassword) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ message: "Passwords do not match" });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters long" });
+    }
+
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Hash the new password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    // Store pending password
+    user.pendingPassword = hashedPassword;
+
+    // Generate verification token
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    user.resetPasswordToken = verificationToken;
+    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
+
+    await user.save();
+
+    // Send verification email
+    const verificationLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-password?token=${verificationToken}`;
+    const mailOptions = {
+      from: process.env.SMTP_FROM || '"ExamPro Support" <support@example.com>',
+      to: user.email,
+      subject: 'Password Change Verification',
+      html: `
+        <p>You requested to change your password.</p>
+        <p>Please click the link below to verify and complete the password change:</p>
+        <a href="${verificationLink}">${verificationLink}</a>
+        <p>This link will expire in 1 hour.</p>
+        <p>If you did not request this, please ignore this email.</p>
+      `
+    };
+
+    try {
+      if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+        console.warn('Email configuration missing - SMTP_USER or SMTP_PASS not set');
+        return res.json({
+          message: "Password change initiated but email service not configured",
+          verificationToken: verificationToken, // For testing purposes
+          warning: "Email service not configured - please contact administrator"
+        });
+      }
+
+      await transporter.sendMail(mailOptions);
+      console.log('Password change verification email sent successfully to:', user.email);
+      return res.json({
+        message: "Verification email sent to your email address",
+        verificationToken: verificationToken // For testing purposes
+      });
+    } catch (emailError) {
+      console.error('Error sending verification email:', emailError);
+      return res.status(500).json({
+        message: 'Password change initiated but verification email failed to send',
+        error: emailError.message,
+        verificationToken: verificationToken // For testing purposes
+      });
+    }
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Verify password change
+router.post("/profile/verify-password", async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    // Find user by verification token
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: "Invalid or expired verification token" });
+    }
+
+    if (!user.pendingPassword) {
+      return res.status(400).json({ message: "No pending password change found" });
+    }
+
+    // Update password using updateOne to avoid pre-save hook double-hashing
+    await User.updateOne(
+      { _id: user._id },
+      { 
+        $set: { 
+          password: user.pendingPassword,
+          resetPasswordToken: undefined,
+          resetPasswordExpires: undefined,
+          pendingPassword: undefined
+        }
+      }
+    );
+
+    res.json({ message: "Password changed successfully" });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

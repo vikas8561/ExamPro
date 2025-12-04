@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import StatusPill from "../components/StatusPill";
 import EmailUploader from "../components/EmailUploader";
+import { API_BASE_URL } from "../config/api";
 
 export default function Users() {
   const [users, setUsers] = useState([]);
@@ -16,7 +17,7 @@ export default function Users() {
 
   // Fetch users from backend
   const fetchUsers = () => {
-    fetch("https://cg-test-app.onrender.com/api/users")
+    fetch(`${API_BASE_URL}/users`)
       .then((res) => res.json())
       .then((data) => setUsers(data))
       .catch((err) => console.error("Error fetching users:", err));
@@ -70,7 +71,7 @@ export default function Users() {
 
     if (editing) {
       // Update existing user
-      fetch(`https://cg-test-app.onrender.com/api/users/${editing}`, {
+      fetch(`${API_BASE_URL}/users/${editing}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
@@ -93,7 +94,7 @@ export default function Users() {
         });
     } else {
       // Create new user
-      fetch("https://cg-test-app.onrender.com/api/users", {
+      fetch(`${API_BASE_URL}/users`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
@@ -126,7 +127,7 @@ export default function Users() {
   };
 
   const deleteUser = (id) => {
-    fetch(`https://cg-test-app.onrender.com/api/users/${id}`, { method: "DELETE" })
+    fetch(`${API_BASE_URL}/users/${id}`, { method: "DELETE" })
       .then(() => {
         setUsers((prev) => prev.filter((u) => u._id !== id));
       })

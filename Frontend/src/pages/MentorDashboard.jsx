@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import StatusPill from "../components/StatusPill";
+import { API_BASE_URL } from "../config/api";
 
 export default function MentorDashboard() {
   const [stats, setStats] = useState({
@@ -17,7 +18,7 @@ export default function MentorDashboard() {
   const fetchMentorData = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch("https://cg-test-app.onrender.com/api/mentor/dashboard", {
+      const response = await fetch(`${API_BASE_URL}/mentor/dashboard`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'

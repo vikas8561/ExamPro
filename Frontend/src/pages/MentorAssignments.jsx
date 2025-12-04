@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import StatusPill from "../components/StatusPill";
+import { API_BASE_URL } from "../config/api";
 
 export default function MentorAssignments() {
   const [assignments, setAssignments] = useState([]);
@@ -28,7 +29,7 @@ export default function MentorAssignments() {
       const startTime = Date.now();
       const token = localStorage.getItem('token');
       // Fetch all assignments without pagination limits to ensure we get all SU students
-      const response = await fetch("https://cg-test-app.onrender.com/api/mentor/assignments?limit=1000", {
+      const response = await fetch(`${API_BASE_URL}/mentor/assignments?limit=1000`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'

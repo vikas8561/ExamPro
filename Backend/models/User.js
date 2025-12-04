@@ -21,6 +21,8 @@ const userSchema = new mongoose.Schema(
     resetPasswordExpires: { type: Date },
     pendingPassword: { type: String }, // Temporary storage for new password
     pendingEmail: { type: String }, // Temporary storage for new email
+    profileImage: { type: String }, // Base64 encoded profile image
+    profileImageSaved: { type: Boolean, default: false }, // Flag to track if profile image was saved (one-time only)
     // status: {
     //   type: String,
     //   enum: ["Active", "Inactive"],

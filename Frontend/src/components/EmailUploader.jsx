@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { API_BASE_URL } from "../config/api";
 
 const EmailUploader = ({ onUploadComplete }) => {
   const [file, setFile] = useState(null);
@@ -27,7 +28,7 @@ const EmailUploader = ({ onUploadComplete }) => {
     }
 
     try {
-      const response = await fetch("https://cg-test-app.onrender.com/api/users/bulk", {
+      const response = await fetch(`${API_BASE_URL}/users/bulk`, {
         method: "POST",
         body: formData,
       });

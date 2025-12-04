@@ -1,5 +1,5 @@
 // API service with authentication
-const API_BASE_URL = 'https://cg-test-app.onrender.com/api';
+import { API_BASE_URL } from '../config/api';
 
 // Get auth token from localStorage
 const getAuthToken = () => {
@@ -198,6 +198,40 @@ export const authAPI = {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(resetData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message);
+    }
+
+    return response.json();
+  },
+
+  verifyEmail: async (verifyData) => {
+    const response = await fetch(`${API_BASE_URL}/auth/profile/verify-email`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(verifyData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message);
+    }
+
+    return response.json();
+  },
+
+  verifyPassword: async (verifyData) => {
+    const response = await fetch(`${API_BASE_URL}/auth/profile/verify-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(verifyData),
     });
 
     if (!response.ok) {

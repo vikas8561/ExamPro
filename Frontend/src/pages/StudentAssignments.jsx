@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
 import apiRequest from "../services/api";
+import { BASE_URL } from "../config/api";
 
 // Add custom styles for card animations
 const cardAnimationStyles = `
@@ -124,8 +125,7 @@ const StudentAssignments = () => {
     }
 
     // Setup Socket.IO client - use the same base URL as API
-    const API_BASE_URL = 'https://cg-test-app.onrender.com/api';
-    const socketUrl = API_BASE_URL.replace('/api', ''); // Remove /api to get base URL
+    const socketUrl = BASE_URL; // Use BASE_URL from config
     const socket = io(socketUrl, {
       // ✅ Fixed: Add connection options for better cleanup
       autoConnect: true,

@@ -22,6 +22,8 @@ export default function StudentSidebar({ isOpen, onToggle }) {
 
   const handleLogout = () => {
     localStorage.removeItem('user');
+    localStorage.removeItem('token');
+    localStorage.removeItem('userId');
     navigate('/login');
   };
 
@@ -69,7 +71,19 @@ export default function StudentSidebar({ isOpen, onToggle }) {
           <Item to="/student/results" icon={"🏆"} onClick={handleNavClick}>Completed Tests</Item>
         </nav>
 
-        <div className="mt-auto space-y-2">
+        <div className="mt-auto border-t border-slate-700 pt-4">
+          <NavLink
+            to="/student/profile"
+            onClick={handleNavClick}
+            className={({ isActive }) =>
+              `flex items-center justify-center gap-3 px-3 py-2 rounded-md mb-6 text-black bg-white hover:bg-gray-100 transition ${
+                isActive ? "bg-gray-100" : ""
+              }`
+            }
+          >
+            <span className="w-5 h-5">👤</span>
+            <span>Profile</span>
+          </NavLink>
           <button
             onClick={handleLogout}
             className="w-full flex items-center justify-center gap-3 bg-red-600 hover:bg-red-700 transition px-4 py-2 rounded-md cursor-pointer"

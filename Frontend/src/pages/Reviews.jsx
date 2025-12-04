@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import StatusPill from "../components/StatusPill";
+import { API_BASE_URL } from "../config/api";
 
 export default function Reviews() {
   const [reviews, setReviews] = useState([]);
@@ -7,15 +8,15 @@ export default function Reviews() {
   const [users, setUsers] = useState([]);
 
   useEffect(() => {
-    fetch("http://localhost:5000/api/tests")
+    fetch(`${API_BASE_URL}/tests`)
       .then(res => res.json())
       .then(setTests);
 
-    fetch("http://localhost:5000/api/users")
+    fetch(`${API_BASE_URL}/users`)
       .then(res => res.json())
       .then(setUsers);
 
-    fetch("http://localhost:5000/api/reviews")
+    fetch(`${API_BASE_URL}/reviews`)
       .then(res => res.json())
       .then(setReviews);
   }, []);
@@ -24,7 +25,7 @@ export default function Reviews() {
   const getUser = (id) => users.find((u) => u._id === id)?.name || "-";
 
   const updateReview = (id, updatedFields) => {
-    fetch(`http://localhost:5000/api/reviews/${id}`, {
+    fetch(`${API_BASE_URL}/reviews/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(updatedFields)
@@ -36,7 +37,7 @@ export default function Reviews() {
   };
 
   const deleteReview = (id) => {
-    fetch(`http://localhost:5000/api/reviews/${id}`, { method: "DELETE" })
+    fetch(`${API_BASE_URL}/reviews/${id}`, { method: "DELETE" })
       .then(() => {
         setReviews(prev => prev.filter(r => r._id !== id));
       });

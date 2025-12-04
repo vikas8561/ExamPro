@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import StatusPill from "../components/StatusPill";
+import { API_BASE_URL } from "../config/api";
 
 export default function Assignments() {
   const [assignments, setAssignments] = useState([]);
@@ -9,21 +10,21 @@ export default function Assignments() {
 
   // Load data from backend
   useEffect(() => {
-    fetch("http://localhost:5000/api/tests")
+    fetch(`${API_BASE_URL}/tests`)
       .then(res => res.json())
       .then(data => {
         setTests(data);
         if (data.length > 0) setForm(f => ({ ...f, testId: data[0]._id }));
       });
 
-    fetch("http://localhost:5000/api/users")
+    fetch(`${API_BASE_URL}/users`)
       .then(res => res.json())
       .then(data => {
         setUsers(data);
         if (data.length > 0) setForm(f => ({ ...f, userId: data[0]._id }));
       });
 
-    fetch("http://localhost:5000/api/assignments")
+    fetch(`${API_BASE_URL}/assignments`)
       .then(res => res.json())
       .then(setAssignments);
   }, []);
@@ -34,7 +35,7 @@ export default function Assignments() {
       alert("Please select both test and user.");
       return;
     }
-    fetch("http://localhost:5000/api/assignments", {
+    fetch(`${API_BASE_URL}/assignments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form)
@@ -45,7 +46,7 @@ export default function Assignments() {
 
   // Delete assignment
   const deleteAssignment = (id) => {
-    fetch(`http://localhost:5000/api/assignments/${id}`, { method: "DELETE" })
+    fetch(`${API_BASE_URL}/assignments/${id}`, { method: "DELETE" })
       .then(() => setAssignments(prev => prev.filter(a => a._id !== id)));
   };
 
