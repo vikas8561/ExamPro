@@ -58,6 +58,8 @@ export default function CreateTest() {
   const [newSubjectDescription, setNewSubjectDescription] = useState("");
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [createdOtp, setCreatedOtp] = useState("");
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewQuestion, setPreviewQuestion] = useState(null);
   const nav = useNavigate();
 
   // Fetch subjects on component mount
@@ -1304,6 +1306,20 @@ export default function CreateTest() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>
                   </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPreviewQuestion(question);
+                        setShowPreviewModal(true);
+                      }}
+                      className="p-2 text-slate-400 hover:text-blue-400 hover:bg-blue-600/20 rounded-lg transition-all duration-200 group/btn"
+                      title="Preview question"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
 
@@ -1849,6 +1865,160 @@ export default function CreateTest() {
               >
                 Done
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Preview Modal */}
+      {showPreviewModal && previewQuestion && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-slate-800 border-b border-slate-700 p-4 flex justify-between items-center z-10">
+              <h3 className="text-xl font-semibold">Question Preview</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPreviewModal(false);
+                  setPreviewQuestion(null);
+                }}
+                className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="p-6">
+              <div className="mb-4 p-3 bg-blue-900/20 border border-blue-700/50 rounded-lg">
+                <p className="text-sm text-blue-300">
+                  <strong>Note:</strong> This is how the question will appear to students in the exam portal.
+                </p>
+              </div>
+
+              {/* Preview Content - Mimics TakeTest.jsx layout */}
+              <div className="bg-slate-900 rounded-lg p-6">
+                <div className="flex items-center gap-3 mb-4 justify-between">
+                  <span className="text-sm text-slate-400">
+                    Question Preview
+                  </span>
+                  <div className="flex items-center gap-3">
+                    <div className="bg-slate-700 px-3 py-1 rounded-md text-sm">
+                      {previewQuestion.points} point{previewQuestion.points !== 1 ? "s" : ""}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Question Text with formatting preserved */}
+                <div className="text-xl font-semibold mb-6 whitespace-pre-wrap text-white">
+                  {previewQuestion.text || "(No question text entered)"}
+                </div>
+
+                {/* MCQ Options Preview */}
+                {previewQuestion.kind === "mcq" && (
+                  <div className="space-y-3">
+                    {previewQuestion.options?.map((option, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center p-4 rounded-lg bg-slate-700 hover:bg-slate-600 transition-colors"
+                      >
+                        <input
+                          type="radio"
+                          name={`preview-${previewQuestion.id}`}
+                          className="mr-3"
+                          disabled
+                        />
+                        <span className="whitespace-pre-wrap text-white">
+                          {option || `Option ${String.fromCharCode(65 + index)}`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Coding Question Preview */}
+                {previewQuestion.kind === "coding" && (
+                  <div className="space-y-4">
+                    {previewQuestion.examples && previewQuestion.examples.length > 0 && (
+                      <div className="bg-slate-700 p-4 rounded-lg mb-4">
+                        <div className="text-slate-300 font-semibold mb-2">Examples:</div>
+                        {previewQuestion.examples.map((example, idx) => (
+                          <div key={idx} className="mb-3 p-3 bg-slate-600 rounded">
+                            <div className="mb-1 font-semibold text-slate-300">Example {idx + 1}:</div>
+                            <div className="mb-1 font-semibold text-slate-300">Input:</div>
+                            <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
+                              {example.input || "(No input)"}
+                            </pre>
+                            <div className="mt-2 mb-1 font-semibold text-slate-300">Output:</div>
+                            <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
+                              {example.output || "(No output)"}
+                            </pre>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {previewQuestion.visibleTestCases && previewQuestion.visibleTestCases.length > 0 && (
+                      <div className="bg-slate-700 p-4 rounded-lg mb-4">
+                        <div className="text-slate-300 font-semibold mb-2">Normal Test Cases:</div>
+                        {previewQuestion.visibleTestCases.map((tc, idx) => (
+                          <div key={idx} className="mb-3 p-3 bg-slate-600 rounded">
+                            <div className="mb-1 font-semibold text-slate-300">Case {idx + 1}:</div>
+                            <div className="mb-1 font-semibold text-slate-300">Input:</div>
+                            <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
+                              {tc.input || "(No input)"}
+                            </pre>
+                            <div className="mt-2 mb-1 font-semibold text-slate-300">Output:</div>
+                            <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
+                              {tc.output || "(No output)"}
+                            </pre>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="bg-slate-700 p-4 rounded-lg">
+                      <p className="text-slate-400 text-sm">
+                        Students will see a code editor here to write their solution.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Theory Question Preview */}
+                {previewQuestion.kind === "theory" && (
+                  <div className="space-y-4">
+                    {previewQuestion.examples && previewQuestion.examples.length > 0 && (
+                      <div className="bg-slate-700 p-4 rounded-lg mb-4">
+                        {previewQuestion.examples.map((example, idx) => (
+                          <div key={idx} className="mb-3 p-3 bg-slate-600 rounded">
+                            <div className="mb-1 font-semibold text-slate-300">Example {idx + 1}:</div>
+                            <div className="mb-1 font-semibold text-slate-300">Input:</div>
+                            <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
+                              {example.input || "(No input)"}
+                            </pre>
+                            <div className="mt-2 mb-1 font-semibold text-slate-300">Output:</div>
+                            <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
+                              {example.output || "(No output)"}
+                            </pre>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="bg-slate-700 p-4 rounded-lg">
+                      <p className="text-slate-400 text-sm mb-2">Students will see a text area here to write their answer.</p>
+                      <textarea
+                        className="w-full p-4 bg-slate-800 text-white rounded-lg border border-slate-600 resize-none"
+                        rows={4}
+                        disabled
+                        placeholder="Answer text area (preview)"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
