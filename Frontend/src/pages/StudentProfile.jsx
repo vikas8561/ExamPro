@@ -465,7 +465,7 @@ export default function StudentProfile() {
           className="rounded-2xl p-6 w-full border"
           style={{ 
             backgroundColor: '#0B1220',
-            borderColor: 'rgba(34, 211, 238, 0.2)'
+            borderColor: 'rgba(255, 255, 255, 0.2)'
           }}
         >
         {/* Profile Image */}
@@ -476,17 +476,17 @@ export default function StudentProfile() {
                 src={capturedImage || user.profileImage}
                 alt="Profile"
                 className="w-32 h-32 rounded-full object-cover border-4"
-                style={{ borderColor: 'rgba(34, 211, 238, 0.4)' }}
+                style={{ borderColor: '#E5E7EB' }}
               />
             ) : (
               <div 
                 className="w-32 h-32 rounded-full flex items-center justify-center border-4"
                 style={{ 
-                  backgroundColor: 'rgba(34, 211, 238, 0.1)',
-                  borderColor: 'rgba(34, 211, 238, 0.4)'
+                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                  borderColor: '#E5E7EB'
                 }}
               >
-                <UserIcon className="w-16 h-16" style={{ color: '#22D3EE' }} />
+                <UserIcon className="w-16 h-16" style={{ color: '#FFFFFF' }} />
               </div>
             )}
             {canCaptureImage && !capturedImage && !user.profileImage && (
@@ -494,7 +494,7 @@ export default function StudentProfile() {
                 onClick={startCamera}
                 className="absolute bottom-0 right-0 p-3 rounded-full transition shadow-lg"
                 style={{ 
-                  backgroundColor: '#22D3EE',
+                  backgroundColor: '#FFFFFF',
                   color: '#020617'
                 }}
                 onMouseEnter={(e) => {
@@ -516,7 +516,7 @@ export default function StudentProfile() {
                 disabled={uploadingImage}
                 className="px-4 py-2 rounded-lg transition disabled:opacity-50"
                 style={{ 
-                  backgroundColor: '#22D3EE',
+                  backgroundColor: '#FFFFFF',
                   color: '#020617'
                 }}
                 onMouseEnter={(e) => {
@@ -536,15 +536,15 @@ export default function StudentProfile() {
                 disabled={uploadingImage}
                 className="px-4 py-2 rounded-lg transition disabled:opacity-50 border"
                 style={{ 
-                  backgroundColor: 'rgba(34, 211, 238, 0.1)',
-                  color: '#67E8F9',
-                  borderColor: 'rgba(34, 211, 238, 0.3)'
+                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                  color: '#FFFFFF',
+                  borderColor: 'rgba(255, 255, 255, 0.3)'
                 }}
                 onMouseEnter={(e) => {
-                  if (!uploadingImage) e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.15)';
+                  if (!uploadingImage) e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.1)';
+                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
                 }}
               >
                 Retake
@@ -560,7 +560,7 @@ export default function StudentProfile() {
               className="rounded-2xl p-6 max-w-md w-full mx-4 border"
               style={{ 
                 backgroundColor: '#0B1220',
-                borderColor: 'rgba(34, 211, 238, 0.3)'
+                borderColor: 'rgba(255, 255, 255, 0.3)'
               }}
             >
               <h3 className="text-xl font-bold mb-4 text-center" style={{ color: '#E5E7EB' }}>
@@ -627,15 +627,15 @@ export default function StudentProfile() {
                       onClick={retakeFromModal}
                       className="flex-1 px-4 py-2 rounded-lg transition border"
                       style={{ 
-                        backgroundColor: 'rgba(34, 211, 238, 0.1)',
-                        color: '#67E8F9',
-                        borderColor: 'rgba(34, 211, 238, 0.3)'
+                        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                        color: '#FFFFFF',
+                        borderColor: 'rgba(255, 255, 255, 0.3)'
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.15)';
+                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
                       }}
                       onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.1)';
+                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
                       }}
                     >
                       Retake
@@ -706,11 +706,11 @@ export default function StudentProfile() {
           <div 
             className="flex items-center gap-3 p-4 rounded-lg border"
             style={{ 
-              backgroundColor: 'rgba(34, 211, 238, 0.05)',
-              borderColor: 'rgba(34, 211, 238, 0.2)'
+              backgroundColor: 'rgba(255, 255, 255, 0.05)',
+              borderColor: 'rgba(255, 255, 255, 0.2)'
             }}
           >
-            <UserIcon className="w-5 h-5" style={{ color: '#22D3EE' }} />
+            <UserIcon className="w-5 h-5" style={{ color: '#FFFFFF' }} />
             <div className="flex-1">
               <p className="text-sm" style={{ color: '#9CA3AF' }}>Name</p>
               <p className="text-lg font-semibold" style={{ color: '#E5E7EB' }}>{user.name}</p>
@@ -720,11 +720,11 @@ export default function StudentProfile() {
           <div 
             className="flex items-center gap-3 p-4 rounded-lg border"
             style={{ 
-              backgroundColor: 'rgba(34, 211, 238, 0.05)',
-              borderColor: 'rgba(34, 211, 238, 0.2)'
+              backgroundColor: 'rgba(255, 255, 255, 0.05)',
+              borderColor: 'rgba(255, 255, 255, 0.2)'
             }}
           >
-            <Mail className="w-5 h-5" style={{ color: '#22D3EE' }} />
+            <Mail className="w-5 h-5" style={{ color: '#FFFFFF' }} />
             <div className="flex-1">
               <p className="text-sm" style={{ color: '#9CA3AF' }}>Email</p>
               <p className="text-lg font-semibold" style={{ color: '#E5E7EB' }}>{user.email}</p>
@@ -734,15 +734,15 @@ export default function StudentProfile() {
                 onClick={() => setShowEmailForm(true)}
                 className="px-4 py-2 text-sm rounded-lg transition border"
                 style={{ 
-                  backgroundColor: 'rgba(34, 211, 238, 0.1)',
-                  color: '#67E8F9',
-                  borderColor: 'rgba(34, 211, 238, 0.3)'
+                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                  color: '#FFFFFF',
+                  borderColor: 'rgba(255, 255, 255, 0.3)'
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.15)';
+                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.1)';
+                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
                 }}
               >
                 Update
@@ -754,8 +754,8 @@ export default function StudentProfile() {
             <div 
               className="p-4 rounded-lg space-y-3 border"
               style={{ 
-                backgroundColor: 'rgba(34, 211, 238, 0.05)',
-                borderColor: 'rgba(34, 211, 238, 0.2)'
+                backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                borderColor: 'rgba(255, 255, 255, 0.2)'
               }}
             >
               <form onSubmit={handleEmailUpdate} className="space-y-3">
@@ -767,11 +767,11 @@ export default function StudentProfile() {
                   className="w-full px-4 py-2 rounded-lg border transition focus:outline-none"
                   style={{ 
                     backgroundColor: '#0B1220',
-                    borderColor: 'rgba(34, 211, 238, 0.3)',
+                    borderColor: 'rgba(255, 255, 255, 0.3)',
                     color: '#E5E7EB'
                   }}
                   onFocus={(e) => {
-                    e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.5)';
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)';
                   }}
                   onBlur={(e) => {
                     e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.3)';
@@ -779,7 +779,7 @@ export default function StudentProfile() {
                   required
                 />
                 {emailMessage && (
-                  <p className="text-sm" style={{ color: emailMessage.includes("sent") ? "#22D3EE" : "#FCA5A5" }}>
+                  <p className="text-sm" style={{ color: emailMessage.includes("sent") ? "#FFFFFF" : "#FCA5A5" }}>
                     {emailMessage}
                   </p>
                 )}
@@ -835,7 +835,7 @@ export default function StudentProfile() {
               borderColor: 'rgba(34, 211, 238, 0.2)'
             }}
           >
-            <Building2 className="w-5 h-5" style={{ color: '#22D3EE' }} />
+            <Building2 className="w-5 h-5" style={{ color: '#FFFFFF' }} />
             <div className="flex-1">
               <p className="text-sm" style={{ color: '#9CA3AF' }}>Institute</p>
               <p className="text-lg font-semibold" style={{ color: '#E5E7EB' }}>CodingGita</p>
@@ -847,15 +847,15 @@ export default function StudentProfile() {
               onClick={() => setShowPasswordForm(true)}
               className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg transition border"
               style={{ 
-                backgroundColor: 'rgba(34, 211, 238, 0.1)',
-                color: '#67E8F9',
-                borderColor: 'rgba(34, 211, 238, 0.3)'
+                backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                color: '#FFFFFF',
+                borderColor: 'rgba(255, 255, 255, 0.3)'
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.15)';
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.1)';
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
               }}
             >
               <Lock className="w-5 h-5" />
@@ -867,8 +867,8 @@ export default function StudentProfile() {
             <div 
               className="p-4 rounded-lg space-y-3 border"
               style={{ 
-                backgroundColor: 'rgba(34, 211, 238, 0.05)',
-                borderColor: 'rgba(34, 211, 238, 0.2)'
+                backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                borderColor: 'rgba(255, 255, 255, 0.2)'
               }}
             >
               <form onSubmit={handlePasswordChange} className="space-y-3">
@@ -880,11 +880,11 @@ export default function StudentProfile() {
                   className="w-full px-4 py-2 rounded-lg border transition focus:outline-none"
                   style={{ 
                     backgroundColor: '#0B1220',
-                    borderColor: 'rgba(34, 211, 238, 0.3)',
+                    borderColor: 'rgba(255, 255, 255, 0.3)',
                     color: '#E5E7EB'
                   }}
                   onFocus={(e) => {
-                    e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.5)';
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)';
                   }}
                   onBlur={(e) => {
                     e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.3)';
@@ -899,11 +899,11 @@ export default function StudentProfile() {
                   className="w-full px-4 py-2 rounded-lg border transition focus:outline-none"
                   style={{ 
                     backgroundColor: '#0B1220',
-                    borderColor: 'rgba(34, 211, 238, 0.3)',
+                    borderColor: 'rgba(255, 255, 255, 0.3)',
                     color: '#E5E7EB'
                   }}
                   onFocus={(e) => {
-                    e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.5)';
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)';
                   }}
                   onBlur={(e) => {
                     e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.3)';
@@ -911,7 +911,7 @@ export default function StudentProfile() {
                   required
                 />
                 {passwordMessage && (
-                  <p className="text-sm" style={{ color: passwordMessage.includes("sent") ? "#22D3EE" : "#FCA5A5" }}>
+                  <p className="text-sm" style={{ color: passwordMessage.includes("sent") ? "#FFFFFF" : "#FCA5A5" }}>
                     {passwordMessage}
                   </p>
                 )}

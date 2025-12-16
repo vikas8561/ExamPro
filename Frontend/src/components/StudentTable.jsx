@@ -8,7 +8,7 @@ const StudentTable = ({ type, data }) => {
         className="rounded-2xl p-6 text-center border"
         style={{ 
           backgroundColor: '#0B1220',
-          borderColor: 'rgba(34, 211, 238, 0.2)',
+          borderColor: 'rgba(255, 255, 255, 0.2)',
           color: '#9CA3AF'
         }}
       >
@@ -23,17 +23,17 @@ const StudentTable = ({ type, data }) => {
     }
     
     .custom-scrollbar::-webkit-scrollbar-track {
-      background: rgba(34, 211, 238, 0.1);
+      background: rgba(255, 255, 255, 0.1);
       border-radius: 10px;
     }
     
     .custom-scrollbar::-webkit-scrollbar-thumb {
-      background: rgba(34, 211, 238, 0.3);
+      background: rgba(255, 255, 255, 0.3);
       border-radius: 10px;
     }
     
     .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-      background: rgba(34, 211, 238, 0.5);
+      background: rgba(255, 255, 255, 0.5);
     }
   `;
 
@@ -44,12 +44,12 @@ const StudentTable = ({ type, data }) => {
         className="rounded-2xl shadow-xl border overflow-hidden"
         style={{ 
           backgroundColor: '#0B1220',
-          borderColor: 'rgba(34, 211, 238, 0.2)'
+          borderColor: 'rgba(255, 255, 255, 0.2)'
         }}
       >
         <div className="h-[calc(100vh-200px)] overflow-y-auto scroll-smooth custom-scrollbar">
           <table className="w-full">
-            <thead className="sticky top-0 z-10 shadow-lg" style={{ backgroundColor: '#0B1220', borderBottom: '2px solid rgba(34, 211, 238, 0.3)' }}>
+            <thead className="sticky top-0 z-10 shadow-lg" style={{ backgroundColor: '#0B1220', borderBottom: '2px solid rgba(255, 255, 255, 0.3)' }}>
               <tr>
                 <th className="p-6 text-left font-semibold text-lg" style={{ color: '#E5E7EB' }}>📝 Test Name</th>
                 {type === "completed" && (
@@ -70,10 +70,10 @@ const StudentTable = ({ type, data }) => {
                   key={index} 
                   className="transition-all duration-200 group"
                   style={{ 
-                    borderBottom: '1px solid rgba(34, 211, 238, 0.1)'
+                    borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.05)';
+                    e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.backgroundColor = 'transparent';
@@ -84,9 +84,9 @@ const StudentTable = ({ type, data }) => {
                       <div 
                         className="w-10 h-10 rounded-lg flex items-center justify-center font-bold text-lg"
                         style={{
-                          background: 'linear-gradient(135deg, rgba(34, 211, 238, 0.2), rgba(34, 211, 238, 0.1))',
-                          border: '1px solid rgba(34, 211, 238, 0.3)',
-                          color: '#22D3EE'
+                          background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.1))',
+                          border: '1px solid rgba(255, 255, 255, 0.3)',
+                          color: '#FFFFFF'
                         }}
                       >
                         {index + 1}
@@ -97,9 +97,9 @@ const StudentTable = ({ type, data }) => {
                           <div 
                             className="text-sm capitalize px-2 py-1 rounded-full inline-block mt-1"
                             style={{
-                              backgroundColor: 'rgba(34, 211, 238, 0.1)',
-                              color: '#67E8F9',
-                              border: '1px solid rgba(34, 211, 238, 0.2)'
+                              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                              color: '#FFFFFF',
+                              border: '1px solid rgba(255, 255, 255, 0.2)'
                             }}
                           >
                             {item.testId.type}
@@ -137,27 +137,27 @@ const StudentTable = ({ type, data }) => {
                       }
                       const score = item.mentorScore !== null ? item.mentorScore : (item.maxScore ? Math.round((item.totalScore / item.maxScore) * 100) : 0);
                       
-                      // Use cyan-based colors for scores, with variations
+                      // Use white-based colors for scores, with variations
                       let scoreColor, scoreBg, scoreBorder, scoreShadow;
                       if (score >= 90) {
-                        scoreColor = '#22D3EE';
-                        scoreBg = 'rgba(34, 211, 238, 0.2)';
-                        scoreBorder = 'rgba(34, 211, 238, 0.5)';
-                        scoreShadow = '0 0 20px rgba(34, 211, 238, 0.3)';
+                        scoreColor = '#FFFFFF';
+                        scoreBg = 'rgba(255, 255, 255, 0.2)';
+                        scoreBorder = 'rgba(255, 255, 255, 0.5)';
+                        scoreShadow = '0 0 20px rgba(255, 255, 255, 0.3)';
                       } else if (score >= 80) {
-                        scoreColor = '#67E8F9';
-                        scoreBg = 'rgba(103, 232, 249, 0.15)';
-                        scoreBorder = 'rgba(103, 232, 249, 0.4)';
-                        scoreShadow = '0 0 15px rgba(103, 232, 249, 0.2)';
+                        scoreColor = '#FFFFFF';
+                        scoreBg = 'rgba(255, 255, 255, 0.15)';
+                        scoreBorder = 'rgba(255, 255, 255, 0.4)';
+                        scoreShadow = '0 0 15px rgba(255, 255, 255, 0.2)';
                       } else if (score >= 70) {
-                        scoreColor = '#7DD3FC';
-                        scoreBg = 'rgba(125, 211, 252, 0.15)';
-                        scoreBorder = 'rgba(125, 211, 252, 0.4)';
-                        scoreShadow = '0 0 10px rgba(125, 211, 252, 0.2)';
+                        scoreColor = '#FFFFFF';
+                        scoreBg = 'rgba(255, 255, 255, 0.15)';
+                        scoreBorder = 'rgba(255, 255, 255, 0.4)';
+                        scoreShadow = '0 0 10px rgba(255, 255, 255, 0.2)';
                       } else if (score >= 60) {
-                        scoreColor = '#A5F3FC';
-                        scoreBg = 'rgba(165, 243, 252, 0.15)';
-                        scoreBorder = 'rgba(165, 243, 252, 0.4)';
+                        scoreColor = '#FFFFFF';
+                        scoreBg = 'rgba(255, 255, 255, 0.15)';
+                        scoreBorder = 'rgba(255, 255, 255, 0.4)';
                         scoreShadow = 'none';
                       } else {
                         scoreColor = '#E5E7EB';
@@ -187,8 +187,8 @@ const StudentTable = ({ type, data }) => {
                       <div 
                         className="rounded-lg p-3 border"
                         style={{
-                          backgroundColor: 'rgba(34, 211, 238, 0.05)',
-                          borderColor: 'rgba(34, 211, 238, 0.2)'
+                          backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                          borderColor: 'rgba(255, 255, 255, 0.2)'
                         }}
                       >
                         <p className="text-sm font-bold" style={{ color: '#E5E7EB' }}>
@@ -220,19 +220,19 @@ const StudentTable = ({ type, data }) => {
                     {(() => {
                       const statusColors = {
                         "Assigned": {
-                          bg: 'rgba(34, 211, 238, 0.15)',
-                          color: '#7DD3FC',
-                          border: 'rgba(34, 211, 238, 0.3)'
+                          bg: 'rgba(255, 255, 255, 0.15)',
+                          color: '#FFFFFF',
+                          border: 'rgba(255, 255, 255, 0.3)'
                         },
                         "In Progress": {
-                          bg: 'rgba(34, 211, 238, 0.2)',
-                          color: '#22D3EE',
-                          border: 'rgba(34, 211, 238, 0.4)'
+                          bg: 'rgba(255, 255, 255, 0.2)',
+                          color: '#FFFFFF',
+                          border: 'rgba(255, 255, 255, 0.4)'
                         },
                         "Completed": {
-                          bg: 'rgba(34, 211, 238, 0.15)',
-                          color: '#67E8F9',
-                          border: 'rgba(34, 211, 238, 0.3)'
+                          bg: 'rgba(255, 255, 255, 0.15)',
+                          color: '#FFFFFF',
+                          border: 'rgba(255, 255, 255, 0.3)'
                         }
                       };
                       const colors = statusColors[item.status] || {

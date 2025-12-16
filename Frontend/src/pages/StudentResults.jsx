@@ -38,17 +38,17 @@ const StudentResults = () => {
             <span 
               className="flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-300 cursor-pointer"
               style={{
-                backgroundColor: 'rgba(34, 211, 238, 0.1)',
-                borderColor: 'rgba(34, 211, 238, 0.3)',
-                color: '#67E8F9'
+                backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                borderColor: 'rgba(255, 255, 255, 0.3)',
+                color: '#FFFFFF'
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.15)';
-                e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.5)';
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.1)';
-                e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.3)';
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
               }}
             >
               🎯 Track Progress
@@ -56,17 +56,17 @@ const StudentResults = () => {
             <span 
               className="flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-300 cursor-pointer"
               style={{
-                backgroundColor: 'rgba(34, 211, 238, 0.1)',
-                borderColor: 'rgba(34, 211, 238, 0.3)',
-                color: '#67E8F9'
+                backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                borderColor: 'rgba(255, 255, 255, 0.3)',
+                color: '#FFFFFF'
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.15)';
-                e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.5)';
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.1)';
-                e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.3)';
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
               }}
             >
               📊 Analyze Performance
@@ -74,17 +74,17 @@ const StudentResults = () => {
             <span 
               className="flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-300 cursor-pointer"
               style={{
-                backgroundColor: 'rgba(34, 211, 238, 0.1)',
-                borderColor: 'rgba(34, 211, 238, 0.3)',
-                color: '#67E8F9'
+                backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                borderColor: 'rgba(255, 255, 255, 0.3)',
+                color: '#FFFFFF'
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.15)';
-                e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.5)';
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.1)';
-                e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.3)';
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
               }}
             >
               🏆 Celebrate Achievements

@@ -8,17 +8,17 @@ const scrollbarStyles = `
   }
   
   .custom-scrollbar::-webkit-scrollbar-track {
-    background: rgba(34, 211, 238, 0.1);
+    background: rgba(255, 255, 255, 0.1);
     border-radius: 10px;
   }
   
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: rgba(34, 211, 238, 0.3);
+    background: rgba(255, 255, 255, 0.3);
     border-radius: 10px;
   }
   
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: rgba(34, 211, 238, 0.5);
+    background: rgba(255, 255, 255, 0.5);
   }
 `;
 
@@ -89,7 +89,7 @@ const UpcomingTests = ({ data }) => {
         className="rounded-2xl p-6 text-center border"
         style={{ 
           backgroundColor: '#0B1220',
-          borderColor: 'rgba(34, 211, 238, 0.2)',
+          borderColor: 'rgba(255, 255, 255, 0.2)',
           color: '#9CA3AF'
         }}
       >
@@ -105,12 +105,12 @@ const UpcomingTests = ({ data }) => {
         className="rounded-2xl overflow-hidden border"
         style={{ 
           backgroundColor: '#0B1220',
-          borderColor: 'rgba(34, 211, 238, 0.2)'
+          borderColor: 'rgba(255, 255, 255, 0.2)'
         }}
       >
       <div className="max-h-96 overflow-y-auto scroll-smooth custom-scrollbar">
         <table className="w-full">
-          <thead className="sticky top-0 z-10 shadow-lg" style={{ backgroundColor: '#0B1220', borderBottom: '2px solid rgba(34, 211, 238, 0.3)' }}>
+          <thead className="sticky top-0 z-10 shadow-lg" style={{ backgroundColor: '#0B1220', borderBottom: '2px solid rgba(255, 255, 255, 0.3)' }}>
             <tr>
               <th className="p-4 text-left" style={{ color: '#E5E7EB' }}>Test Name</th>
               <th className="p-4 text-left" style={{ color: '#E5E7EB' }}>Date</th>
@@ -128,10 +128,10 @@ const UpcomingTests = ({ data }) => {
                   key={index} 
                   className="transition-colors duration-200"
                   style={{ 
-                    borderBottom: '1px solid rgba(34, 211, 238, 0.1)'
+                    borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.05)';
+                    e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.backgroundColor = 'transparent';
@@ -148,7 +148,7 @@ const UpcomingTests = ({ data }) => {
                   </td>
                   <td className="p-4">
                     {hasStarted ? (
-                      <span className="font-medium" style={{ color: '#22D3EE' }}>Test Available</span>
+                      <span className="font-medium" style={{ color: '#FFFFFF' }}>Test Available</span>
                     ) : (
                       <span className="font-medium" style={{ color: '#FDE047' }}>{timeRemaining}</span>
                     )}
@@ -159,7 +159,7 @@ const UpcomingTests = ({ data }) => {
                         onClick={() => handleStartTest(item._id)}
                         className="px-4 py-2 rounded-lg font-medium transition-all"
                         style={{ 
-                          backgroundColor: '#22D3EE',
+                          backgroundColor: '#FFFFFF',
                           color: '#020617'
                         }}
                         onMouseEnter={(e) => {

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import apiRequest from '../services/api';
 import { Link, useNavigate } from 'react-router-dom';
+import { Search, X as CloseIcon } from 'lucide-react';
 
 // Add custom styles for card animations
 const cardAnimationStyles = `
@@ -95,6 +96,7 @@ const CountdownTimer = ({ startTime, onTimerComplete }) => {
 export default function StudentCodingTests() {
   const [tests, setTests] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
   const nav = useNavigate();
 
   useEffect(() => {
@@ -149,20 +151,20 @@ export default function StudentCodingTests() {
 
   const getStatusStyle = (status) => {
     const baseStyle = {
-      backgroundColor: 'rgba(34, 211, 238, 0.1)',
-      borderColor: 'rgba(34, 211, 238, 0.3)',
-      color: '#67E8F9' // cyan-300
+      backgroundColor: 'rgba(255, 255, 255, 0.1)',
+      borderColor: 'rgba(255, 255, 255, 0.3)',
+      color: '#FFFFFF'
     };
 
     switch (status) {
       case "Assigned":
-        return { ...baseStyle, color: '#7DD3FC' }; // cyan-300
+        return { ...baseStyle, color: '#FFFFFF' };
       case "In Progress":
-        return { ...baseStyle, color: '#22D3EE', backgroundColor: 'rgba(34, 211, 238, 0.15)' }; // cyan-400, slightly brighter
+        return { ...baseStyle, color: '#FFFFFF', backgroundColor: 'rgba(255, 255, 255, 0.15)' };
       case "Completed":
-        return { ...baseStyle, color: '#67E8F9' }; // cyan-300
+        return { ...baseStyle, color: '#FFFFFF' };
       case "Overdue":
-        return { ...baseStyle, color: '#A5F3FC', backgroundColor: 'rgba(34, 211, 238, 0.08)' }; // cyan-200, lighter
+        return { ...baseStyle, color: '#FFFFFF', backgroundColor: 'rgba(255, 255, 255, 0.08)' };
       default:
         return baseStyle;
     }
@@ -173,6 +175,18 @@ export default function StudentCodingTests() {
     nav(`/student/take-coding/${assignmentId}`);
   };
 
+  const filteredTests = tests.filter((test) => {
+    // Search filter
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    return (
+      (test.testId?.title || '').toLowerCase().includes(term) ||
+      (test.testId?.subject || '').toLowerCase().includes(term) ||
+      (test.mentorId?.name || '').toLowerCase().includes(term) ||
+      test.status.toLowerCase().includes(term)
+    );
+  });
+
   if (loading) return <div className="p-6">Loading...</div>;
 
   return (
@@ -182,19 +196,84 @@ export default function StudentCodingTests() {
         {/* Header Section */}
         <div className="sticky top-0 z-50 relative mb-8">
           <div className="relative bg-slate-800/95 backdrop-blur-md border border-slate-700/50 rounded-2xl p-6 shadow-lg">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-slate-800/70 rounded-xl shadow-sm">
-                <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: '#22D3EE' }}>
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                </svg>
+            {/* Title and Stats Row */}
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6 gap-4">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-slate-800/70 rounded-xl shadow-sm">
+                  <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: '#FFFFFF' }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                  </svg>
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold text-white">
+                    Coding Tests
+                  </h1>
+                  <p className="text-slate-400 text-sm mt-1">
+                    {tests.length} coding test{tests.length !== 1 ? 's' : ''} available • {filteredTests.length} showing
+                  </p>
+                </div>
               </div>
-              <div>
-                <h1 className="text-3xl font-bold text-white">
-                  Coding Tests
-                </h1>
-                <p className="text-slate-400 text-sm mt-1">
-                  {tests.length} coding test{tests.length !== 1 ? 's' : ''} available
-                </p>
+
+              {/* Search Bar */}
+              <div className="flex items-center gap-3">
+                <div className="relative max-w-md w-full lg:w-80">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <Search className="h-5 w-5 transition-colors duration-200" style={{ color: '#FFFFFF' }} />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Search coding tests..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-12 pr-12 py-3 rounded-xl focus:outline-none transition-all duration-300"
+                    style={{
+                      backgroundColor: '#1E293B',
+                      border: '1px solid rgba(255, 255, 255, 0.3)',
+                      color: '#FFFFFF',
+                      boxShadow: 'none'
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)';
+                      e.currentTarget.style.boxShadow = '0 0 0 2px rgba(255, 255, 255, 0.1)';
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+                      e.currentTarget.style.boxShadow = 'none';
+                    }}
+                    onMouseEnter={(e) => {
+                      if (document.activeElement !== e.currentTarget) {
+                        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.4)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (document.activeElement !== e.currentTarget) {
+                        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+                      }
+                    }}
+                  />
+                  <style>{`
+                    input::placeholder {
+                      color: #9CA3AF !important;
+                      opacity: 1;
+                    }
+                  `}</style>
+                  {searchTerm && (
+                    <button
+                      onClick={() => setSearchTerm('')}
+                      className="absolute inset-y-0 right-0 pr-4 flex items-center transition-colors duration-200"
+                      style={{ color: '#FFFFFF' }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.color = '#E5E7EB';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.color = '#FFFFFF';
+                      }}
+                      aria-label="Clear search"
+                    >
+                      <CloseIcon className="h-5 w-5" />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -205,25 +284,30 @@ export default function StudentCodingTests() {
             <div className="text-2xl text-slate-400 mb-4">No coding tests available</div>
             <p className="text-slate-500">You don't have any coding test assignments yet.</p>
           </div>
+        ) : filteredTests.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="text-2xl text-slate-400 mb-4">No coding tests match your search</div>
+            <p className="text-slate-500">Try adjusting your search terms.</p>
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {tests.map((assignment, index) => (
+            {filteredTests.map((assignment, index) => (
               <div
                 key={assignment._id}
                 className="group relative backdrop-blur-sm rounded-2xl p-6 border transition-all duration-300 cursor-pointer animate-slide-in-up overflow-hidden"
                 style={{ 
                   animationDelay: `${index * 100}ms`,
                   backgroundColor: '#0B1220',
-                  borderColor: 'rgba(34, 211, 238, 0.2)',
-                  boxShadow: '0 0 0 rgba(34, 211, 238, 0)'
+                  borderColor: 'rgba(255, 255, 255, 0.2)',
+                  boxShadow: '0 0 0 rgba(255, 255, 255, 0)'
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.4)';
-                  e.currentTarget.style.boxShadow = '0 20px 25px -5px rgba(34, 211, 238, 0.1), 0 10px 10px -5px rgba(34, 211, 238, 0.04)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.4)';
+                  e.currentTarget.style.boxShadow = '0 20px 25px -5px rgba(255, 255, 255, 0.1), 0 10px 10px -5px rgba(255, 255, 255, 0.04)';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.2)';
-                  e.currentTarget.style.boxShadow = '0 0 0 rgba(34, 211, 238, 0)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                  e.currentTarget.style.boxShadow = '0 0 0 rgba(255, 255, 255, 0)';
                 }}
                 onClick={(e) => {
                   e.preventDefault();
@@ -231,29 +315,44 @@ export default function StudentCodingTests() {
                 }}
               >
                 {/* Subtle gradient overlay on hover */}
-                <div className="absolute inset-0 rounded-2xl transition-all duration-300 pointer-events-none opacity-0 group-hover:opacity-100" style={{ background: 'linear-gradient(to bottom right, rgba(34, 211, 238, 0.05), rgba(34, 211, 238, 0.05))' }}></div>
+                <div className="absolute inset-0 rounded-2xl transition-all duration-300 pointer-events-none opacity-0 group-hover:opacity-100" style={{ background: 'linear-gradient(to bottom right, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.05))' }}></div>
 
                 <div className="relative z-10">
-                  <div className="flex items-start justify-between mb-5">
-                    <div className="flex items-start gap-3 flex-1">
+                  <div className="mb-3" style={{ height: '85px' }}>
+                    <div className="flex items-start gap-3 h-full">
                       <div className="p-3 bg-slate-800/70 rounded-xl shadow-sm group-hover:shadow-md transition-shadow duration-300 flex-shrink-0">
-                        <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: '#22D3EE' }}>
+                        <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: '#FFFFFF' }}>
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                         </svg>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-xl font-bold mb-1.5 leading-tight transition-colors duration-200" style={{ color: '#E5E7EB' }}>
+                      <div className="flex-1 min-w-0 pr-3">
+                        <div 
+                          className="text-xl font-bold transition-colors duration-200" 
+                          title={assignment.testId?.title || "Coding Test"}
+                          style={{ 
+                            color: '#E5E7EB',
+                            lineHeight: '1.5',
+                            minHeight: '3.75rem',
+                            maxHeight: '3.75rem',
+                            overflow: 'hidden',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            textOverflow: 'ellipsis',
+                            wordBreak: 'break-word',
+                            cursor: 'help'
+                          }}
+                        >
                           {assignment.testId?.title || "Coding Test"}
-                        </h3>
-                        <p className="text-sm text-slate-400">Coding Challenge</p>
+                        </div>
                       </div>
+                      <span 
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm border flex-shrink-0 self-start"
+                        style={getStatusStyle(assignment.status)}
+                      >
+                        {assignment.status}
+                      </span>
                     </div>
-                    <span 
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold ml-3 flex-shrink-0 shadow-sm border"
-                      style={getStatusStyle(assignment.status)}
-                    >
-                      {assignment.status}
-                    </span>
                   </div>
 
                   {/* Test Details - Improved Design with Fixed Widths */}
@@ -321,7 +420,7 @@ export default function StudentCodingTests() {
                 </div>
 
                 {/* Action Buttons Section */}
-                <div className="mt-6 pt-4" style={{ borderTop: '1px solid rgba(34, 211, 238, 0.2)' }}>
+                <div className="mt-6 pt-4" style={{ borderTop: '1px solid rgba(255, 255, 255, 0.2)' }}>
                   {assignment.status === "Assigned" && isTestNotStarted(assignment.startTime) && (
                     <div className="mb-4">
                       <CountdownTimer
@@ -336,7 +435,7 @@ export default function StudentCodingTests() {
                       onClick={() => handleStartTest(assignment._id)}
                       className="w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
                       style={{ 
-                        backgroundColor: '#22D3EE',
+                        backgroundColor: '#FFFFFF',
                         color: '#020617',
                         border: '2px solid transparent',
                         zIndex: 9999,
@@ -485,24 +584,14 @@ export default function StudentCodingTests() {
                 </div>
 
                 {/* Date Information */}
-                {(assignment.startedAt || assignment.completedAt) && (
+                {assignment.completedAt && (
                   <div className="mt-4 pt-3 border-t border-slate-800/40 space-y-1.5">
-                    {assignment.startedAt && (
-                      <div className="flex items-center gap-2 text-xs text-slate-400">
-                        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                        <span>Started: {new Date(assignment.startedAt).toLocaleDateString()}</span>
-                      </div>
-                    )}
-                    {assignment.completedAt && (
-                      <div className="flex items-center gap-2 text-xs text-slate-400">
-                        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <span>Completed: {new Date(assignment.completedAt).toLocaleDateString()}</span>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2 text-xs text-slate-400">
+                      <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span>Completed: {new Date(assignment.completedAt).toLocaleDateString()}</span>
+                    </div>
                   </div>
                 )}
               </div>

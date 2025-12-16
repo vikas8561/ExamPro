@@ -169,7 +169,7 @@ const PracticeTests = () => {
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6 gap-4">
               <div className="flex items-center gap-4">
                 <div className="p-3 bg-slate-800/70 rounded-xl shadow-sm">
-                  <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: '#22D3EE' }}>
+                  <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: '#FFFFFF' }}>
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
@@ -187,7 +187,7 @@ const PracticeTests = () => {
               <div className="flex items-center gap-3">
                 <div className="relative max-w-md w-full lg:w-80">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: '#FFFFFF' }}>
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                   </div>
@@ -196,12 +196,49 @@ const PracticeTests = () => {
                     placeholder="Search practice tests..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-12 pr-12 py-3 bg-slate-700/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-500/50 focus:border-slate-500/50 transition-all duration-300 hover:bg-slate-700/60 hover:border-slate-500/50 backdrop-blur-sm"
+                    className="w-full pl-12 pr-12 py-3 rounded-xl focus:outline-none transition-all duration-300"
+                    style={{
+                      backgroundColor: '#1E293B',
+                      border: '1px solid rgba(255, 255, 255, 0.3)',
+                      color: '#FFFFFF',
+                      boxShadow: 'none'
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)';
+                      e.currentTarget.style.boxShadow = '0 0 0 2px rgba(255, 255, 255, 0.1)';
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+                      e.currentTarget.style.boxShadow = 'none';
+                    }}
+                    onMouseEnter={(e) => {
+                      if (document.activeElement !== e.currentTarget) {
+                        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.4)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (document.activeElement !== e.currentTarget) {
+                        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+                      }
+                    }}
                   />
+                  <style>{`
+                    input::placeholder {
+                      color: #9CA3AF !important;
+                      opacity: 1;
+                    }
+                  `}</style>
                   {searchTerm && (
                     <button
                       onClick={() => setSearchTerm('')}
-                      className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-white transition-colors duration-200"
+                      className="absolute inset-y-0 right-0 pr-4 flex items-center transition-colors duration-200"
+                      style={{ color: '#FFFFFF' }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.color = '#E5E7EB';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.color = '#FFFFFF';
+                      }}
                     >
                       <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -288,42 +325,57 @@ const PracticeTests = () => {
                 style={{ 
                   animationDelay: `${index * 100}ms`,
                   backgroundColor: '#0B1220',
-                  borderColor: 'rgba(34, 211, 238, 0.2)',
-                  boxShadow: '0 0 0 rgba(34, 211, 238, 0)'
+                  borderColor: 'rgba(255, 255, 255, 0.2)',
+                  boxShadow: '0 0 0 rgba(255, 255, 255, 0)'
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.4)';
-                  e.currentTarget.style.boxShadow = '0 20px 25px -5px rgba(34, 211, 238, 0.1), 0 10px 10px -5px rgba(34, 211, 238, 0.04)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.4)';
+                  e.currentTarget.style.boxShadow = '0 20px 25px -5px rgba(255, 255, 255, 0.1), 0 10px 10px -5px rgba(255, 255, 255, 0.04)';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.2)';
-                  e.currentTarget.style.boxShadow = '0 0 0 rgba(34, 211, 238, 0)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                  e.currentTarget.style.boxShadow = '0 0 0 rgba(255, 255, 255, 0)';
                 }}
               >
                 {/* Subtle gradient overlay on hover */}
-                <div className="absolute inset-0 rounded-2xl transition-all duration-300 pointer-events-none opacity-0 group-hover:opacity-100" style={{ background: 'linear-gradient(to bottom right, rgba(34, 211, 238, 0.05), rgba(34, 211, 238, 0.05))' }}></div>
+                <div className="absolute inset-0 rounded-2xl transition-all duration-300 pointer-events-none opacity-0 group-hover:opacity-100" style={{ background: 'linear-gradient(to bottom right, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.05))' }}></div>
 
                 <div className="relative z-10">
                   {/* Header Section */}
-                  <div className="flex items-start justify-between mb-5">
-                    <div className="flex items-start gap-3 flex-1">
+                  <div className="mb-1" style={{ height: '85px' }}>
+                    <div className="flex items-start gap-3 h-full">
                       <div className="p-3 bg-slate-800/70 rounded-xl shadow-sm group-hover:shadow-md transition-shadow duration-300 flex-shrink-0">
-                        <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: '#22D3EE' }}>
+                        <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: '#FFFFFF' }}>
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <h3 className="text-xl font-bold leading-tight transition-colors duration-200" style={{ color: '#E5E7EB' }}>
+                        <div className="flex items-start gap-2">
+                          <div 
+                            className="text-xl font-bold transition-colors duration-200 flex-1" 
+                            title={test.title}
+                            style={{ 
+                              color: '#E5E7EB',
+                              lineHeight: '1.5',
+                              minHeight: '3.75rem',
+                              maxHeight: '3.75rem',
+                              overflow: 'hidden',
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                              textOverflow: 'ellipsis',
+                              wordBreak: 'break-word',
+                              cursor: 'help'
+                            }}
+                          >
                             {test.title}
-                          </h3>
+                          </div>
                           {attemptedTests.has(test._id) && (
-                            <span className="px-2 py-0.5 rounded text-xs font-semibold" style={{ backgroundColor: 'rgba(34, 211, 238, 0.1)', color: '#67E8F9', border: '1px solid rgba(34, 211, 238, 0.3)' }}>
+                            <span className="px-2 py-0.5 rounded text-xs font-semibold flex-shrink-0" style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', color: '#FFFFFF', border: '1px solid rgba(255, 255, 255, 0.3)' }}>
                               Attempted
                             </span>
                           )}
                         </div>
-                        <p className="text-sm text-slate-400">Practice Test</p>
                       </div>
                     </div>
                   </div>
@@ -374,12 +426,12 @@ const PracticeTests = () => {
                   </div>
 
                   {/* Action Buttons Section */}
-                  <div className="mt-6 pt-4" style={{ borderTop: '1px solid rgba(34, 211, 238, 0.2)' }}>
+                  <div className="mt-6 pt-4" style={{ borderTop: '1px solid rgba(255, 255, 255, 0.2)' }}>
                     <button
                       onClick={() => handleStartPracticeTest(test._id)}
                       className="w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md mb-3"
                       style={{ 
-                        backgroundColor: '#22D3EE',
+                        backgroundColor: '#FFFFFF',
                         color: '#020617',
                         border: '2px solid transparent'
                       }}
@@ -398,35 +450,20 @@ const PracticeTests = () => {
                         onClick={() => handleViewResults(test._id)}
                         className="w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
                         style={{ 
-                          backgroundColor: 'rgba(34, 211, 238, 0.1)',
-                          color: '#67E8F9',
-                          border: '1px solid rgba(34, 211, 238, 0.3)'
+                          backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                          color: '#FFFFFF',
+                          border: '1px solid rgba(255, 255, 255, 0.3)'
                         }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.15)';
+                          e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.1)';
+                          e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
                         }}
                       >
                         View Previous Results
                       </button>
                     )}
-                  </div>
-
-                  {/* Footer Info */}
-                  <div className="mt-4 pt-3" style={{ borderTop: '1px solid rgba(34, 211, 238, 0.2)' }}>
-                    <div className="flex items-center gap-2 text-xs text-slate-400">
-                      <div className="flex items-center gap-1">
-                        <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: '#22D3EE' }}></div>
-                        <span>No proctoring</span>
-                      </div>
-                      <span>•</span>
-                      <div className="flex items-center gap-1">
-                        <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: '#22D3EE' }}></div>
-                        <span>Multiple attempts</span>
-                      </div>
-                    </div>
                   </div>
                 </div>
               </div>

@@ -6,17 +6,17 @@ const scrollbarStyles = `
   }
   
   .custom-scrollbar::-webkit-scrollbar-track {
-    background: rgba(34, 211, 238, 0.1);
+    background: rgba(255, 255, 255, 0.1);
     border-radius: 10px;
   }
   
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: rgba(34, 211, 238, 0.3);
+    background: rgba(255, 255, 255, 0.3);
     border-radius: 10px;
   }
   
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: rgba(34, 211, 238, 0.5);
+    background: rgba(255, 255, 255, 0.5);
   }
 `;
 
@@ -29,7 +29,7 @@ const RecentActivity = ({ data }) => {
         className="rounded-2xl p-6 text-center border"
         style={{ 
           backgroundColor: '#0B1220',
-          borderColor: 'rgba(34, 211, 238, 0.2)',
+          borderColor: 'rgba(255, 255, 255, 0.2)',
           color: '#9CA3AF'
         }}
       >
@@ -91,7 +91,7 @@ const RecentActivity = ({ data }) => {
         className="rounded-2xl overflow-hidden border"
         style={{ 
           backgroundColor: '#0B1220',
-          borderColor: 'rgba(34, 211, 238, 0.2)'
+          borderColor: 'rgba(255, 255, 255, 0.2)'
         }}
       >
       <div className="max-h-80 overflow-y-auto scroll-smooth custom-scrollbar">
@@ -103,16 +103,16 @@ const RecentActivity = ({ data }) => {
                 key={index} 
                 className="flex items-start space-x-3 p-3 rounded-lg transition-colors border"
                 style={{ 
-                  backgroundColor: 'rgba(34, 211, 238, 0.05)',
-                  borderColor: 'rgba(34, 211, 238, 0.1)'
+                  backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                  borderColor: 'rgba(255, 255, 255, 0.1)'
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.1)';
-                  e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.2)';
+                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.05)';
-                  e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.1)';
+                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
                 }}
               >
                 <div className="text-xl flex-shrink-0">

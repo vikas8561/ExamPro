@@ -27,7 +27,7 @@ const Item = ({ to, icon: Icon, children, onClick, end = false }) => {
         }`
       }
       style={({ isActive }) => ({
-        backgroundColor: isActive ? 'rgba(34, 211, 238, 0.15)' : 'transparent'
+        backgroundColor: isActive ? 'rgba(255, 255, 255, 0.15)' : 'transparent'
       })}
     >
       {({ isActive }) => (
@@ -36,7 +36,7 @@ const Item = ({ to, icon: Icon, children, onClick, end = false }) => {
           {isActive && (
             <div 
               className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r-full"
-              style={{ backgroundColor: '#22D3EE' }}
+              style={{ backgroundColor: '#FFFFFF' }}
             ></div>
           )}
           
@@ -47,7 +47,7 @@ const Item = ({ to, icon: Icon, children, onClick, end = false }) => {
           `}>
             <Icon 
               className="w-5 h-5" 
-              style={{ color: isActive ? '#22D3EE' : undefined }}
+              style={{ color: isActive ? '#FFFFFF' : undefined }}
             />
           </div>
           
@@ -68,7 +68,7 @@ const Item = ({ to, icon: Icon, children, onClick, end = false }) => {
               ml-auto w-4 h-4 transition-all duration-300
               ${isActive ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0"}
             `}
-            style={{ color: isActive ? '#22D3EE' : undefined }}
+            style={{ color: isActive ? '#FFFFFF' : undefined }}
           />
         </>
       )}
@@ -123,14 +123,14 @@ export default function StudentSidebar({ isOpen, onToggle }) {
         `}
         style={{ 
           backgroundColor: '#0B1220',
-          borderRight: '1px solid rgba(34, 211, 238, 0.2)'
+          borderRight: '1px solid rgba(255, 255, 255, 0.2)'
         }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between mb-8 pb-6" style={{ borderBottom: '1px solid rgba(34, 211, 238, 0.2)' }}>
+        <div className="flex items-center justify-between mb-8 pb-6" style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.2)' }}>
           <div className="flex items-center gap-3">
             <div className="p-2 bg-slate-800/70 rounded-xl">
-              <GraduationCap className="w-6 h-6" style={{ color: '#22D3EE' }} />
+              <GraduationCap className="w-6 h-6" style={{ color: '#FFFFFF' }} />
             </div>
             <div>
               <h1 className="text-xl font-bold" style={{ color: '#E5E7EB' }}>
@@ -148,7 +148,7 @@ export default function StudentSidebar({ isOpen, onToggle }) {
               backgroundColor: 'transparent'
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.1)';
+              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.backgroundColor = 'transparent';
@@ -175,7 +175,7 @@ export default function StudentSidebar({ isOpen, onToggle }) {
         </nav>
 
         {/* Footer Section */}
-        <div className="mt-auto pt-4 space-y-3" style={{ borderTop: '1px solid rgba(34, 211, 238, 0.2)' }}>
+        <div className="mt-auto pt-4 space-y-3" style={{ borderTop: '1px solid rgba(255, 255, 255, 0.2)' }}>
           {/* Profile Button */}
           <NavLink
             to="/student/profile"
@@ -188,7 +188,7 @@ export default function StudentSidebar({ isOpen, onToggle }) {
               }`
             }
             style={({ isActive }) => ({
-              backgroundColor: isActive ? 'rgba(34, 211, 238, 0.15)' : 'rgba(34, 211, 238, 0.05)'
+              backgroundColor: isActive ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.05)'
             })}
           >
             {({ isActive }) => (
@@ -196,16 +196,16 @@ export default function StudentSidebar({ isOpen, onToggle }) {
                 {isActive && (
                   <div 
                     className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r-full"
-                    style={{ backgroundColor: '#22D3EE' }}
+                    style={{ backgroundColor: '#FFFFFF' }}
                   ></div>
                 )}
                 <div 
                   className="p-2 rounded-lg transition-colors"
                   style={{ 
-                    backgroundColor: isActive ? 'rgba(34, 211, 238, 0.2)' : 'rgba(34, 211, 238, 0.1)'
+                    backgroundColor: isActive ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 255, 255, 0.1)'
                   }}
                 >
-                  <User className="w-4 h-4" style={{ color: isActive ? '#22D3EE' : '#67E8F9' }} />
+                  <User className="w-4 h-4" style={{ color: isActive ? '#FFFFFF' : '#FFFFFF' }} />
                 </div>
                 <span 
                   className="font-medium flex-1"
@@ -217,7 +217,7 @@ export default function StudentSidebar({ isOpen, onToggle }) {
                   className={`w-4 h-4 transition-all duration-300 ${
                     profileHovered ? "translate-x-1 opacity-100" : "opacity-0"
                   }`}
-                  style={{ color: '#22D3EE' }}
+                  style={{ color: '#FFFFFF' }}
                 />
               </>
             )}
@@ -233,17 +233,17 @@ export default function StudentSidebar({ isOpen, onToggle }) {
                      shadow-sm hover:shadow-md
                      transform hover:scale-[1.01] active:scale-[0.99]"
             style={{ 
-              backgroundColor: 'rgba(34, 211, 238, 0.1)',
-              color: '#67E8F9',
-              border: '1px solid rgba(34, 211, 238, 0.3)'
+              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+              color: '#FFFFFF',
+              border: '1px solid rgba(255, 255, 255, 0.3)'
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.2)';
-              e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.5)';
+              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.1)';
-              e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.3)';
+              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
             }}
           >
             <LogOut className="w-5 h-5" />
@@ -259,21 +259,21 @@ export default function StudentSidebar({ isOpen, onToggle }) {
         }
         
         .custom-scrollbar::-webkit-scrollbar-track {
-          background: rgba(34, 211, 238, 0.1);
+          background: rgba(255, 255, 255, 0.1);
           border-radius: 10px;
         }
         
         .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(34, 211, 238, 0.3);
+          background: rgba(255, 255, 255, 0.3);
           border-radius: 10px;
         }
         
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(34, 211, 238, 0.5);
+          background: rgba(255, 255, 255, 0.5);
         }
         
         .nav-item:not(.active-nav-item):hover {
-          background-color: rgba(34, 211, 238, 0.08) !important;
+          background-color: rgba(255, 255, 255, 0.08) !important;
         }
       `}</style>
     </>
