@@ -1,7 +1,7 @@
 import React from "react";
 
 export default function StatusPill({ label }) {
-  const base = "px-3 py-1 rounded-full text-sm font-medium transition-all duration-300 hover:scale-105 hover:shadow-md cursor-pointer";
+  const base = "px-3 py-1 text-sm font-medium transition-all duration-300 hover:scale-105 hover:shadow-md cursor-pointer";
   const map = {
     Active: "bg-green-500 text-white hover:bg-green-400",
     Completed: "bg-blue-500 text-white hover:bg-blue-400",

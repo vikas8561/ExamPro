@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import Sidebar from "./components/Sidebar";
 import Dashboard from "./pages/Dashboard";
 import Tests from "./pages/Tests";
 import Users from "./pages/Users";
@@ -27,6 +26,7 @@ import MentorAssignments from "./pages/MentorAssignments";
 import MentorDashboard from "./pages/MentorDashboard";
 import MentorSubmissions from "./pages/MentorSubmissions";
 import ViewCompletedTest from "./pages/ViewCompletedTest";
+import AdminSidebar from "./components/AdminSidebar";
 
 // Protected Route Component
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -53,12 +53,12 @@ const AdminLayout = () => {
 
   return (
     <div className="min-h-screen bg-slate-900 text-white flex">
-      <Sidebar isOpen={sidebarOpen} onToggle={toggleSidebar} />
+      <AdminSidebar isOpen={sidebarOpen} onToggle={toggleSidebar} />
       <main className="flex-1">
         {/* Mobile Header with Hamburger */}
         <div className="lg:hidden bg-slate-800 p-4 border-b border-slate-700">
           <div className="flex items-center justify-between">
-            <h1 className="text-lg font-bold">Proctoring App</h1>
+            <h1 className="text-lg font-bold">Admin Panel</h1>
             <button
               onClick={toggleSidebar}
               className="p-2 hover:bg-slate-700 rounded-md"

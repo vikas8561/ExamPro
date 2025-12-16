@@ -514,11 +514,81 @@ export default function CreateTest() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white p-6">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8">
-          {isEdit ? "Edit Test" : "Create New Test"}
-        </h1>
+    <div
+      className="p-6 min-h-screen flex flex-col"
+      style={{ backgroundColor: "#0B1220" }}
+    >
+      <div className="max-w-5xl mx-auto w-full">
+        {/* Header / Navbar-style section to match admin panel */}
+        <div className="mb-8">
+          <div className="relative bg-slate-800/95 backdrop-blur-md border border-slate-700/50 rounded-2xl p-6 shadow-lg">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+              {/* Left: Icon + Title */}
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-slate-700/60 rounded-xl">
+                  <svg
+                    className="h-8 w-8 text-gray-200"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold" style={{ color: "#E5E7EB" }}>
+                    {isEdit ? "Edit Test" : "Create New Test"}
+                  </h1>
+                  <p className="text-slate-400 text-sm mt-1">
+                    Configure test details, questions, and assignment options
+                  </p>
+                </div>
+              </div>
+
+              {/* Right: Back button */}
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => nav("/admin/tests")}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 shadow-sm hover:shadow-md"
+                  style={{
+                    backgroundColor: "rgba(15, 23, 42, 0.9)",
+                    color: "#E5E7EB",
+                    border: "1px solid rgba(148, 163, 184, 0.6)",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = "rgba(30, 64, 175, 0.6)";
+                    e.currentTarget.style.borderColor = "rgba(191, 219, 254, 0.9)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = "rgba(15, 23, 42, 0.9)";
+                    e.currentTarget.style.borderColor = "rgba(148, 163, 184, 0.6)";
+                  }}
+                >
+                  <svg
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 19l-7-7 7-7"
+                    />
+                  </svg>
+                  <span>Back to Tests</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Basic Test Info */}

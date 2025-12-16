@@ -308,6 +308,14 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
     assignment.deadline = deadline;
     await assignment.save();
 
+    // Update test status from "Draft" to "Active" when assigned to students
+    // Refetch test to ensure we have the latest status
+    const updatedTest = await Test.findById(testId);
+    if (updatedTest && updatedTest.status === "Draft") {
+      updatedTest.status = "Active";
+      await updatedTest.save();
+    }
+
     const populatedAssignment = await Assignment.findById(assignment._id)
       .populate("testId", "title type instructions timeLimit subject")
       .populate("userId", "name email")
@@ -537,14 +545,22 @@ router.post("/assign-all", authenticateToken, requireRole("admin"), async (req, 
       }
     }
 
+    await Promise.all(assignments);
+
+    // Update test status from "Draft" to "Active" when assigned to students
+    // Refetch test to ensure we have the latest status
+    const updatedTest = await Test.findById(testId);
+    if (updatedTest && updatedTest.status === "Draft") {
+      updatedTest.status = "Active";
+      await updatedTest.save();
+    }
+
     if (assignments.length === 0) {
       return res.status(200).json({
         message: "All students already have this assignment",
         assignedCount: 0
       });
     }
-
-    await Promise.all(assignments);
 
     // Emit real-time update to specific student for each assignment
     const io = req.app.get('io');
@@ -642,14 +658,22 @@ router.post("/assign-manual", authenticateToken, requireRole("admin"), async (re
       }
     }
 
+    await Promise.all(assignments);
+
+    // Update test status from "Draft" to "Active" when assigned to students
+    // Refetch test to ensure we have the latest status
+    const updatedTest = await Test.findById(testId);
+    if (updatedTest && updatedTest.status === "Draft") {
+      updatedTest.status = "Active";
+      await updatedTest.save();
+    }
+
     if (assignments.length === 0) {
       return res.status(200).json({
         message: "All selected students already have this assignment",
         assignedCount: 0
       });
     }
-
-    await Promise.all(assignments);
 
     // Emit real-time update to specific student for each assignment
     const io = req.app.get('io');
@@ -738,14 +762,22 @@ router.post("/assign-ru", authenticateToken, requireRole("admin"), async (req, r
       }
     }
 
+    await Promise.all(assignments);
+
+    // Update test status from "Draft" to "Active" when assigned to students
+    // Refetch test to ensure we have the latest status
+    const updatedTest = await Test.findById(testId);
+    if (updatedTest && updatedTest.status === "Draft") {
+      updatedTest.status = "Active";
+      await updatedTest.save();
+    }
+
     if (assignments.length === 0) {
       return res.status(200).json({
         message: "All RU students already have this assignment",
         assignedCount: 0
       });
     }
-
-    await Promise.all(assignments);
 
     // Emit real-time update to specific student for each assignment
     const io = req.app.get('io');
@@ -826,14 +858,22 @@ router.post("/assign-su", authenticateToken, requireRole("admin"), async (req, r
       }
     }
 
+    await Promise.all(assignments);
+
+    // Update test status from "Draft" to "Active" when assigned to students
+    // Refetch test to ensure we have the latest status
+    const updatedTest = await Test.findById(testId);
+    if (updatedTest && updatedTest.status === "Draft") {
+      updatedTest.status = "Active";
+      await updatedTest.save();
+    }
+
     if (assignments.length === 0) {
       return res.status(200).json({
         message: "All SU students already have this assignment",
         assignedCount: 0
       });
     }
-
-    await Promise.all(assignments);
 
     // Emit real-time update to specific student for each assignment
     const io = req.app.get('io');

@@ -7,39 +7,40 @@ export default function Dashboard() {
   const [tests, setTests] = useState([]);
   const [users, setUsers] = useState([]);
   const [reviews, setReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   // Fetch all data from backend when the component mounts
   useEffect(() => {
     const fetchDashboardData = async () => {
-      const token = localStorage.getItem('token');
-      
+      const token = localStorage.getItem("token");
+
       try {
         // Fetch data with limits to improve performance
         const [testsResponse, usersResponse, reviewsResponse] = await Promise.all([
           fetch(`${API_BASE_URL}/tests?limit=20`, {
             headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
           }),
           fetch(`${API_BASE_URL}/users?limit=50`, {
             headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
           }),
           fetch(`${API_BASE_URL}/reviews?limit=10`, {
             headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
-          })
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          }),
         ]);
 
         const [testsData, usersData, reviewsData] = await Promise.all([
           testsResponse.json(),
           usersResponse.json(),
-          reviewsResponse.json()
+          reviewsResponse.json(),
         ]);
 
         setTests(testsData.tests || testsData || []);
@@ -47,68 +48,266 @@ export default function Dashboard() {
         setReviews(reviewsData || []);
       } catch (err) {
         console.error("Error fetching dashboard data:", err);
+      } finally {
+        setLoading(false);
       }
     };
 
     fetchDashboardData();
   }, []);
 
-  return (
-    <div className="p-6">
-      <h2 className="text-3xl font-bold mb-6">Dashboard</h2>
+  if (loading) {
+    return (
+      <div
+        className="p-6 min-h-screen flex items-center justify-center"
+        style={{ backgroundColor: "#0B1220" }}
+      >
+        <div className="text-xl" style={{ color: "#E5E7EB" }}>
+          Loading...
+        </div>
+      </div>
+    );
+  }
 
-      {/* Stats */}
+  const activeTestsCount = tests.filter((t) => t.status === "Active").length;
+  const pendingReviewsCount = reviews.filter((r) => r.status === "Pending").length;
+
+  return (
+    <div
+      className="p-6 min-h-screen"
+      style={{ backgroundColor: "#0B1220" }}
+    >
+      <h2
+        className="text-3xl font-bold mb-6"
+        style={{ color: "#E5E7EB" }}
+      >
+        Admin Dashboard
+      </h2>
+
+      {/* Stats - styled like student dashboard cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-        <div className="rounded-xl border border-slate-700 bg-slate-800 p-6">
-          <p className="text-slate-300">Active Tests</p>
-          <p className="text-3xl font-bold mt-2">
-            {tests.filter((t) => t.status === "Active").length}
+        {/* Active Tests */}
+        <div
+          className="rounded-2xl p-6 border transition-all duration-300"
+          style={{
+            backgroundColor: "#0B1220",
+            borderColor: "rgba(255, 255, 255, 0.2)",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.4)";
+            e.currentTarget.style.boxShadow =
+              "0 10px 25px -5px rgba(255, 255, 255, 0.1)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.2)";
+            e.currentTarget.style.boxShadow = "none";
+          }}
+        >
+          <div className="flex items-center gap-3 mb-2">
+            <div
+              className="p-2 rounded-lg"
+              style={{ backgroundColor: "rgba(255, 255, 255, 0.1)" }}
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                style={{ color: "#FFFFFF" }}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
+              </svg>
+            </div>
+            <p className="text-slate-400">Active Tests</p>
+          </div>
+          <p
+            className="text-4xl font-bold mt-2"
+            style={{ color: "#E5E7EB" }}
+          >
+            {activeTestsCount}
           </p>
         </div>
-        <div className="rounded-xl border border-slate-700 bg-slate-800 p-6">
-          <p className="text-slate-300">Registered Users</p>
-          <p className="text-3xl font-bold mt-2">{users.length}</p>
+
+        {/* Registered Users */}
+        <div
+          className="rounded-2xl p-6 border transition-all duration-300"
+          style={{
+            backgroundColor: "#0B1220",
+            borderColor: "rgba(255, 255, 255, 0.2)",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.4)";
+            e.currentTarget.style.boxShadow =
+              "0 10px 25px -5px rgba(255, 255, 255, 0.1)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.2)";
+            e.currentTarget.style.boxShadow = "none";
+          }}
+        >
+          <div className="flex items-center gap-3 mb-2">
+            <div
+              className="p-2 rounded-lg"
+              style={{ backgroundColor: "rgba(255, 255, 255, 0.1)" }}
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                style={{ color: "#FFFFFF" }}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M17 20h5v-2a3 3 0 00-5.356-1.857M9 20H4v-2a3 3 0 015.356-1.857M15 11a3 3 0 10-6 0 3 3 0 006 0zm6 0a3 3 0 11-6 0 3 3 0 016 0zM9 11a3 3 0 11-6 0 3 3 0 016 0z"
+                />
+              </svg>
+            </div>
+            <p className="text-slate-400">Registered Users</p>
+          </div>
+          <p
+            className="text-4xl font-bold mt-2"
+            style={{ color: "#E5E7EB" }}
+          >
+            {users.length}
+          </p>
         </div>
-        <div className="rounded-xl border border-slate-700 bg-slate-800 p-6">
-          <p className="text-slate-300">Pending Reviews</p>
-          <p className="text-3xl font-bold mt-2">
-            {reviews.filter((r) => r.status === "Pending").length}
+
+        {/* Pending Reviews */}
+        <div
+          className="rounded-2xl p-6 border transition-all duration-300"
+          style={{
+            backgroundColor: "#0B1220",
+            borderColor: "rgba(255, 255, 255, 0.2)",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.4)";
+            e.currentTarget.style.boxShadow =
+              "0 10px 25px -5px rgba(255, 255, 255, 0.1)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.2)";
+            e.currentTarget.style.boxShadow = "none";
+          }}
+        >
+          <div className="flex items-center gap-3 mb-2">
+            <div
+              className="p-2 rounded-lg"
+              style={{ backgroundColor: "rgba(255, 255, 255, 0.1)" }}
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                style={{ color: "#FFFFFF" }}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+            </div>
+            <p className="text-slate-400">Pending Reviews</p>
+          </div>
+          <p
+            className="text-4xl font-bold mt-2"
+            style={{ color: "#E5E7EB" }}
+          >
+            {pendingReviewsCount}
           </p>
         </div>
       </div>
 
-      {/* Quick Actions */}
-      <div className="mb-6">
-        <h3 className="text-xl font-semibold mb-3">Quick Actions</h3>
-        <div className="flex gap-3">
+      {/* Quick Actions - styled to match theme */}
+      <div className="mb-8">
+        <h3
+          className="text-xl font-semibold mb-3"
+          style={{ color: "#E5E7EB" }}
+        >
+          Quick Actions
+        </h3>
+        <div className="flex flex-wrap gap-3">
           <Link
             to="/admin/tests/create"
-            className="bg-white hover:bg-gray-100 px-4 py-2 rounded-md text-black"
+            className="group inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300"
+            style={{
+              backgroundColor: "rgba(255, 255, 255, 0.1)",
+              color: "#FFFFFF",
+              border: "1px solid rgba(255, 255, 255, 0.3)",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.2)";
+              e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.5)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
+              e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
+            }}
           >
-            Create New Test
+            <span>Create New Test</span>
           </Link>
           <Link
             to="/admin/users"
-            className="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-md"
+            className="group inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300"
+            style={{
+              backgroundColor: "rgba(255, 255, 255, 0.05)",
+              color: "#E5E7EB",
+              border: "1px solid rgba(255, 255, 255, 0.2)",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.15)";
+              e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.4)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.05)";
+              e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.2)";
+            }}
           >
-            Manage Users
+            <span>Manage Users</span>
           </Link>
         </div>
       </div>
 
-      {/* Recent Tests */}
+      {/* Recent Tests - styled card */}
       <div className="mt-6">
-        <h3 className="text-xl font-semibold mb-3">Recent Tests</h3>
+        <h3
+          className="text-xl font-semibold mb-3"
+          style={{ color: "#E5E7EB" }}
+        >
+          Recent Tests
+        </h3>
 
-        <div className="rounded-xl border border-slate-700 bg-slate-800 overflow-hidden">
+        <div
+          className="rounded-2xl border overflow-hidden"
+          style={{
+            backgroundColor: "#0B1220",
+            borderColor: "rgba(255, 255, 255, 0.2)",
+          }}
+        >
           {/* header */}
           <table className="w-full">
-            <thead className="bg-slate-800">
-              <tr className="text-left text-slate-300 border-b border-slate-700">
-                <th className="p-4">Test Name</th>
-                <th className="p-4">Status</th>
-                <th className="p-4">Participants</th>
-                <th className="p-4">Average Score</th>
+            <thead>
+              <tr
+                className="text-left"
+                style={{
+                  backgroundColor: "rgba(15, 23, 42, 0.9)",
+                  color: "#E5E7EB",
+                }}
+              >
+                <th className="p-4 text-sm font-medium">Test Name</th>
+                <th className="p-4 text-sm font-medium">Status</th>
+                <th className="p-4 text-sm font-medium">Participants</th>
+                <th className="p-4 text-sm font-medium">Average Score</th>
               </tr>
             </thead>
           </table>
@@ -117,20 +316,37 @@ export default function Dashboard() {
             <table className="w-full">
               <tbody>
                 {tests.slice(0, 10).map((t) => (
-                  <tr key={t._id} className="border-b border-slate-700">
-                    <td className="p-4">{t.title}</td>
+                  <tr
+                    key={t._id}
+                    className="border-t"
+                    style={{ borderColor: "rgba(148, 163, 184, 0.3)" }}
+                  >
+                    <td className="p-4 text-sm" style={{ color: "#E5E7EB" }}>
+                      {t.title}
+                    </td>
                     <td className="p-4">
                       <StatusPill label={t.status} />
                     </td>
-                    <td className="p-4">{t.participants || 0}</td>
-                    <td className="p-4">{t.avgScore || 0}</td>
+                    <td
+                      className="p-4 text-sm"
+                      style={{ color: "#E5E7EB" }}
+                    >
+                      {t.participants || 0}
+                    </td>
+                    <td
+                      className="p-4 text-sm"
+                      style={{ color: "#E5E7EB" }}
+                    >
+                      {t.avgScore || 0}
+                    </td>
                   </tr>
                 ))}
                 {tests.length === 0 && (
                   <tr>
                     <td
                       colSpan="4"
-                      className="p-4 text-center text-slate-400"
+                      className="p-4 text-center text-sm"
+                      style={{ color: "#9CA3AF" }}
                     >
                       No recent tests found.
                     </td>
