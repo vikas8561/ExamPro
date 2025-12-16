@@ -1,11 +1,38 @@
 import React from "react";
 
+const scrollbarStyles = `
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: rgba(34, 211, 238, 0.1);
+    border-radius: 10px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(34, 211, 238, 0.3);
+    border-radius: 10px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(34, 211, 238, 0.5);
+  }
+`;
+
 const RecentActivity = ({ data }) => {
   // Debug log removed
 
   if (!data || data.length === 0) {
     return (
-      <div className="bg-slate-800 rounded-lg p-6 text-center text-slate-400">
+      <div 
+        className="rounded-2xl p-6 text-center border"
+        style={{ 
+          backgroundColor: '#0B1220',
+          borderColor: 'rgba(34, 211, 238, 0.2)',
+          color: '#9CA3AF'
+        }}
+      >
         No recent activity found.
       </div>
     );
@@ -58,21 +85,44 @@ const RecentActivity = ({ data }) => {
   };
 
   return (
-    <div className="bg-slate-800 rounded-lg overflow-hidden">
-      <div className="max-h-80 overflow-y-auto scroll-smooth">
+    <>
+      <style>{scrollbarStyles}</style>
+      <div 
+        className="rounded-2xl overflow-hidden border"
+        style={{ 
+          backgroundColor: '#0B1220',
+          borderColor: 'rgba(34, 211, 238, 0.2)'
+        }}
+      >
+      <div className="max-h-80 overflow-y-auto scroll-smooth custom-scrollbar">
         <div className="p-4">
-          <h4 className="text-lg font-semibold mb-4 text-slate-200">Recent Activity</h4>
+          <h4 className="text-lg font-semibold mb-4" style={{ color: '#E5E7EB' }}>Recent Activity</h4>
           <div className="space-y-3">
             {data.map((activity, index) => (
-              <div key={index} className="flex items-start space-x-3 p-3 rounded-lg bg-slate-700/50 hover:bg-slate-700/70 transition-colors">
+              <div 
+                key={index} 
+                className="flex items-start space-x-3 p-3 rounded-lg transition-colors border"
+                style={{ 
+                  backgroundColor: 'rgba(34, 211, 238, 0.05)',
+                  borderColor: 'rgba(34, 211, 238, 0.1)'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.1)';
+                  e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.2)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.05)';
+                  e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.1)';
+                }}
+              >
                 <div className="text-xl flex-shrink-0">
                   {getActivityIcon(activity.type)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-slate-300 leading-relaxed">
+                  <p className="text-sm leading-relaxed" style={{ color: '#E5E7EB' }}>
                     {getActivityMessage(activity)}
                   </p>
-                  <p className="text-xs text-slate-500 mt-1">
+                  <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>
                     {formatDate(activity.timestamp || activity.createdAt || activity.updatedAt)}
                   </p>
                 </div>
@@ -82,6 +132,7 @@ const RecentActivity = ({ data }) => {
         </div>
       </div>
     </div>
+    </>
   );
 };
 

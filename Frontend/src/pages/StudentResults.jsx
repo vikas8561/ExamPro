@@ -22,22 +22,71 @@ const StudentResults = () => {
   };
 
   if (loading) {
-    return <div className="p-8">Loading...</div>;
+    return (
+      <div className="p-8 min-h-screen flex items-center justify-center" style={{ backgroundColor: '#0B1220' }}>
+        <div className="text-xl" style={{ color: '#E5E7EB' }}>Loading...</div>
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white p-6">
+    <div className="min-h-screen p-6" style={{ backgroundColor: '#0B1220' }}>
       <div className="max-w-7xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">🏆 Completed Tests</h1>
+          <h1 className="text-3xl font-bold mb-4" style={{ color: '#E5E7EB' }}>🏆 Completed Tests</h1>
           <div className="flex flex-wrap items-center gap-4 text-lg font-semibold">
-            <span className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full text-white shadow-lg hover:shadow-blue-500/50 transition-all duration-300 hover:scale-105 cursor-pointer">
+            <span 
+              className="flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-300 cursor-pointer"
+              style={{
+                backgroundColor: 'rgba(34, 211, 238, 0.1)',
+                borderColor: 'rgba(34, 211, 238, 0.3)',
+                color: '#67E8F9'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.15)';
+                e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.5)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.1)';
+                e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.3)';
+              }}
+            >
               🎯 Track Progress
             </span>
-            <span className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full text-white shadow-lg hover:shadow-purple-500/50 transition-all duration-300 hover:scale-105 cursor-pointer">
+            <span 
+              className="flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-300 cursor-pointer"
+              style={{
+                backgroundColor: 'rgba(34, 211, 238, 0.1)',
+                borderColor: 'rgba(34, 211, 238, 0.3)',
+                color: '#67E8F9'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.15)';
+                e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.5)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.1)';
+                e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.3)';
+              }}
+            >
               📊 Analyze Performance
             </span>
-            <span className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full text-white shadow-lg hover:shadow-yellow-500/50 transition-all duration-300 hover:scale-105 cursor-pointer">
+            <span 
+              className="flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-300 cursor-pointer"
+              style={{
+                backgroundColor: 'rgba(34, 211, 238, 0.1)',
+                borderColor: 'rgba(34, 211, 238, 0.3)',
+                color: '#67E8F9'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.15)';
+                e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.5)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.1)';
+                e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.3)';
+              }}
+            >
               🏆 Celebrate Achievements
             </span>
           </div>

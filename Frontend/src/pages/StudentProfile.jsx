@@ -429,10 +429,10 @@ export default function StudentProfile() {
 
   if (loading && !user) {
     return (
-      <div className="min-h-screen bg-slate-900 text-white p-6">
+      <div className="min-h-screen p-6" style={{ backgroundColor: '#0B1220' }}>
         <div className="w-full">
-          <h2 className="text-2xl font-bold mb-6">Profile</h2>
-          <div className="text-center text-slate-400">
+          <h2 className="text-2xl font-bold mb-6" style={{ color: '#E5E7EB' }}>Profile</h2>
+          <div className="text-center" style={{ color: '#9CA3AF' }}>
             Loading profile...
           </div>
         </div>
@@ -443,10 +443,10 @@ export default function StudentProfile() {
   // If no user data at all, show message
   if (!user) {
     return (
-      <div className="min-h-screen bg-slate-900 text-white p-6">
+      <div className="min-h-screen p-6" style={{ backgroundColor: '#0B1220' }}>
         <div className="w-full">
-          <h2 className="text-2xl font-bold mb-6">Profile</h2>
-          <div className="text-center text-slate-400">
+          <h2 className="text-2xl font-bold mb-6" style={{ color: '#E5E7EB' }}>Profile</h2>
+          <div className="text-center" style={{ color: '#9CA3AF' }}>
             Unable to load profile. Please refresh the page.
           </div>
         </div>
@@ -457,11 +457,17 @@ export default function StudentProfile() {
   const canCaptureImage = !user.profileImageSaved;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white p-6">
+    <div className="min-h-screen p-6" style={{ backgroundColor: '#0B1220' }}>
       <div className="w-full">
-        <h2 className="text-2xl font-bold mb-6">Profile</h2>
+        <h2 className="text-2xl font-bold mb-6" style={{ color: '#E5E7EB' }}>Profile</h2>
         
-        <div className="bg-slate-800 rounded-lg p-6 w-full">
+        <div 
+          className="rounded-2xl p-6 w-full border"
+          style={{ 
+            backgroundColor: '#0B1220',
+            borderColor: 'rgba(34, 211, 238, 0.2)'
+          }}
+        >
         {/* Profile Image */}
         <div className="flex flex-col items-center space-y-4 mb-6">
           <div className="relative">
@@ -469,20 +475,37 @@ export default function StudentProfile() {
               <img
                 src={capturedImage || user.profileImage}
                 alt="Profile"
-                className="w-32 h-32 rounded-full object-cover border-4 border-slate-600"
+                className="w-32 h-32 rounded-full object-cover border-4"
+                style={{ borderColor: 'rgba(34, 211, 238, 0.4)' }}
               />
             ) : (
-              <div className="w-32 h-32 rounded-full bg-slate-700 flex items-center justify-center border-4 border-slate-600">
-                <UserIcon className="w-16 h-16 text-slate-400" />
+              <div 
+                className="w-32 h-32 rounded-full flex items-center justify-center border-4"
+                style={{ 
+                  backgroundColor: 'rgba(34, 211, 238, 0.1)',
+                  borderColor: 'rgba(34, 211, 238, 0.4)'
+                }}
+              >
+                <UserIcon className="w-16 h-16" style={{ color: '#22D3EE' }} />
               </div>
             )}
             {canCaptureImage && !capturedImage && !user.profileImage && (
               <button
                 onClick={startCamera}
-                className="absolute bottom-0 right-0 p-3 bg-blue-600 hover:bg-blue-700 rounded-full transition shadow-lg"
+                className="absolute bottom-0 right-0 p-3 rounded-full transition shadow-lg"
+                style={{ 
+                  backgroundColor: '#22D3EE',
+                  color: '#020617'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.opacity = '0.9';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.opacity = '1';
+                }}
                 title="Capture Profile Image"
               >
-                <Camera className="w-5 h-5 text-white" />
+                <Camera className="w-5 h-5" />
               </button>
             )}
           </div>
@@ -491,7 +514,17 @@ export default function StudentProfile() {
               <button
                 onClick={saveProfileImage}
                 disabled={uploadingImage}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded transition disabled:opacity-50"
+                className="px-4 py-2 rounded-lg transition disabled:opacity-50"
+                style={{ 
+                  backgroundColor: '#22D3EE',
+                  color: '#020617'
+                }}
+                onMouseEnter={(e) => {
+                  if (!uploadingImage) e.currentTarget.style.opacity = '0.9';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.opacity = '1';
+                }}
               >
                 {uploadingImage ? "Saving..." : "Save Image"}
               </button>
@@ -501,7 +534,18 @@ export default function StudentProfile() {
                   startCamera();
                 }}
                 disabled={uploadingImage}
-                className="px-4 py-2 bg-slate-600 hover:bg-slate-700 rounded transition disabled:opacity-50"
+                className="px-4 py-2 rounded-lg transition disabled:opacity-50 border"
+                style={{ 
+                  backgroundColor: 'rgba(34, 211, 238, 0.1)',
+                  color: '#67E8F9',
+                  borderColor: 'rgba(34, 211, 238, 0.3)'
+                }}
+                onMouseEnter={(e) => {
+                  if (!uploadingImage) e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.15)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.1)';
+                }}
               >
                 Retake
               </button>
@@ -512,8 +556,14 @@ export default function StudentProfile() {
         {/* Camera Modal */}
         {showCamera && (
           <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center">
-            <div className="bg-slate-800 rounded-lg p-6 max-w-md w-full mx-4">
-              <h3 className="text-xl font-bold mb-4 text-center">
+            <div 
+              className="rounded-2xl p-6 max-w-md w-full mx-4 border"
+              style={{ 
+                backgroundColor: '#0B1220',
+                borderColor: 'rgba(34, 211, 238, 0.3)'
+              }}
+            >
+              <h3 className="text-xl font-bold mb-4 text-center" style={{ color: '#E5E7EB' }}>
                 {capturedImage ? 'Review Your Photo' : 'Capture Profile Image'}
               </h3>
               <div className="relative bg-black rounded overflow-hidden" style={{ minHeight: '400px', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -559,19 +609,51 @@ export default function StudentProfile() {
                   <>
                     <button
                       onClick={confirmCapture}
-                      className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 rounded transition"
+                      className="flex-1 px-4 py-2 rounded-lg transition"
+                      style={{ 
+                        backgroundColor: '#22D3EE',
+                        color: '#020617'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.opacity = '0.9';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.opacity = '1';
+                      }}
                     >
                       Use This Photo
                     </button>
                     <button
                       onClick={retakeFromModal}
-                      className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded transition"
+                      className="flex-1 px-4 py-2 rounded-lg transition border"
+                      style={{ 
+                        backgroundColor: 'rgba(34, 211, 238, 0.1)',
+                        color: '#67E8F9',
+                        borderColor: 'rgba(34, 211, 238, 0.3)'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.15)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.1)';
+                      }}
                     >
                       Retake
                     </button>
                     <button
                       onClick={stopCamera}
-                      className="flex-1 px-4 py-2 bg-slate-600 hover:bg-slate-700 rounded transition"
+                      className="flex-1 px-4 py-2 rounded-lg transition border"
+                      style={{ 
+                        backgroundColor: 'rgba(148, 163, 184, 0.1)',
+                        color: '#94A3B8',
+                        borderColor: 'rgba(148, 163, 184, 0.3)'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.15)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.1)';
+                      }}
                     >
                       Cancel
                     </button>
@@ -581,13 +663,34 @@ export default function StudentProfile() {
                   <>
                     <button
                       onClick={capturePhoto}
-                      className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded transition"
+                      className="flex-1 px-4 py-2 rounded-lg transition"
+                      style={{ 
+                        backgroundColor: '#22D3EE',
+                        color: '#020617'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.opacity = '0.9';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.opacity = '1';
+                      }}
                     >
                       Capture
                     </button>
                     <button
                       onClick={stopCamera}
-                      className="flex-1 px-4 py-2 bg-slate-600 hover:bg-slate-700 rounded transition"
+                      className="flex-1 px-4 py-2 rounded-lg transition border"
+                      style={{ 
+                        backgroundColor: 'rgba(148, 163, 184, 0.1)',
+                        color: '#94A3B8',
+                        borderColor: 'rgba(148, 163, 184, 0.3)'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.15)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.1)';
+                      }}
                     >
                       Cancel
                     </button>
@@ -600,24 +703,47 @@ export default function StudentProfile() {
 
         {/* User Info */}
         <div className="space-y-4">
-          <div className="flex items-center gap-3 p-4 bg-slate-700/50 rounded-lg">
-            <UserIcon className="w-5 h-5 text-slate-400" />
+          <div 
+            className="flex items-center gap-3 p-4 rounded-lg border"
+            style={{ 
+              backgroundColor: 'rgba(34, 211, 238, 0.05)',
+              borderColor: 'rgba(34, 211, 238, 0.2)'
+            }}
+          >
+            <UserIcon className="w-5 h-5" style={{ color: '#22D3EE' }} />
             <div className="flex-1">
-              <p className="text-sm text-slate-400">Name</p>
-              <p className="text-lg font-semibold text-white">{user.name}</p>
+              <p className="text-sm" style={{ color: '#9CA3AF' }}>Name</p>
+              <p className="text-lg font-semibold" style={{ color: '#E5E7EB' }}>{user.name}</p>
             </div>
           </div>
           
-          <div className="flex items-center gap-3 p-4 bg-slate-700/50 rounded-lg">
-            <Mail className="w-5 h-5 text-slate-400" />
+          <div 
+            className="flex items-center gap-3 p-4 rounded-lg border"
+            style={{ 
+              backgroundColor: 'rgba(34, 211, 238, 0.05)',
+              borderColor: 'rgba(34, 211, 238, 0.2)'
+            }}
+          >
+            <Mail className="w-5 h-5" style={{ color: '#22D3EE' }} />
             <div className="flex-1">
-              <p className="text-sm text-slate-400">Email</p>
-              <p className="text-lg font-semibold text-white">{user.email}</p>
+              <p className="text-sm" style={{ color: '#9CA3AF' }}>Email</p>
+              <p className="text-lg font-semibold" style={{ color: '#E5E7EB' }}>{user.email}</p>
             </div>
             {!showEmailForm && (
               <button
                 onClick={() => setShowEmailForm(true)}
-                className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 rounded transition"
+                className="px-4 py-2 text-sm rounded-lg transition border"
+                style={{ 
+                  backgroundColor: 'rgba(34, 211, 238, 0.1)',
+                  color: '#67E8F9',
+                  borderColor: 'rgba(34, 211, 238, 0.3)'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.15)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.1)';
+                }}
               >
                 Update
               </button>
@@ -625,18 +751,35 @@ export default function StudentProfile() {
           </div>
 
           {showEmailForm && (
-            <div className="p-4 bg-slate-700/50 rounded-lg space-y-3">
+            <div 
+              className="p-4 rounded-lg space-y-3 border"
+              style={{ 
+                backgroundColor: 'rgba(34, 211, 238, 0.05)',
+                borderColor: 'rgba(34, 211, 238, 0.2)'
+              }}
+            >
               <form onSubmit={handleEmailUpdate} className="space-y-3">
                 <input
                   type="email"
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
                   placeholder="New email address"
-                  className="w-full px-4 py-2 bg-slate-800 border border-slate-600 rounded text-white"
+                  className="w-full px-4 py-2 rounded-lg border transition focus:outline-none"
+                  style={{ 
+                    backgroundColor: '#0B1220',
+                    borderColor: 'rgba(34, 211, 238, 0.3)',
+                    color: '#E5E7EB'
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.5)';
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.3)';
+                  }}
                   required
                 />
                 {emailMessage && (
-                  <p className={`text-sm ${emailMessage.includes("sent") ? "text-green-400" : "text-red-400"}`}>
+                  <p className="text-sm" style={{ color: emailMessage.includes("sent") ? "#22D3EE" : "#FCA5A5" }}>
                     {emailMessage}
                   </p>
                 )}
@@ -644,7 +787,17 @@ export default function StudentProfile() {
                   <button
                     type="submit"
                     disabled={emailLoading}
-                    className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded transition disabled:opacity-50"
+                    className="flex-1 px-4 py-2 rounded-lg transition disabled:opacity-50"
+                    style={{ 
+                      backgroundColor: '#22D3EE',
+                      color: '#020617'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!emailLoading) e.currentTarget.style.opacity = '0.9';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.opacity = '1';
+                    }}
                   >
                     {emailLoading ? "Sending..." : "Send Verification"}
                   </button>
@@ -655,7 +808,18 @@ export default function StudentProfile() {
                       setNewEmail("");
                       setEmailMessage("");
                     }}
-                    className="px-4 py-2 bg-slate-600 hover:bg-slate-700 rounded transition"
+                    className="px-4 py-2 rounded-lg transition border"
+                    style={{ 
+                      backgroundColor: 'rgba(148, 163, 184, 0.1)',
+                      color: '#94A3B8',
+                      borderColor: 'rgba(148, 163, 184, 0.3)'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.15)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.1)';
+                    }}
                   >
                     Cancel
                   </button>
@@ -664,18 +828,35 @@ export default function StudentProfile() {
             </div>
           )}
 
-          <div className="flex items-center gap-3 p-4 bg-slate-700/50 rounded-lg">
-            <Building2 className="w-5 h-5 text-slate-400" />
+          <div 
+            className="flex items-center gap-3 p-4 rounded-lg border"
+            style={{ 
+              backgroundColor: 'rgba(34, 211, 238, 0.05)',
+              borderColor: 'rgba(34, 211, 238, 0.2)'
+            }}
+          >
+            <Building2 className="w-5 h-5" style={{ color: '#22D3EE' }} />
             <div className="flex-1">
-              <p className="text-sm text-slate-400">Institute</p>
-              <p className="text-lg font-semibold text-white">CodingGita</p>
+              <p className="text-sm" style={{ color: '#9CA3AF' }}>Institute</p>
+              <p className="text-lg font-semibold" style={{ color: '#E5E7EB' }}>CodingGita</p>
             </div>
           </div>
 
           {!showPasswordForm && (
             <button
               onClick={() => setShowPasswordForm(true)}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-slate-700 hover:bg-slate-600 rounded transition"
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg transition border"
+              style={{ 
+                backgroundColor: 'rgba(34, 211, 238, 0.1)',
+                color: '#67E8F9',
+                borderColor: 'rgba(34, 211, 238, 0.3)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.15)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.1)';
+              }}
             >
               <Lock className="w-5 h-5" />
               Change Password
@@ -683,14 +864,31 @@ export default function StudentProfile() {
           )}
 
           {showPasswordForm && (
-            <div className="p-4 bg-slate-700/50 rounded-lg space-y-3">
+            <div 
+              className="p-4 rounded-lg space-y-3 border"
+              style={{ 
+                backgroundColor: 'rgba(34, 211, 238, 0.05)',
+                borderColor: 'rgba(34, 211, 238, 0.2)'
+              }}
+            >
               <form onSubmit={handlePasswordChange} className="space-y-3">
                 <input
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="New password"
-                  className="w-full px-4 py-2 bg-slate-800 border border-slate-600 rounded text-white"
+                  className="w-full px-4 py-2 rounded-lg border transition focus:outline-none"
+                  style={{ 
+                    backgroundColor: '#0B1220',
+                    borderColor: 'rgba(34, 211, 238, 0.3)',
+                    color: '#E5E7EB'
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.5)';
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.3)';
+                  }}
                   required
                 />
                 <input
@@ -698,11 +896,22 @@ export default function StudentProfile() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Confirm password"
-                  className="w-full px-4 py-2 bg-slate-800 border border-slate-600 rounded text-white"
+                  className="w-full px-4 py-2 rounded-lg border transition focus:outline-none"
+                  style={{ 
+                    backgroundColor: '#0B1220',
+                    borderColor: 'rgba(34, 211, 238, 0.3)',
+                    color: '#E5E7EB'
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.5)';
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.3)';
+                  }}
                   required
                 />
                 {passwordMessage && (
-                  <p className={`text-sm ${passwordMessage.includes("sent") ? "text-green-400" : "text-red-400"}`}>
+                  <p className="text-sm" style={{ color: passwordMessage.includes("sent") ? "#22D3EE" : "#FCA5A5" }}>
                     {passwordMessage}
                   </p>
                 )}
@@ -710,7 +919,17 @@ export default function StudentProfile() {
                   <button
                     type="submit"
                     disabled={passwordLoading}
-                    className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded transition disabled:opacity-50"
+                    className="flex-1 px-4 py-2 rounded-lg transition disabled:opacity-50"
+                    style={{ 
+                      backgroundColor: '#22D3EE',
+                      color: '#020617'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!passwordLoading) e.currentTarget.style.opacity = '0.9';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.opacity = '1';
+                    }}
                   >
                     {passwordLoading ? "Sending..." : "Send Verification"}
                   </button>
@@ -722,7 +941,18 @@ export default function StudentProfile() {
                       setConfirmPassword("");
                       setPasswordMessage("");
                     }}
-                    className="px-4 py-2 bg-slate-600 hover:bg-slate-700 rounded transition"
+                    className="px-4 py-2 rounded-lg transition border"
+                    style={{ 
+                      backgroundColor: 'rgba(148, 163, 184, 0.1)',
+                      color: '#94A3B8',
+                      borderColor: 'rgba(148, 163, 184, 0.3)'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.15)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.1)';
+                    }}
                   >
                     Cancel
                   </button>

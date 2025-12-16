@@ -2,6 +2,26 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import apiRequest from "../services/api";
 
+const scrollbarStyles = `
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: rgba(34, 211, 238, 0.1);
+    border-radius: 10px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(34, 211, 238, 0.3);
+    border-radius: 10px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(34, 211, 238, 0.5);
+  }
+`;
+
 const UpcomingTests = ({ data }) => {
   const navigate = useNavigate();
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -65,22 +85,37 @@ const UpcomingTests = ({ data }) => {
 
   if (!data || data.length === 0) {
     return (
-      <div className="bg-slate-800 rounded-lg p-6 text-center text-slate-400">
+      <div 
+        className="rounded-2xl p-6 text-center border"
+        style={{ 
+          backgroundColor: '#0B1220',
+          borderColor: 'rgba(34, 211, 238, 0.2)',
+          color: '#9CA3AF'
+        }}
+      >
         No upcoming tests found.
       </div>
     );
   }
 
   return (
-    <div className="bg-slate-800 rounded-lg overflow-hidden">
-      <div className="max-h-96 overflow-y-auto scroll-smooth">
+    <>
+      <style>{scrollbarStyles}</style>
+      <div 
+        className="rounded-2xl overflow-hidden border"
+        style={{ 
+          backgroundColor: '#0B1220',
+          borderColor: 'rgba(34, 211, 238, 0.2)'
+        }}
+      >
+      <div className="max-h-96 overflow-y-auto scroll-smooth custom-scrollbar">
         <table className="w-full">
-          <thead className="bg-slate-700 sticky top-0 z-10">
+          <thead className="sticky top-0 z-10 shadow-lg" style={{ backgroundColor: '#0B1220', borderBottom: '2px solid rgba(34, 211, 238, 0.3)' }}>
             <tr>
-              <th className="p-4 text-left text-slate-300">Test Name</th>
-              <th className="p-4 text-left text-slate-300">Date</th>
-              <th className="p-4 text-left text-slate-300">Time Remaining</th>
-              <th className="p-4 text-left text-slate-300">Action</th>
+              <th className="p-4 text-left" style={{ color: '#E5E7EB' }}>Test Name</th>
+              <th className="p-4 text-left" style={{ color: '#E5E7EB' }}>Date</th>
+              <th className="p-4 text-left" style={{ color: '#E5E7EB' }}>Time Remaining</th>
+              <th className="p-4 text-left" style={{ color: '#E5E7EB' }}>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -89,28 +124,50 @@ const UpcomingTests = ({ data }) => {
               const hasStarted = !timeRemaining;
 
               return (
-                <tr key={index} className="border-b border-slate-700 hover:bg-slate-700/50">
+                <tr 
+                  key={index} 
+                  className="transition-colors duration-200"
+                  style={{ 
+                    borderBottom: '1px solid rgba(34, 211, 238, 0.1)'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = 'rgba(34, 211, 238, 0.05)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                >
                   <td className="p-4">
-                    <div className="font-medium">{item.testId?.title || item.name || "Test"}</div>
+                    <div className="font-medium" style={{ color: '#E5E7EB' }}>{item.testId?.title || item.name || "Test"}</div>
                     {item.testId?.type && (
                       <div className="text-sm text-slate-400 capitalize">{item.testId.type}</div>
                     )}
                   </td>
-                  <td className="p-4 text-slate-300">
+                  <td className="p-4" style={{ color: '#9CA3AF' }}>
                     {formatDate(item.startTime)}
                   </td>
                   <td className="p-4">
                     {hasStarted ? (
-                      <span className="text-green-400 font-medium">Test Available</span>
+                      <span className="font-medium" style={{ color: '#22D3EE' }}>Test Available</span>
                     ) : (
-                      <span className="text-yellow-400 font-medium">{timeRemaining}</span>
+                      <span className="font-medium" style={{ color: '#FDE047' }}>{timeRemaining}</span>
                     )}
                   </td>
                   <td className="p-4">
                     {hasStarted ? (
                       <button
                         onClick={() => handleStartTest(item._id)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                        className="px-4 py-2 rounded-lg font-medium transition-all"
+                        style={{ 
+                          backgroundColor: '#22D3EE',
+                          color: '#020617'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.opacity = '0.9';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.opacity = '1';
+                        }}
                       >
                         Start Test
                       </button>
@@ -125,6 +182,7 @@ const UpcomingTests = ({ data }) => {
         </table>
       </div>
     </div>
+    </>
   );
 };
 

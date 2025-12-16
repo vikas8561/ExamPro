@@ -101,10 +101,10 @@ router.post("/forgot-password", async (req, res) => {
   try {
     // console.log('Forgot password request received:', req.body);
 
-    const { oldEmail, newEmail, newPassword, confirmPassword } = req.body;
+    const { name, newEmail, newPassword, confirmPassword } = req.body;
 
     // Validate input
-    if (!oldEmail || !newEmail || !newPassword || !confirmPassword) {
+    if (!name || !newEmail || !newPassword || !confirmPassword) {
       // console.log('Validation failed: Missing fields');
       return res.status(400).json({ message: "All fields are required" });
     }
@@ -119,12 +119,20 @@ router.post("/forgot-password", async (req, res) => {
       return res.status(400).json({ message: "Password must be at least 6 characters long" });
     }
 
-    // console.log('Finding user by email:', oldEmail);
-    // Find user by old email
-    const user = await User.findOne({ email: oldEmail });
+    // console.log('Finding user by name:', name);
+    // Find user by name
+    const user = await User.findOne({ name: name });
     if (!user) {
       // console.log('User not found');
       return res.status(404).json({ message: "User not found" });
+    }
+
+    // Check if new email is already taken by another user
+    if (newEmail !== user.email) {
+      const existingUser = await User.findOne({ email: newEmail });
+      if (existingUser && existingUser._id.toString() !== user._id.toString()) {
+        return res.status(400).json({ message: "New email is already in use by another account" });
+      }
     }
 
     // console.log('User found, hashing password');
@@ -135,6 +143,7 @@ router.post("/forgot-password", async (req, res) => {
     // Store pending changes
     user.pendingPassword = hashedPassword;
     user.pendingEmail = newEmail;
+    // Update name if provided
     if (req.body.name) {
       user.name = req.body.name;
     }
@@ -149,8 +158,8 @@ router.post("/forgot-password", async (req, res) => {
     // console.log('Saving user with pending changes');
     await user.save();
 
-    // Determine which email to send verification to
-    const verificationEmail = (oldEmail !== newEmail) ? newEmail : oldEmail;
+    // Send verification to new email
+    const verificationEmail = newEmail;
     // console.log('Verification email will be sent to:', verificationEmail);
 
     // Send email with reset link to verificationEmail

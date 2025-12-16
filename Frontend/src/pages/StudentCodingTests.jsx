@@ -147,13 +147,24 @@ export default function StudentCodingTests() {
     return currentTime < startTimeDate;
   };
 
-  const getStatusColor = (status) => {
+  const getStatusStyle = (status) => {
+    const baseStyle = {
+      backgroundColor: 'rgba(34, 211, 238, 0.1)',
+      borderColor: 'rgba(34, 211, 238, 0.3)',
+      color: '#67E8F9' // cyan-300
+    };
+
     switch (status) {
-      case "Assigned": return "bg-yellow-900/50 text-yellow-300";
-      case "In Progress": return "bg-blue-900/50 text-blue-300";
-      case "Completed": return "bg-green-900/50 text-green-300";
-      case "Overdue": return "bg-red-900/50 text-red-300";
-      default: return "bg-gray-900/50 text-gray-300";
+      case "Assigned":
+        return { ...baseStyle, color: '#7DD3FC' }; // cyan-300
+      case "In Progress":
+        return { ...baseStyle, color: '#22D3EE', backgroundColor: 'rgba(34, 211, 238, 0.15)' }; // cyan-400, slightly brighter
+      case "Completed":
+        return { ...baseStyle, color: '#67E8F9' }; // cyan-300
+      case "Overdue":
+        return { ...baseStyle, color: '#A5F3FC', backgroundColor: 'rgba(34, 211, 238, 0.08)' }; // cyan-200, lighter
+      default:
+        return baseStyle;
     }
   };
 
@@ -168,18 +179,17 @@ export default function StudentCodingTests() {
     <div className="min-h-screen bg-slate-900 text-white p-6">
       <style>{cardAnimationStyles}</style>
       <div className="max-w-6xl mx-auto">
-        {/* Header Section with Gradient Background */}
+        {/* Header Section */}
         <div className="sticky top-0 z-50 relative mb-8">
-          <div className="absolute inset-0 bg-gradient-to-r from-purple-600/10 via-pink-600/10 to-indigo-600/10 rounded-2xl blur-xl"></div>
-          <div className="relative bg-slate-800/95 backdrop-blur-md border border-slate-700/50 rounded-2xl p-6 shadow-2xl">
+          <div className="relative bg-slate-800/95 backdrop-blur-md border border-slate-700/50 rounded-2xl p-6 shadow-lg">
             <div className="flex items-center gap-4">
-              <div className="p-3 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl shadow-lg">
-                <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="p-3 bg-slate-800/70 rounded-xl shadow-sm">
+                <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: '#22D3EE' }}>
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                 </svg>
               </div>
               <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
+                <h1 className="text-3xl font-bold text-white">
                   Coding Tests
                 </h1>
                 <p className="text-slate-400 text-sm mt-1">
@@ -200,114 +210,144 @@ export default function StudentCodingTests() {
             {tests.map((assignment, index) => (
               <div
                 key={assignment._id}
-                className="group relative bg-gradient-to-br from-slate-800/90 to-slate-900/90 backdrop-blur-sm rounded-xl p-6 border border-slate-700/50 hover:border-purple-500/50 transition-all duration-500 transform hover:scale-105 hover:shadow-2xl hover:shadow-purple-500/10 cursor-pointer animate-slide-in-up"
-                style={{ animationDelay: `${index * 100}ms` }}
+                className="group relative backdrop-blur-sm rounded-2xl p-6 border transition-all duration-300 cursor-pointer animate-slide-in-up overflow-hidden"
+                style={{ 
+                  animationDelay: `${index * 100}ms`,
+                  backgroundColor: '#0B1220',
+                  borderColor: 'rgba(34, 211, 238, 0.2)',
+                  boxShadow: '0 0 0 rgba(34, 211, 238, 0)'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.4)';
+                  e.currentTarget.style.boxShadow = '0 20px 25px -5px rgba(34, 211, 238, 0.1), 0 10px 10px -5px rgba(34, 211, 238, 0.04)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.2)';
+                  e.currentTarget.style.boxShadow = '0 0 0 rgba(34, 211, 238, 0)';
+                }}
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
                 }}
               >
-                {/* Animated Background Gradient */}
-                <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 via-pink-500/5 to-indigo-500/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-
-                {/* Floating Elements */}
-                <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-all duration-500 transform translate-y-2 group-hover:translate-y-0">
-                  <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse"></div>
-                </div>
+                {/* Subtle gradient overlay on hover */}
+                <div className="absolute inset-0 rounded-2xl transition-all duration-300 pointer-events-none opacity-0 group-hover:opacity-100" style={{ background: 'linear-gradient(to bottom right, rgba(34, 211, 238, 0.05), rgba(34, 211, 238, 0.05))' }}></div>
 
                 <div className="relative z-10">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3 ml-1">
-                      <div className="p-2 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg shadow-lg group-hover:shadow-purple-500/25 transition-all duration-300 transform group-hover:rotate-6">
-                        <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="flex items-start justify-between mb-5">
+                    <div className="flex items-start gap-3 flex-1">
+                      <div className="p-3 bg-slate-800/70 rounded-xl shadow-sm group-hover:shadow-md transition-shadow duration-300 flex-shrink-0">
+                        <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: '#22D3EE' }}>
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                         </svg>
                       </div>
-                      <div>
-                        <h3 className="text-xl font-bold text-white group-hover:text-purple-300 transition-colors duration-300">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-xl font-bold mb-1.5 leading-tight transition-colors duration-200" style={{ color: '#E5E7EB' }}>
                           {assignment.testId?.title || "Coding Test"}
                         </h3>
-                        <p className="text-sm text-slate-400 mt-1">Coding Challenge</p>
+                        <p className="text-sm text-slate-400">Coding Challenge</p>
                       </div>
                     </div>
-                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(assignment.status)} border border-current/30 backdrop-blur-sm`}>
+                    <span 
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold ml-3 flex-shrink-0 shadow-sm border"
+                      style={getStatusStyle(assignment.status)}
+                    >
                       {assignment.status}
                     </span>
                   </div>
 
-                  {/* Test Details with Enhanced Badges */}
-                  <div className="space-y-3 mb-6">
-                    <div className="flex items-center justify-between p-3 bg-gradient-to-r from-slate-700/20 to-slate-600/20 rounded-xl hover:from-purple-500/10 hover:to-pink-500/10 border border-slate-600/30 hover:border-purple-400/50 transition-all duration-300 group/item transform hover:scale-[1.02]">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg shadow-lg group-hover/item:shadow-purple-500/25 transition-all duration-300 transform group-hover/item:rotate-12">
-                          <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                  {/* Test Details - Improved Design with Fixed Widths */}
+                  <div className="space-y-2.5 mb-6">
+                    <div className="flex items-center justify-between p-3.5 bg-slate-900/70 rounded-xl border border-slate-800/50 hover:bg-slate-900/80 transition-all duration-200 group/item">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div className="p-2 bg-slate-800/70 rounded-lg shadow-sm flex-shrink-0">
+                          <svg className="h-4 w-4 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
                           </svg>
                         </div>
-                        <span className="text-slate-300 text-sm font-medium">Subject</span>
+                        <span className="text-slate-300 text-sm font-medium whitespace-nowrap">Subject</span>
                       </div>
-                      <span className="px-3 py-1 bg-gradient-to-r from-purple-500/20 to-pink-500/20 text-purple-300 rounded-full text-sm font-semibold border border-purple-400/30 group-hover/item:from-purple-500/30 group-hover/item:to-pink-500/30 group-hover/item:text-purple-200 transition-all duration-300">
+                      <span className="px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm min-w-[80px] text-center">
                         {assignment.testId?.subject || "General"}
                       </span>
                     </div>
-
-                    <div className="flex items-center justify-between p-3 bg-gradient-to-r from-slate-700/20 to-slate-600/20 rounded-xl hover:from-amber-500/10 hover:to-orange-500/10 border border-slate-600/30 hover:border-amber-400/50 transition-all duration-300 group/item transform hover:scale-[1.02]">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-gradient-to-br from-amber-500 to-orange-600 rounded-lg shadow-lg group-hover/item:shadow-amber-500/25 transition-all duration-300 transform group-hover/item:rotate-12">
-                          <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    
+                    <div className="flex items-center justify-between p-3.5 bg-slate-900/70 rounded-xl border border-slate-800/50 hover:bg-slate-900/80 transition-all duration-200 group/item">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div className="p-2 bg-slate-800/70 rounded-lg shadow-sm flex-shrink-0">
+                          <svg className="h-4 w-4 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
                         </div>
-                        <span className="text-slate-300 text-sm font-medium">Time Limit</span>
+                        <span className="text-slate-300 text-sm font-medium whitespace-nowrap">Time Limit</span>
                       </div>
-                      <span className="px-3 py-1 bg-gradient-to-r from-amber-500/20 to-orange-500/20 text-amber-300 rounded-full text-sm font-semibold border border-amber-400/30 group-hover/item:from-amber-500/30 group-hover/item:to-orange-500/30 group-hover/item:text-amber-200 transition-all duration-300">
+                      <span className="px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm min-w-[80px] text-center">
                         {assignment.testId?.timeLimit} min
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between p-3 bg-gradient-to-r from-slate-700/20 to-slate-600/20 rounded-xl hover:from-cyan-500/10 hover:to-blue-500/10 border border-slate-600/30 hover:border-cyan-400/50 transition-all duration-300 group/item transform hover:scale-[1.02]">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg shadow-lg group-hover/item:shadow-cyan-500/25 transition-all duration-300 transform group-hover/item:rotate-12">
-                          <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    <div className="flex items-center justify-between p-3.5 bg-slate-900/70 rounded-xl border border-slate-800/50 hover:bg-slate-900/80 transition-all duration-200 group/item">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div className="p-2 bg-slate-800/70 rounded-lg shadow-sm flex-shrink-0">
+                          <svg className="h-4 w-4 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                           </svg>
                         </div>
-                        <span className="text-slate-300 text-sm font-medium">Questions</span>
+                        <span className="text-slate-300 text-sm font-medium whitespace-nowrap">Questions</span>
                       </div>
-                      <span className="px-3 py-1 bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-300 rounded-full text-sm font-semibold border border-cyan-400/30 group-hover/item:from-cyan-500/30 group-hover/item:to-blue-500/30 group-hover/item:text-cyan-200 transition-all duration-300">
+                      <span className="px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm min-w-[80px] text-center">
                         {assignment.testId?.questionCount || 0}
                       </span>
                     </div>
                   </div>
 
-                  {assignment.mentorId && (
-                    <div className="flex justify-between text-sm mb-3">
-                      <span className="text-slate-400">Mentor:</span>
-                      <span className="text-slate-300">{assignment.mentorId?.name || "Not assigned"}</span>
-                    </div>
-                  )}
-
-                  {assignment.score !== null && (
-                    <div className="flex justify-between text-sm mb-3">
-                      <span className="text-slate-400">Score:</span>
-                      <span className="font-semibold text-green-400">{assignment.score}%</span>
+                  {/* Mentor and Score Info */}
+                  {(assignment.mentorId || assignment.score !== null) && (
+                    <div className="mb-6 pt-4 border-t border-slate-800/50 space-y-2.5">
+                      {assignment.mentorId && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-slate-400 whitespace-nowrap">Mentor:</span>
+                          <span className="text-gray-200 font-medium text-right ml-4 truncate">{assignment.mentorId?.name || "Not assigned"}</span>
+                        </div>
+                      )}
+                      {assignment.score !== null && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-slate-400 whitespace-nowrap">Score:</span>
+                          <span className="text-gray-100 font-bold text-base">{assignment.score}%</span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
 
-                <div className="mt-6">
+                {/* Action Buttons Section */}
+                <div className="mt-6 pt-4" style={{ borderTop: '1px solid rgba(34, 211, 238, 0.2)' }}>
                   {assignment.status === "Assigned" && isTestNotStarted(assignment.startTime) && (
-                    <CountdownTimer
-                      startTime={assignment.startTime}
-                      onTimerComplete={() => window.location.reload()}
-                    />
+                    <div className="mb-4">
+                      <CountdownTimer
+                        startTime={assignment.startTime}
+                        onTimerComplete={() => window.location.reload()}
+                      />
+                    </div>
                   )}
 
                   {assignment.status === "Assigned" && isTestAvailable(assignment.startTime, assignment.duration) && (
                     <button
                       onClick={() => handleStartTest(assignment._id)}
-                      className="w-full bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white py-3 px-4 rounded-xl font-semibold transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl"
-                      style={{ border: '2px solid transparent', zIndex: 9999, position: 'relative' }}
+                      className="w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
+                      style={{ 
+                        backgroundColor: '#22D3EE',
+                        color: '#020617',
+                        border: '2px solid transparent',
+                        zIndex: 9999,
+                        position: 'relative'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.opacity = '0.9';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.opacity = '1';
+                      }}
                     >
                       Start Coding Challenge
                     </button>
@@ -316,7 +356,7 @@ export default function StudentCodingTests() {
                   {assignment.status === "Assigned" && isDeadlinePassed(assignment.startTime, assignment.duration) && (
                     <button
                       disabled
-                      className="w-full bg-red-600 text-white py-3 px-4 rounded-xl font-semibold opacity-50 cursor-not-allowed"
+                      className="w-full bg-red-600/40 text-red-300 py-2.5 px-4 rounded-lg font-semibold opacity-70 cursor-not-allowed border border-red-600/30"
                     >
                       Deadline Passed
                     </button>
@@ -326,16 +366,28 @@ export default function StudentCodingTests() {
                     isDeadlinePassed(assignment.startTime, assignment.duration) ? (
                       <button
                         onClick={() => nav(`/student/view-test/${assignment._id}`)}
-                        className="w-full bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-xl font-semibold transition-colors cursor-pointer"
-                        style={{ border: '2px solid green', zIndex: 9999, position: 'relative' }}
+                        className="w-full bg-green-600/80 hover:bg-green-600 text-white py-2.5 px-4 rounded-lg font-semibold transition-colors cursor-pointer shadow-sm hover:shadow-md"
+                        style={{ border: '2px solid transparent', zIndex: 9999, position: 'relative' }}
                       >
                         View Results
                       </button>
                     ) : (
                       <button
                         onClick={() => nav(`/student/take-coding/${assignment._id}`)}
-                        className="w-full bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white py-3 px-4 rounded-xl font-semibold transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl"
-                        style={{ border: '2px solid transparent', zIndex: 9999, position: 'relative' }}
+                        className="w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
+                        style={{ 
+                          backgroundColor: '#22D3EE',
+                          color: '#020617',
+                          border: '2px solid transparent',
+                          zIndex: 9999,
+                          position: 'relative'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.opacity = '0.9';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.opacity = '1';
+                        }}
                       >
                         Continue Coding Challenge
                       </button>
@@ -347,16 +399,16 @@ export default function StudentCodingTests() {
                       assignment.reviewStatus === "Reviewed" ? (
                         <button
                           onClick={() => nav(`/student/view-test/${assignment._id}`)}
-                          className="w-full bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-xl font-semibold transition-colors"
-                          style={{ border: '2px solid green', zIndex: 9999, position: 'relative' }}
+                          className="w-full bg-green-600/80 hover:bg-green-600 text-white py-2.5 px-4 rounded-lg font-semibold transition-colors cursor-pointer shadow-sm hover:shadow-md"
+                          style={{ border: '2px solid transparent', zIndex: 9999, position: 'relative' }}
                         >
                           View Results
                         </button>
                       ) : (
                         <button
                           onClick={() => nav(`/student/view-test/${assignment._id}`)}
-                          className="w-full bg-yellow-600 hover:bg-yellow-700 text-white py-3 px-4 rounded-xl font-semibold transition-colors cursor-pointer"
-                          style={{ border: '2px solid yellow', zIndex: 9999, position: 'relative' }}
+                          className="w-full bg-amber-600/80 hover:bg-amber-600 text-white py-2.5 px-4 rounded-lg font-semibold transition-colors cursor-pointer shadow-sm hover:shadow-md"
+                          style={{ border: '2px solid transparent', zIndex: 9999, position: 'relative' }}
                         >
                           View Submission
                         </button>
@@ -364,7 +416,7 @@ export default function StudentCodingTests() {
                     ) : (
                       <button
                         disabled
-                        className="w-full bg-gray-600 text-white py-3 px-4 rounded-xl font-semibold opacity-50 cursor-not-allowed"
+                        className="w-full bg-slate-600/50 text-slate-300 py-2.5 px-4 rounded-lg font-semibold opacity-70 cursor-not-allowed border border-slate-600/40"
                       >
                         Results Available After Deadline
                       </button>
@@ -374,22 +426,32 @@ export default function StudentCodingTests() {
                   {assignment.status === "Overdue" && (
                     <button
                       disabled
-                      className="w-full bg-red-600 text-white py-3 px-4 rounded-xl font-semibold opacity-50 cursor-not-allowed"
+                      className="w-full bg-red-600/40 text-red-300 py-2.5 px-4 rounded-lg font-semibold opacity-70 cursor-not-allowed border border-red-600/30"
                     >
                       Deadline Passed
                     </button>
                   )}
                 </div>
 
-                {assignment.startedAt && (
-                  <div className="mt-3 text-xs text-slate-400">
-                    Started: {new Date(assignment.startedAt).toLocaleDateString()}
-                  </div>
-                )}
-
-                {assignment.completedAt && (
-                  <div className="mt-1 text-xs text-slate-400">
-                    Completed: {new Date(assignment.completedAt).toLocaleDateString()}
+                {/* Date Information */}
+                {(assignment.startedAt || assignment.completedAt) && (
+                  <div className="mt-4 pt-3 border-t border-slate-800/40 space-y-1.5">
+                    {assignment.startedAt && (
+                      <div className="flex items-center gap-2 text-xs text-slate-400">
+                        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <span>Started: {new Date(assignment.startedAt).toLocaleDateString()}</span>
+                      </div>
+                    )}
+                    {assignment.completedAt && (
+                      <div className="flex items-center gap-2 text-xs text-slate-400">
+                        <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span>Completed: {new Date(assignment.completedAt).toLocaleDateString()}</span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
