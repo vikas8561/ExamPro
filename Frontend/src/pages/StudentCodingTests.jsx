@@ -356,7 +356,12 @@ export default function StudentCodingTests() {
                   {assignment.status === "Assigned" && isDeadlinePassed(assignment.startTime, assignment.duration) && (
                     <button
                       disabled
-                      className="w-full bg-red-600/40 text-red-300 py-2.5 px-4 rounded-lg font-semibold opacity-70 cursor-not-allowed border border-red-600/30"
+                      className="w-full py-2.5 px-4 rounded-lg font-semibold opacity-70 cursor-not-allowed border"
+                      style={{
+                        backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                        color: '#FCA5A5',
+                        borderColor: 'rgba(239, 68, 68, 0.3)'
+                      }}
                     >
                       Deadline Passed
                     </button>
@@ -366,8 +371,20 @@ export default function StudentCodingTests() {
                     isDeadlinePassed(assignment.startTime, assignment.duration) ? (
                       <button
                         onClick={() => nav(`/student/view-test/${assignment._id}`)}
-                        className="w-full bg-green-600/80 hover:bg-green-600 text-white py-2.5 px-4 rounded-lg font-semibold transition-colors cursor-pointer shadow-sm hover:shadow-md"
-                        style={{ border: '2px solid transparent', zIndex: 9999, position: 'relative' }}
+                        className="w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
+                        style={{ 
+                          backgroundColor: '#22D3EE',
+                          color: '#020617',
+                          border: '2px solid transparent',
+                          zIndex: 9999,
+                          position: 'relative'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.opacity = '0.9';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.opacity = '1';
+                        }}
                       >
                         View Results
                       </button>
@@ -399,16 +416,40 @@ export default function StudentCodingTests() {
                       assignment.reviewStatus === "Reviewed" ? (
                         <button
                           onClick={() => nav(`/student/view-test/${assignment._id}`)}
-                          className="w-full bg-green-600/80 hover:bg-green-600 text-white py-2.5 px-4 rounded-lg font-semibold transition-colors cursor-pointer shadow-sm hover:shadow-md"
-                          style={{ border: '2px solid transparent', zIndex: 9999, position: 'relative' }}
+                          className="w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
+                          style={{ 
+                            backgroundColor: '#22D3EE',
+                            color: '#020617',
+                            border: '2px solid transparent',
+                            zIndex: 9999,
+                            position: 'relative'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.opacity = '0.9';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.opacity = '1';
+                          }}
                         >
                           View Results
                         </button>
                       ) : (
                         <button
                           onClick={() => nav(`/student/view-test/${assignment._id}`)}
-                          className="w-full bg-amber-600/80 hover:bg-amber-600 text-white py-2.5 px-4 rounded-lg font-semibold transition-colors cursor-pointer shadow-sm hover:shadow-md"
-                          style={{ border: '2px solid transparent', zIndex: 9999, position: 'relative' }}
+                          className="w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
+                          style={{ 
+                            backgroundColor: '#22D3EE',
+                            color: '#020617',
+                            border: '2px solid transparent',
+                            zIndex: 9999,
+                            position: 'relative'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.opacity = '0.9';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.opacity = '1';
+                          }}
                         >
                           View Submission
                         </button>
@@ -416,7 +457,12 @@ export default function StudentCodingTests() {
                     ) : (
                       <button
                         disabled
-                        className="w-full bg-slate-600/50 text-slate-300 py-2.5 px-4 rounded-lg font-semibold opacity-70 cursor-not-allowed border border-slate-600/40"
+                        className="w-full py-2.5 px-4 rounded-lg font-semibold opacity-70 cursor-not-allowed border"
+                        style={{
+                          backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                          color: '#FCA5A5',
+                          borderColor: 'rgba(239, 68, 68, 0.3)'
+                        }}
                       >
                         Results Available After Deadline
                       </button>
@@ -426,7 +472,12 @@ export default function StudentCodingTests() {
                   {assignment.status === "Overdue" && (
                     <button
                       disabled
-                      className="w-full bg-red-600/40 text-red-300 py-2.5 px-4 rounded-lg font-semibold opacity-70 cursor-not-allowed border border-red-600/30"
+                      className="w-full py-2.5 px-4 rounded-lg font-semibold opacity-70 cursor-not-allowed border"
+                      style={{
+                        backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                        color: '#FCA5A5',
+                        borderColor: 'rgba(239, 68, 68, 0.3)'
+                      }}
                     >
                       Deadline Passed
                     </button>
