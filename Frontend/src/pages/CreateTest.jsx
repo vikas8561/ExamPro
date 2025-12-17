@@ -542,8 +542,8 @@ export default function CreateTest() {
                 </div>
                 <div>
                   <h1 className="text-3xl font-bold" style={{ color: "#E5E7EB" }}>
-                    {isEdit ? "Edit Test" : "Create New Test"}
-                  </h1>
+          {isEdit ? "Edit Test" : "Create New Test"}
+        </h1>
                   <p className="text-slate-400 text-sm mt-1">
                     Configure test details, questions, and assignment options
                   </p>

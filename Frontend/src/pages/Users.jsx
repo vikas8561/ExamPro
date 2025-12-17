@@ -295,7 +295,7 @@ export default function Users() {
               </div>
 
               {/* Add User Button */}
-              <button
+        <button
                 onClick={() => {
                   if (showAddForm) {
                     // Close form
@@ -333,7 +333,7 @@ export default function Users() {
               >
                 <UserPlus className="h-5 w-5" />
                 <span>{editing ? "Cancel Edit" : showAddForm ? "Cancel" : "Add User"}</span>
-              </button>
+        </button>
             </div>
           </div>
         </div>
@@ -471,10 +471,10 @@ export default function Users() {
                   </button>
                 </div>
                 <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <input
-                    value={form.name}
+        <input
+          value={form.name}
                     onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                    placeholder="Full name"
+          placeholder="Full name"
                     className="px-4 py-3 rounded-xl focus:outline-none transition-all duration-300"
                     style={{
                       backgroundColor: "#1E293B",
@@ -487,11 +487,11 @@ export default function Users() {
                     onBlur={(e) => {
                       e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
                     }}
-                  />
-                  <input
-                    value={form.email}
+        />
+        <input
+          value={form.email}
                     onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                    placeholder="Email"
+          placeholder="Email"
                     className="px-4 py-3 rounded-xl focus:outline-none transition-all duration-300"
                     style={{
                       backgroundColor: "#1E293B",
@@ -504,10 +504,10 @@ export default function Users() {
                     onBlur={(e) => {
                       e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
                     }}
-                  />
-                  <select
-                    value={form.role}
-                    onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
+        />
+        <select
+          value={form.role}
+          onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
                     className="px-4 py-3 rounded-xl focus:outline-none transition-all duration-300"
                     style={{
                       backgroundColor: "#1E293B",
@@ -520,15 +520,15 @@ export default function Users() {
                     onBlur={(e) => {
                       e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
                     }}
-                  >
+        >
                     <option value="Student" style={{ backgroundColor: "#1E293B" }}>Student</option>
                     <option value="Mentor" style={{ backgroundColor: "#1E293B" }}>Mentor</option>
                     <option value="Admin" style={{ backgroundColor: "#1E293B" }}>Admin</option>
-                  </select>
-                  {form.role === "Student" && (
-                    <select
-                      value={form.studentCategory}
-                      onChange={(e) => setForm((f) => ({ ...f, studentCategory: e.target.value }))}
+        </select>
+        {form.role === "Student" && (
+          <select
+            value={form.studentCategory}
+            onChange={(e) => setForm((f) => ({ ...f, studentCategory: e.target.value }))}
                       className="px-4 py-3 rounded-xl focus:outline-none transition-all duration-300"
                       style={{
                         backgroundColor: "#1E293B",
@@ -541,11 +541,11 @@ export default function Users() {
                       onBlur={(e) => {
                         e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
                       }}
-                    >
+          >
                       <option value="RU" style={{ backgroundColor: "#1E293B" }}>RU</option>
                       <option value="SU" style={{ backgroundColor: "#1E293B" }}>SU</option>
-                    </select>
-                  )}
+          </select>
+        )}
                 </div>
                 <div className="flex gap-3 mt-4">
                   <button
@@ -620,7 +620,7 @@ export default function Users() {
                 }} />
               </>
             )}
-          </div>
+      </div>
         </div>
       )}
 
@@ -712,38 +712,38 @@ export default function Users() {
                     <span className="px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm min-w-[80px] text-center">
                       {u.studentCategory || "SU"}
                     </span>
-                  </div>
-                )}
-              </div>
             </div>
+          )}
+        </div>
+      </div>
 
             {/* Action Buttons */}
             <div className="relative z-10 flex justify-between gap-3 mt-2 pt-4" style={{ borderTop: "1px solid rgba(255, 255, 255, 0.2)" }}>
-              <button
-                onClick={() => {
-                  setEditing(u._id);
-                  setForm({
-                    name: u.name,
-                    email: u.email,
-                    role: u.role,
-                    studentCategory: u.studentCategory || "SU",
-                  });
+                    <button
+                      onClick={() => {
+                        setEditing(u._id);
+                        setForm({
+                          name: u.name,
+                          email: u.email,
+                          role: u.role,
+                          studentCategory: u.studentCategory || "SU",
+                        });
                   setShowAddForm(true);
                   setAddMode("single"); // Show form directly when editing
-                }}
+                      }}
                 className="px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm flex-1 text-center transition-all duration-300 hover:bg-slate-800/80"
-              >
-                Edit
-              </button>
-              <button
-                onClick={() => deleteUser(u._id)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => deleteUser(u._id)}
                 className="px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm flex-1 text-center transition-all duration-300 hover:bg-slate-800/80"
-              >
-                Delete
-              </button>
+                    >
+                      Delete
+                    </button>
             </div>
           </div>
-        ))}
+              ))}
         {filtered.length === 0 && (
           <div className="col-span-full text-center py-8 text-sm" style={{ color: "#9CA3AF" }}>
             {searchTerm ? "No users match your search." : "No users found."}

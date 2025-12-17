@@ -27,6 +27,8 @@ import MentorDashboard from "./pages/MentorDashboard";
 import MentorSubmissions from "./pages/MentorSubmissions";
 import ViewCompletedTest from "./pages/ViewCompletedTest";
 import AdminSidebar from "./components/AdminSidebar";
+import AdminDSAPractice from "./pages/AdminDSAPractice";
+import StudentDSAPractice from "./pages/StudentDSAPractice";
 
 // Protected Route Component
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -74,6 +76,7 @@ const AdminLayout = () => {
           <Route path="/" element={<Dashboard />} />
           <Route path="/tests" element={<Tests />} />
           <Route path="/tests/create" element={<CreateTest />} />
+          <Route path="/dsa-practice" element={<AdminDSAPractice />} />
           <Route path="/users" element={<Users />} />
           <Route path="*" element={<div className="p-6">Not Found</div>} />
         </Routes>
@@ -116,6 +119,7 @@ const StudentRoutes = () => {
 
         <Routes>
           <Route path="/" element={<StudentDashboard />} />
+          <Route path="/dsa-practice" element={<StudentDSAPractice />} />
           <Route path="/assignments" element={<StudentAssignments />} />
           <Route path="/coding-tests" element={<StudentCodingTests />} />
           <Route path="/take-coding/:assignmentId" element={<TakeCodingTest />} />

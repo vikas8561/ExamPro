@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import StatusPill from "../components/StatusPill";
 import { API_BASE_URL } from "../config/api";
 
 export default function Dashboard() {
@@ -325,7 +324,9 @@ export default function Dashboard() {
                       {t.title}
                     </td>
                     <td className="p-4">
-                      <StatusPill label={t.status} />
+                      <span className="px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm min-w-[80px] text-center inline-block">
+                        {t.status}
+                      </span>
                     </td>
                     <td
                       className="p-4 text-sm"

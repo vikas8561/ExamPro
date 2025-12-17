@@ -269,6 +269,7 @@ app.use("/api/test-submissions", require("./routes/testSubmissions"));
 app.use("/api/coding", require("./routes/coding"));
 app.use("/api/answers", require("./routes/answers"));
 app.use("/api/practice-tests", require("./routes/practiceTests"));
+app.use("/api/dsa-questions", require("./routes/dsaQuestions"));
 app.use("/api/mentor", require("./routes/mentor"));
 app.use("/api/mentor-fast", require("./routes/mentorAssignmentsFast"));
 app.use("/api/debug", require("./routes/debug"));

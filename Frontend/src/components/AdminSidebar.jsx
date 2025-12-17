@@ -7,7 +7,8 @@ import {
   Users, 
   X,
   ChevronRight,
-  Shield
+  Shield,
+  Code,
 } from "lucide-react";
 
 const Item = ({ to, icon: Icon, children, onClick, end = false }) => {
@@ -91,6 +92,7 @@ export default function AdminSidebar({ isOpen, onToggle }) {
   const menuItems = [
     { to: "/admin", icon: LayoutDashboard, label: "Dashboard", end: true },
     { to: "/admin/tests", icon: ClipboardList, label: "Tests" },
+    { to: "/admin/dsa-practice", icon: Code, label: "DSA Practice" },
     { to: "/admin/users", icon: Users, label: "Users" },
   ];
 

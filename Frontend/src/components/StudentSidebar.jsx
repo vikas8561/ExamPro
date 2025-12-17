@@ -5,12 +5,13 @@ import {
   LayoutDashboard, 
   ClipboardList, 
   Code, 
+  Code2,
   BookOpen, 
   Trophy, 
   User, 
   X,
   ChevronRight,
-  GraduationCap
+  GraduationCap,
 } from "lucide-react";
 
 const Item = ({ to, icon: Icon, children, onClick, end = false }) => {
@@ -20,7 +21,7 @@ const Item = ({ to, icon: Icon, children, onClick, end = false }) => {
       end={end}
       onClick={onClick}
       className={({ isActive }) =>
-        `group relative flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 nav-item ${
+        `group relative flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl transition-all duration-300 nav-item ${
           isActive
             ? "text-white shadow-sm active-nav-item"
             : "text-gray-300 hover:text-white"
@@ -46,7 +47,7 @@ const Item = ({ to, icon: Icon, children, onClick, end = false }) => {
             ${isActive ? "scale-110" : "group-hover:scale-110"}
           `}>
             <Icon 
-              className="w-5 h-5" 
+              className="w-4.5 h-4.5" 
               style={{ color: isActive ? '#FFFFFF' : undefined }}
             />
           </div>
@@ -54,7 +55,7 @@ const Item = ({ to, icon: Icon, children, onClick, end = false }) => {
           {/* Text with animation */}
           <span 
             className={`
-              relative z-10 font-medium transition-all duration-300
+              relative z-10 text-sm font-medium transition-all duration-300
               ${isActive ? "translate-x-0" : "group-hover:translate-x-1"}
             `}
             style={{ color: isActive ? '#E5E7EB' : undefined }}
@@ -65,7 +66,7 @@ const Item = ({ to, icon: Icon, children, onClick, end = false }) => {
           {/* Arrow indicator */}
           <ChevronRight 
             className={`
-              ml-auto w-4 h-4 transition-all duration-300
+              ml-auto w-3.5 h-3.5 transition-all duration-300
               ${isActive ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0"}
             `}
             style={{ color: isActive ? '#FFFFFF' : undefined }}
@@ -99,6 +100,7 @@ export default function StudentSidebar({ isOpen, onToggle }) {
     { to: "/student/assignments", icon: ClipboardList, label: "Assigned Tests" },
     { to: "/student/coding-tests", icon: Code, label: "Coding Tests" },
     { to: "/student/practice-tests", icon: BookOpen, label: "Practice Tests" },
+    { to: "/student/dsa-practice", icon: Code2, label: "DSA Practice" },
     { to: "/student/results", icon: Trophy, label: "Completed Tests" },
   ];
 
@@ -115,25 +117,26 @@ export default function StudentSidebar({ isOpen, onToggle }) {
       {/* Sidebar */}
       <aside 
         className={`
-          fixed lg:sticky inset-y-0 left-0 z-50 w-72 h-screen 
-          text-slate-100 p-6 flex flex-col
+          fixed lg:sticky inset-y-0 left-0 z-50 w-68 h-screen 
+          text-slate-100 p-5 flex flex-col
           transform transition-transform duration-300 ease-in-out
           shadow-2xl
           ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
         `}
         style={{ 
           backgroundColor: '#0B1220',
-          borderRight: '1px solid rgba(255, 255, 255, 0.2)'
+          borderRight: '1px solid rgba(255, 255, 255, 0.2)',
+          width: '17rem'
         }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between mb-8 pb-6" style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.2)' }}>
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between mb-7 pb-5" style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.2)' }}>
+          <div className="flex items-center gap-2.5">
             <div className="p-2 bg-slate-800/70 rounded-xl">
-              <GraduationCap className="w-6 h-6" style={{ color: '#FFFFFF' }} />
+              <GraduationCap className="w-5 h-5" style={{ color: '#FFFFFF' }} />
             </div>
             <div>
-              <h1 className="text-xl font-bold" style={{ color: '#E5E7EB' }}>
+              <h1 className="text-lg font-bold" style={{ color: '#E5E7EB' }}>
                 Student Portal
               </h1>
               <p className="text-xs text-gray-400">Exam Management</p>
@@ -160,7 +163,7 @@ export default function StudentSidebar({ isOpen, onToggle }) {
         </div>
 
         {/* Navigation */}
-        <nav className="space-y-2 flex-1 overflow-y-auto pr-2 custom-scrollbar">
+        <nav className="space-y-2 flex-1">
           {menuItems.map((item) => (
             <Item 
               key={item.to}
@@ -175,7 +178,7 @@ export default function StudentSidebar({ isOpen, onToggle }) {
         </nav>
 
         {/* Footer Section */}
-        <div className="mt-auto pt-4 space-y-3" style={{ borderTop: '1px solid rgba(255, 255, 255, 0.2)' }}>
+        <div className="mt-auto pt-4 space-y-2.5" style={{ borderTop: '1px solid rgba(255, 255, 255, 0.2)' }}>
           {/* Profile Button */}
           <NavLink
             to="/student/profile"
@@ -183,7 +186,7 @@ export default function StudentSidebar({ isOpen, onToggle }) {
             onMouseEnter={() => setProfileHovered(true)}
             onMouseLeave={() => setProfileHovered(false)}
             className={({ isActive }) =>
-              `group flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 relative ${
+              `group flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl transition-all duration-300 relative ${
                 isActive ? "text-white shadow-sm" : "text-gray-300 hover:text-white"
               }`
             }
@@ -208,13 +211,13 @@ export default function StudentSidebar({ isOpen, onToggle }) {
                   <User className="w-4 h-4" style={{ color: isActive ? '#FFFFFF' : '#FFFFFF' }} />
                 </div>
                 <span 
-                  className="font-medium flex-1"
+                  className="text-sm font-medium flex-1"
                   style={{ color: isActive ? '#E5E7EB' : undefined }}
                 >
                   Profile
                 </span>
                 <ChevronRight 
-                  className={`w-4 h-4 transition-all duration-300 ${
+                  className={`w-3.5 h-3.5 transition-all duration-300 ${
                     profileHovered ? "translate-x-1 opacity-100" : "opacity-0"
                   }`}
                   style={{ color: '#FFFFFF' }}
@@ -226,9 +229,9 @@ export default function StudentSidebar({ isOpen, onToggle }) {
           {/* Logout Button */}
           <button
             onClick={handleLogout}
-            className="w-full flex items-center justify-center gap-3 
-                     font-medium
-                     px-4 py-3 rounded-xl 
+            className="w-full flex items-center justify-center gap-2.5 
+                     text-sm font-medium
+                     px-3.5 py-2.5 rounded-xl 
                      transition-all duration-300 
                      shadow-sm hover:shadow-md
                      transform hover:scale-[1.01] active:scale-[0.99]"
@@ -246,7 +249,7 @@ export default function StudentSidebar({ isOpen, onToggle }) {
               e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
             }}
           >
-            <LogOut className="w-5 h-5" />
+            <LogOut className="w-4 h-4" />
             <span>Logout</span>
           </button>
         </div>
