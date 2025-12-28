@@ -140,9 +140,11 @@ const StudentRoutes = () => {
 // Mentor Layout Component with routes
 const MentorRoutes = () => {
   return (
-    <div className="min-h-screen bg-slate-900 text-white flex">
-      <MentorLayout />
-      <main className="flex-1">
+    <div className="h-screen bg-slate-900 text-white flex overflow-hidden">
+      <div className="sticky top-0 h-screen flex-shrink-0">
+        <MentorLayout />
+      </div>
+      <main className="flex-1 overflow-y-auto">
         <Routes>
           <Route path="/" element={<MentorDashboard />} />
           <Route path="/assignments" element={<MentorAssignments />} />

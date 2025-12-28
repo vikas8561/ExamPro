@@ -58,6 +58,12 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
       return res.status(400).json({ message: "Test title is required" });
     }
 
+    // Validate allowedTabSwitches (0-100 for regular tests, -1 for practice tests)
+    const tabSwitchesValue = Number(allowedTabSwitches || 0);
+    if (type !== "practice" && (tabSwitchesValue < 0 || tabSwitchesValue > 100)) {
+      return res.status(400).json({ message: "Allowed tab switches must be between 0 and 100" });
+    }
+
     // Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
@@ -123,6 +129,20 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
 router.put("/:id", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
     const { title, subject, type, instructions, timeLimit, negativeMarkingPercent, allowedTabSwitches, questions, status } = req.body;
+
+    // Validate allowedTabSwitches if provided (0-100 for regular tests, -1 for practice tests)
+    if (allowedTabSwitches !== undefined) {
+      const tabSwitchesValue = Number(allowedTabSwitches);
+      // Get test type from request body or fetch from database
+      let testType = type;
+      if (!testType) {
+        const existingTest = await Test.findById(req.params.id);
+        if (existingTest) testType = existingTest.type;
+      }
+      if (testType !== "practice" && (tabSwitchesValue < 0 || tabSwitchesValue > 100)) {
+        return res.status(400).json({ message: "Allowed tab switches must be between 0 and 100" });
+      }
+    }
 
     const updateData = {};
     if (title) updateData.title = title.trim();

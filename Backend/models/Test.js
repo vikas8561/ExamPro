@@ -57,7 +57,19 @@ const TestSchema = new mongoose.Schema(
     instructions: { type: String, default: "" },
     timeLimit: { type: Number, default: 30, min: 1 },
     negativeMarkingPercent: { type: Number, enum: [0, 0.25, 0.5, 0.75, 1], default: 0 },
-    allowedTabSwitches: { type: Number, default: 0, min: -1 },
+    allowedTabSwitches: { 
+      type: Number, 
+      default: 0, 
+      min: -1,
+      max: 100,
+      validate: {
+        validator: function(value) {
+          // Allow -1 (unlimited for practice tests) or 0-100
+          return value === -1 || (value >= 0 && value <= 100);
+        },
+        message: 'allowedTabSwitches must be -1 (unlimited) or between 0 and 100'
+      }
+    },
     otp: { type: String, default: null }, // 6-digit OTP for permission bypass
     isPracticeTest: { type: Boolean, default: false }, // Flag to identify practice tests
     practiceTestSettings: {

@@ -43,7 +43,7 @@ router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) 
   }
 });
 
-// Get assignments for current student - ULTRA FAST VERSION
+// Get assignments for current student - ULTRA FAST VERSION with pagination
 router.get("/student", authenticateToken, async (req, res, next) => {
   try {
     if (req.user.role !== "Student") {
@@ -53,21 +53,60 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     const startTime = Date.now();
     console.log('🚀 ULTRA FAST: Fetching assignments for student:', req.user.userId);
 
-    // ✅ Fixed: Remove pagination for student assignments to show all tests
-    // Students need to see all their assignments, not just the first 50
-    const assignments = await Assignment.find({ userId: req.user.userId })
+    // Pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 9;
+    const skip = (page - 1) * limit;
+    const testType = req.query.type; // Optional filter for test type (e.g., 'coding')
+
+    // Build query for test type filter
+    const testTypeMatch = testType 
+      ? { type: testType, type: { $ne: "practice" } }
+      : { type: { $ne: "practice" } };
+
+    // First, get all assignments to count valid ones (with non-practice testId and optional type filter)
+    const allAssignments = await Assignment.find({ userId: req.user.userId })
+      .populate({
+        path: "testId",
+        select: "type",
+        match: { type: { $ne: "practice" } }
+      })
+      .lean();
+    
+    // Filter by type if specified, then filter out null testIds
+    let validAssignments = allAssignments.filter(a => a.testId !== null);
+    if (testType) {
+      validAssignments = validAssignments.filter(a => a.testId?.type === testType);
+    }
+    const validCount = validAssignments.length;
+
+    // Get the IDs of valid assignments for pagination
+    const validAssignmentIds = validAssignments.map(a => a._id);
+
+    // Fetch paginated assignments using the valid IDs
+    const assignments = await Assignment.find({ 
+      userId: req.user.userId,
+      _id: { $in: validAssignmentIds }
+    })
       .select("testId mentorId status startTime duration deadline startedAt completedAt score autoScore mentorScore mentorFeedback reviewStatus timeSpent createdAt")
       .populate({
         path: "testId",
         select: "title type instructions timeLimit subject questions",
-        match: { type: { $ne: "practice" } } // Exclude practice tests from assignments
+        match: { type: { $ne: "practice" } } // Exclude practice tests
       })
       .populate("mentorId", "name email")
       .sort({ deadline: 1 })
+      .limit(limit)
+      .skip(skip)
       .lean({ virtuals: true }); // Use lean() with virtuals for 2x faster queries
 
     // Filter out assignments where testId is null (due to the match filter above)
-    const filteredAssignments = assignments.filter(assignment => assignment.testId !== null);
+    let filteredAssignments = assignments.filter(assignment => assignment.testId !== null);
+    
+    // Apply type filter if specified
+    if (testType) {
+      filteredAssignments = filteredAssignments.filter(assignment => assignment.testId?.type === testType);
+    }
 
     // Transform assignments to include question count but exclude question content
     const assignmentsWithQuestionCount = filteredAssignments.map(assignment => ({
@@ -116,7 +155,17 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     const totalTime = Date.now() - startTime;
     // console.log(`✅ ULTRA FAST student assignments completed in ${totalTime}ms - Found ${assignmentsWithQuestionCount.length} assignments`);
 
-    res.json(assignmentsWithQuestionCount);
+    res.json({
+      assignments: assignmentsWithQuestionCount,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(validCount / limit),
+        totalItems: validCount,
+        itemsPerPage: limit,
+        hasNextPage: page < Math.ceil(validCount / limit),
+        hasPrevPage: page > 1
+      }
+    });
   } catch (error) {
     console.error('❌ Error in student assignments:', error);
     next(error);
@@ -365,11 +414,22 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
 
     // Check if already in progress - return 200 with special flag instead of 400
     if (assignment.status === "In Progress") {
+      // Calculate remaining time
+      const now = new Date();
+      let timeRemaining = 0;
+      
+      if (assignment.startedAt && assignment.testId?.timeLimit) {
+        const testEndTime = new Date(assignment.startedAt.getTime() + assignment.testId.timeLimit * 60000);
+        const remainingMs = testEndTime.getTime() - now.getTime();
+        timeRemaining = Math.max(0, Math.floor(remainingMs / 1000)); // Convert to seconds
+      }
+      
       return res.status(200).json({
         assignment,
         test: assignment.testId,
         message: "Test already started",
-        alreadyStarted: true
+        alreadyStarted: true,
+        timeRemaining
       });
     }
 
@@ -435,9 +495,51 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
       }
     }
 
+    // Store timeLimit before saving (populated testId might be lost after save)
+    let timeLimitMinutes = assignment.testId?.timeLimit;
+    
+    console.log('🔍 Initial timeLimit check:', {
+      timeLimitMinutes,
+      testIdType: typeof assignment.testId,
+      testIdIsObject: assignment.testId && typeof assignment.testId === 'object',
+      testIdId: assignment.testId?._id,
+      testIdTimeLimit: assignment.testId?.timeLimit
+    });
+    
+    // If timeLimit is missing, try to get it from the test directly
+    if (!timeLimitMinutes || timeLimitMinutes <= 0 || isNaN(timeLimitMinutes)) {
+      console.warn('⚠️ timeLimit missing or invalid, fetching test directly');
+      const testIdToFetch = assignment.testId?._id || assignment.testId;
+      if (testIdToFetch) {
+        const test = await Test.findById(testIdToFetch);
+        if (test && test.timeLimit) {
+          timeLimitMinutes = Number(test.timeLimit);
+          console.log('✅ Fetched timeLimit from test:', timeLimitMinutes);
+        }
+      }
+    }
+    
+    // Ensure it's a valid number
+    timeLimitMinutes = Number(timeLimitMinutes);
+    
+    if (!timeLimitMinutes || timeLimitMinutes <= 0 || isNaN(timeLimitMinutes)) {
+      console.error('❌ ERROR: timeLimit is missing or invalid:', {
+        timeLimitMinutes,
+        testId: assignment.testId?._id || assignment.testId,
+        testIdType: typeof assignment.testId,
+        testIdValue: assignment.testId
+      });
+      // Use a default of 30 minutes if timeLimit is missing
+      timeLimitMinutes = 30;
+      console.warn('⚠️ Using default timeLimit of 30 minutes');
+    }
+    
+    console.log('✅ Final timeLimitMinutes:', timeLimitMinutes);
+
     // Start the test
     assignment.status = "In Progress";
-    assignment.startedAt = new Date();
+    const startedAt = new Date();
+    assignment.startedAt = startedAt;
 
     // Explicitly calculate and save deadline if not set
     if (!assignment.deadline) {
@@ -448,10 +550,39 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
 
     await assignment.save();
 
+    // Calculate remaining time in seconds
+    // Use the stored timeLimitMinutes and startedAt
+    const startedAtTime = startedAt.getTime();
+    const testEndTime = startedAtTime + (timeLimitMinutes * 60000); // timeLimit in minutes, convert to ms
+    const nowTimestamp = Date.now();
+    const remainingMs = testEndTime - nowTimestamp;
+    const timeRemaining = Math.max(0, Math.floor(remainingMs / 1000)); // Convert to seconds
+    
+    console.log('⏰ Time calculation:', {
+      timeLimitMinutes,
+      startedAt: startedAt.toISOString(),
+      startedAtTime,
+      testEndTime,
+      nowTimestamp,
+      remainingMs,
+      timeRemaining,
+      'testEndTime - nowTimestamp (ms)': remainingMs,
+      'timeRemaining (seconds)': timeRemaining,
+      'timeRemaining (minutes)': Math.floor(timeRemaining / 60)
+    });
+
+    // Ensure testId is populated in response
+    const populatedAssignment = await Assignment.findById(assignment._id)
+      .populate({
+        path: "testId",
+        select: "title type instructions timeLimit allowedTabSwitches questions otp"
+      });
+
     res.json({
-      assignment,
-      test: assignment.testId,
-      message: "Test started successfully"
+      assignment: populatedAssignment,
+      test: populatedAssignment.testId || assignment.testId,
+      message: "Test started successfully",
+      timeRemaining: timeRemaining
     });
   } catch (error) {
     next(error);

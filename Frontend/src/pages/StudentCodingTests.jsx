@@ -97,21 +97,45 @@ export default function StudentCodingTests() {
   const [tests, setTests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
   const nav = useNavigate();
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const allAssignments = await apiRequest('/assignments/student');
-        const codingAssignments = (allAssignments || []).filter(a => a.testId?.type === 'coding');
+  const fetchCodingTests = async (page = currentPage) => {
+    try {
+      setLoading(true);
+      const data = await apiRequest(`/assignments/student?page=${page}&limit=9&type=coding`);
+      
+      // Handle paginated response
+      if (data && data.assignments && data.pagination) {
+        setTests(data.assignments);
+        setCurrentPage(data.pagination.currentPage);
+        setTotalPages(data.pagination.totalPages);
+        setTotalItems(data.pagination.totalItems);
+      } else if (Array.isArray(data)) {
+        // Fallback for non-paginated response (backward compatibility)
+        const codingAssignments = data.filter(a => a.testId?.type === 'coding');
         setTests(codingAssignments);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
+        setTotalPages(1);
+        setTotalItems(codingAssignments.length);
+      } else {
+        setTests([]);
+        setTotalPages(1);
+        setTotalItems(0);
       }
-    };
-    load();
+    } catch (e) {
+      console.error(e);
+      setTests([]);
+      setTotalPages(1);
+      setTotalItems(0);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCodingTests(currentPage);
   }, []);
 
   const formatDate = (dateString) => {
@@ -209,7 +233,7 @@ export default function StudentCodingTests() {
                     Coding Tests
                   </h1>
                   <p className="text-slate-400 text-sm mt-1">
-                    {tests.length} coding test{tests.length !== 1 ? 's' : ''} available • {filteredTests.length} showing
+                    {totalItems > 0 ? `${totalItems} coding test${totalItems !== 1 ? 's' : ''} available` : `${tests.length} coding test${tests.length !== 1 ? 's' : ''} available`} • {filteredTests.length} showing
                   </p>
                 </div>
               </div>
@@ -596,6 +620,151 @@ export default function StudentCodingTests() {
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="mt-10 flex flex-col items-center gap-4">
+            <div className="flex items-center justify-center gap-2">
+              <button
+                onClick={() => {
+                  if (currentPage > 1) {
+                    const newPage = currentPage - 1;
+                    setCurrentPage(newPage);
+                    fetchCodingTests(newPage);
+                  }
+                }}
+                disabled={currentPage === 1}
+                className="px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100"
+                style={{
+                  backgroundColor: currentPage === 1 
+                    ? 'rgba(255, 255, 255, 0.05)' 
+                    : '#FFFFFF',
+                  background: currentPage === 1 
+                    ? 'rgba(255, 255, 255, 0.05)' 
+                    : '#FFFFFF',
+                  color: currentPage === 1 ? '#FFFFFF' : '#000000',
+                  border: '2px solid rgba(255, 255, 255, 0.2)'
+                }}
+                onMouseEnter={(e) => {
+                  if (currentPage > 1) {
+                    e.currentTarget.style.background = '#FFFFFF';
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.6)';
+                    e.currentTarget.style.boxShadow = '0 8px 20px rgba(255, 255, 255, 0.3)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (currentPage > 1) {
+                    e.currentTarget.style.background = '#FFFFFF';
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                    e.currentTarget.style.boxShadow = '0 4px 15px rgba(0, 0, 0, 0.2)';
+                  }
+                }}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Previous
+              </button>
+              
+              <div className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)' }}>
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum;
+                  if (totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1;
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
+                  
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => {
+                        if (pageNum !== currentPage) {
+                          setCurrentPage(pageNum);
+                          fetchCodingTests(pageNum);
+                        }
+                      }}
+                      className="w-11 h-11 rounded-xl font-bold transition-all duration-300 transform hover:scale-110 shadow-md hover:shadow-lg"
+                      style={{
+                        background: pageNum === currentPage 
+                          ? '#FFFFFF'
+                          : 'rgba(255, 255, 255, 0.1)',
+                        color: pageNum === currentPage ? '#000000' : '#FFFFFF',
+                        border: pageNum === currentPage 
+                          ? '2px solid rgba(255, 255, 255, 0.8)' 
+                          : '2px solid rgba(255, 255, 255, 0.2)',
+                        boxShadow: pageNum === currentPage 
+                          ? '0 4px 15px rgba(255, 255, 255, 0.4)' 
+                          : '0 2px 8px rgba(0, 0, 0, 0.2)'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (pageNum !== currentPage) {
+                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.4)';
+                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(255, 255, 255, 0.2)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (pageNum !== currentPage) {
+                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                          e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.2)';
+                        }
+                      }}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={() => {
+                  if (currentPage < totalPages) {
+                    const newPage = currentPage + 1;
+                    setCurrentPage(newPage);
+                    fetchCodingTests(newPage);
+                  }
+                }}
+                disabled={currentPage === totalPages}
+                className="px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100"
+                style={{
+                  backgroundColor: currentPage === totalPages 
+                    ? 'rgba(255, 255, 255, 0.05)' 
+                    : '#FFFFFF',
+                  background: currentPage === totalPages 
+                    ? 'rgba(255, 255, 255, 0.05)' 
+                    : '#FFFFFF',
+                  color: currentPage === totalPages ? '#FFFFFF' : '#000000',
+                  border: '2px solid rgba(255, 255, 255, 0.2)'
+                }}
+                onMouseEnter={(e) => {
+                  if (currentPage < totalPages) {
+                    e.currentTarget.style.background = '#FFFFFF';
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.6)';
+                    e.currentTarget.style.boxShadow = '0 8px 20px rgba(255, 255, 255, 0.3)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (currentPage < totalPages) {
+                    e.currentTarget.style.background = '#FFFFFF';
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                    e.currentTarget.style.boxShadow = '0 4px 15px rgba(0, 0, 0, 0.2)';
+                  }
+                }}
+              >
+                Next
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
           </div>
         )}
       </div>

@@ -9,7 +9,7 @@ export default function MentorLayout() {
   };
 
   return (
-    <aside className="w-64 bg-slate-800 border-r border-slate-700 flex flex-col">
+    <aside className="w-64 h-screen bg-slate-800 border-r border-slate-700 flex flex-col">
       <div className="p-6">
         <h1 className="text-xl font-bold text-white">Mentor Panel</h1>
       </div>

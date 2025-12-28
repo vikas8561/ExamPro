@@ -12,22 +12,14 @@ export default function TakeCodingTest() {
   const [test, setTest] = useState(null);
   const [assignment, setAssignment] = useState(null);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [activeTab, setActiveTab] = useState('description');
   const [codeByQ, setCodeByQ] = useState({});
   const [languageByQ, setLanguageByQ] = useState({});
-  const [runResults, setRunResults] = useState(null);
-  const [submitResults, setSubmitResults] = useState(null);
-  const [loadingRun, setLoadingRun] = useState(false);
-  const [loadingSubmit, setLoadingSubmit] = useState(false);
-  const [manualCases, setManualCases] = useState([]);
   const [fontSize, setFontSize] = useState('medium');
   const [editorTheme, setEditorTheme] = useState('vs-dark');
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [isFormatting, setIsFormatting] = useState(false);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
   const [lastSaved, setLastSaved] = useState(null);
-  const [activeTestCaseIndex, setActiveTestCaseIndex] = useState(0);
-  const [outputVersion, setOutputVersion] = useState(0);
   
   // Proctoring system state (same as TakeTest.jsx)
   const [timeRemaining, setTimeRemaining] = useState(0);
@@ -176,6 +168,7 @@ export default function TakeCodingTest() {
           questionId,
           selectedOption: null,
           textAnswer: code || '',
+          language: languageByQ[questionId] || test?.questions?.find(q => q._id === questionId)?.language || 'python', // Save language for mentor review
           isCorrect: false,
           points: 0,
           autoGraded: false,
@@ -218,7 +211,7 @@ export default function TakeCodingTest() {
       await exitFullscreen();
 
       setIsSubmitting(false);
-      navigate(`/student/assignments`);
+      nav(`/student/assignments`);
     } catch (error) {
       console.error('Error submitting test:', error);
       setIsSubmitting(false);
@@ -602,6 +595,11 @@ export default function TakeCodingTest() {
       }
       
       console.log('✅ Using assignmentId:', finalAssignmentId);
+      
+      // Fetch current server time (same as TakeTest.jsx)
+      const timeResponse = await apiRequest("/time");
+      const serverTime = new Date(timeResponse.serverTime);
+      
       const response = await apiRequest(`/assignments/${finalAssignmentId}/start`, {
         method: 'POST',
         body: JSON.stringify({
@@ -614,7 +612,37 @@ export default function TakeCodingTest() {
         }),
       });
 
-      const { timeRemaining: remainingSeconds } = response;
+      if (response.alreadyStarted) {
+        await loadExistingTestData();
+        return;
+      }
+
+      if (!response.assignment || !response.test) {
+        throw new Error("Unexpected response format from backend. Expected assignment and test data.");
+      }
+
+      setAssignment(response.assignment);
+      setTest(response.test);
+
+      // Calculate timeRemaining the same way as TakeTest.jsx
+      const testTimeLimit = response.test.timeLimit;
+      const totalSeconds = testTimeLimit * 60;
+      const testStartTime = new Date(
+        response.assignment.startedAt || response.assignment.startTime
+      );
+      const currentTime = serverTime; // Use server time instead of client time
+      const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
+      const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
+
+      console.log('⏰ Time calculation:', {
+        testTimeLimit,
+        totalSeconds,
+        testStartTime: testStartTime.toISOString(),
+        currentTime: currentTime.toISOString(),
+        elapsedSeconds,
+        remainingSeconds
+      });
+
       setTimeRemaining(remainingSeconds);
       setTestStarted(true);
       setShowPermissionModal(false);
@@ -679,6 +707,11 @@ export default function TakeCodingTest() {
       }
       
       console.log('✅ Using assignmentId for OTP:', finalAssignmentId);
+      
+      // Fetch current server time (same as TakeTest.jsx)
+      const timeResponse = await apiRequest("/time");
+      const serverTime = new Date(timeResponse.serverTime);
+      
       const response = await apiRequest(`/assignments/${finalAssignmentId}/start`, {
         method: 'POST',
         body: JSON.stringify({
@@ -691,7 +724,28 @@ export default function TakeCodingTest() {
         }),
       });
 
-      const { timeRemaining: remainingSeconds } = response;
+      if (response.alreadyStarted) {
+        await loadExistingTestData();
+        return;
+      }
+
+      if (!response.assignment || !response.test) {
+        throw new Error("Unexpected response format from backend. Expected assignment and test data.");
+      }
+
+      setAssignment(response.assignment);
+      setTest(response.test);
+
+      // Calculate timeRemaining the same way as TakeTest.jsx
+      const testTimeLimit = response.test.timeLimit;
+      const totalSeconds = testTimeLimit * 60;
+      const testStartTime = new Date(
+        response.assignment.startedAt || response.assignment.startTime
+      );
+      const currentTime = serverTime;
+      const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
+      const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
+
       setTimeRemaining(remainingSeconds);
       setTestStarted(true);
       setShowPermissionModal(false);
@@ -727,8 +781,35 @@ export default function TakeCodingTest() {
       }
       
       console.log('✅ Using assignmentId for resume:', finalAssignmentId);
-      const response = await apiRequest(`/assignments/${finalAssignmentId}/resume`);
-      const { timeRemaining: remainingSeconds } = response;
+      
+      // Fetch current server time (same as TakeTest.jsx)
+      const timeResponse = await apiRequest("/time");
+      const serverTime = new Date(timeResponse.serverTime);
+      
+      // Get assignment data (same as TakeTest.jsx loadExistingTestData)
+      const assignmentData = await apiRequest(`/assignments/${finalAssignmentId}`);
+      setAssignment(assignmentData);
+      setTest(assignmentData.testId);
+
+      // Calculate timeRemaining the same way as TakeTest.jsx
+      const testTimeLimit = assignmentData.testId.timeLimit;
+      const totalSeconds = testTimeLimit * 60;
+      const testStartTime = new Date(
+        assignmentData.startedAt || assignmentData.startTime
+      );
+      const currentTime = serverTime;
+      const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
+      const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
+
+      console.log('⏰ Time calculation (resume):', {
+        testTimeLimit,
+        totalSeconds,
+        testStartTime: testStartTime.toISOString(),
+        currentTime: currentTime.toISOString(),
+        elapsedSeconds,
+        remainingSeconds
+      });
+
       setTimeRemaining(remainingSeconds);
       setTestStarted(true);
       setShowPermissionModal(false);
@@ -754,13 +835,15 @@ export default function TakeCodingTest() {
   };
 
   const handleSubmitClick = () => {
+    if (isSubmitting) return; // Prevent opening modal if already submitting
     setShowSubmitConfirmModal(true);
   };
 
-  const handleConfirmSubmit = () => {
+  const handleConfirmSubmit = async () => {
+    if (isSubmitting) return; // Prevent multiple clicks
     setIsSubmitting(true);
     setShowSubmitConfirmModal(false);
-    submitTest();
+    await submitTest();
   };
 
   const codingQuestions = useMemo(() => (test?.questions || []).filter(q => q.kind === 'coding'), [test]);
@@ -865,134 +948,6 @@ int main() {
     }
   };
 
-  const runCode = async () => {
-    if (!activeQ) return;
-    
-    // Check authentication before making request
-    const token = localStorage.getItem('token');
-    if (!token) {
-      alert('Please log in to run code. You will be redirected to the login page.');
-      window.location.href = '/login';
-      return;
-    }
-    
-    setLoadingRun(true);
-    setRunResults(null); // Clear previous results to ensure UI updates
-    setActiveTestCaseIndex(0); // Reset to first test case to show updated output
-    try {
-      // Use question's language from database, fallback to user's selection, then default to python
-      const questionLanguage = activeQ.language || languageByQ[activeQ._id] || 'python';
-      console.log(`🔤 Using language for question ${activeQ._id}: ${questionLanguage}`);
-      
-      const resp = await apiRequest('/coding/run', {
-        method: 'POST',
-        body: JSON.stringify({
-          assignmentId: assignment?._id,
-          questionId: activeQ._id,
-          sourceCode: codeByQ[activeQ._id] || '',
-          language: questionLanguage
-        })
-      });
-      // Append manual cases locally by re-running expected comparison client-side (simple equality)
-      const appended = [...(resp.results || [])];
-      manualCases.forEach(tc => {
-        appended.push({ input: tc.input, expected: tc.output, stdout: '', stderr: '', passed: false, status: { description: 'Manual' }, marks: 0 });
-      });
-      setRunResults({ ...resp, results: appended });
-      setOutputVersion(v => v + 1); // Force re-render of output section
-    } catch (e) {
-      console.error(e);
-      
-      // Check for specific error types
-      let errorMessage = 'Code execution failed. Please try again later.';
-      if (e.message && e.message.includes('401')) {
-        errorMessage = 'Authentication required. Please log in again.';
-      } else if (e.message && e.message.includes('403')) {
-        errorMessage = 'Access denied. Please check your permissions.';
-      } else if (e.message && e.message.includes('503')) {
-        errorMessage = 'Judge0 service is temporarily unavailable (sleeping). Please wait a moment and try again.';
-      } else if (e.message && e.message.includes('429')) {
-        errorMessage = 'Too many requests sent too quickly. Please wait a moment and try again.';
-      } else if (e.message && e.message.includes('CORS')) {
-        errorMessage = 'Cross-origin request blocked. Please contact support or try again later.';
-      } else if (e.message && e.message.includes('Network error')) {
-        errorMessage = 'Network error: Unable to connect to server. Please check your internet connection.';
-      } else if (e.message && e.message.includes('Judge0 error')) {
-        errorMessage = 'Code execution service error. Please try again.';
-      }
-      
-      alert(`Run failed: ${errorMessage}`);
-      
-      // Set error results to show in UI
-      const errorResults = (activeQ?.visibleTestCases || []).map(tc => ({
-        input: tc.input,
-        expected: tc.output,
-        stdout: '',
-        stderr: errorMessage,
-        passed: false,
-        status: { description: 'Error' }
-      }));
-      setRunResults({ results: errorResults, passed: 0, total: errorResults.length });
-      setOutputVersion(v => v + 1); // Force re-render of output section
-    } finally {
-      setLoadingRun(false);
-    }
-  };
-
-  const submitCode = async () => {
-    if (!activeQ) return;
-    
-    // Check authentication before making request
-    const token = localStorage.getItem('token');
-    if (!token) {
-      alert('Please log in to submit code. You will be redirected to the login page.');
-      window.location.href = '/login';
-      return;
-    }
-    
-    setLoadingSubmit(true);
-    try {
-        // Use question's language from database, fallback to user's selection, then default to python
-        const questionLanguage = activeQ.language || languageByQ[activeQ._id] || 'python';
-        console.log(`🔤 Using language for submission ${activeQ._id}: ${questionLanguage}`);
-        
-        const resp = await apiRequest('/coding/submit', {
-          method: 'POST',
-          body: JSON.stringify({
-            assignmentId: assignment?._id,
-            questionId: activeQ._id,
-            sourceCode: codeByQ[activeQ._id] || '',
-            language: questionLanguage
-          })
-        });
-      setSubmitResults(resp);
-      setActiveTab('submissions'); // Automatically switch to submissions tab
-    } catch (e) {
-      console.error(e);
-      
-      // Check for specific error types
-      let errorMessage = 'Submit failed. Please try again later.';
-      if (e.message && e.message.includes('401')) {
-        errorMessage = 'Authentication required. Please log in again.';
-      } else if (e.message && e.message.includes('403')) {
-        errorMessage = 'Access denied. Please check your permissions.';
-      } else if (e.message && e.message.includes('503')) {
-        errorMessage = 'Judge0 service is temporarily unavailable (sleeping). Please wait a moment and try again.';
-      } else if (e.message && e.message.includes('429')) {
-        errorMessage = 'Too many requests sent too quickly. Please wait a moment and try again.';
-      } else if (e.message && e.message.includes('CORS')) {
-        errorMessage = 'Cross-origin request blocked. Please contact support or try again later.';
-      } else if (e.message && e.message.includes('Network error')) {
-        errorMessage = 'Network error: Unable to connect to server. Please check your internet connection.';
-      } else if (e.message && e.message.includes('Judge0 error')) {
-        errorMessage = 'Code execution service error. Please try again.';
-      }
-      
-      alert(`Submit failed: ${errorMessage}`);
-    } finally {
-      setLoadingSubmit(false);
-    }
-  };
 
       if (showPermissionModal && assignment) {
         return (
@@ -1232,9 +1187,12 @@ int main() {
                 </button>
                 <button
                   onClick={handleConfirmSubmit}
-                  className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-md font-semibold"
+                  disabled={isSubmitting}
+                  className={`flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-md font-semibold ${
+                    isSubmitting ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
                 >
-                  Submit Test
+                  {isSubmitting ? 'Submitting...' : 'Submit Test'}
                 </button>
               </div>
             </div>
@@ -1247,28 +1205,38 @@ int main() {
       if (!test) return <div className="p-6">Loading...</div>;
 
       return (
-    <div className="h-[calc(100vh-64px)] flex">
-      <div className="w-1/2 border-r border-slate-700 overflow-auto p-4 flex flex-col">
+        <>
+        <div className="h-[calc(100vh-64px)] flex">
+          <div className="w-1/2 border-r border-slate-700 overflow-auto p-4 flex flex-col">
         <div className="mb-3">
           <div className="flex items-center justify-between mb-2">
             <div className="text-xs text-slate-400">Question {activeIndex + 1} of {codingQuestions.length}</div>
             {testStarted && (
-              <div className="text-sm font-semibold text-yellow-400">
-                Time Remaining: {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}
+              <div className={`
+                px-6 py-3 rounded-xl font-mono font-bold text-xl shadow-2xl
+                flex items-center justify-center gap-2
+                border-2 backdrop-blur-sm
+                transition-all duration-300
+                ${
+                  timeRemaining <= 60 
+                    ? 'bg-black text-white border-white animate-pulse shadow-white/50' 
+                    : timeRemaining <= 300
+                    ? 'bg-gray-900 text-white border-gray-300 shadow-gray-400/50'
+                    : 'bg-white text-black border-black shadow-black/30'
+                }
+              `}>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="tracking-wider">
+                  {Math.floor((timeRemaining || 0) / 3600)}:{Math.floor(((timeRemaining || 0) % 3600) / 60).toString().padStart(2, '0')}:{((timeRemaining || 0) % 60).toString().padStart(2, '0')}
+                </span>
               </div>
             )}
           </div>
           <div className="flex items-center justify-between">
             <div className="text-lg font-semibold flex items-center gap-2">
               {test.title}
-              {submitResults?.passedCount === submitResults?.totalHidden && submitResults?.totalHidden > 0 && (
-                <span className="text-green-400 font-semibold text-sm flex items-center gap-1">
-                  Solved
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                </span>
-              )}
             </div>
             <div className="flex gap-2">
               <button
@@ -1294,12 +1262,15 @@ int main() {
             </div>
                 <button
                   onClick={handleSubmitClick}
-                  className="px-4 py-2 bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 text-white rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg shadow-red-500/30 flex items-center gap-2"
+                  disabled={isSubmitting}
+                  className={`px-4 py-2 bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 text-white rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg shadow-red-500/30 flex items-center gap-2 ${
+                    isSubmitting ? 'opacity-50 cursor-not-allowed transform-none' : ''
+                  }`}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                   </svg>
-                  Submit Test
+                  {isSubmitting ? 'Submitting...' : 'Submit Test'}
                 </button>
           </div>
           <div className="flex flex-wrap gap-2 mt-2">
@@ -1339,40 +1310,8 @@ int main() {
           </div>
         </div>
 
-        <div className="mb-4 border-b border-gradient-to-r from-purple-500 to-pink-500">
-          <nav className="flex space-x-2 text-sm font-medium" aria-label="Tabs">
-            <button
-              onClick={() => setActiveTab('description')}
-              className={`px-4 py-3 rounded-t-lg transition-all duration-300 transform hover:scale-105 flex items-center gap-2 ${
-                activeTab === 'description'
-                  ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg shadow-blue-500/50'
-                  : 'text-slate-400 hover:text-white hover:bg-gradient-to-r hover:from-slate-700 hover:to-slate-600 hover:shadow-md'
-              }`}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Description
-            </button>
-            <button
-              onClick={() => setActiveTab('submissions')}
-              className={`px-4 py-3 rounded-t-lg transition-all duration-300 transform hover:scale-105 flex items-center gap-2 ${
-                activeTab === 'submissions'
-                  ? 'bg-gradient-to-r from-green-600 to-teal-600 text-white shadow-lg shadow-green-500/50'
-                  : 'text-slate-400 hover:text-white hover:bg-gradient-to-r hover:from-slate-700 hover:to-slate-600 hover:shadow-md'
-              }`}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Submissions
-            </button>
-          </nav>
-        </div>
-
         <div className="flex-1 overflow-auto">
-          {activeTab === 'description' && (
-            <div>
+          <div>
               <div className="prose prose-invert whitespace-pre-wrap mb-6">{activeQ?.text}</div>
               {activeQ?.examples && activeQ.examples.length > 0 && (
                 <div className="space-y-4">
@@ -1426,48 +1365,11 @@ int main() {
               )}
 
             </div>
-          )}
-          {activeTab === 'submissions' && (
-            <div>
-              {submitResults ? (
-                <div className="space-y-2">
-                  <h3 className="text-lg font-semibold text-white mb-4">Submission Results</h3>
-                  <div className="space-y-1 max-h-96 overflow-y-auto">
-                    {submitResults.results.map((result, idx) => (
-                      <div key={idx} className={`flex items-center justify-between rounded-lg p-3 border transition-all duration-300 ${
-                        result.passed
-                          ? 'bg-gradient-to-r from-green-900/20 to-emerald-900/20 border-green-700/50 shadow-lg shadow-green-500/10'
-                          : 'bg-gradient-to-r from-red-900/20 to-pink-900/20 border-red-700/50 shadow-lg shadow-red-500/10'
-                      }`}>
-                        <span className="text-sm text-slate-200 font-medium">Test Case {idx + 1}</span>
-                        <div className="flex items-center gap-2">
-                          {result.passed ? (
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                          ) : (
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          )}
-                          <span className={`text-sm font-semibold ${result.passed ? 'text-green-400' : 'text-red-400'}`}>
-                            {result.passed ? 'Passed' : 'Failed'}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <p className="text-slate-400">No submissions yet.</p>
-              )}
-            </div>
-          )}
+          </div>
         </div>
-      </div>
 
-      <div className="w-1/2 flex flex-col overflow-auto">
-        <div className="p-3 flex items-center justify-between border-b border-slate-700 bg-gradient-to-r from-slate-800 to-slate-900">
+          <div className="w-1/2 flex flex-col overflow-auto">
+            <div className="p-3 flex items-center justify-between border-b border-slate-700 bg-gradient-to-r from-slate-800 to-slate-900">
           <div className="flex items-center gap-3">
             <div className="text-slate-300 font-semibold text-lg flex items-center gap-2">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1591,218 +1493,59 @@ int main() {
               }
             }}
           />
-          <div className="h-[30%] overflow-auto border-t border-slate-700 p-2">
-            <div className="p-2 border-t border-slate-700 flex justify-end space-x-2">
-              <button
-                onClick={runCode}
-                disabled={loadingRun}
-                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-blue-500/30 flex items-center gap-2"
-              >
-                {loadingRun ? (
-                  <>
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    Running...
-                  </>
-                ) : (
-                  <>
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1.586a1 1 0 01.707.293l.707.707A1 1 0 0012.414 11H13m-3 3a1 1 0 100-2 1 1 0 000 2z" />
-                    </svg>
-                    Run Code
-                  </>
-                )}
-              </button>
-              <button
-                onClick={submitCode}
-                disabled={loadingSubmit}
-                className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-green-500/30 flex items-center gap-2"
-              >
-                {loadingSubmit ? (
-                  <>
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    Submitting...
-                  </>
-                ) : (
-                  <>
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Submit Code
-                  </>
-                )}
-              </button>
-            </div>
+        </div>
           </div>
         </div>
-        <div className="p-2 border-t border-slate-700">
-          {/* Visible Test Cases Section with tabs */}
-          {activeQ?.visibleTestCases && activeQ.visibleTestCases.length > 0 && runResults && (
-            <div className="mb-4">
-              <h3 className="font-medium text-white mb-2 flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                Test Cases
-              </h3>
-              <div className="flex space-x-2 mb-2 overflow-x-auto max-w-full no-scrollbar">
-                {activeQ.visibleTestCases.map((_, idx) => {
-                  const isCorrect = runResults ? runResults.results[idx]?.stdout?.trim() === activeQ.visibleTestCases[idx].output?.trim() : null;
-                  const isSelected = activeTestCaseIndex === idx;
-                  let bgClass, textClass, shadowClass;
-                  if (runResults) {
-                    if (isSelected) {
-                      bgClass = 'bg-gradient-to-r from-slate-600 to-slate-700';
-                      textClass = 'text-white';
-                      shadowClass = 'shadow-lg shadow-slate-500/30';
-                    } else {
-                      bgClass = isCorrect ? 'bg-gradient-to-r from-green-500 to-emerald-600' : 'bg-gradient-to-r from-red-500 to-pink-600';
-                      textClass = 'text-white';
-                      shadowClass = isCorrect ? 'shadow-lg shadow-green-500/30' : 'shadow-lg shadow-red-500/30';
-                    }
-                  } else {
-                    bgClass = 'bg-gradient-to-r from-slate-700 to-slate-800';
-                    textClass = 'text-slate-400';
-                    shadowClass = 'shadow-md shadow-slate-500/20';
-                  }
-                  const hoverClass = isSelected ? '' : 'hover:shadow-lg hover:scale-105 transition-all duration-300';
-                  return (
-                    <button
-                      key={idx}
-                      onClick={() => setActiveTestCaseIndex(idx)}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${bgClass} ${textClass} ${shadowClass} ${hoverClass} flex items-center gap-1`}
-                    >
-                      {isCorrect !== null && (
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d={isCorrect ? "M5 13l4 4L19 7" : "M6 18L18 6M6 6l12 12"} />
-                        </svg>
-                      )}
-                      Case {idx + 1}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-lg p-4 shadow-lg flex-1 overflow-y-auto">
-                <div className="space-y-3">
-                  <div>
-                    <div className="text-sm text-slate-400 mb-2 flex items-center gap-1">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M7 16l-4-4m0 0l4-4m-4 4h18" />
-                      </svg>
-                      Input:
-                    </div>
-                    <pre className="bg-gradient-to-r from-slate-900 to-slate-950 border border-slate-600 rounded-lg p-3 text-sm text-slate-200 whitespace-pre-wrap overflow-x-auto shadow-inner">
-                      {activeQ.visibleTestCases[activeTestCaseIndex].input}
-                    </pre>
+
+        {/* Keyboard Shortcuts Modal */}
+        {showShortcuts && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowShortcuts(false)}>
+              <div className="bg-slate-800 border border-slate-700 rounded-lg p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-white">Keyboard Shortcuts</h3>
+                  <button onClick={() => setShowShortcuts(false)} className="text-slate-400 hover:text-white">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-slate-300">Save</span>
+                    <kbd className="bg-slate-700 px-2 py-1 rounded text-xs">Ctrl+S</kbd>
                   </div>
-                  <div>
-                    <div className="text-sm text-slate-400 mb-2 flex items-center gap-1">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                      </svg>
-                      Expected Output:
-                    </div>
-                    <pre className="bg-gradient-to-r from-slate-900 to-slate-950 border border-slate-600 rounded-lg p-3 text-sm text-slate-200 whitespace-pre-wrap overflow-x-auto shadow-inner">
-                      {activeQ.visibleTestCases[activeTestCaseIndex].output}
-                    </pre>
+                  <div className="flex justify-between">
+                    <span className="text-slate-300">Find</span>
+                    <kbd className="bg-slate-700 px-2 py-1 rounded text-xs">Ctrl+F</kbd>
                   </div>
-                  <div>
-                    <div className="text-sm text-slate-400 mb-2 flex items-center gap-1">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      Your Output:
-                    </div>
-                    <pre key={`output-${outputVersion}-${activeTestCaseIndex}`} className="bg-gradient-to-r from-slate-900 to-slate-950 border border-slate-600 rounded-lg p-3 text-sm text-slate-200 whitespace-pre-wrap overflow-x-auto shadow-inner">
-                      {runResults?.results[activeTestCaseIndex]?.stdout || runResults?.results[activeTestCaseIndex]?.stderr || 'Run code to see output'}
-                    </pre>
+                  <div className="flex justify-between">
+                    <span className="text-slate-300">Replace</span>
+                    <kbd className="bg-slate-700 px-2 py-1 rounded text-xs">Ctrl+H</kbd>
                   </div>
-                  {runResults && (
-                    <div>
-                      <div className="text-sm text-slate-400 mb-2 flex items-center gap-1">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        Result:
-                      </div>
-                      <div className={`text-lg font-bold flex items-center gap-2 ${runResults.results[activeTestCaseIndex]?.stdout?.trim() === activeQ.visibleTestCases[activeTestCaseIndex].output?.trim() ? 'text-green-400' : 'text-red-400'}`}>
-                        {runResults.results[activeTestCaseIndex]?.stdout?.trim() === activeQ.visibleTestCases[activeTestCaseIndex].output?.trim() ? (
-                          <>
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                            Correct
-                          </>
-                        ) : (
-                          <>
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                            Incorrect
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  )}
+                  <div className="flex justify-between">
+                    <span className="text-slate-300">Command Palette</span>
+                    <kbd className="bg-slate-700 px-2 py-1 rounded text-xs">F1</kbd>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-300">Toggle Comment</span>
+                    <kbd className="bg-slate-700 px-2 py-1 rounded text-xs">Ctrl+/</kbd>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-300">Format Document</span>
+                    <kbd className="bg-slate-700 px-2 py-1 rounded text-xs">Shift+Alt+F</kbd>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-300">Fold All</span>
+                    <kbd className="bg-slate-700 px-2 py-1 rounded text-xs">Ctrl+K Ctrl+0</kbd>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-300">Unfold All</span>
+                    <kbd className="bg-slate-700 px-2 py-1 rounded text-xs">Ctrl+K Ctrl+J</kbd>
+                  </div>
                 </div>
               </div>
             </div>
           )}
-        </div>
-      </div>
-
-      {/* Keyboard Shortcuts Modal */}
-      {showShortcuts && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowShortcuts(false)}>
-          <div className="bg-slate-800 border border-slate-700 rounded-lg p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-white">Keyboard Shortcuts</h3>
-              <button onClick={() => setShowShortcuts(false)} className="text-slate-400 hover:text-white">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-slate-300">Save</span>
-                <kbd className="bg-slate-700 px-2 py-1 rounded text-xs">Ctrl+S</kbd>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-300">Find</span>
-                <kbd className="bg-slate-700 px-2 py-1 rounded text-xs">Ctrl+F</kbd>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-300">Replace</span>
-                <kbd className="bg-slate-700 px-2 py-1 rounded text-xs">Ctrl+H</kbd>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-300">Command Palette</span>
-                <kbd className="bg-slate-700 px-2 py-1 rounded text-xs">F1</kbd>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-300">Toggle Comment</span>
-                <kbd className="bg-slate-700 px-2 py-1 rounded text-xs">Ctrl+/</kbd>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-300">Format Document</span>
-                <kbd className="bg-slate-700 px-2 py-1 rounded text-xs">Shift+Alt+F</kbd>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-300">Fold All</span>
-                <kbd className="bg-slate-700 px-2 py-1 rounded text-xs">Ctrl+K Ctrl+0</kbd>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-300">Unfold All</span>
-                <kbd className="bg-slate-700 px-2 py-1 rounded text-xs">Ctrl+K Ctrl+J</kbd>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+        </>
+      );
+    }

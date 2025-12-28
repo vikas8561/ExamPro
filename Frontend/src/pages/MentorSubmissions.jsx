@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
 import apiRequest from "../services/api";
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 const MentorSubmissions = () => {
   const [students, setStudents] = useState([]);
@@ -281,38 +283,95 @@ const MentorSubmissions = () => {
                       }
 
                       const isCorrect = response.isCorrect;
-                      let studentAnswer = response.selectedOption || "Not answered";
-                      let correctAnswer = question.answer || "N/A";
+                      const isMCQ = question.kind === "mcq";
+                      const isCoding = question.kind === "coding";
+                      const isTheory = question.kind === "theory";
+                      
+                      let studentAnswer = isMCQ 
+                        ? (response.selectedOption || "Not answered")
+                        : (response.textAnswer || "No answer provided");
+                      let correctAnswer = isMCQ ? (question.answer || "N/A") : null;
 
-                      // MSQ removed
+                      // Get language from response (should be stored there)
+                      const answerLanguage = response.language || (isCoding ? question.language : null) || 'python';
 
                       return (
                         <div key={index} className="bg-slate-700 rounded-lg p-4">
                           <div className="mb-2">
                             <span className="text-sm font-medium text-slate-300">Question {index + 1}:</span>
                             <p className="text-white mt-1">{question.text}</p>
+                            <span className={`inline-block mt-2 px-2 py-1 rounded text-xs ${
+                              isMCQ ? 'bg-blue-900/50 text-blue-300' :
+                              isCoding ? 'bg-purple-900/50 text-purple-300' :
+                              'bg-pink-900/50 text-pink-300'
+                            }`}>
+                              {isMCQ ? 'MCQ' : isCoding ? 'Coding' : 'Theory'}
+                            </span>
+                            {isCoding && response.language && (
+                              <span className="ml-2 px-2 py-1 rounded text-xs bg-slate-600 text-slate-300">
+                                Language: {response.language}
+                              </span>
+                            )}
                           </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className={isMCQ ? "grid grid-cols-1 md:grid-cols-2 gap-4" : ""}>
                             <div>
-                              <span className="text-sm font-medium text-slate-300">Your Answer:</span>
-                              <p className={`mt-1 ${isCorrect ? 'text-green-400' : 'text-red-400'}`}>
-                                {studentAnswer}
-                              </p>
+                              <span className="text-sm font-medium text-slate-300">Student Answer:</span>
+                              {isMCQ ? (
+                                <p className={`mt-1 ${isCorrect ? 'text-green-400' : 'text-red-400'}`}>
+                                  {studentAnswer}
+                                </p>
+                              ) : (
+                                <div className="mt-1 border border-slate-600 rounded-lg overflow-hidden">
+                                  <SyntaxHighlighter
+                                    language={answerLanguage}
+                                    style={vscDarkPlus}
+                                    customStyle={{
+                                      margin: 0,
+                                      padding: '16px',
+                                      borderRadius: '8px',
+                                      fontSize: '14px',
+                                      lineHeight: '1.5',
+                                      minHeight: '200px',
+                                      maxHeight: '400px',
+                                      overflow: 'auto',
+                                      backgroundColor: '#1e1e1e'
+                                    }}
+                                    showLineNumbers={true}
+                                    lineNumberStyle={{
+                                      minWidth: '3em',
+                                      paddingRight: '1em',
+                                      color: '#858585',
+                                      backgroundColor: '#252526'
+                                    }}
+                                  >
+                                    {studentAnswer}
+                                  </SyntaxHighlighter>
+                                </div>
+                              )}
                             </div>
-                            <div>
-                              <span className="text-sm font-medium text-slate-300">Correct Answer:</span>
-                              <p className="text-blue-400 mt-1">{correctAnswer}</p>
-                            </div>
+                            {isMCQ && (
+                              <div>
+                                <span className="text-sm font-medium text-slate-300">Correct Answer:</span>
+                                <p className="text-blue-400 mt-1">{correctAnswer}</p>
+                              </div>
+                            )}
                           </div>
                           <div className="mt-2">
-                            <span className={`px-2 py-1 rounded text-xs ${
-                              isCorrect ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'
-                            }`}>
-                              {isCorrect ? 'Correct' : 'Incorrect'}
-                            </span>
+                            {isMCQ && (
+                              <span className={`px-2 py-1 rounded text-xs ${
+                                isCorrect ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'
+                              }`}>
+                                {isCorrect ? 'Correct' : 'Incorrect'}
+                              </span>
+                            )}
                             <span className="ml-2 text-sm text-slate-400">
                               Points: {response.points || 0} / {question.points || 1}
                             </span>
+                            {!isMCQ && (
+                              <span className="ml-2 text-xs text-slate-500">
+                                (Pending mentor review)
+                              </span>
+                            )}
                           </div>
                         </div>
                       );

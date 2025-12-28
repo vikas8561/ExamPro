@@ -791,22 +791,22 @@ export default function CreateTest() {
             <div className="relative">
             <input
               type="number"
-                min="-1"
-                max="10"
+                min="0"
+                max="100"
               value={form.allowedTabSwitches}
-              onChange={(e) =>
-                setForm((prev) => ({ ...prev, allowedTabSwitches: e.target.value }))
-              }
+              onChange={(e) => {
+                const value = Math.max(0, Math.min(100, parseInt(e.target.value) || 0));
+                setForm((prev) => ({ ...prev, allowedTabSwitches: value }));
+              }}
                 className="w-full p-4 bg-slate-600/50 border border-slate-500/50 rounded-lg focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50 transition-all duration-200"
                 placeholder="0"
               />
               <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 text-sm">
-                {form.allowedTabSwitches == -1 ? "∞" : "times"}
+                times
               </div>
             </div>
             <div className="mt-2 text-xs text-slate-400">
               {form.allowedTabSwitches == 0 ? "No tab switching allowed" : 
-               form.allowedTabSwitches == -1 ? "Unlimited tab switching allowed" :
                `Students can switch tabs ${form.allowedTabSwitches} time${form.allowedTabSwitches != 1 ? 's' : ''}`}
             </div>
           </div>

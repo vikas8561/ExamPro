@@ -4,6 +4,7 @@ const ResponseSchema = new mongoose.Schema({
   questionId: { type: mongoose.Schema.Types.ObjectId, required: true },
   selectedOption: { type: String, default: null },
   textAnswer: { type: String, default: null },
+  language: { type: String, default: null }, // Language used for coding questions (python, javascript, java, cpp, c, go)
   isCorrect: { type: Boolean, default: false },
   points: { type: Number, default: 0 },
   autoGraded: { type: Boolean, default: false },

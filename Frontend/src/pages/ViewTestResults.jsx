@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import apiRequest from "../services/api";
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 const ViewTestResults = () => {
   const { assignmentId } = useParams();
@@ -37,9 +39,10 @@ const ViewTestResults = () => {
   const finalScore = totalScore < 0 ? 0 : totalScore;
 
   return (
-    <div className="test-results">
-      <h2>Test Results</h2>
-      <div className="summary">
+    <div className="min-h-screen bg-slate-900 text-white p-6">
+      <div className="max-w-4xl mx-auto">
+        <h2 className="text-3xl font-bold text-white mb-6">Test Results</h2>
+        <div className="summary">
         <div className="bg-slate-800 shadow-lg rounded-xl p-6 mb-8 border border-slate-700">
           <h3 className="text-xl font-semibold text-white mb-4">Test Results</h3>
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4 text-center">
@@ -72,9 +75,25 @@ const ViewTestResults = () => {
       </div>
       <div className="questions">
         {test.questions.map((question, index) => {
-          const response = responses.find(
-            (r) => r.questionId.toString() === question._id.toString()
-          );
+          const response = responses.find((r) => {
+            const responseQId = r.questionId?._id || r.questionId;
+            return responseQId?.toString() === question._id.toString();
+          });
+
+          // Get language from response (should be stored there)
+          const answerLanguage = response?.language || (question.kind === "coding" ? question.language : null) || 'python';
+          
+          // Map language to Monaco Editor language
+          const getMonacoLanguage = (kind, lang) => {
+            if (kind === 'mcq') return 'plaintext';
+            if (lang === 'javascript') return 'javascript';
+            if (lang === 'cpp' || lang === 'c++') return 'cpp';
+            if (lang === 'c') return 'c';
+            if (lang === 'java') return 'java';
+            if (lang === 'go') return 'go';
+            return 'python';
+          };
+          const monacoLanguage = getMonacoLanguage(question.kind, answerLanguage);
 
           return (
             <div key={question._id} className="question">
@@ -82,16 +101,29 @@ const ViewTestResults = () => {
               <h3>
                 Q{index + 1}: {question.text}
               </h3>
-                <span style={{
-                  padding: '4px 8px',
-                  borderRadius: '12px',
-                  fontSize: '12px',
-                  fontWeight: '500',
-                  backgroundColor: question.kind === 'mcq' ? '#1e3a8a' : question.kind === 'coding' ? '#7c3aed' : '#be185d',
-                  color: question.kind === 'mcq' ? '#93c5fd' : question.kind === 'coding' ? '#c4b5fd' : '#f9a8d4'
-                }}>
-                  {question.kind === 'mcq' ? 'MCQ' : question.kind === 'coding' ? 'Coding' : 'Theory'}
-                </span>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <span style={{
+                    padding: '4px 8px',
+                    borderRadius: '12px',
+                    fontSize: '12px',
+                    fontWeight: '500',
+                    backgroundColor: question.kind === 'mcq' ? '#1e3a8a' : question.kind === 'coding' ? '#7c3aed' : '#be185d',
+                    color: question.kind === 'mcq' ? '#93c5fd' : question.kind === 'coding' ? '#c4b5fd' : '#f9a8d4'
+                  }}>
+                    {question.kind === 'mcq' ? 'MCQ' : question.kind === 'coding' ? 'Coding' : 'Theory'}
+                  </span>
+                  {question.kind === 'coding' && answerLanguage && (
+                    <span style={{
+                      padding: '4px 8px',
+                      borderRadius: '12px',
+                      fontSize: '12px',
+                      backgroundColor: '#374151',
+                      color: '#d1d5db'
+                    }}>
+                      Language: {answerLanguage}
+                    </span>
+                  )}
+                </div>
               </div>
               
               {question.kind === 'mcq' ? (
@@ -108,14 +140,35 @@ const ViewTestResults = () => {
                 <div>
                   <p>Your Answer:</p>
                   <div style={{
-                    backgroundColor: '#374151',
-                    padding: '12px',
-                    borderRadius: '6px',
-                    marginTop: '4px',
-                    whiteSpace: 'pre-wrap',
-                    color: '#e5e7eb'
+                    border: '1px solid #475569',
+                    borderRadius: '8px',
+                    overflow: 'hidden',
+                    marginTop: '8px'
                   }}>
-                    {response?.textAnswer || "No answer provided"}
+                    <SyntaxHighlighter
+                      language={answerLanguage || 'python'}
+                      style={vscDarkPlus}
+                      customStyle={{
+                        margin: 0,
+                        padding: '16px',
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        lineHeight: '1.5',
+                        minHeight: '200px',
+                        maxHeight: '400px',
+                        overflow: 'auto',
+                        backgroundColor: '#1e1e1e'
+                      }}
+                      showLineNumbers={true}
+                      lineNumberStyle={{
+                        minWidth: '3em',
+                        paddingRight: '1em',
+                        color: '#858585',
+                        backgroundColor: '#252526'
+                      }}
+                    >
+                      {response?.textAnswer || "No answer provided"}
+                    </SyntaxHighlighter>
                   </div>
                 </div>
               )}
@@ -124,117 +177,7 @@ const ViewTestResults = () => {
                 Points Earned: {response?.points ?? 0} / {question.points || 1}
               </p>
               
-              {/* Show comprehensive feedback for coding and theory questions */}
-              {(question.kind === 'coding' || question.kind === 'theory') && response?.geminiFeedback && (
-                <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {/* Main Feedback */}
-                  <div style={{
-                    backgroundColor: '#1e3a8a',
-                    borderLeft: '4px solid #3b82f6',
-                    padding: '16px',
-                    borderRadius: '6px'
-                  }}>
-                    <h5 style={{ color: '#93c5fd', fontWeight: '600', marginBottom: '8px' }}>📝 Feedback:</h5>
-                    <p style={{ color: '#bfdbfe', fontSize: '14px', lineHeight: '1.5' }}>
-                      {response.geminiFeedback}
-                    </p>
-                  </div>
-
-                  {/* Correct Answer */}
-                  {response.correctAnswer && (
-                    <div style={{
-                      backgroundColor: '#064e3b',
-                      borderLeft: '4px solid #10b981',
-                      padding: '16px',
-                      borderRadius: '6px'
-                    }}>
-                      <h5 style={{ color: '#6ee7b7', fontWeight: '600', marginBottom: '8px' }}>✅ Correct Answer:</h5>
-                      <div style={{
-                        color: '#a7f3d0',
-                        fontSize: '14px',
-                        lineHeight: '1.5',
-                        whiteSpace: 'pre-wrap',
-                        backgroundColor: '#374151',
-                        padding: '12px',
-                        borderRadius: '4px'
-                      }}>
-                        {response.correctAnswer}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Error Analysis */}
-                  {response.errorAnalysis && (
-                    <div style={{
-                      backgroundColor: '#7f1d1d',
-                      borderLeft: '4px solid #ef4444',
-                      padding: '16px',
-                      borderRadius: '6px'
-                    }}>
-                      <h5 style={{ color: '#fca5a5', fontWeight: '600', marginBottom: '8px' }}>🔍 What's Wrong:</h5>
-                      <p style={{ color: '#fecaca', fontSize: '14px', lineHeight: '1.5' }}>
-                        {response.errorAnalysis}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Improvement Steps */}
-                  {response.improvementSteps && response.improvementSteps.length > 0 && (
-                    <div style={{
-                      backgroundColor: '#78350f',
-                      borderLeft: '4px solid #f59e0b',
-                      padding: '16px',
-                      borderRadius: '6px'
-                    }}>
-                      <h5 style={{ color: '#fcd34d', fontWeight: '600', marginBottom: '8px' }}>🚀 How to Improve:</h5>
-                      <div style={{
-                        color: '#fde68a',
-                        fontSize: '14px',
-                        lineHeight: '1.5'
-                      }}>
-                        {Array.isArray(response.improvementSteps) ? (
-                          <ul style={{ margin: 0, paddingLeft: '20px' }}>
-                            {response.improvementSteps.map((step, index) => (
-                              <li key={index} style={{ marginBottom: '4px' }}>{step}</li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <div style={{ whiteSpace: 'pre-wrap' }}>{response.improvementSteps}</div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Topic Recommendations */}
-                  {response.topicRecommendations && response.topicRecommendations.length > 0 && (
-                    <div style={{
-                      backgroundColor: '#581c87',
-                      borderLeft: '4px solid #8b5cf6',
-                      padding: '16px',
-                      borderRadius: '6px'
-                    }}>
-                      <h5 style={{ color: '#c4b5fd', fontWeight: '600', marginBottom: '8px' }}>📚 Focus Areas:</h5>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                        {response.topicRecommendations.map((topic, index) => (
-                          <span
-                            key={index}
-                            style={{
-                              padding: '4px 12px',
-                              backgroundColor: '#7c3aed',
-                              color: '#e9d5ff',
-                              fontSize: '12px',
-                              borderRadius: '16px',
-                              border: '1px solid #8b5cf6'
-                            }}
-                          >
-                            {topic}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+              {/* Gemini feedback removed */}
               
               {/* Show status for coding/theory questions */}
               {(question.kind === 'coding' || question.kind === 'theory') && (
@@ -253,6 +196,7 @@ const ViewTestResults = () => {
             </div>
           );
         })}
+        </div>
       </div>
     </div>
   );

@@ -24,18 +24,23 @@ const cleanupOldPracticeData = async () => {
 // Run cleanup daily
 setInterval(cleanupOldPracticeData, 24 * 60 * 60 * 1000); // 24 hours
 
-// Get all practice tests for students
+// Get all practice tests for students with pagination
 router.get("/", authenticateToken, async (req, res, next) => {
   try {
     console.log('🎯 Fetching practice tests...');
     
-    // First, let's see all practice tests regardless of status
-    const allPracticeTests = await Test.find({ type: "practice" })
-      .select("title subject status")
-      .lean();
-    console.log('🎯 All practice tests found:', allPracticeTests);
+    // Pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 9;
+    const skip = (page - 1) * limit;
     
-    // Then get only active ones - exclude questions for performance but include question count
+    // Get total count of active practice tests
+    const totalCount = await Test.countDocuments({ 
+      type: "practice", 
+      status: "Active" 
+    });
+    
+    // Get paginated active practice tests - exclude questions for performance but include question count
     const tests = await Test.find({ 
       type: "practice", 
       status: "Active" 
@@ -43,6 +48,8 @@ router.get("/", authenticateToken, async (req, res, next) => {
     .select("title subject instructions timeLimit createdBy questions")
     .populate("createdBy", "name email")
     .sort({ createdAt: -1 })
+    .limit(limit)
+    .skip(skip)
     .lean();
 
     // Transform tests to include question count but exclude question content
@@ -58,8 +65,18 @@ router.get("/", authenticateToken, async (req, res, next) => {
       questions: undefined
     }));
 
-    console.log(`🎯 Active practice tests found: ${testsWithQuestionCount.length}`);
-    res.json({ tests: testsWithQuestionCount });
+    console.log(`🎯 Active practice tests found: ${testsWithQuestionCount.length} (page ${page})`);
+    res.json({ 
+      tests: testsWithQuestionCount,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(totalCount / limit),
+        totalItems: totalCount,
+        itemsPerPage: limit,
+        hasNextPage: page < Math.ceil(totalCount / limit),
+        hasPrevPage: page > 1
+      }
+    });
   } catch (error) {
     console.error('🎯 Error fetching practice tests:', error);
     next(error);

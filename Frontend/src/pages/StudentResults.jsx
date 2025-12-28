@@ -5,19 +5,48 @@ import apiRequest from "../services/api";
 const StudentResults = () => {
   const [completedTests, setCompletedTests] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [tableLoading, setTableLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
 
   useEffect(() => {
-    fetchCompletedTests();
+    fetchCompletedTests(currentPage, true);
   }, []);
 
-  const fetchCompletedTests = async () => {
+  const fetchCompletedTests = async (page = currentPage, isInitialLoad = false) => {
     try {
-      const response = await apiRequest("/test-submissions/student");
-      setCompletedTests(response);
+      if (isInitialLoad) {
+        setLoading(true);
+      } else {
+        setTableLoading(true);
+      }
+      const response = await apiRequest(`/test-submissions/student?page=${page}&limit=10`);
+      
+      // Handle paginated response
+      if (response && response.submissions && response.pagination) {
+        setCompletedTests(response.submissions);
+        setCurrentPage(response.pagination.currentPage);
+        setTotalPages(response.pagination.totalPages);
+        setTotalItems(response.pagination.totalItems);
+      } else if (Array.isArray(response)) {
+        // Fallback for non-paginated response (backward compatibility)
+        setCompletedTests(response);
+        setTotalPages(1);
+        setTotalItems(response.length);
+      } else {
+        setCompletedTests([]);
+        setTotalPages(1);
+        setTotalItems(0);
+      }
     } catch (error) {
       console.error("Error fetching completed tests:", error);
+      setCompletedTests([]);
+      setTotalPages(1);
+      setTotalItems(0);
     } finally {
       setLoading(false);
+      setTableLoading(false);
     }
   };
 
@@ -91,7 +120,18 @@ const StudentResults = () => {
             </span>
           </div>
         </div>
-        <StudentTable type="completed" data={completedTests} />
+        <StudentTable 
+          type="completed" 
+          data={completedTests} 
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          loading={tableLoading}
+          onPageChange={(page) => {
+            setCurrentPage(page);
+            fetchCompletedTests(page, false);
+          }}
+        />
       </div>
     </div>
   );

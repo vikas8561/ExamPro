@@ -5,226 +5,7 @@ const Assignment = require("../models/Assignment");
 const Test = require("../models/Test");
 const { authenticateToken, requireRole } = require("../middleware/auth");
 
-// Gemini API function for grading theory and coding questions
-async function evaluateWithGemini(questionText, studentAnswer, maxPoints) {
-  console.log("🔍 DEBUG: evaluateWithGemini called with:");
-  console.log("Question:", questionText.substring(0, 100) + "...");
-  console.log("Answer:", studentAnswer.substring(0, 100) + "...");
-  console.log("Max Points:", maxPoints);
-
-  // Configuration: Set to false to use mock evaluation instead of real Gemini API
-  const USE_REAL_GEMINI = true;
-
-  try {
-    // Use mock evaluation if configured
-    if (!USE_REAL_GEMINI) {
-      console.log("🎭 Using mock evaluation (USE_REAL_GEMINI = false)");
-      
-      const feedbackOptions = [
-        {
-          feedback: "Good understanding of the concept. Well-structured answer.",
-          correctAnswer: "The correct answer would be...",
-          errorAnalysis: "Your answer shows good understanding but could be more detailed.",
-          improvementSteps: ["1. Add more examples", "2. Explain the reasoning", "3. Provide code snippets if applicable"],
-          topicRecommendations: ["Advanced concepts", "Practical applications", "Best practices"]
-        },
-        {
-          feedback: "Partial understanding shown. Could be more detailed.",
-          correctAnswer: "Here's the complete correct answer...",
-          errorAnalysis: "Your answer covers the basics but misses some key points.",
-          improvementSteps: ["1. Review the fundamentals", "2. Study more examples", "3. Practice implementation"],
-          topicRecommendations: ["Fundamentals review", "Example problems", "Hands-on practice"]
-        },
-        {
-          feedback: "Basic knowledge demonstrated. Needs improvement in depth.",
-          correctAnswer: "The comprehensive answer includes...",
-          errorAnalysis: "Your answer shows you understand the basics but need deeper knowledge.",
-          improvementSteps: ["1. Study the theory more thoroughly", "2. Work through examples", "3. Ask for clarification"],
-          topicRecommendations: ["Core concepts", "Theory fundamentals", "Problem-solving techniques"]
-        }
-      ];
-
-      const randomOption = feedbackOptions[Math.floor(Math.random() * feedbackOptions.length)];
-      const marks = Math.floor(Math.random() * (maxPoints + 1));
-
-      console.log("✅ Mock evaluation result:", { marks, ...randomOption });
-
-      return {
-        marks,
-        feedback: randomOption.feedback,
-        correctAnswer: randomOption.correctAnswer,
-        errorAnalysis: randomOption.errorAnalysis,
-        improvementSteps: randomOption.improvementSteps,
-        topicRecommendations: randomOption.topicRecommendations
-      };
-    }
-
-    // Check if API key is available for real Gemini API
-    if (!process.env.GEMINI_API_KEY) {
-      console.error("❌ ERROR: GEMINI_API_KEY not found in environment variables");
-      return {
-        marks: 0,
-        feedback: "API key not configured. Please contact instructor."
-      };
-    }
-
-    console.log("✅ API key found, initializing Gemini...");
-
-    // Import required packages at the top of the file
-    const { GoogleGenerativeAI } = require("@google/generative-ai");
-
-    // Initialize Gemini API (add this at the top of the file)
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-    console.log("✅ Gemini model initialized, creating prompt...");
-
-    // Create a comprehensive prompt for Gemini evaluation
-    const prompt = `
-You are an expert educational evaluator and tutor. Please provide a comprehensive evaluation of the following student answer.
-
-QUESTION:
-${questionText}
-
-STUDENT ANSWER:
-${studentAnswer}
-
-MAXIMUM POINTS: ${maxPoints}
-
-EVALUATION REQUIREMENTS:
-1. SCORE: Assign a score between 0 and ${maxPoints} based on correctness, completeness, clarity, and depth
-2. FEEDBACK: Provide detailed constructive feedback
-3. CORRECT ANSWER: If the student's answer is incorrect or incomplete, provide the correct/complete answer
-4. ERROR ANALYSIS: Explain what is wrong with the student's answer and why
-5. IMPROVEMENT GUIDANCE: Suggest specific steps to improve the answer
-6. TOPIC RECOMMENDATIONS: Recommend 2-3 specific topics/concepts the student should focus on to improve
-
-EVALUATION CRITERIA:
-- Correctness: Is the answer factually correct?
-- Completeness: Does it address all parts of the question?
-- Clarity: Is the explanation clear and well-structured?
-- Depth: Does it show understanding beyond surface level?
-- Examples: Are relevant examples provided (if applicable)?
-
-INSTRUCTIONS:
-- Be encouraging but honest about areas needing improvement
-- Provide specific, actionable feedback
-- Include code examples if it's a programming question
-- Suggest concrete study topics and resources
-- Keep the tone supportive and educational
-
-RESPONSE FORMAT (JSON only, no additional text):
-{
-  "score": <number between 0 and ${maxPoints}>,
-  "feedback": "<detailed, constructive feedback about strengths and areas for improvement>",
-  "correctAnswer": "<the correct/complete answer to the question>",
-  "errorAnalysis": "<explanation of what is wrong with the student's answer and why>",
-  "improvementSteps": "<specific steps the student should take to improve>",
-  "topicRecommendations": ["<topic 1>", "<topic 2>", "<topic 3>"]
-}
-    `;
-
-    console.log("📤 Calling actual Gemini API...");
-
-    // Call the actual Gemini API with timeout protection
-    const result = await Promise.race([
-      model.generateContent(prompt),
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Gemini API timeout after 30 seconds')), 30000)
-      )
-    ]);
-    
-    const response = await result.response;
-    const text = response.text();
-
-    console.log("📥 Raw Gemini response:", text);
-
-    // Parse the JSON response from Gemini
-    let evaluation;
-    try {
-      // Extract JSON from the response (in case there's extra text)
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        evaluation = JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error("No JSON found in response");
-      }
-    } catch (parseError) {
-      console.error("❌ Error parsing Gemini response:", parseError);
-      console.error("Raw response:", text);
-      
-      // Fallback to a default response if parsing fails
-      evaluation = {
-        score: Math.floor(maxPoints * 0.5), // Give 50% of max points as fallback
-        feedback: "AI evaluation completed but response format was unexpected. Please review manually.",
-        correctAnswer: "Unable to generate correct answer due to parsing error.",
-        errorAnalysis: "Response parsing failed. Please contact instructor.",
-        improvementSteps: ["Please review your answer and consult with your instructor."],
-        topicRecommendations: ["General review of the subject matter"]
-      };
-    }
-
-    // Validate and sanitize the response
-    if (typeof evaluation.score !== 'number' || evaluation.score < 0 || evaluation.score > maxPoints) {
-      console.warn("⚠️ Invalid score from Gemini, clamping to valid range");
-      evaluation.score = Math.max(0, Math.min(maxPoints, evaluation.score || 0));
-    }
-
-    // Ensure all required fields exist with fallbacks
-    evaluation.feedback = evaluation.feedback || "No feedback provided.";
-    evaluation.correctAnswer = evaluation.correctAnswer || "Correct answer not provided.";
-    evaluation.errorAnalysis = evaluation.errorAnalysis || "Error analysis not provided.";
-    evaluation.improvementSteps = Array.isArray(evaluation.improvementSteps) 
-      ? evaluation.improvementSteps 
-      : ["Improvement steps not provided."];
-    evaluation.topicRecommendations = Array.isArray(evaluation.topicRecommendations) 
-      ? evaluation.topicRecommendations 
-      : ["General study of the subject matter"];
-
-    console.log("✅ Gemini evaluation result:", {
-      marks: evaluation.score,
-      feedback: evaluation.feedback.substring(0, 100) + "...",
-      hasCorrectAnswer: !!evaluation.correctAnswer,
-      hasErrorAnalysis: !!evaluation.errorAnalysis,
-      hasImprovementSteps: !!evaluation.improvementSteps,
-      topicCount: evaluation.topicRecommendations.length
-    });
-
-    return {
-      marks: evaluation.score,
-      feedback: evaluation.feedback,
-      correctAnswer: evaluation.correctAnswer,
-      errorAnalysis: evaluation.errorAnalysis,
-      improvementSteps: evaluation.improvementSteps,
-      topicRecommendations: evaluation.topicRecommendations
-    };
-
-  } catch (error) {
-    console.error("❌ Error evaluating with Gemini API:", error);
-    console.error("Error details:", error.message);
-    console.error("Error stack:", error.stack);
-    
-    // Provide more specific error messages based on error type
-    let errorMessage = "Evaluation failed due to technical error. Please contact instructor.";
-    
-    if (error.message.includes('timeout')) {
-      errorMessage = "Evaluation timed out. Please try again or contact instructor.";
-    } else if (error.message.includes('API key') || error.message.includes('authentication')) {
-      errorMessage = "AI evaluation service is temporarily unavailable. Please contact instructor.";
-    } else if (error.message.includes('quota') || error.message.includes('limit')) {
-      errorMessage = "AI evaluation service is temporarily at capacity. Please contact instructor.";
-    }
-    
-    return {
-      marks: 0,
-      feedback: errorMessage,
-      correctAnswer: "Unable to generate correct answer due to technical error.",
-      errorAnalysis: "Error analysis unavailable due to technical issues.",
-      improvementSteps: ["Please contact your instructor for guidance."],
-      topicRecommendations: ["General review of the subject matter"]
-    };
-  }
-}
+// Gemini integration removed - mentors will grade manually
 
 // Submit test results
 router.post("/", authenticateToken, async (req, res, next) => {
@@ -397,28 +178,14 @@ router.post("/", authenticateToken, async (req, res, next) => {
           incorrectCount++;
         }
       } else if (question.kind === "theory" || question.kind === "coding") {
-        // Theoretical and coding questions are graded by Gemini AI
+        // Theoretical and coding questions will be graded manually by mentors
         console.log(`🔍 Processing ${question.kind} question:`, question._id);
         if (userResponse.textAnswer && userResponse.textAnswer.trim() !== "") {
-          console.log("📝 Text answer found, calling Gemini evaluation...");
-          try {
-            geminiResult = await evaluateWithGemini(question.text, userResponse.textAnswer, question.points);
-            points = geminiResult.marks;
-            geminiFeedback = geminiResult.feedback;
-            console.log("✅ Gemini evaluation completed:", { 
-              points, 
-              feedback: geminiFeedback.substring(0, 100) + "...",
-              hasCorrectAnswer: !!geminiResult.correctAnswer,
-              hasErrorAnalysis: !!geminiResult.errorAnalysis,
-              hasImprovementSteps: !!geminiResult.improvementSteps,
-              topicCount: geminiResult.topicRecommendations?.length || 0
-            });
-          } catch (error) {
-            console.error("Error evaluating with Gemini:", error);
-            points = 0;
-            geminiFeedback = "Evaluation failed. Please contact instructor.";
-            geminiResult = null;
-          }
+          console.log("📝 Text answer found - will be graded by mentor");
+          // Set points to 0 initially - mentor will grade manually
+          points = 0;
+          geminiFeedback = null;
+          geminiResult = null;
           isCorrect = false; // Not applicable for theory/coding
         } else {
           console.log("❌ No text answer provided for theory/coding question");
@@ -435,14 +202,15 @@ router.post("/", authenticateToken, async (req, res, next) => {
         questionId: question._id,
         selectedOption: userResponse.selectedOption,
         textAnswer: userResponse.textAnswer,
+        language: userResponse.language || null, // Save language for coding questions
         isCorrect,
         points,
         autoGraded: question.kind === "mcq",
-        geminiFeedback,
-        correctAnswer: geminiResult?.correctAnswer || null,
-        errorAnalysis: geminiResult?.errorAnalysis || null,
-        improvementSteps: geminiResult?.improvementSteps || null,
-        topicRecommendations: geminiResult?.topicRecommendations || []
+        geminiFeedback: null, // No Gemini feedback
+        correctAnswer: null, // Answers only visible to mentors
+        errorAnalysis: null,
+        improvementSteps: [],
+        topicRecommendations: []
       });
     }
 
@@ -558,29 +326,57 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     const userId = req.user.userId;
     const currentTime = new Date();
 
-    // Get all submissions for the user
-    const submissions = await TestSubmission.find({ userId })
+    // Pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    // Get total count of completed submissions (with assignmentId populated to filter)
+    const allSubmissions = await TestSubmission.find({ 
+      userId,
+      submittedAt: { $ne: null, $exists: true }
+    })
+      .populate("assignmentId")
+      .lean();
+
+    // Filter to only include submissions with valid assignments
+    const completedSubmissions = allSubmissions.filter(submission => {
+      return submission.assignmentId !== null && submission.assignmentId !== undefined;
+    });
+
+    const totalCount = completedSubmissions.length;
+    const completedSubmissionIds = completedSubmissions.map(s => s._id.toString());
+
+    // Get paginated submissions with full data
+    const submissions = await TestSubmission.find({ 
+      userId,
+      _id: { $in: completedSubmissionIds },
+      submittedAt: { $ne: null, $exists: true }
+    })
       .populate("assignmentId")
       .populate({
         path: "testId",
-        select: "title questions",
+        select: "title questions type",
         populate: {
           path: "questions",
           select: "kind text options answer answers guidelines examples points"
         }
-      });
+      })
+      .sort({ submittedAt: -1 })
+      .skip(skip)
+      .limit(limit);
 
-    // Return all submissions - let frontend handle deadline logic for score visibility
-    // This ensures students can see all their completed tests immediately
-    const filteredSubmissions = submissions.filter(submission => {
-      const assignment = submission.assignmentId;
-      if (!assignment) return false;
-      
-      // Only return submissions that have been submitted (completed)
-      return submission.submittedAt !== null && submission.submittedAt !== undefined;
+    res.json({
+      submissions: submissions,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(totalCount / limit),
+        totalItems: totalCount,
+        itemsPerPage: limit,
+        hasNextPage: page < Math.ceil(totalCount / limit),
+        hasPrevPage: page > 1
+      }
     });
-
-    res.json(filteredSubmissions);
   } catch (error) {
     next(error);
   }
@@ -677,6 +473,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
           ...question.toObject(),
           selectedOption: response?.selectedOption || null,
           textAnswer: response?.textAnswer || null,
+          language: response?.language || question.language || null, // Student's language or question default
           isCorrect: submission.mentorReviewed ? response?.isCorrect : false,
           points: submission.mentorReviewed ? response?.points : 0,
           autoGraded: response?.autoGraded || false,
@@ -764,6 +561,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
               points: q.points,
               selectedOption: q.selectedOption,
               textAnswer: q.textAnswer,
+              language: q.language || null, // Include language from response
               // Hide correctness, points, and answer until results can be shown
               isCorrect: false,
               points: 0,

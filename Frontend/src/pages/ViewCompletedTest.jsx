@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ChevronLeftIcon } from "@heroicons/react/24/outline";
 import { testSubmissionsAPI } from "../services/api";
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 const ViewCompletedTest = () => {
   const { assignmentId } = useParams();
@@ -120,63 +122,77 @@ const ViewCompletedTest = () => {
   }
 
   return (
-    <div className="h-screen bg-slate-900 text-white p-6 overflow-hidden">
-      <div className="max-w-4xl mx-auto h-full flex flex-col">
-        <div className="flex-shrink-0">
-          <button
-            onClick={() => navigate(-1)}
-            className="flex items-center gap-2 text-blue-400 hover:text-blue-300 mb-6 font-medium"
-          >
-            <ChevronLeftIcon className="h-5 w-5" />
-            Back
-          </button>
+    <div className="min-h-screen bg-slate-900 text-white p-6">
+      <div className="max-w-4xl mx-auto">
+        <button
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-2 text-blue-400 hover:text-blue-300 mb-6 font-medium"
+        >
+          <ChevronLeftIcon className="h-5 w-5" />
+          Back
+        </button>
 
-          <h2 className="text-3xl font-bold text-white mb-6">{test.title}</h2>
+        <h2 className="text-3xl font-bold text-white mb-6">{test.title}</h2>
 
-          {/* Score Summary */}
-          <div className="bg-slate-800 shadow-lg rounded-xl p-6 mb-8 border border-slate-700">
-            <h3 className="text-xl font-semibold text-white mb-4">Test Results</h3>
-            <div className="grid grid-cols-6 gap-4 text-center">
-              <div>
-                <div className="text-2xl font-bold text-blue-400">{totalQuestions}</div>
-                <div className="text-slate-400">Total Questions</div>
-              </div>
-              {mcqQuestions.length > 0 && (
-                <>
-                  <div>
-                    <div className="text-2xl font-bold text-green-400">{correctCount}</div>
-                    <div className="text-slate-400">MCQ Correct</div>
-                  </div>
-                  <div>
-                    <div className="text-2xl font-bold text-red-400">{incorrectCount}</div>
-                    <div className="text-slate-400">MCQ Incorrect</div>
-                  </div>
-                  <div>
-                    <div className="text-2xl font-bold text-yellow-400">{notAnsweredCount}</div>
-                    <div className="text-slate-400">MCQ Not Answered</div>
-                  </div>
-                </>
-              )}
-              {codingTheoryQuestions.length > 0 && (
+        {/* Score Summary */}
+        <div className="bg-slate-800 shadow-lg rounded-xl p-6 mb-8 border border-slate-700">
+          <h3 className="text-xl font-semibold text-white mb-4">Test Results</h3>
+          <div className="grid grid-cols-6 gap-4 text-center">
+            <div>
+              <div className="text-2xl font-bold text-blue-400">{totalQuestions}</div>
+              <div className="text-slate-400">Total Questions</div>
+            </div>
+            {mcqQuestions.length > 0 && (
+              <>
                 <div>
-                  <div className="text-2xl font-bold text-purple-400">{codingTheoryQuestions.length}</div>
-                  <div className="text-slate-400">Coding/Theory Questions</div>
+                  <div className="text-2xl font-bold text-green-400">{correctCount}</div>
+                  <div className="text-slate-400">MCQ Correct</div>
                 </div>
-              )}
+                <div>
+                  <div className="text-2xl font-bold text-red-400">{incorrectCount}</div>
+                  <div className="text-slate-400">MCQ Incorrect</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-yellow-400">{notAnsweredCount}</div>
+                  <div className="text-slate-400">MCQ Not Answered</div>
+                </div>
+              </>
+            )}
+            {codingTheoryQuestions.length > 0 && (
               <div>
-                <div className="text-2xl font-bold text-white">{submission.totalScore}</div>
-                <div className="text-slate-400">Final Score</div>
+                <div className="text-2xl font-bold text-purple-400">{codingTheoryQuestions.length}</div>
+                <div className="text-slate-400">Coding/Theory Questions</div>
               </div>
+            )}
+            <div>
+              <div className="text-2xl font-bold text-white">{submission.totalScore}</div>
+              <div className="text-slate-400">Final Score</div>
             </div>
           </div>
         </div>
 
         {/* Questions & Answers */}
-        <div className="flex-1 overflow-y-auto">
+        <div>
           <h3 className="text-2xl font-semibold text-white mb-6">Question Analysis</h3>
           <div className="space-y-4">
             {test.questions.map((q, index) => {
               const studentAnswer = q.kind === "mcq" ? (q.selectedOption || "Not answered") : (q.textAnswer || "No answer provided");
+              
+              // Language is merged into q.language by backend (response.language takes priority)
+              // q.language now contains: response.language || question.language || null
+              const answerLanguage = q.language || (q.kind === "coding" ? 'python' : null);
+              
+              // Map language to Monaco Editor language
+              const getMonacoLanguage = (kind, lang) => {
+                if (kind === "mcq") return 'plaintext';
+                if (lang === 'javascript') return 'javascript';
+                if (lang === 'cpp' || lang === 'c++') return 'cpp';
+                if (lang === 'c') return 'c';
+                if (lang === 'java') return 'java';
+                if (lang === 'go') return 'go';
+                return 'python';
+              };
+              const monacoLanguage = getMonacoLanguage(q.kind, answerLanguage);
 
               return (
                 <div key={q._id} className="bg-slate-800 shadow-md rounded-lg p-6 border border-slate-700">
@@ -192,6 +208,11 @@ const ViewCompletedTest = () => {
                       }`}>
                         {q.kind === "mcq" ? "MCQ" : q.kind === "coding" ? "Coding" : "Theory"}
                       </span>
+                      {q.kind === "coding" && answerLanguage && (
+                        <span className="px-2 py-1 rounded text-xs bg-slate-600 text-slate-300">
+                          Language: {answerLanguage}
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -205,13 +226,36 @@ const ViewCompletedTest = () => {
                           {studentAnswer}
                         </span>
                       ) : (
-                        <div className="bg-slate-700 p-3 rounded mt-1 whitespace-pre-wrap text-slate-200">
-                          {studentAnswer}
+                        <div className="mt-1 border border-slate-600 rounded-lg overflow-hidden">
+                          <SyntaxHighlighter
+                            language={answerLanguage || 'python'}
+                            style={vscDarkPlus}
+                            customStyle={{
+                              margin: 0,
+                              padding: '16px',
+                              borderRadius: '8px',
+                              fontSize: '14px',
+                              lineHeight: '1.5',
+                              minHeight: '200px',
+                              maxHeight: '400px',
+                              overflow: 'auto',
+                              backgroundColor: '#1e1e1e'
+                            }}
+                            showLineNumbers={true}
+                            lineNumberStyle={{
+                              minWidth: '3em',
+                              paddingRight: '1em',
+                              color: '#858585',
+                              backgroundColor: '#252526'
+                            }}
+                          >
+                            {studentAnswer}
+                          </SyntaxHighlighter>
                         </div>
                       )}
                     </div>
 
-                    {/* Show correct answer only for MCQ questions */}
+                    {/* Show correct answer for MCQ questions */}
                     {q.kind === "mcq" && q.answer && (
                       <div>
                         <span className="font-medium text-slate-300">Correct Answer: </span>
@@ -230,69 +274,7 @@ const ViewCompletedTest = () => {
                     </div>
                   </div>
 
-                  {/* Show comprehensive feedback for coding and theory questions */}
-                  {(q.kind === "coding" || q.kind === "theory") && q.geminiFeedback && (
-                    <div className="mt-4 space-y-4">
-                      {/* Main Feedback */}
-                      <div className="p-4 bg-blue-900/20 border-l-4 border-blue-500 rounded">
-                        <h5 className="text-blue-300 font-semibold mb-2">📝 Feedback:</h5>
-                        <p className="text-blue-200 text-sm leading-relaxed">{q.geminiFeedback}</p>
-                      </div>
-
-                      {/* Correct Answer */}
-                      {q.correctAnswer && (
-                        <div className="p-4 bg-green-900/20 border-l-4 border-green-500 rounded">
-                          <h5 className="text-green-300 font-semibold mb-2">✅ Correct Answer:</h5>
-                          <div className="text-green-200 text-sm leading-relaxed whitespace-pre-wrap bg-slate-800/50 p-3 rounded">
-                            {q.correctAnswer}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Error Analysis */}
-                      {q.errorAnalysis && (
-                        <div className="p-4 bg-red-900/20 border-l-4 border-red-500 rounded">
-                          <h5 className="text-red-300 font-semibold mb-2">🔍 What's Wrong:</h5>
-                          <p className="text-red-200 text-sm leading-relaxed">{q.errorAnalysis}</p>
-                        </div>
-                      )}
-
-                      {/* Improvement Steps */}
-                      {q.improvementSteps && q.improvementSteps.length > 0 && (
-                        <div className="p-4 bg-yellow-900/20 border-l-4 border-yellow-500 rounded">
-                          <h5 className="text-yellow-300 font-semibold mb-2">🚀 How to Improve:</h5>
-                          <div className="text-yellow-200 text-sm leading-relaxed">
-                            {Array.isArray(q.improvementSteps) ? (
-                              <ul className="list-disc list-inside space-y-1">
-                                {q.improvementSteps.map((step, index) => (
-                                  <li key={index}>{step}</li>
-                                ))}
-                              </ul>
-                            ) : (
-                              <div className="whitespace-pre-wrap">{q.improvementSteps}</div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Topic Recommendations */}
-                      {q.topicRecommendations && q.topicRecommendations.length > 0 && (
-                        <div className="p-4 bg-purple-900/20 border-l-4 border-purple-500 rounded">
-                          <h5 className="text-purple-300 font-semibold mb-2">📚 Focus Areas:</h5>
-                          <div className="flex flex-wrap gap-2">
-                            {q.topicRecommendations.map((topic, index) => (
-                              <span
-                                key={index}
-                                className="px-3 py-1 bg-purple-800/50 text-purple-200 text-xs rounded-full border border-purple-600/30"
-                              >
-                                {topic}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  {/* Gemini feedback removed */}
 
                   {/* Show right/wrong status only for MCQ questions */}
                   {q.kind === "mcq" && (

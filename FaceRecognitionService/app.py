@@ -220,9 +220,11 @@ def verify_face():
             print("Verifying faces with DeepFace...")
             
             # Try multiple detector backends - some work better than others
+            # Stop immediately after first successful verification
             detector_backends = ['opencv', 'ssd', 'mtcnn', 'retinaface']
             result = None
             last_error = None
+            successful_detector = None
             
             for detector in detector_backends:
                 try:
@@ -235,15 +237,17 @@ def verify_face():
                         enforce_detection=True,
                         detector_backend=detector
                     )
+                    # Success! Stop immediately - no need to try other detectors
+                    successful_detector = detector
                     print(f"✅ Successfully verified with detector: {detector}")
-                    break
+                    break  # Exit loop immediately after success
                 except Exception as e:
                     last_error = e
                     error_msg = str(e).lower()
                     print(f"❌ Detector {detector} failed: {str(e)[:100]}")
                     # Continue to next detector if it's a face detection error
                     if 'img1_path' in error_msg or 'img2_path' in error_msg or 'exception while processing' in error_msg:
-                        continue
+                        continue  # Try next detector
                     # For other errors, don't try other detectors
                     break
             
