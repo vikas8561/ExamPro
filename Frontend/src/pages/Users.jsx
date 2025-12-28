@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from "react";
-import { Search, X as CloseIcon, UserPlus, Users as UsersIcon } from "lucide-react";
+import { Search, X as CloseIcon, UserPlus, Users as UsersIcon, Trash2, Image as ImageIcon } from "lucide-react";
 import StatusPill from "../components/StatusPill";
 import EmailUploader from "../components/EmailUploader";
 import { API_BASE_URL } from "../config/api";
@@ -38,16 +38,73 @@ export default function Users() {
   const [addMode, setAddMode] = useState(null); // 'single' or 'bulk'
   const [filter, setFilter] = useState("All Users"); // "All Users", "RU Students", "SU Students", "Mentor", "Admin"
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [deletingImage, setDeletingImage] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pagination, setPagination] = useState({
+    totalPages: 1,
+    totalUsers: 0,
+    hasNextPage: false,
+    hasPrevPage: false
+  });
 
-  // Fetch users from backend
-  const fetchUsers = () => {
-    fetch(`${API_BASE_URL}/users`)
-      .then((res) => res.json())
-      .then((data) => setUsers(data))
-      .catch((err) => console.error("Error fetching users:", err));
+  // Fetch users from backend with profile details, pagination, search, and filter
+  const fetchUsers = (page = currentPage, search = searchTerm, roleFilter = filter) => {
+    setLoading(true);
+    // Build query parameters
+    const params = new URLSearchParams({
+      page: page.toString(),
+      limit: "9"
+    });
+    
+    if (search) {
+      params.append("search", search);
+    }
+    
+    if (roleFilter && roleFilter !== "All Users") {
+      params.append("filter", roleFilter);
+    }
+
+    fetch(`${API_BASE_URL}/users/profiles?${params.toString()}`)
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        return res.json();
+      })
+      .then((data) => {
+        console.log("Fetched users data:", data);
+        if (data.users && Array.isArray(data.users)) {
+          setUsers(data.users);
+          if (data.pagination) {
+            setPagination(data.pagination);
+          }
+        } else if (Array.isArray(data)) {
+          // Fallback for old format
+          setUsers(data);
+        } else {
+          console.error("Data format unexpected:", data);
+          setUsers([]);
+        }
+      })
+      .catch((err) => {
+        console.error("Error fetching users:", err);
+        setUsers([]);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   };
 
-  useEffect(fetchUsers, []);
+  useEffect(() => {
+    // Reset to page 1 when search or filter changes
+    setCurrentPage(1);
+  }, [searchTerm, filter]);
+
+  useEffect(() => {
+    fetchUsers(currentPage, searchTerm, filter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, searchTerm, filter]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -63,38 +120,10 @@ export default function Users() {
     };
   }, []);
 
-  const filtered = useMemo(
-    () => {
-      let filteredUsers = users;
-
-      // Apply search filter
-      if (searchTerm) {
-        const term = searchTerm.toLowerCase();
-        filteredUsers = filteredUsers.filter((u) =>
-          (u.name + u.email + (u.role || "")).toLowerCase().includes(term)
-        );
-      }
-
-      // Apply filter
-      if (filter === "RU Students") {
-        filteredUsers = filteredUsers.filter(u => {
-          return u.role === "Student" && (u.studentCategory || "SU") === "RU";
-        });
-      } else if (filter === "SU Students") {
-        filteredUsers = filteredUsers.filter(u => {
-          return u.role === "Student" && (u.studentCategory || "SU") === "SU";
-        });
-      } else if (filter === "Mentor") {
-        filteredUsers = filteredUsers.filter(u => u.role === "Mentor");
-      } else if (filter === "Admin") {
-        filteredUsers = filteredUsers.filter(u => u.role === "Admin");
-      }
-      // "All Users" shows all users, no additional filtering needed
-
-      return filteredUsers;
-    },
-    [searchTerm, users, filter]
-  );
+  // Note: With pagination, we display all users from current page
+  // Search/filter could be implemented server-side for better performance
+  // For now, we'll show all users from the current page
+  const filtered = users;
 
   const submit = () => {
     if (!form.name.trim() || !form.email.trim()) {
@@ -172,6 +201,33 @@ export default function Users() {
       .catch((err) => console.error("Error deleting user:", err));
   };
 
+  const deleteProfileImage = async (userId, userName) => {
+    if (!window.confirm(`Are you sure you want to delete the profile image for ${userName}? They will be able to re-upload their image.`)) {
+      return;
+    }
+
+    setDeletingImage(userId);
+    try {
+      const response = await fetch(`${API_BASE_URL}/users/${userId}/profile-image`, {
+        method: "DELETE",
+      });
+
+      if (response.ok) {
+        // Refresh the user list
+        fetchUsers();
+        alert("Profile image deleted successfully. User can now re-upload their image.");
+      } else {
+        const data = await response.json();
+        alert(data.message || "Failed to delete profile image");
+      }
+    } catch (err) {
+      console.error("Error deleting profile image:", err);
+      alert("Error deleting profile image. Please try again.");
+    } finally {
+      setDeletingImage(null);
+    }
+  };
+
   return (
     <div
       className="p-6 min-h-screen flex flex-col"
@@ -194,7 +250,7 @@ export default function Users() {
                   Users
                 </h1>
                 <p className="text-slate-400 text-sm mt-1">
-                  {users.length} total users • {filtered.length} showing
+                  {pagination.totalUsers} total users • Page {pagination.currentPage || currentPage} of {pagination.totalPages || 1}
                 </p>
               </div>
             </div>
@@ -626,10 +682,10 @@ export default function Users() {
 
       {/* Users Grid - cards styled like Tests page */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 overflow-y-auto flex-grow">
-        {filtered.map((u, index) => (
+        {users.map((u, index) => (
           <div
             key={u._id}
-            className="group relative backdrop-blur-sm rounded-2xl p-6 border transition-all duration-300 cursor-pointer animate-slide-in-up overflow-hidden flex flex-col h-[260px]"
+            className="group relative backdrop-blur-sm rounded-2xl p-6 border transition-all duration-300 cursor-pointer animate-slide-in-up overflow-hidden flex flex-col min-h-[320px]"
             style={{
               backgroundColor: "#0B1220",
               borderColor: "rgba(255, 255, 255, 0.2)",
@@ -656,13 +712,36 @@ export default function Users() {
             ></div>
 
             <div className="relative z-10">
-              {/* Header Section */}
+              {/* Header Section with Profile Image */}
               <div className="mb-4">
                 <div className="flex items-start gap-3">
-                  <div className="p-3 bg-slate-800/70 rounded-xl shadow-sm group-hover:shadow-md transition-shadow duration-300 flex-shrink-0">
-                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: "#FFFFFF" }}>
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
+                  {/* Profile Image or Icon */}
+                  <div className="relative flex-shrink-0">
+                    {u.profileImage && u.profileImage.trim() !== '' ? (
+                      <img
+                        src={u.profileImage}
+                        alt={u.name}
+                        className="w-12 h-12 rounded-full object-cover border-2 border-slate-600"
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                          e.target.nextElementSibling.style.display = 'flex';
+                        }}
+                      />
+                    ) : null}
+                    {(!u.profileImage || u.profileImage.trim() === '') && (
+                      <div className="w-12 h-12 rounded-full bg-slate-700 flex items-center justify-center border-2 border-slate-600">
+                        <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: "#9CA3AF" }}>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                      </div>
+                    )}
+                    {u.profileImageSaved && u.profileImage && u.profileImage.trim() !== '' && (
+                      <div className="absolute -bottom-1 -right-1 bg-green-500 rounded-full p-1 border-2 border-slate-800">
+                        <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3
@@ -712,44 +791,186 @@ export default function Users() {
                     <span className="px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm min-w-[80px] text-center">
                       {u.studentCategory || "SU"}
                     </span>
+                  </div>
+                )}
+
+                {/* Profile Image Status */}
+                <div className="flex items-center justify-between p-3.5 bg-slate-900/70 rounded-xl border border-slate-800/50 hover:bg-slate-900/80 transition-all duration-200">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="p-2 bg-slate-800/70 rounded-lg shadow-sm flex-shrink-0">
+                      <ImageIcon className="h-4 w-4 text-gray-200" />
+                    </div>
+                    <span className="text-slate-300 text-sm font-medium whitespace-nowrap">Profile Image</span>
+                  </div>
+                  <span className={`px-3 py-1.5 rounded-lg text-sm font-semibold border shadow-sm min-w-[80px] text-center ${
+                    u.profileImageSaved 
+                      ? 'bg-green-800/60 text-green-100 border-green-700/50' 
+                      : 'bg-slate-800/60 text-gray-100 border-slate-700/50'
+                  }`}>
+                    {u.profileImageSaved ? "Uploaded" : "Not Set"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col gap-2 mt-2 pt-4" style={{ borderTop: "1px solid rgba(255, 255, 255, 0.2)" }}>
+                <div className="flex justify-between gap-2">
+                  <button
+                    onClick={() => {
+                      setEditing(u._id);
+                      setForm({
+                        name: u.name,
+                        email: u.email,
+                        role: u.role,
+                        studentCategory: u.studentCategory || "SU",
+                      });
+                      setShowAddForm(true);
+                      setAddMode("single"); // Show form directly when editing
+                    }}
+                    className="px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm flex-1 text-center transition-all duration-300 hover:bg-slate-800/80"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => deleteUser(u._id)}
+                    className="px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm flex-1 text-center transition-all duration-300 hover:bg-slate-800/80"
+                  >
+                    Delete
+                  </button>
+                </div>
+                {/* Delete Profile Image Button */}
+                {u.profileImage && (
+                  <button
+                    onClick={() => deleteProfileImage(u._id, u.name)}
+                    disabled={deletingImage === u._id}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-lg text-sm font-semibold border border-red-600/50 shadow-sm transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {deletingImage === u._id ? "Deleting..." : "Delete Profile Image"}
+                  </button>
+                )}
+              </div>
             </div>
-          )}
-        </div>
+          </div>
+        ))}
+        {loading ? (
+          <div className="col-span-full text-center py-8 text-sm" style={{ color: "#9CA3AF" }}>
+            Loading users...
+          </div>
+        ) : users.length === 0 ? (
+          <div className="col-span-full text-center py-8 text-sm" style={{ color: "#9CA3AF" }}>
+            No users found in the database.
+          </div>
+        ) : null}
       </div>
 
-            {/* Action Buttons */}
-            <div className="relative z-10 flex justify-between gap-3 mt-2 pt-4" style={{ borderTop: "1px solid rgba(255, 255, 255, 0.2)" }}>
-                    <button
-                      onClick={() => {
-                        setEditing(u._id);
-                        setForm({
-                          name: u.name,
-                          email: u.email,
-                          role: u.role,
-                          studentCategory: u.studentCategory || "SU",
-                        });
-                  setShowAddForm(true);
-                  setAddMode("single"); // Show form directly when editing
-                      }}
-                className="px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm flex-1 text-center transition-all duration-300 hover:bg-slate-800/80"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => deleteUser(u._id)}
-                className="px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm flex-1 text-center transition-all duration-300 hover:bg-slate-800/80"
-                    >
-                      Delete
-                    </button>
+      {/* Pagination Controls */}
+      {!loading && pagination.totalPages > 1 && (
+        <div className="mt-8 flex flex-col items-center gap-4">
+          <div className="flex items-center justify-center gap-2">
+            <button
+              onClick={() => {
+                if (currentPage > 1) {
+                  setCurrentPage(currentPage - 1);
+                }
+              }}
+              disabled={!pagination.hasPrevPage || currentPage === 1}
+              className="px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100"
+              style={{
+                backgroundColor: !pagination.hasPrevPage || currentPage === 1 
+                  ? 'rgba(255, 255, 255, 0.05)' 
+                  : '#FFFFFF',
+                color: !pagination.hasPrevPage || currentPage === 1 ? '#FFFFFF' : '#000000',
+                border: '2px solid rgba(255, 255, 255, 0.2)'
+              }}
+              onMouseEnter={(e) => {
+                if (pagination.hasPrevPage && currentPage > 1) {
+                  e.currentTarget.style.background = '#FFFFFF';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.6)';
+                  e.currentTarget.style.boxShadow = '0 8px 20px rgba(255, 255, 255, 0.3)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (pagination.hasPrevPage && currentPage > 1) {
+                  e.currentTarget.style.background = '#FFFFFF';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                  e.currentTarget.style.boxShadow = '0 4px 15px rgba(0, 0, 0, 0.2)';
+                }
+              }}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              Previous
+            </button>
+            
+            <div className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)' }}>
+              {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                let pageNum;
+                if (pagination.totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= pagination.totalPages - 2) {
+                  pageNum = pagination.totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+                
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`px-4 py-2 rounded-lg font-semibold transition-all duration-300 ${
+                      currentPage === pageNum
+                        ? 'bg-white text-black shadow-lg transform scale-105'
+                        : 'text-white hover:bg-white/20 hover:scale-105'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
             </div>
+            
+            <button
+              onClick={() => {
+                if (currentPage < pagination.totalPages) {
+                  setCurrentPage(currentPage + 1);
+                }
+              }}
+              disabled={!pagination.hasNextPage || currentPage >= pagination.totalPages}
+              className="px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100"
+              style={{
+                backgroundColor: !pagination.hasNextPage || currentPage >= pagination.totalPages
+                  ? 'rgba(255, 255, 255, 0.05)' 
+                  : '#FFFFFF',
+                color: !pagination.hasNextPage || currentPage >= pagination.totalPages ? '#FFFFFF' : '#000000',
+                border: '2px solid rgba(255, 255, 255, 0.2)'
+              }}
+              onMouseEnter={(e) => {
+                if (pagination.hasNextPage && currentPage < pagination.totalPages) {
+                  e.currentTarget.style.background = '#FFFFFF';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.6)';
+                  e.currentTarget.style.boxShadow = '0 8px 20px rgba(255, 255, 255, 0.3)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (pagination.hasNextPage && currentPage < pagination.totalPages) {
+                  e.currentTarget.style.background = '#FFFFFF';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                  e.currentTarget.style.boxShadow = '0 4px 15px rgba(0, 0, 0, 0.2)';
+                }
+              }}
+            >
+              Next
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
           </div>
-              ))}
-        {filtered.length === 0 && (
-          <div className="col-span-full text-center py-8 text-sm" style={{ color: "#9CA3AF" }}>
-            {searchTerm ? "No users match your search." : "No users found."}
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -24,6 +24,133 @@ router.get("/", async (req, res) => {
   }
 });
 
+// Get all users with profile details (for Student Profile section) - with pagination and search
+router.get("/profiles", async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 9;
+    const skip = (page - 1) * limit;
+    const searchTerm = req.query.search || "";
+    const filterRole = req.query.filter || "";
+
+    // Build query for search and filter
+    let query = {};
+    
+    // Search functionality - search in name and email
+    if (searchTerm) {
+      query.$or = [
+        { name: { $regex: searchTerm, $options: "i" } },
+        { email: { $regex: searchTerm, $options: "i" } }
+      ];
+    }
+
+    // Filter by role
+    if (filterRole && filterRole !== "All Users") {
+      if (filterRole === "RU Students") {
+        query.role = "Student";
+        query.studentCategory = "RU";
+      } else if (filterRole === "SU Students") {
+        query.role = "Student";
+        query.studentCategory = "SU";
+      } else if (filterRole === "Mentor") {
+        query.role = "Mentor";
+      } else if (filterRole === "Admin") {
+        query.role = "Admin";
+      }
+    }
+
+    // Get total count for pagination (with search/filter applied)
+    const totalUsers = await User.countDocuments(query);
+
+    // Sort directly in database using aggregation pipeline
+    // Order: Students (1) -> Mentors (2) -> Admins (3)
+    // Within each role: newest first (createdAt descending)
+    const users = await User.aggregate([
+      { $match: query },
+      {
+        $addFields: {
+          roleOrder: {
+            $switch: {
+              branches: [
+                { case: { $eq: ["$role", "Student"] }, then: 1 },
+                { case: { $eq: ["$role", "Mentor"] }, then: 2 },
+                { case: { $eq: ["$role", "Admin"] }, then: 3 }
+              ],
+              default: 99
+            }
+          }
+        }
+      },
+      {
+        $sort: {
+          roleOrder: 1,    // Sort by role order (Student=1, Mentor=2, Admin=3)
+          createdAt: -1    // Within same role, newest first
+        }
+      },
+      { $skip: skip },
+      { $limit: limit },
+      {
+        $project: {
+          name: 1,
+          email: 1,
+          role: 1,
+          studentCategory: 1,
+          profileImage: 1,
+          profileImageSaved: 1,
+          createdAt: 1,
+          updatedAt: 1,
+          _id: 1
+        }
+      }
+    ]).allowDiskUse(true);
+
+    // Calculate pagination info
+    const totalPages = Math.ceil(totalUsers / limit);
+    const hasNextPage = page < totalPages;
+    const hasPrevPage = page > 1;
+
+    res.json({
+      users,
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalUsers,
+        limit,
+        hasNextPage,
+        hasPrevPage
+      }
+    });
+  } catch (err) {
+    console.error("Error fetching user profiles:", err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Delete user profile image (admin only)
+router.delete("/:id/profile-image", async (req, res) => {
+  try {
+    const userId = req.params.id;
+    
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Reset profile image and allow re-upload
+    user.profileImage = undefined;
+    user.profileImageSaved = false;
+    await user.save();
+
+    res.json({ 
+      message: "Profile image deleted successfully. User can now re-upload their image.",
+      profileImage: null,
+      profileImageSaved: false
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Create a new user
 router.post("/", async (req, res) => {
   try {
