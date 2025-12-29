@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { ExternalLink, Youtube, FileText, Save, X, CheckCircle2, Circle, PlayCircle, ChevronDown, ChevronUp } from "lucide-react";
 import apiRequest from "../services/api";
+import '../styles/StudentDSAPractice.mobile.css';
 
 const STATUS_OPTIONS = ["Not Started", "In Progress", "Completed"];
 
@@ -13,6 +14,7 @@ export default function StudentDSAPractice() {
   const [updatingStatus, setUpdatingStatus] = useState(null);
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [openTopic, setOpenTopic] = useState(null);
+  const [openQuestions, setOpenQuestions] = useState(new Set()); // Track expanded questions on mobile
 
   useEffect(() => {
     fetchQuestions();
@@ -113,7 +115,7 @@ export default function StudentDSAPractice() {
       <button
         onClick={() => handleStatusToggle(question)}
         disabled={isUpdating}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-lg font-medium transition-all duration-300 text-sm"
+        className="status-button flex items-center gap-2 px-3 py-1.5 rounded-lg font-medium transition-all duration-300 text-sm"
         style={{
           backgroundColor: config.bgColor,
           color: config.color,
@@ -184,10 +186,22 @@ export default function StudentDSAPractice() {
     setOpenTopic((prev) => (prev === topic ? null : topic));
   };
 
+  const toggleQuestion = (questionId) => {
+    setOpenQuestions((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(questionId)) {
+        newSet.delete(questionId);
+      } else {
+        newSet.add(questionId);
+      }
+      return newSet;
+    });
+  };
+
   if (loading) {
     return (
       <div
-        className="p-6 min-h-screen flex items-center justify-center"
+        className="student-dsa-practice-mobile loading-container p-6 min-h-screen flex items-center justify-center"
         style={{ backgroundColor: "#0B1220" }}
       >
         <div className="text-xl" style={{ color: "#E5E7EB" }}>
@@ -207,50 +221,50 @@ export default function StudentDSAPractice() {
   ).length;
 
   return (
-    <div className="p-6 min-h-screen" style={{ backgroundColor: "#0B1220" }}>
+    <div className="student-dsa-practice-mobile p-6 min-h-screen" style={{ backgroundColor: "#0B1220" }}>
       {/* Navbar */}
       <div
-        className="rounded-2xl border mb-6 p-6"
+        className="header-section rounded-2xl border mb-6 p-6"
         style={{
           backgroundColor: "#0B1220",
           borderColor: "rgba(255, 255, 255, 0.2)",
         }}
       >
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
+        <div className="header-content flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="header-title">
             <h2 className="text-3xl font-bold" style={{ color: "#E5E7EB" }}>
               DSA Playground
             </h2>
           </div>
-          <div className="flex flex-wrap gap-4 md:gap-6">
+          <div className="stats-section flex flex-wrap gap-4 md:gap-6">
             <div className="flex items-center gap-2">
               <div
-                className="px-4 py-2 rounded-lg"
+                className="stat-card px-4 py-2 rounded-lg"
                 style={{
                   backgroundColor: "rgba(255, 255, 255, 0.1)",
                   border: "1px solid rgba(255, 255, 255, 0.2)",
                 }}
               >
-                <span className="text-sm" style={{ color: "#9CA3AF" }}>
+                <span className="stat-label text-sm" style={{ color: "#9CA3AF" }}>
                   Total Questions
                 </span>
-                <p className="text-2xl font-bold mt-1" style={{ color: "#E5E7EB" }}>
+                <p className="stat-value text-2xl font-bold mt-1" style={{ color: "#E5E7EB" }}>
                   {totalQuestions}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <div
-                className="px-4 py-2 rounded-lg"
+                className="stat-card px-4 py-2 rounded-lg"
                 style={{
                   backgroundColor: "rgba(52, 211, 153, 0.1)",
                   border: "1px solid rgba(52, 211, 153, 0.3)",
                 }}
               >
-                <span className="text-sm" style={{ color: "#86EFAC" }}>
+                <span className="stat-label text-sm" style={{ color: "#86EFAC" }}>
                   Solved Questions
                 </span>
-                <p className="text-2xl font-bold mt-1" style={{ color: "#34D399" }}>
+                <p className="stat-value text-2xl font-bold mt-1" style={{ color: "#34D399" }}>
                   {solvedQuestions}
                 </p>
               </div>
@@ -261,7 +275,7 @@ export default function StudentDSAPractice() {
 
       {topics.length === 0 ? (
         <div
-          className="p-8 text-center rounded-2xl border"
+          className="empty-state p-8 text-center rounded-2xl border"
           style={{
             backgroundColor: "#0B1220",
             borderColor: "rgba(255, 255, 255, 0.2)",
@@ -271,11 +285,11 @@ export default function StudentDSAPractice() {
           No questions available yet.
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="topics-container space-y-3">
           {topics.map((topic) => (
             <div
               key={topic}
-              className="rounded-2xl border overflow-hidden"
+              className="topic-card rounded-2xl border overflow-hidden"
               style={{
                 backgroundColor: "#0B1220",
                 borderColor: "rgba(255, 255, 255, 0.2)",
@@ -283,37 +297,37 @@ export default function StudentDSAPractice() {
             >
               {/* Topic Header */}
               <div
-                className="px-6 py-4 border-b cursor-pointer"
+                className="topic-header px-6 py-4 border-b cursor-pointer"
                 style={{
                   backgroundColor: "rgba(15, 23, 42, 0.9)",
                   borderColor: "rgba(255, 255, 255, 0.2)",
                 }}
                 onClick={() => toggleTopic(topic)}
               >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-xl font-bold" style={{ color: "#E5E7EB" }}>
+                <div className="topic-header-content flex items-center justify-between">
+                  <div className="topic-title-section">
+                    <h3 className="topic-title text-xl font-bold" style={{ color: "#E5E7EB" }}>
                       {topic}
                     </h3>
-                    <p className="text-sm mt-1" style={{ color: "#9CA3AF" }}>
+                    <p className="topic-count text-sm mt-1" style={{ color: "#9CA3AF" }}>
                       {groupedQuestions[topic].length} question
                       {groupedQuestions[topic].length !== 1 ? "s" : ""}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
                     {openTopic === topic ? (
-                      <ChevronUp className="w-5 h-5" style={{ color: "#E5E7EB" }} />
+                      <ChevronUp className="topic-chevron w-5 h-5" style={{ color: "#E5E7EB" }} />
                     ) : (
-                      <ChevronDown className="w-5 h-5" style={{ color: "#E5E7EB" }} />
+                      <ChevronDown className="topic-chevron w-5 h-5" style={{ color: "#E5E7EB" }} />
                     )}
                   </div>
                 </div>
               </div>
 
-              {/* Questions Table */}
+              {/* Questions Table - Desktop */}
               {openTopic === topic && (
-              <div className="overflow-x-auto">
-                <table className="w-full">
+              <div className="questions-table-container overflow-x-auto">
+                <table className="questions-table w-full">
                   <thead>
                     <tr
                       className="text-left"
@@ -402,6 +416,104 @@ export default function StudentDSAPractice() {
                     ))}
                   </tbody>
                 </table>
+
+                {/* Questions Cards - Mobile */}
+                <div className="questions-cards">
+                  {groupedQuestions[topic].map((question, index) => {
+                    const isQuestionOpen = openQuestions.has(question._id);
+                    return (
+                      <div key={question._id} className="question-card">
+                        <div 
+                          className="question-card-header-mobile"
+                          onClick={() => toggleQuestion(question._id)}
+                        >
+                          <div className="question-header-content">
+                            <div className="question-number">{index + 1}</div>
+                            <div className="question-name">{question.name}</div>
+                          </div>
+                          <div className="question-chevron-mobile">
+                            {isQuestionOpen ? (
+                              <ChevronUp className="w-5 h-5" style={{ color: "#E5E7EB" }} />
+                            ) : (
+                              <ChevronDown className="w-5 h-5" style={{ color: "#E5E7EB" }} />
+                            )}
+                          </div>
+                        </div>
+                        {isQuestionOpen && (
+                          <div className="question-actions">
+                            <div className="question-action-row">
+                              <span className="question-action-label">Practice:</span>
+                              <a
+                                href={question.link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="question-action-button practice-link"
+                                style={{
+                                  backgroundColor: "rgba(96, 165, 250, 0.1)",
+                                  color: "#60A5FA",
+                                  border: "1px solid rgba(96, 165, 250, 0.3)",
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <ExternalLink className="w-4 h-4" />
+                                Practice
+                              </a>
+                            </div>
+                            <div className="question-action-row">
+                              <span className="question-action-label">Video:</span>
+                              {question.videoLink ? (
+                                <a
+                                  href={question.videoLink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="question-action-button video-link"
+                                  style={{
+                                    backgroundColor: "rgba(248, 113, 113, 0.1)",
+                                    color: "#F87171",
+                                    border: "1px solid rgba(248, 113, 113, 0.3)",
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <Youtube className="w-4 h-4" />
+                                  Watch
+                                </a>
+                              ) : (
+                                <span className="no-video">-</span>
+                              )}
+                            </div>
+                            <div className="question-action-row">
+                              <span className="question-action-label">Status:</span>
+                              <div className="status-button-wrapper" onClick={(e) => e.stopPropagation()}>
+                                {getStatusButton(question)}
+                              </div>
+                            </div>
+                            <div className="question-action-row">
+                              <span className="question-action-label">Notes:</span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleNotesClick(question);
+                                }}
+                                className="notes-button"
+                                style={{
+                                  backgroundColor: question.notes
+                                    ? "rgba(34, 197, 94, 0.1)"
+                                    : "rgba(255, 255, 255, 0.1)",
+                                  color: question.notes ? "#86EFAC" : "#E5E7EB",
+                                  border: question.notes
+                                    ? "1px solid rgba(34, 197, 94, 0.3)"
+                                    : "1px solid rgba(255, 255, 255, 0.2)",
+                                }}
+                              >
+                                <FileText />
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
               )}
             </div>
@@ -412,11 +524,11 @@ export default function StudentDSAPractice() {
       {/* Notes Modal */}
       {showNotesModal && selectedQuestion && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          className="notes-modal-overlay fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
           onClick={handleCloseNotesModal}
         >
           <div
-            className="rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] flex flex-col"
+            className="notes-modal rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] flex flex-col"
             style={{
               backgroundColor: "#0B1220",
               border: "1px solid rgba(255, 255, 255, 0.2)",
@@ -424,18 +536,18 @@ export default function StudentDSAPractice() {
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between mb-4">
+            <div className="notes-modal-header flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-xl font-bold" style={{ color: "#E5E7EB" }}>
+                <h3 className="notes-modal-title text-xl font-bold" style={{ color: "#E5E7EB" }}>
                   Notes for Question #{selectedQuestion.questionNumber}
                 </h3>
-                <p className="text-sm mt-1" style={{ color: "#9CA3AF" }}>
+                <p className="notes-modal-subtitle text-sm mt-1" style={{ color: "#9CA3AF" }}>
                   {selectedQuestion.name}
                 </p>
               </div>
               <button
                 onClick={handleCloseNotesModal}
-                className="p-2 rounded-lg transition-colors"
+                className="notes-modal-close p-2 rounded-lg transition-colors"
                 style={{
                   backgroundColor: "rgba(255, 255, 255, 0.1)",
                   color: "#E5E7EB",
@@ -456,7 +568,7 @@ export default function StudentDSAPractice() {
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Write your notes here..."
-              className="flex-1 w-full px-4 py-3 rounded-lg border resize-none"
+              className="notes-textarea flex-1 w-full px-4 py-3 rounded-lg border resize-none"
               style={{
                 backgroundColor: "rgba(255, 255, 255, 0.05)",
                 borderColor: "rgba(255, 255, 255, 0.2)",
@@ -466,10 +578,10 @@ export default function StudentDSAPractice() {
             />
 
             {/* Footer */}
-            <div className="flex gap-3 mt-4">
+            <div className="notes-modal-footer flex gap-3 mt-4">
               <button
                 onClick={handleCloseNotesModal}
-                className="flex-1 px-4 py-2 rounded-lg font-medium transition-all duration-300"
+                className="notes-modal-button flex-1 px-4 py-2 rounded-lg font-medium transition-all duration-300"
                 style={{
                   backgroundColor: "rgba(255, 255, 255, 0.05)",
                   color: "#E5E7EB",
@@ -481,7 +593,7 @@ export default function StudentDSAPractice() {
               <button
                 onClick={handleSaveNotes}
                 disabled={saving}
-                className="flex-1 px-4 py-2 rounded-lg font-medium transition-all duration-300 flex items-center justify-center gap-2"
+                className="notes-modal-button flex-1 px-4 py-2 rounded-lg font-medium transition-all duration-300 flex items-center justify-center gap-2"
                 style={{
                   backgroundColor: "rgba(34, 197, 94, 0.1)",
                   color: "#86EFAC",

@@ -1,0 +1,572 @@
+/* Mobile-specific styles for Student Assignments Page */
+/* These styles apply only on screens smaller than 768px */
+
+@media (max-width: 767px) {
+  /* Main Container */
+  .student-assignments-mobile {
+    padding: 0.5rem !important;
+    min-height: 100vh;
+    background-color: #0F172A !important;
+  }
+
+  .student-assignments-mobile .max-w-6xl {
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    width: 100% !important;
+    padding: 0 !important;
+  }
+
+  /* Header Section - Mobile */
+  .student-assignments-mobile .header-section {
+    position: relative !important;
+    margin-bottom: 1.25rem !important;
+    padding: 0 !important;
+    width: 100% !important;
+    z-index: 30 !important;
+  }
+
+  /* Override sticky positioning on mobile */
+  .student-assignments-mobile .header-section.sticky {
+    position: relative !important;
+    top: auto !important;
+  }
+
+  .student-assignments-mobile .header-container {
+    padding: 1.5rem !important;
+    border-radius: 1.25rem !important;
+    background-color: #1E293B !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    position: relative !important;
+    z-index: 30 !important;
+  }
+
+  /* Adjust header when sidebar is open - ensure it stays below sidebar */
+  body.sidebar-open-mobile .student-assignments-mobile .header-section {
+    z-index: 30 !important;
+    position: relative !important;
+  }
+
+  body.sidebar-open-mobile .student-assignments-mobile .header-container {
+    z-index: 30 !important;
+  }
+
+  /* Title Section - Mobile */
+  .student-assignments-mobile .title-section {
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 1rem !important;
+    margin-bottom: 1rem !important;
+    text-align: center !important;
+  }
+
+  .student-assignments-mobile .title-section > div {
+    align-items: center !important;
+    flex-direction: column !important;
+    width: 100% !important;
+  }
+
+  .student-assignments-mobile .title-icon-container {
+    padding: 0.75rem !important;
+    border-radius: 0.75rem !important;
+    margin: 0 auto !important;
+  }
+
+  .student-assignments-mobile .title-icon-container svg {
+    width: 1.5rem !important;
+    height: 1.5rem !important;
+  }
+
+  .student-assignments-mobile .title-text {
+    width: 100% !important;
+    text-align: center !important;
+  }
+
+  .student-assignments-mobile .title-text h1 {
+    font-size: 1.5rem !important;
+    line-height: 1.3 !important;
+    margin-bottom: 0.25rem !important;
+    text-align: center !important;
+  }
+
+  .student-assignments-mobile .title-text p {
+    font-size: 0.8125rem !important;
+    line-height: 1.4 !important;
+    text-align: center !important;
+  }
+
+  /* Search and Filter Section - Mobile */
+  .student-assignments-mobile .search-filter-section {
+    flex-direction: column !important;
+    gap: 0.75rem !important;
+    width: 100% !important;
+  }
+
+  .student-assignments-mobile .search-container {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .student-assignments-mobile .search-input {
+    padding: 0.875rem 2.75rem 0.875rem 2.75rem !important;
+    font-size: 0.9375rem !important;
+    border-radius: 0.75rem !important;
+    min-height: 44px !important;
+  }
+
+  .student-assignments-mobile .search-icon {
+    left: 0.875rem !important;
+    width: 1.125rem !important;
+    height: 1.125rem !important;
+  }
+
+  .student-assignments-mobile .search-clear-btn {
+    right: 0.875rem !important;
+    width: 1.5rem !important;
+    height: 1.5rem !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+  }
+
+  .student-assignments-mobile .filter-button {
+    width: 100% !important;
+    padding: 0.875rem 1rem !important;
+    font-size: 0.9375rem !important;
+    border-radius: 0.75rem !important;
+    min-height: 44px !important;
+    justify-content: center !important;
+    touch-action: manipulation;
+  }
+
+  .student-assignments-mobile .filter-button:active {
+    transform: scale(0.98);
+  }
+
+  /* Filter Panel - Mobile */
+  .student-assignments-mobile .filter-panel {
+    padding-top: 1rem !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .student-assignments-mobile .filter-row {
+    flex-direction: column !important;
+    gap: 0.75rem !important;
+    align-items: stretch !important;
+  }
+
+  .student-assignments-mobile .filter-item {
+    width: 100% !important;
+    padding: 0.75rem 1rem !important;
+    border-radius: 0.75rem !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 0.5rem !important;
+  }
+
+  .student-assignments-mobile .filter-label-row {
+    width: 100% !important;
+    justify-content: space-between !important;
+  }
+
+  .student-assignments-mobile .filter-select {
+    width: 100% !important;
+    padding: 0.625rem !important;
+    font-size: 0.9375rem !important;
+    border-radius: 0.5rem !important;
+    min-height: 44px !important;
+    touch-action: manipulation;
+  }
+
+  .student-assignments-mobile .clear-filters-button {
+    width: 100% !important;
+    padding: 0.875rem 1rem !important;
+    font-size: 0.9375rem !important;
+    border-radius: 0.75rem !important;
+    min-height: 44px !important;
+    justify-content: center !important;
+    touch-action: manipulation;
+  }
+
+  .student-assignments-mobile .clear-filters-button:active {
+    transform: scale(0.98);
+  }
+
+  /* Assignment Cards Grid - Mobile */
+  .student-assignments-mobile .cards-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1rem !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Assignment Card - Mobile */
+  .student-assignments-mobile .assignment-card {
+    padding: 1.5rem !important;
+    border-radius: 1.25rem !important;
+    border-width: 1px !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+    transition: all 0.2s ease !important;
+    -webkit-tap-highlight-color: rgba(255, 255, 255, 0.1) !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+  }
+
+  .student-assignments-mobile .assignment-card:active {
+    transform: scale(0.98) !important;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15) !important;
+  }
+
+  /* Disable hover effects on mobile */
+  .student-assignments-mobile .assignment-card:hover {
+    border-color: rgba(255, 255, 255, 0.2) !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+    transform: none !important;
+  }
+
+  /* Card Header - Mobile */
+  .student-assignments-mobile .card-header {
+    height: auto !important;
+    min-height: auto !important;
+    margin-bottom: 1rem !important;
+  }
+
+  .student-assignments-mobile .card-header-row {
+    flex-direction: row !important;
+    align-items: flex-start !important;
+    gap: 0.75rem !important;
+  }
+
+  .student-assignments-mobile .card-icon-container {
+    padding: 0.75rem !important;
+    border-radius: 0.75rem !important;
+    width: 2.5rem !important;
+    height: 2.5rem !important;
+  }
+
+  .student-assignments-mobile .card-icon-container svg {
+    width: 1.25rem !important;
+    height: 1.25rem !important;
+  }
+
+  .student-assignments-mobile .card-title-container {
+    flex: 1 !important;
+    min-width: 0 !important;
+    padding-right: 0.5rem !important;
+  }
+
+  .student-assignments-mobile .card-title {
+    font-size: 1rem !important;
+    line-height: 1.4 !important;
+    min-height: auto !important;
+    max-height: 2.8rem !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+    margin-bottom: 0 !important;
+  }
+
+  .student-assignments-mobile .card-status-badge {
+    padding: 0.5rem 0.75rem !important;
+    font-size: 0.75rem !important;
+    border-radius: 0.5rem !important;
+    align-self: flex-start !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Card Details Section - Mobile */
+  .student-assignments-mobile .card-details {
+    gap: 0.75rem !important;
+    margin-bottom: 1rem !important;
+  }
+
+  .student-assignments-mobile .detail-item {
+    padding: 0.75rem !important;
+    border-radius: 0.75rem !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 0.75rem !important;
+    width: 100% !important;
+  }
+
+  /* Ensure proper spacing between left and right */
+  .student-assignments-mobile .detail-item > .detail-item-row {
+    margin-right: auto !important;
+  }
+
+  .student-assignments-mobile .detail-item > .detail-value {
+    margin-left: auto !important;
+    margin-right: 0 !important;
+  }
+
+  .student-assignments-mobile .detail-item-row {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 0.5rem !important;
+    flex: 0 0 auto !important;
+    flex-grow: 0 !important;
+    flex-shrink: 0 !important;
+    min-width: 0 !important;
+  }
+
+  /* Override flex-1 class from component */
+  .student-assignments-mobile .detail-item-row.flex-1 {
+    flex: 0 0 auto !important;
+  }
+
+  .student-assignments-mobile .detail-icon-container {
+    padding: 0.5rem !important;
+    border-radius: 0.5rem !important;
+    width: 2rem !important;
+    height: 2rem !important;
+    flex-shrink: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .student-assignments-mobile .detail-icon-container svg {
+    width: 1rem !important;
+    height: 1rem !important;
+  }
+
+  .student-assignments-mobile .detail-label {
+    font-size: 0.8125rem !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+    margin: 0 !important;
+  }
+
+  .student-assignments-mobile .detail-value {
+    padding: 0.5rem 0.75rem !important;
+    font-size: 0.8125rem !important;
+    border-radius: 0.5rem !important;
+    min-width: auto !important;
+    width: auto !important;
+    text-align: center !important;
+    flex-shrink: 0 !important;
+    flex-grow: 0 !important;
+    margin-left: auto !important;
+    order: 999 !important;
+  }
+
+  /* Mentor and Score Section - Mobile */
+  .student-assignments-mobile .mentor-score-section {
+    margin-bottom: 1rem !important;
+    padding-top: 1rem !important;
+    gap: 0.75rem !important;
+  }
+
+  .student-assignments-mobile .mentor-score-item {
+    font-size: 0.8125rem !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 0.25rem !important;
+  }
+
+  .student-assignments-mobile .mentor-score-label {
+    font-size: 0.75rem !important;
+    color: #9CA3AF !important;
+  }
+
+  .student-assignments-mobile .mentor-score-value {
+    font-size: 0.9375rem !important;
+    font-weight: 600 !important;
+  }
+
+  /* Action Buttons Section - Mobile */
+  .student-assignments-mobile .action-section {
+    margin-top: 1rem !important;
+    padding-top: 1rem !important;
+  }
+
+  .student-assignments-mobile .countdown-container {
+    margin-bottom: 1rem !important;
+    padding: 0.75rem !important;
+    border-radius: 0.75rem !important;
+    background-color: rgba(255, 255, 255, 0.05) !important;
+  }
+
+  .student-assignments-mobile .countdown-text {
+    font-size: 0.8125rem !important;
+    margin-bottom: 0.5rem !important;
+  }
+
+  .student-assignments-mobile .countdown-timer {
+    gap: 0.5rem !important;
+  }
+
+  .student-assignments-mobile .countdown-unit {
+    padding: 0.5rem 0.75rem !important;
+    border-radius: 0.5rem !important;
+    min-width: 3rem !important;
+  }
+
+  .student-assignments-mobile .countdown-unit-value {
+    font-size: 1rem !important;
+    font-weight: 700 !important;
+  }
+
+  .student-assignments-mobile .countdown-unit-label {
+    font-size: 0.625rem !important;
+  }
+
+  .student-assignments-mobile .action-button {
+    width: 100% !important;
+    padding: 0.875rem 1rem !important;
+    font-size: 0.9375rem !important;
+    border-radius: 0.75rem !important;
+    min-height: 48px !important;
+    font-weight: 600 !important;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(255, 255, 255, 0.1);
+    transition: all 0.2s ease !important;
+  }
+
+  .student-assignments-mobile .action-button:active {
+    transform: scale(0.97) !important;
+    opacity: 0.9 !important;
+  }
+
+  /* Disable hover effects on mobile */
+  .student-assignments-mobile .action-button:hover {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  /* Pagination - Mobile */
+  .student-assignments-mobile .pagination-container {
+    margin-top: 2rem !important;
+    padding: 0 !important;
+  }
+
+  .student-assignments-mobile .pagination-row {
+    flex-direction: column !important;
+    gap: 1rem !important;
+    width: 100% !important;
+  }
+
+  .student-assignments-mobile .pagination-buttons {
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    gap: 0.5rem !important;
+    width: 100% !important;
+  }
+
+  .student-assignments-mobile .pagination-button {
+    padding: 0.75rem 1rem !important;
+    font-size: 0.875rem !important;
+    border-radius: 0.75rem !important;
+    min-height: 44px !important;
+    min-width: 44px !important;
+    touch-action: manipulation;
+    flex: 1 1 auto !important;
+    max-width: 120px !important;
+  }
+
+  .student-assignments-mobile .pagination-button:active {
+    transform: scale(0.95) !important;
+  }
+
+  .student-assignments-mobile .pagination-numbers {
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    gap: 0.5rem !important;
+    padding: 0.75rem !important;
+    width: 100% !important;
+  }
+
+  .student-assignments-mobile .pagination-number {
+    width: 2.75rem !important;
+    height: 2.75rem !important;
+    font-size: 0.9375rem !important;
+    border-radius: 0.75rem !important;
+    min-height: 44px !important;
+    min-width: 44px !important;
+    touch-action: manipulation;
+  }
+
+  .student-assignments-mobile .pagination-number:active {
+    transform: scale(0.95) !important;
+  }
+
+  /* Disable hover effects on mobile */
+  .student-assignments-mobile .pagination-button:hover,
+  .student-assignments-mobile .pagination-number:hover {
+    transform: none !important;
+  }
+
+  /* Empty State - Mobile */
+  .student-assignments-mobile .empty-state {
+    padding: 3rem 1rem !important;
+    text-align: center !important;
+  }
+
+  .student-assignments-mobile .empty-state-title {
+    font-size: 1.25rem !important;
+    margin-bottom: 0.75rem !important;
+  }
+
+  .student-assignments-mobile .empty-state-text {
+    font-size: 0.9375rem !important;
+  }
+
+  /* Skeleton Loaders - Mobile */
+  .student-assignments-mobile .skeleton-card {
+    padding: 1rem !important;
+    border-radius: 1rem !important;
+  }
+
+  .student-assignments-mobile .skeleton-header {
+    height: auto !important;
+    min-height: auto !important;
+    margin-bottom: 1rem !important;
+  }
+
+  .student-assignments-mobile .skeleton-details {
+    gap: 0.75rem !important;
+    margin-bottom: 1rem !important;
+  }
+
+  .student-assignments-mobile .skeleton-button {
+    height: 48px !important;
+    border-radius: 0.75rem !important;
+  }
+
+  /* Extra small screens optimization */
+  @media (max-width: 375px) {
+    .student-assignments-mobile {
+      padding: 0.5rem !important;
+    }
+
+    .student-assignments-mobile .header-container {
+      padding: 1.25rem !important;
+    }
+
+    .student-assignments-mobile .title-text h1 {
+      font-size: 1.375rem !important;
+    }
+
+    .student-assignments-mobile .assignment-card {
+      padding: 1.25rem !important;
+    }
+
+    .student-assignments-mobile .card-title {
+      font-size: 1rem !important;
+    }
+
+    .student-assignments-mobile .action-button {
+      padding: 0.75rem 0.875rem !important;
+      font-size: 0.875rem !important;
+    }
+  }
+}
+

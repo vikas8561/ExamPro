@@ -6,11 +6,12 @@ export default function Dashboard() {
   const [tests, setTests] = useState([]);
   const [users, setUsers] = useState([]);
   const [reviews, setReviews] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // Changed to false - don't block UI
 
-  // Fetch all data from backend when the component mounts
+  // Fetch all data from backend when the component mounts (non-blocking)
   useEffect(() => {
     const fetchDashboardData = async () => {
+      setLoading(true);
       const token = localStorage.getItem("token");
 
       try {
@@ -54,19 +55,6 @@ export default function Dashboard() {
 
     fetchDashboardData();
   }, []);
-
-  if (loading) {
-    return (
-      <div
-        className="p-6 min-h-screen flex items-center justify-center"
-        style={{ backgroundColor: "#0B1220" }}
-      >
-        <div className="text-xl" style={{ color: "#E5E7EB" }}>
-          Loading...
-        </div>
-      </div>
-    );
-  }
 
   const activeTestsCount = tests.filter((t) => t.status === "Active").length;
   const pendingReviewsCount = reviews.filter((r) => r.status === "Pending").length;

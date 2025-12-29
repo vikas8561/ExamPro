@@ -324,47 +324,45 @@ router.post("/", authenticateToken, async (req, res, next) => {
 router.get("/student", authenticateToken, async (req, res, next) => {
   try {
     const userId = req.user.userId;
-    const currentTime = new Date();
+    const startTime = Date.now();
 
     // Pagination parameters
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    // Get total count of completed submissions (with assignmentId populated to filter)
-    const allSubmissions = await TestSubmission.find({ 
-      userId,
-      submittedAt: { $ne: null, $exists: true }
-    })
-      .populate("assignmentId")
+    // OPTIMIZED: Get assignment IDs that have valid assignments first
+    const validAssignmentIds = await Assignment.find({ userId })
+      .select('_id')
       .lean();
+    const validAssignmentIdArray = validAssignmentIds.map(a => a._id);
 
-    // Filter to only include submissions with valid assignments
-    const completedSubmissions = allSubmissions.filter(submission => {
-      return submission.assignmentId !== null && submission.assignmentId !== undefined;
+    // OPTIMIZED: Count completed submissions efficiently
+    const totalCount = await TestSubmission.countDocuments({ 
+      userId,
+      assignmentId: { $in: validAssignmentIdArray },
+      submittedAt: { $ne: null, $exists: true }
     });
 
-    const totalCount = completedSubmissions.length;
-    const completedSubmissionIds = completedSubmissions.map(s => s._id.toString());
-
-    // Get paginated submissions with full data
+    // OPTIMIZED: Get paginated submissions - don't load questions array
     const submissions = await TestSubmission.find({ 
       userId,
-      _id: { $in: completedSubmissionIds },
+      assignmentId: { $in: validAssignmentIdArray },
       submittedAt: { $ne: null, $exists: true }
     })
-      .populate("assignmentId")
+      .select("assignmentId testId userId responses totalScore maxScore submittedAt timeSpent mentorReviewed mentorScore mentorFeedback reviewStatus")
+      .populate("assignmentId", "testId userId status startTime duration deadline")
       .populate({
         path: "testId",
-        select: "title questions type",
-        populate: {
-          path: "questions",
-          select: "kind text options answer answers guidelines examples points"
-        }
+        select: "title type", // Removed questions - not needed for list view
       })
       .sort({ submittedAt: -1 })
       .skip(skip)
-      .limit(limit);
+      .limit(limit)
+      .lean();
+
+    const totalTime = Date.now() - startTime;
+    console.log(`✅ OPTIMIZED student submissions completed in ${totalTime}ms - Found ${submissions.length} submissions`);
 
     res.json({
       submissions: submissions,

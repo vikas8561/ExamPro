@@ -4,8 +4,9 @@ import { io } from "socket.io-client";
 import { Search, X as CloseIcon } from "lucide-react";
 import apiRequest from "../services/api";
 import { BASE_URL } from "../config/api";
+import "../styles/StudentAssignments.mobile.css";
 
-// Add custom styles for card animations
+// Add custom styles for card animations and skeleton loaders
 const cardAnimationStyles = `
   @keyframes slideInUp {
     from {
@@ -21,6 +22,26 @@ const cardAnimationStyles = `
   .animate-slide-in-up {
     animation: slideInUp 0.6s ease-out forwards;
     opacity: 0;
+  }
+  
+  @keyframes shimmer {
+    0% {
+      background-position: -1000px 0;
+    }
+    100% {
+      background-position: 1000px 0;
+    }
+  }
+  
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.05) 0%,
+      rgba(255, 255, 255, 0.1) 50%,
+      rgba(255, 255, 255, 0.05) 100%
+    );
+    background-size: 1000px 100%;
+    animation: shimmer 2s infinite;
   }
 `;
 
@@ -70,25 +91,25 @@ const CountdownTimer = ({ startTime, onTimerComplete }) => {
 
   return (
     <div className="text-center">
-      <div className="text-sm text-slate-400 mb-2">Test will start in:</div>
-      <div className="flex justify-center space-x-2">
+      <div className="countdown-text text-sm text-slate-400 mb-2">Test will start in:</div>
+      <div className="countdown-timer flex justify-center space-x-2">
         {timeLeft.days > 0 && (
-          <div className="bg-slate-700 px-2 py-1 rounded">
-            <div className="text-lg font-bold">{timeLeft.days}</div>
-            <div className="text-xs">days</div>
+          <div className="countdown-unit bg-slate-700 px-2 py-1 rounded">
+            <div className="countdown-unit-value text-lg font-bold">{timeLeft.days}</div>
+            <div className="countdown-unit-label text-xs">days</div>
           </div>
         )}
-        <div className="bg-slate-700 px-2 py-1 rounded">
-          <div className="text-lg font-bold">{String(timeLeft.hours).padStart(2, '0')}</div>
-          <div className="text-xs">hours</div>
+        <div className="countdown-unit bg-slate-700 px-2 py-1 rounded">
+          <div className="countdown-unit-value text-lg font-bold">{String(timeLeft.hours).padStart(2, '0')}</div>
+          <div className="countdown-unit-label text-xs">hours</div>
         </div>
-        <div className="bg-slate-700 px-2 py-1 rounded">
-          <div className="text-lg font-bold">{String(timeLeft.minutes).padStart(2, '0')}</div>
-          <div className="text-xs">min</div>
+        <div className="countdown-unit bg-slate-700 px-2 py-1 rounded">
+          <div className="countdown-unit-value text-lg font-bold">{String(timeLeft.minutes).padStart(2, '0')}</div>
+          <div className="countdown-unit-label text-xs">min</div>
         </div>
-        <div className="bg-slate-700 px-2 py-1 rounded">
-          <div className="text-lg font-bold">{String(timeLeft.seconds).padStart(2, '0')}</div>
-          <div className="text-xs">sec</div>
+        <div className="countdown-unit bg-slate-700 px-2 py-1 rounded">
+          <div className="countdown-unit-value text-lg font-bold">{String(timeLeft.seconds).padStart(2, '0')}</div>
+          <div className="countdown-unit-label text-xs">sec</div>
         </div>
       </div>
     </div>
@@ -101,7 +122,7 @@ const StudentAssignments = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // Changed to false - don't block UI
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
@@ -192,6 +213,7 @@ const StudentAssignments = () => {
   };
 
   const fetchAssignments = async (retryCount = 0, page = currentPage) => {
+    setLoading(true); // Set loading when starting fetch
     try {
       const startTime = Date.now();
       
@@ -357,32 +379,24 @@ const StudentAssignments = () => {
     return bStart - aStart;
   });
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-900 text-white p-6">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-xl">Loading assignments...</div>
-        </div>
-      </div>
-    );
-  }
+  // Removed blocking loading screen - UI loads immediately
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white p-6">
+    <div className="student-assignments-mobile min-h-screen bg-slate-900 text-white p-6">
       <style>{cardAnimationStyles}</style>
       <div className="max-w-6xl mx-auto">
         {/* Header Section */}
-        <div className="sticky top-0 z-50 relative mb-8">
-          <div className="relative bg-slate-800/95 backdrop-blur-md border border-slate-700/50 rounded-2xl p-6 shadow-lg">
+        <div className="header-section sticky top-0 z-50 relative mb-8">
+          <div className="header-container relative bg-slate-800/95 backdrop-blur-md border border-slate-700/50 rounded-2xl p-6 shadow-lg">
             {/* Title and Stats Row */}
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6 gap-4">
+            <div className="title-section flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6 gap-4">
               <div className="flex items-center gap-4">
-                <div className="p-3 bg-slate-700/60 rounded-xl">
+                <div className="title-icon-container p-3 bg-slate-700/60 rounded-xl">
                   <svg className="h-8 w-8 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 </div>
-                <div>
+                <div className="title-text">
                   <h1 className="text-3xl font-bold text-white">
                     Assigned Tests
                   </h1>
@@ -393,9 +407,9 @@ const StudentAssignments = () => {
               </div>
 
               {/* Search Bar and Filter Button */}
-              <div className="flex items-center gap-3">
-                <div className="relative max-w-md w-full lg:w-80 group">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+              <div className="search-filter-section flex items-center gap-3">
+                <div className="search-container relative max-w-md w-full lg:w-80 group">
+                  <div className="search-icon absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                     <Search className="h-5 w-5 transition-colors duration-200" style={{ color: '#FFFFFF' }} />
                   </div>
                   <input
@@ -403,7 +417,7 @@ const StudentAssignments = () => {
                     placeholder="Search tests..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-12 pr-12 py-3 rounded-xl focus:outline-none transition-all duration-300"
+                    className="search-input w-full pl-12 pr-12 py-3 rounded-xl focus:outline-none transition-all duration-300"
                     style={{
                       backgroundColor: '#1E293B',
                       border: '1px solid rgba(255, 255, 255, 0.3)',
@@ -438,7 +452,7 @@ const StudentAssignments = () => {
                   {searchTerm && (
                     <button
                       onClick={() => setSearchTerm('')}
-                      className="absolute inset-y-0 right-0 pr-4 flex items-center transition-colors duration-200"
+                      className="search-clear-btn absolute inset-y-0 right-0 pr-4 flex items-center transition-colors duration-200"
                       style={{ color: '#FFFFFF' }}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.color = '#E5E7EB';
@@ -456,7 +470,7 @@ const StudentAssignments = () => {
                 {/* Filter Button */}
                 <button
                   onClick={() => setShowFilters(!showFilters)}
-                  className="flex items-center gap-2 bg-slate-700/60 hover:bg-slate-700/80 text-white px-4 py-3 rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md"
+                  className="filter-button flex items-center gap-2 bg-slate-700/60 hover:bg-slate-700/80 text-white px-4 py-3 rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md"
                 >
                   <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
@@ -471,18 +485,18 @@ const StudentAssignments = () => {
 
             {/* Filter Section */}
             {showFilters && (
-              <div className="border-t border-slate-700/50 pt-6">
-                <div className="flex flex-wrap gap-4 items-center">
+              <div className="filter-panel border-t border-slate-700/50 pt-6">
+                <div className="filter-row flex flex-wrap gap-4 items-center">
                   {/* Status Filter */}
-                  <div className="flex items-center gap-3 bg-slate-700/30 rounded-lg px-4 py-2 hover:bg-slate-700/50 transition-colors duration-200">
-                    <div className="flex items-center gap-2">
+                  <div className="filter-item flex items-center gap-3 bg-slate-700/30 rounded-lg px-4 py-2 hover:bg-slate-700/50 transition-colors duration-200">
+                    <div className="filter-label-row flex items-center gap-2">
                       <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
                       <label className="text-sm font-medium text-slate-300">Status:</label>
                     </div>
                     <select
                       value={statusFilter}
                       onChange={(e) => setStatusFilter(e.target.value)}
-                      className="bg-transparent border-none text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 rounded-md px-2 py-1 transition-all duration-200"
+                      className="filter-select bg-transparent border-none text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 rounded-md px-2 py-1 transition-all duration-200"
                     >
                       <option value="all" className="bg-slate-700">All Status</option>
                       <option value="Assigned" className="bg-slate-700">Assigned</option>
@@ -493,15 +507,15 @@ const StudentAssignments = () => {
                   </div>
 
                   {/* Type Filter */}
-                  <div className="flex items-center gap-3 bg-slate-700/30 rounded-lg px-4 py-2 hover:bg-slate-700/50 transition-colors duration-200">
-                    <div className="flex items-center gap-2">
+                  <div className="filter-item flex items-center gap-3 bg-slate-700/30 rounded-lg px-4 py-2 hover:bg-slate-700/50 transition-colors duration-200">
+                    <div className="filter-label-row flex items-center gap-2">
                       <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
                       <label className="text-sm font-medium text-slate-300">Type:</label>
                     </div>
                     <select
                       value={typeFilter}
                       onChange={(e) => setTypeFilter(e.target.value)}
-                      className="bg-transparent border-none text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 rounded-md px-2 py-1 transition-all duration-200"
+                      className="filter-select bg-transparent border-none text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 rounded-md px-2 py-1 transition-all duration-200"
                     >
                       <option value="all" className="bg-slate-700">All Types</option>
                       <option value="Quiz" className="bg-slate-700">Quiz</option>
@@ -511,15 +525,15 @@ const StudentAssignments = () => {
                   </div>
 
                   {/* Subject Filter */}
-                  <div className="flex items-center gap-3 bg-slate-700/30 rounded-lg px-4 py-2 hover:bg-slate-700/50 transition-colors duration-200">
-                    <div className="flex items-center gap-2">
+                  <div className="filter-item flex items-center gap-3 bg-slate-700/30 rounded-lg px-4 py-2 hover:bg-slate-700/50 transition-colors duration-200">
+                    <div className="filter-label-row flex items-center gap-2">
                       <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
                       <label className="text-sm font-medium text-slate-300">Subject:</label>
                     </div>
                     <select
                       value={subjectFilter}
                       onChange={(e) => setSubjectFilter(e.target.value)}
-                      className="bg-transparent border-none text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 rounded-md px-2 py-1 transition-all duration-200"
+                      className="filter-select bg-transparent border-none text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 rounded-md px-2 py-1 transition-all duration-200"
                     >
                       <option value="all" className="bg-slate-700">All Subjects</option>
                       {subjects.map(subject => (
@@ -537,7 +551,7 @@ const StudentAssignments = () => {
                         setSubjectFilter('all');
                         setSearchTerm('');
                       }}
-                      className="flex items-center gap-2 bg-slate-700/60 hover:bg-slate-700/80 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 shadow-sm hover:shadow-md"
+                      className="clear-filters-button flex items-center gap-2 bg-slate-700/60 hover:bg-slate-700/80 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 shadow-sm hover:shadow-md"
                     >
                       <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -551,22 +565,68 @@ const StudentAssignments = () => {
           </div>
         </div>
 
-        {assignments.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="text-2xl text-slate-400 mb-4">No assignments found</div>
-            <p className="text-slate-500">You don't have any test assignments yet.</p>
+        {loading ? (
+          <div className="cards-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[...Array(9)].map((_, index) => (
+              <div 
+                key={`skeleton-${index}`}
+                className="skeleton-card relative backdrop-blur-sm rounded-2xl p-6 border overflow-hidden"
+                style={{ 
+                  backgroundColor: '#0B1220',
+                  borderColor: 'rgba(255, 255, 255, 0.2)',
+                }}
+              >
+                {/* Header Skeleton */}
+                <div className="mb-3" style={{ height: '85px' }}>
+                  <div className="flex items-start gap-3 h-full">
+                    <div className="p-3 rounded-xl skeleton" style={{ width: '48px', height: '48px' }}></div>
+                    <div className="flex-1 min-w-0 pr-3">
+                      <div className="skeleton rounded-lg mb-2" style={{ height: '24px', width: '80%' }}></div>
+                      <div className="skeleton rounded-lg" style={{ height: '20px', width: '60%' }}></div>
+                    </div>
+                    <div className="skeleton rounded-lg" style={{ width: '80px', height: '28px' }}></div>
+                  </div>
+                </div>
+
+                {/* Details Skeleton */}
+                <div className="space-y-2.5 mb-6">
+                  <div className="flex items-center gap-2">
+                    <div className="skeleton rounded" style={{ width: '16px', height: '16px' }}></div>
+                    <div className="skeleton rounded-lg" style={{ height: '16px', width: '120px' }}></div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="skeleton rounded" style={{ width: '16px', height: '16px' }}></div>
+                    <div className="skeleton rounded-lg" style={{ height: '16px', width: '100px' }}></div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="skeleton rounded" style={{ width: '16px', height: '16px' }}></div>
+                    <div className="skeleton rounded-lg" style={{ height: '16px', width: '140px' }}></div>
+                  </div>
+                </div>
+
+                {/* Button Skeleton */}
+                <div className="mt-6 pt-4" style={{ borderTop: '1px solid rgba(255, 255, 255, 0.2)' }}>
+                  <div className="skeleton rounded-lg" style={{ height: '40px', width: '100%' }}></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : assignments.length === 0 ? (
+          <div className="empty-state text-center py-12">
+            <div className="empty-state-title text-2xl text-slate-400 mb-4">No assignments found</div>
+            <p className="empty-state-text text-slate-500">You don't have any test assignments yet.</p>
           </div>
         ) : filteredAssignments.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="text-2xl text-slate-400 mb-4">No assignments match your search</div>
-            <p className="text-slate-500">Try adjusting your search terms.</p>
+          <div className="empty-state text-center py-12">
+            <div className="empty-state-title text-2xl text-slate-400 mb-4">No assignments match your search</div>
+            <p className="empty-state-text text-slate-500">Try adjusting your search terms.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="cards-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredAssignments.map((assignment, index) => (
               <div 
                 key={assignment._id} 
-                className="group relative backdrop-blur-sm rounded-2xl p-6 border transition-all duration-300 cursor-pointer animate-slide-in-up overflow-hidden"
+                className="assignment-card group relative backdrop-blur-sm rounded-2xl p-6 border transition-all duration-300 cursor-pointer animate-slide-in-up overflow-hidden"
                 style={{ 
                   animationDelay: `${index * 100}ms`,
                   backgroundColor: '#0B1220',
@@ -591,16 +651,16 @@ const StudentAssignments = () => {
                 
                 <div className="relative z-10">
                   {/* Header Section */}
-                  <div className="mb-3" style={{ height: '85px' }}>
-                    <div className="flex items-start gap-3 h-full">
-                      <div className="p-3 bg-slate-800/70 rounded-xl shadow-sm group-hover:shadow-md transition-shadow duration-300 flex-shrink-0">
+                  <div className="card-header mb-3" style={{ height: '85px' }}>
+                    <div className="card-header-row flex items-start gap-3 h-full">
+                      <div className="card-icon-container p-3 bg-slate-800/70 rounded-xl shadow-sm group-hover:shadow-md transition-shadow duration-300 flex-shrink-0">
                         <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: '#FFFFFF' }}>
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
                       </div>
-                      <div className="flex-1 min-w-0 pr-3">
+                      <div className="card-title-container flex-1 min-w-0 pr-3">
                         <div 
-                          className="text-xl font-bold transition-colors duration-200" 
+                          className="card-title text-xl font-bold transition-colors duration-200" 
                           title={assignment.testId?.title || "Test"}
                           style={{ 
                             color: '#E5E7EB',
@@ -620,7 +680,7 @@ const StudentAssignments = () => {
                         </div>
                       </div>
                       <span 
-                        className="px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm border flex-shrink-0 self-start"
+                        className="card-status-badge px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm border flex-shrink-0 self-start"
                         style={getStatusStyle(assignment.status)}
                       >
                         {assignment.status}
@@ -629,45 +689,45 @@ const StudentAssignments = () => {
                   </div>
 
                   {/* Test Details - Improved Design with Fixed Widths */}
-                  <div className="space-y-2.5 mb-6">
-                    <div className="flex items-center justify-between p-3.5 bg-slate-900/70 rounded-xl border border-slate-800/50 hover:bg-slate-900/80 transition-all duration-200 group/item">
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className="p-2 bg-slate-800/70 rounded-lg shadow-sm flex-shrink-0">
+                  <div className="card-details space-y-2.5 mb-6">
+                    <div className="detail-item flex items-center justify-between p-3.5 bg-slate-900/70 rounded-xl border border-slate-800/50 hover:bg-slate-900/80 transition-all duration-200 group/item">
+                      <div className="detail-item-row flex items-center gap-3 flex-1 min-w-0">
+                        <div className="detail-icon-container p-2 bg-slate-800/70 rounded-lg shadow-sm flex-shrink-0">
                           <svg className="h-4 w-4 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
                           </svg>
                         </div>
-                        <span className="text-slate-300 text-sm font-medium whitespace-nowrap">Type</span>
+                        <span className="detail-label text-slate-300 text-sm font-medium whitespace-nowrap">Type</span>
                       </div>
-                      <span className="px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm min-w-[80px] text-center">
+                      <span className="detail-value px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm min-w-[80px] text-center">
                         {assignment.testId?.type || "Test"}
                       </span>
                     </div>
                     
-                    <div className="flex items-center justify-between p-3.5 bg-slate-900/70 rounded-xl border border-slate-800/50 hover:bg-slate-900/80 transition-all duration-200 group/item">
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className="p-2 bg-slate-800/70 rounded-lg shadow-sm flex-shrink-0">
+                    <div className="detail-item flex items-center justify-between p-3.5 bg-slate-900/70 rounded-xl border border-slate-800/50 hover:bg-slate-900/80 transition-all duration-200 group/item">
+                      <div className="detail-item-row flex items-center gap-3 flex-1 min-w-0">
+                        <div className="detail-icon-container p-2 bg-slate-800/70 rounded-lg shadow-sm flex-shrink-0">
                           <svg className="h-4 w-4 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
                         </div>
-                        <span className="text-slate-300 text-sm font-medium whitespace-nowrap">Time Limit</span>
+                        <span className="detail-label text-slate-300 text-sm font-medium whitespace-nowrap">Time Limit</span>
                       </div>
-                      <span className="px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm min-w-[80px] text-center">
+                      <span className="detail-value px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm min-w-[80px] text-center">
                         {assignment.testId?.timeLimit} min
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between p-3.5 bg-slate-900/70 rounded-xl border border-slate-800/50 hover:bg-slate-900/80 transition-all duration-200 group/item">
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className="p-2 bg-slate-800/70 rounded-lg shadow-sm flex-shrink-0">
+                    <div className="detail-item flex items-center justify-between p-3.5 bg-slate-900/70 rounded-xl border border-slate-800/50 hover:bg-slate-900/80 transition-all duration-200 group/item">
+                      <div className="detail-item-row flex items-center gap-3 flex-1 min-w-0">
+                        <div className="detail-icon-container p-2 bg-slate-800/70 rounded-lg shadow-sm flex-shrink-0">
                           <svg className="h-4 w-4 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
                         </div>
-                        <span className="text-slate-300 text-sm font-medium whitespace-nowrap">Questions</span>
+                        <span className="detail-label text-slate-300 text-sm font-medium whitespace-nowrap">Questions</span>
                       </div>
-                      <span className="px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm min-w-[80px] text-center">
+                      <span className="detail-value px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm min-w-[80px] text-center">
                         {assignment.testId?.questionCount || 0}
                       </span>
                     </div>
@@ -675,17 +735,17 @@ const StudentAssignments = () => {
 
                   {/* Mentor and Score Info */}
                   {(assignment.mentorId || assignment.score !== null) && (
-                    <div className="mb-6 pt-4 border-t border-slate-800/50 space-y-2.5">
+                    <div className="mentor-score-section mb-6 pt-4 border-t border-slate-800/50 space-y-2.5">
                       {assignment.mentorId && (
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-slate-400 whitespace-nowrap">Mentor:</span>
-                          <span className="text-gray-200 font-medium text-right ml-4 truncate">{assignment.mentorId?.name || "Not assigned"}</span>
+                        <div className="mentor-score-item flex items-center justify-between text-sm">
+                          <span className="mentor-score-label text-slate-400 whitespace-nowrap">Mentor:</span>
+                          <span className="mentor-score-value text-gray-200 font-medium text-right ml-4 truncate">{assignment.mentorId?.name || "Not assigned"}</span>
                         </div>
                       )}
                       {assignment.score !== null && (
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-slate-400 whitespace-nowrap">Score:</span>
-                          <span className="text-gray-100 font-bold text-base">{assignment.score}%</span>
+                        <div className="mentor-score-item flex items-center justify-between text-sm">
+                          <span className="mentor-score-label text-slate-400 whitespace-nowrap">Score:</span>
+                          <span className="mentor-score-value text-gray-100 font-bold text-base">{assignment.score}%</span>
                         </div>
                       )}
                     </div>
@@ -693,9 +753,9 @@ const StudentAssignments = () => {
                 </div>
 
                 {/* Action Buttons Section */}
-                <div className="mt-6 pt-4" style={{ borderTop: '1px solid rgba(255, 255, 255, 0.2)' }}>
+                <div className="action-section mt-6 pt-4" style={{ borderTop: '1px solid rgba(255, 255, 255, 0.2)' }}>
                   {assignment.status === "Assigned" && isTestNotStarted(assignment.startTime) && (
-                    <div className="mb-4">
+                    <div className="countdown-container mb-4">
                       <CountdownTimer 
                         startTime={assignment.startTime} 
                         onTimerComplete={() => fetchAssignments(0, currentPage)} 
@@ -708,7 +768,7 @@ const StudentAssignments = () => {
                       onClick={() => {
                         handleStartTest(assignment._id);
                       }}
-                      className="w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
+                      className="action-button w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
                       style={{ 
                         backgroundColor: '#FFFFFF',
                         color: '#020617',
@@ -749,7 +809,7 @@ const StudentAssignments = () => {
                         onClick={() => {
                           navigate(`/student/view-test/${assignment._id}`);
                         }}
-                        className="w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
+                        className="action-button w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
                         style={{ 
                           backgroundColor: '#22D3EE',
                           color: '#020617',
@@ -771,7 +831,7 @@ const StudentAssignments = () => {
                         onClick={() => {
                           navigate(`/student/take-test/${assignment._id}`);
                         }}
-                        className="w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
+                        className="action-button w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
                         style={{ 
                           backgroundColor: '#22D3EE',
                           color: '#020617',
@@ -799,7 +859,7 @@ const StudentAssignments = () => {
                           onClick={() => {
                             navigate(`/student/view-test/${assignment._id}`);
                           }}
-                          className="w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
+                          className="action-button w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
                           style={{ 
                             backgroundColor: '#22D3EE',
                             color: '#020617',
@@ -821,7 +881,7 @@ const StudentAssignments = () => {
                           onClick={() => {
                             navigate(`/student/view-test/${assignment._id}`);
                           }}
-                          className="w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
+                          className="action-button w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
                           style={{ 
                             backgroundColor: '#22D3EE',
                             color: '#020617',
@@ -877,8 +937,8 @@ const StudentAssignments = () => {
 
         {/* Pagination Controls */}
         {totalPages > 1 && (
-          <div className="mt-10 flex flex-col items-center gap-4">
-            <div className="flex items-center justify-center gap-2">
+          <div className="pagination-container mt-10 flex flex-col items-center gap-4">
+            <div className="pagination-buttons pagination-row flex items-center justify-center gap-2">
               <button
                 onClick={() => {
                   if (currentPage > 1) {
@@ -888,7 +948,7 @@ const StudentAssignments = () => {
                   }
                 }}
                 disabled={currentPage === 1}
-                className="px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100"
+                className="pagination-button px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100"
                 style={{
                   backgroundColor: currentPage === 1 
                     ? 'rgba(255, 255, 255, 0.05)' 
@@ -920,7 +980,7 @@ const StudentAssignments = () => {
                 Previous
               </button>
               
-              <div className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)' }}>
+              <div className="pagination-numbers flex items-center gap-2 px-4 py-2 rounded-xl" style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)' }}>
                 {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                   let pageNum;
                   if (totalPages <= 5) {
@@ -942,7 +1002,7 @@ const StudentAssignments = () => {
                           fetchAssignments(0, pageNum);
                         }
                       }}
-                      className="w-11 h-11 rounded-xl font-bold transition-all duration-300 transform hover:scale-110 shadow-md hover:shadow-lg"
+                      className="pagination-number w-11 h-11 rounded-xl font-bold transition-all duration-300 transform hover:scale-110 shadow-md hover:shadow-lg"
                       style={{
                         background: pageNum === currentPage 
                           ? '#FFFFFF'
@@ -985,7 +1045,7 @@ const StudentAssignments = () => {
                   }
                 }}
                 disabled={currentPage === totalPages}
-                className="px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100"
+                className="pagination-button px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100"
                 style={{
                   backgroundColor: currentPage === totalPages 
                     ? 'rgba(255, 255, 255, 0.05)' 

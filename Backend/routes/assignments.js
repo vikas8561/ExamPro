@@ -59,63 +59,64 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     const skip = (page - 1) * limit;
     const testType = req.query.type; // Optional filter for test type (e.g., 'coding')
 
-    // Build query for test type filter
-    const testTypeMatch = testType 
-      ? { type: testType, type: { $ne: "practice" } }
-      : { type: { $ne: "practice" } };
-
-    // First, get all assignments to count valid ones (with non-practice testId and optional type filter)
-    const allAssignments = await Assignment.find({ userId: req.user.userId })
-      .populate({
-        path: "testId",
-        select: "type",
-        match: { type: { $ne: "practice" } }
-      })
-      .lean();
-    
-    // Filter by type if specified, then filter out null testIds
-    let validAssignments = allAssignments.filter(a => a.testId !== null);
+    // OPTIMIZED: Use aggregation pipeline for efficient counting and filtering
+    // First, get test IDs that match our criteria (non-practice, optional type filter)
+    const testQuery = { type: { $ne: "practice" } };
     if (testType) {
-      validAssignments = validAssignments.filter(a => a.testId?.type === testType);
+      testQuery.type = testType;
     }
-    const validCount = validAssignments.length;
+    
+    const validTestIds = await Test.find(testQuery).select('_id').lean();
+    const validTestIdArray = validTestIds.map(t => t._id);
 
-    // Get the IDs of valid assignments for pagination
-    const validAssignmentIds = validAssignments.map(a => a._id);
+    // Count valid assignments efficiently
+    const validCount = await Assignment.countDocuments({
+      userId: req.user.userId,
+      testId: { $in: validTestIdArray }
+    });
 
-    // Fetch paginated assignments using the valid IDs
+    // Fetch paginated assignments - OPTIMIZED: Don't load questions array
     const assignments = await Assignment.find({ 
       userId: req.user.userId,
-      _id: { $in: validAssignmentIds }
+      testId: { $in: validTestIdArray }
     })
       .select("testId mentorId status startTime duration deadline startedAt completedAt score autoScore mentorScore mentorFeedback reviewStatus timeSpent createdAt")
       .populate({
         path: "testId",
-        select: "title type instructions timeLimit subject questions",
-        match: { type: { $ne: "practice" } } // Exclude practice tests
+        select: "title type instructions timeLimit subject", // REMOVED questions - we'll count separately
+        match: testQuery
       })
       .populate("mentorId", "name email")
       .sort({ deadline: 1 })
       .limit(limit)
       .skip(skip)
-      .lean({ virtuals: true }); // Use lean() with virtuals for 2x faster queries
+      .lean(); // Use lean() for faster queries
 
     // Filter out assignments where testId is null (due to the match filter above)
     let filteredAssignments = assignments.filter(assignment => assignment.testId !== null);
     
-    // Apply type filter if specified
-    if (testType) {
-      filteredAssignments = filteredAssignments.filter(assignment => assignment.testId?.type === testType);
+    // OPTIMIZED: Get question counts using aggregation (faster than loading questions array)
+    const testIds = [...new Set(filteredAssignments.map(a => a.testId?._id).filter(Boolean))];
+    let questionCountMap = {};
+    
+    if (testIds.length > 0) {
+      const mongoose = require('mongoose');
+      const questionCounts = await Test.aggregate([
+        { $match: { _id: { $in: testIds } } },
+        { $project: { _id: 1, questionCount: { $size: { $ifNull: ['$questions', []] } } } }
+      ]);
+      
+      questionCounts.forEach(test => {
+        questionCountMap[test._id.toString()] = test.questionCount || 0;
+      });
     }
 
-    // Transform assignments to include question count but exclude question content
+    // Transform assignments to include question count from map
     const assignmentsWithQuestionCount = filteredAssignments.map(assignment => ({
       ...assignment,
       testId: {
         ...assignment.testId,
-        questionCount: assignment.testId.questions ? assignment.testId.questions.length : 0,
-        // Exclude the actual questions array for performance
-        questions: undefined
+        questionCount: questionCountMap[assignment.testId._id.toString()] || 0
       }
     }));
 

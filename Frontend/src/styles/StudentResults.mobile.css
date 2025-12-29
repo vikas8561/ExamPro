@@ -1,0 +1,62 @@
+/* Mobile-specific styles for Student Results (Completed Tests) Page */
+/* These styles apply only on screens smaller than 768px */
+
+@media (max-width: 767px) {
+  /* Main Container */
+  .student-results-mobile {
+    padding: 0.5rem !important;
+    min-height: 100vh;
+    background-color: #0B1220 !important;
+  }
+
+  .student-results-mobile .max-w-7xl {
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    width: 100% !important;
+    padding: 0 !important;
+  }
+
+  /* Header Section - Mobile */
+  .student-results-mobile .header-section {
+    margin-bottom: 1.25rem !important;
+    padding: 0 !important;
+    width: 100% !important;
+  }
+
+  .student-results-mobile .header-title {
+    font-size: 1.5rem !important;
+    line-height: 1.3 !important;
+    margin-bottom: 1rem !important;
+    text-align: center !important;
+  }
+
+  /* Action Badges - Mobile */
+  .student-results-mobile .action-badges {
+    flex-direction: column !important;
+    gap: 0.75rem !important;
+    width: 100% !important;
+  }
+
+  .student-results-mobile .action-badge {
+    width: 100% !important;
+    padding: 0.875rem 1rem !important;
+    font-size: 0.9375rem !important;
+    border-radius: 0.75rem !important;
+    min-height: 44px !important;
+    justify-content: center !important;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(255, 255, 255, 0.1);
+    transition: all 0.2s ease !important;
+  }
+
+  .student-results-mobile .action-badge:active {
+    transform: scale(0.97) !important;
+    background-color: rgba(255, 255, 255, 0.2) !important;
+  }
+
+  /* Disable hover effects on mobile */
+  .student-results-mobile .action-badge:hover {
+    transform: none !important;
+  }
+}
+

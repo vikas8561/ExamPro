@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import apiRequest from "../services/api";
 import Judge0CodeEditor from "../components/Judge0CodeEditor";
+import '../styles/TakeTestPermissionModal.mobile.css';
 
 const TakeTest = () => {
   const [timeRemaining, setTimeRemaining] = useState(0);
@@ -686,7 +687,15 @@ const TakeTest = () => {
       // If we can't check, still try to proceed (fallback)
     }
 
+    // Check if getUserMedia is available
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert("Camera access is not supported in your browser. Please use a modern browser with camera support.");
+      setCameraPermission("denied");
+      return;
+    }
+
     try {
+      // Request camera permission - this will show the browser's permission prompt
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       setCameraStream(stream);
       setShowCameraModal(true);
@@ -697,9 +706,39 @@ const TakeTest = () => {
         }
       }, 100);
     } catch (error) {
-      console.error("Camera permission denied:", error);
-      setCameraPermission("denied");
-      alert("Camera permission is required to start the test.");
+      console.error("Camera permission error:", error);
+      
+      // Handle different error types
+      if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+        // Camera not found - allow test to proceed without camera
+        setCameraPermission("unavailable");
+        setPermissionsAttempted(true);
+        setTimeout(() => {
+          checkAllPermissionsGranted();
+        }, 100);
+        // Don't show alert for missing camera - allow test to proceed
+        return;
+      } else if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+        setCameraPermission("denied");
+        setPermissionsAttempted(true);
+        alert("Camera permission was denied. Please allow camera access in your browser settings and try again.");
+      } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+        setCameraPermission("denied");
+        setPermissionsAttempted(true);
+        alert("Camera is already in use by another application. Please close other apps using the camera and try again.");
+      } else if (error.name === 'OverconstrainedError' || error.name === 'ConstraintNotSatisfiedError') {
+        setCameraPermission("denied");
+        setPermissionsAttempted(true);
+        alert("Camera settings are not supported. Please try again.");
+      } else if (error.name === 'SecurityError') {
+        setCameraPermission("denied");
+        setPermissionsAttempted(true);
+        alert("Camera access is blocked for security reasons. Please ensure you're using HTTPS and try again.");
+      } else {
+        setCameraPermission("denied");
+        setPermissionsAttempted(true);
+        alert("Camera permission is required to start the test.");
+      }
     }
   };
 
@@ -742,8 +781,12 @@ const TakeTest = () => {
   useEffect(() => {
     if (!permissionsAttempted) return;
     
+    // Allow test to proceed if:
+    // - Camera is granted OR unavailable (not found)
+    // - Microphone is granted
+    // - Location is granted
     const allGranted = 
-      cameraPermission === "granted" &&
+      (cameraPermission === "granted" || cameraPermission === "unavailable") &&
       microphonePermission === "granted" &&
       locationPermission === "granted";
     
@@ -751,18 +794,43 @@ const TakeTest = () => {
   }, [cameraPermission, microphonePermission, locationPermission, permissionsAttempted]);
 
   const requestMicrophonePermission = async () => {
+    // Check if getUserMedia is available
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert("Microphone access is not supported in your browser. Please use a modern browser with microphone support.");
+      setMicrophonePermission("denied");
+      setPermissionsAttempted(true);
+      return;
+    }
+
     try {
-      await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Request microphone permission - this will show the browser's permission prompt
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Stop the stream immediately as we only needed permission
+      stream.getTracks().forEach(track => track.stop());
       setMicrophonePermission("granted");
       setPermissionsAttempted(true);
       setTimeout(() => {
         checkAllPermissionsGranted();
       }, 100);
     } catch (error) {
-      console.error("Microphone permission denied:", error);
+      console.error("Microphone permission error:", error);
       setMicrophonePermission("denied");
       setPermissionsAttempted(true);
-      alert("Microphone permission is required to start the test.");
+      
+      // Provide specific error messages based on error type
+      let errorMessage = "Microphone permission is required to start the test.";
+      
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+        errorMessage = "Microphone permission was denied. Please allow microphone access in your browser settings and try again.";
+      } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+        errorMessage = "No microphone found. Please connect a microphone and try again.";
+      } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+        errorMessage = "Microphone is already in use by another application. Please close other apps using the microphone and try again.";
+      } else if (error.name === 'SecurityError') {
+        errorMessage = "Microphone access is blocked for security reasons. Please ensure you're using HTTPS and try again.";
+      }
+      
+      alert(errorMessage);
     }
   };
 
@@ -770,8 +838,9 @@ const TakeTest = () => {
     try {
       if ("geolocation" in navigator) {
         await new Promise((resolve, reject) => {
+          // Request location permission - this will show the browser's permission prompt
           navigator.geolocation.getCurrentPosition(
-            () => {
+            (position) => {
               setLocationPermission("granted");
               setPermissionsAttempted(true);
               setTimeout(() => {
@@ -780,11 +849,28 @@ const TakeTest = () => {
               }, 100);
             },
             (error) => {
-              console.error("Location permission denied:", error);
+              console.error("Location permission error:", error);
               setLocationPermission("denied");
               setPermissionsAttempted(true);
-              alert("Location permission is required to start the test.");
+              
+              // Provide specific error messages based on error type
+              let errorMessage = "Location permission is required to start the test.";
+              
+              if (error.code === error.PERMISSION_DENIED) {
+                errorMessage = "Location permission was denied. Please allow location access in your browser settings and try again.";
+              } else if (error.code === error.POSITION_UNAVAILABLE) {
+                errorMessage = "Location information is unavailable. Please ensure location services are enabled on your device.";
+              } else if (error.code === error.TIMEOUT) {
+                errorMessage = "Location request timed out. Please try again.";
+              }
+              
+              alert(errorMessage);
               reject(error);
+            },
+            {
+              enableHighAccuracy: false,
+              timeout: 10000,
+              maximumAge: 0
             }
           );
         });
@@ -797,6 +883,7 @@ const TakeTest = () => {
       setLocationPermission("denied");
       setPermissionsAttempted(true);
       console.error("Location permission error:", error);
+      alert("An error occurred while requesting location permission. Please try again.");
     }
   };
 
@@ -1313,25 +1400,32 @@ const TakeTest = () => {
   if (showPermissionModal) {
     return (
       <>
-        <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-4">
-          <div className="bg-slate-800 rounded-lg p-8 max-w-md w-full">
-            <h2 className="text-2xl font-bold mb-6 text-center">Test Permissions</h2>
+        <div className="permission-modal-mobile min-h-screen bg-slate-900 text-white flex items-center justify-center p-4">
+          <div className="permission-modal-content bg-slate-800 rounded-lg p-8 max-w-md w-full">
+            <h2 className="permission-modal-title text-2xl font-bold mb-6 text-center">Test Permissions</h2>
 
-            <div className="space-y-4 mb-6">
-              <div className="flex items-center justify-between">
-                <span>Camera Access</span>
+            <div className="permissions-list space-y-4 mb-6">
+              <div className="permission-item flex items-center justify-between">
+                <span className="permission-label">Camera Access</span>
                 {cameraPermission === "granted" ? (
                   <button
                     disabled
-                    className="w-40 px-4 py-2 bg-white text-green-600 rounded-md font-semibold flex items-center justify-center gap-2 cursor-default whitespace-nowrap border-2 border-green-600"
+                    className="permission-button permission-button-granted w-40 px-4 py-2 bg-white text-green-600 rounded-md font-semibold flex items-center justify-center gap-2 cursor-default whitespace-nowrap border-2 border-green-600"
                   >
                     <span className="text-xl">✓</span>
+                  </button>
+                ) : cameraPermission === "unavailable" ? (
+                  <button
+                    disabled
+                    className="permission-button permission-button-granted w-40 px-4 py-2 bg-white text-blue-600 rounded-md font-semibold flex items-center justify-center gap-2 cursor-default whitespace-nowrap border-2 border-blue-600"
+                  >
+                    <span className="text-xl">N/A</span>
                   </button>
                 ) : (
                   <button
                     onClick={requestCameraPermission}
                     disabled={faceVerifying}
-                    className="w-40 px-4 py-2 bg-white hover:bg-gray-100 disabled:bg-gray-200 disabled:cursor-not-allowed text-slate-900 rounded-md font-semibold flex items-center justify-center gap-2 whitespace-nowrap border-2 border-slate-300"
+                    className="permission-button permission-button-action w-40 px-4 py-2 bg-white hover:bg-gray-100 disabled:bg-gray-200 disabled:cursor-not-allowed text-slate-900 rounded-md font-semibold flex items-center justify-center gap-2 whitespace-nowrap border-2 border-slate-300"
                   >
                     {faceVerifying ? (
                       <>
@@ -1344,38 +1438,38 @@ const TakeTest = () => {
                 )}
               </div>
 
-              <div className="flex items-center justify-between">
-                <span>Microphone Access</span>
+              <div className="permission-item flex items-center justify-between">
+                <span className="permission-label">Microphone Access</span>
                 {microphonePermission === "granted" ? (
                   <button
                     disabled
-                    className="w-40 px-4 py-2 bg-white text-green-600 rounded-md font-semibold flex items-center justify-center gap-2 cursor-default whitespace-nowrap border-2 border-green-600"
+                    className="permission-button permission-button-granted w-40 px-4 py-2 bg-white text-green-600 rounded-md font-semibold flex items-center justify-center gap-2 cursor-default whitespace-nowrap border-2 border-green-600"
                   >
                     <span className="text-xl">✓</span>
                   </button>
                 ) : (
                   <button
                     onClick={requestMicrophonePermission}
-                    className="w-40 px-4 py-2 bg-white hover:bg-gray-100 text-slate-900 rounded-md font-semibold whitespace-nowrap border-2 border-slate-300"
+                    className="permission-button permission-button-action w-40 px-4 py-2 bg-white hover:bg-gray-100 text-slate-900 rounded-md font-semibold whitespace-nowrap border-2 border-slate-300"
                   >
                     Enable Microphone
                   </button>
                 )}
               </div>
 
-              <div className="flex items-center justify-between">
-                <span>Location Access</span>
+              <div className="permission-item flex items-center justify-between">
+                <span className="permission-label">Location Access</span>
                 {locationPermission === "granted" ? (
                   <button
                     disabled
-                    className="w-40 px-4 py-2 bg-white text-green-600 rounded-md font-semibold flex items-center justify-center gap-2 cursor-default whitespace-nowrap border-2 border-green-600"
+                    className="permission-button permission-button-granted w-40 px-4 py-2 bg-white text-green-600 rounded-md font-semibold flex items-center justify-center gap-2 cursor-default whitespace-nowrap border-2 border-green-600"
                   >
                     <span className="text-xl">✓</span>
                   </button>
                 ) : (
                   <button
                     onClick={requestLocationPermission}
-                    className="w-40 px-4 py-2 bg-white hover:bg-gray-100 text-slate-900 rounded-md font-semibold whitespace-nowrap border-2 border-slate-300"
+                    className="permission-button permission-button-action w-40 px-4 py-2 bg-white hover:bg-gray-100 text-slate-900 rounded-md font-semibold whitespace-nowrap border-2 border-slate-300"
                   >
                     Enable Location
                   </button>
@@ -1386,24 +1480,24 @@ const TakeTest = () => {
             <div className="mb-4">
               {permissionsGranted ? (
                 <>
-                  <div className="text-green-400 text-center mb-4">
+                  <div className="permission-status-message permission-status-success text-green-400 text-center mb-4">
                     All permissions granted! Click the button below to start the test.
                   </div>
                   <button
                     onClick={startTest}
-                    className="w-full bg-white hover:bg-gray-100 text-slate-900 py-3 rounded-md font-semibold border-2 border-slate-300"
+                    className="start-test-button w-full bg-white hover:bg-gray-100 text-slate-900 py-3 rounded-md font-semibold border-2 border-slate-300"
                   >
                     Start Test
                   </button>
                 </>
               ) : (
-                <div className="text-yellow-400 text-center mb-4">
+                <div className="permission-status-message permission-status-warning text-yellow-400 text-center mb-4">
                   Please enable all permissions to start the test.
                 </div>
               )}
 
               {!permissionsGranted && (
-                <div className="text-slate-400 text-sm text-center">
+                <div className="permission-status-message permission-status-info text-slate-400 text-sm text-center">
                   All permissions must be enabled before starting the test.
                 </div>
               )}
@@ -1413,10 +1507,10 @@ const TakeTest = () => {
 
         {/* Camera Modal for Face Verification */}
         {showCameraModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
-            <div className="bg-slate-800 rounded-lg p-6 max-w-md w-full">
-              <h3 className="text-xl font-bold mb-4 text-center">Face Verification</h3>
-              <p className="text-slate-300 text-sm mb-4 text-center">
+          <div className="face-verification-modal fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
+            <div className="face-verification-content bg-slate-800 rounded-lg p-6 max-w-md w-full">
+              <h3 className="face-verification-title text-xl font-bold mb-4 text-center">Face Verification</h3>
+              <p className="face-verification-text text-slate-300 text-sm mb-4 text-center">
                 Please position your face in the camera frame. We need to verify your identity before starting the test.
               </p>
               
@@ -1425,17 +1519,17 @@ const TakeTest = () => {
                   ref={cameraVideoRef}
                   autoPlay
                   playsInline
-                  className="w-full rounded-lg"
+                  className="face-verification-video w-full rounded-lg"
                   style={{ maxHeight: "400px" }}
                 />
                 <canvas ref={cameraCanvasRef} className="hidden" />
               </div>
 
-              <div className="flex gap-3">
+              <div className="face-verification-buttons flex gap-3">
                 <button
                   onClick={handleCaptureImage}
                   disabled={faceVerifying}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white py-2 rounded-md font-semibold"
+                  className="face-verification-button flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white py-2 rounded-md font-semibold"
                 >
                   {faceVerifying ? "Verifying..." : "Capture & Verify"}
                 </button>
@@ -1448,7 +1542,7 @@ const TakeTest = () => {
                     setShowCameraModal(false);
                     setFaceVerificationStatus(null);
                   }}
-                  className="flex-1 bg-slate-600 hover:bg-slate-700 text-white py-2 rounded-md font-semibold"
+                  className="face-verification-button flex-1 bg-slate-600 hover:bg-slate-700 text-white py-2 rounded-md font-semibold"
                 >
                   Cancel
                 </button>

@@ -7,6 +7,7 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -18,7 +19,50 @@ export default function Login() {
     if (message === 'session_expired') {
       setError('Your session has expired due to a new login from another device or browser.');
     }
-  }, [searchParams]);
+
+    // Check if "Remember Me" was previously set and restore email only
+    const rememberedEmail = localStorage.getItem('rememberedEmail');
+    const rememberMeFlag = localStorage.getItem('rememberMe') === 'true';
+    
+    if (rememberMeFlag && rememberedEmail) {
+      setEmail(rememberedEmail);
+      setRememberMe(true);
+    }
+
+    // Auto-redirect if user is already authenticated and has valid token
+    const token = localStorage.getItem('token');
+    const user = localStorage.getItem('user');
+    
+    if (token && user) {
+      try {
+        // Check if token is expired
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        const currentTime = Date.now() / 1000;
+        
+        if (payload.exp && payload.exp > currentTime) {
+          // Token is valid, redirect based on role
+          const userData = JSON.parse(user);
+          if (userData.role === 'Admin') {
+            navigate('/admin');
+          } else if (userData.role === 'Student') {
+            navigate('/student');
+          } else if (userData.role === 'Mentor') {
+            navigate('/mentor');
+          }
+        } else {
+          // Token expired, clear it
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          localStorage.removeItem('userId');
+        }
+      } catch (error) {
+        // Invalid token, clear it
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        localStorage.removeItem('userId');
+      }
+    }
+  }, [searchParams, navigate]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -41,6 +85,16 @@ export default function Login() {
         localStorage.setItem('user', JSON.stringify(data.user));
         localStorage.setItem('token', data.token);
         localStorage.setItem('userId', data.user._id);
+        
+        // Handle "Remember Me" functionality - only store email
+        if (rememberMe) {
+          localStorage.setItem('rememberMe', 'true');
+          localStorage.setItem('rememberedEmail', email);
+        } else {
+          // Clear remember me data if unchecked
+          localStorage.removeItem('rememberMe');
+          localStorage.removeItem('rememberedEmail');
+        }
         
         // Redirect based on role
         if (data.user.role === 'Admin') {
@@ -100,9 +154,10 @@ export default function Login() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 hover:border-slate-500"
+                className="login-email-input w-full pl-10 pr-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 hover:border-slate-500"
                 style={{ backgroundColor: 'rgba(51, 65, 85, 0.5)' }}
                 placeholder="you@example.com"
+                autoComplete="email"
                 required
               />
             </div>
@@ -134,6 +189,21 @@ export default function Login() {
                 {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
               </button>
             </div>
+          </div>
+          
+          {/* Remember Me Checkbox */}
+          <div className="flex items-center justify-between">
+            <label className="flex items-center cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="w-4 h-4 rounded border-slate-600 bg-slate-700/50 text-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800 cursor-pointer transition-colors"
+              />
+              <span className="ml-2 text-sm text-gray-300 group-hover:text-white transition-colors">
+                Remember me
+              </span>
+            </label>
           </div>
           
           {/* Error Message */}
@@ -174,7 +244,7 @@ export default function Login() {
         </div>
       </div>
 
-      {/* Custom CSS for animations */}
+      {/* Custom CSS for animations and autocomplete styling */}
       <style>{`
         @keyframes blob {
           0%, 100% {
@@ -208,6 +278,197 @@ export default function Login() {
         }
         .animate-slide-in {
           animation: slide-in 0.3s ease-out;
+        }
+        /* Override browser autocomplete background color to match dark theme */
+        .login-email-input,
+        .login-email-input:-webkit-autofill,
+        .login-email-input:-webkit-autofill:hover,
+        .login-email-input:-webkit-autofill:focus,
+        .login-email-input:-webkit-autofill:active,
+        input[type="email"],
+        input[type="email"]:-webkit-autofill,
+        input[type="email"]:-webkit-autofill:hover,
+        input[type="email"]:-webkit-autofill:focus,
+        input[type="email"]:-webkit-autofill:active {
+          -webkit-box-shadow: 0 0 0 1000px rgba(51, 65, 85, 0.5) inset !important;
+          -webkit-text-fill-color: #ffffff !important;
+          box-shadow: 0 0 0 1000px rgba(51, 65, 85, 0.5) inset !important;
+          background-color: rgba(51, 65, 85, 0.5) !important;
+          background-image: none !important;
+          caret-color: #ffffff !important;
+          color: #ffffff !important;
+          transition: background-color 5000s ease-in-out 0s, color 5000s ease-in-out 0s, background-image 5000s ease-in-out 0s !important;
+        }
+        
+        input[type="password"],
+        input[type="password"]:-webkit-autofill,
+        input[type="password"]:-webkit-autofill:hover,
+        input[type="password"]:-webkit-autofill:focus,
+        input[type="password"]:-webkit-autofill:active {
+          -webkit-box-shadow: 0 0 0 1000px rgba(51, 65, 85, 0.5) inset !important;
+          -webkit-text-fill-color: #ffffff !important;
+          box-shadow: 0 0 0 1000px rgba(51, 65, 85, 0.5) inset !important;
+          background-color: rgba(51, 65, 85, 0.5) !important;
+          background-image: none !important;
+          caret-color: #ffffff !important;
+          color: #ffffff !important;
+          transition: background-color 5000s ease-in-out 0s, color 5000s ease-in-out 0s, background-image 5000s ease-in-out 0s !important;
+        }
+        
+        /* Ensure input maintains dark background on selection */
+        .login-email-input::selection,
+        input[type="email"]::selection {
+          background-color: rgba(59, 130, 246, 0.5) !important;
+          color: #ffffff !important;
+        }
+        
+        input[type="password"]::selection {
+          background-color: rgba(59, 130, 246, 0.5) !important;
+          color: #ffffff !important;
+        }
+
+        /* Mobile-specific optimizations - only applies to screens 768px and below */
+        @media (max-width: 768px) {
+          /* Reduce container padding on mobile */
+          .min-h-screen {
+            padding: 0.75rem !important;
+          }
+
+          /* Optimize background blobs for mobile performance - target by class combination */
+          .min-h-screen .absolute.inset-0 div[class*="w-80"] {
+            width: 12rem !important;
+            height: 12rem !important;
+            opacity: 0.1 !important;
+          }
+
+          /* Reduce card padding on mobile */
+          .min-h-screen > div.relative.z-10 {
+            padding: 1.25rem !important;
+            border-radius: 0.75rem !important;
+          }
+
+          /* Optimize header spacing on mobile */
+          .min-h-screen > div.relative.z-10 > div.text-center {
+            margin-bottom: 1.5rem !important;
+          }
+
+          .min-h-screen > div.relative.z-10 > div.text-center > div.inline-flex[class*="w-16"] {
+            width: 3rem !important;
+            height: 3rem !important;
+            margin-bottom: 0.75rem !important;
+            border-radius: 0.75rem !important;
+          }
+
+          .min-h-screen > div.relative.z-10 > div.text-center > div.inline-flex svg[class*="w-8"] {
+            width: 1.5rem !important;
+            height: 1.5rem !important;
+          }
+
+          .min-h-screen > div.relative.z-10 > div.text-center h2[class*="text-3xl"] {
+            font-size: 1.5rem !important;
+            line-height: 2rem !important;
+            margin-bottom: 0.5rem !important;
+          }
+
+          .min-h-screen > div.relative.z-10 > div.text-center p[class*="text-sm"] {
+            font-size: 0.75rem !important;
+            padding-left: 0.5rem !important;
+            padding-right: 0.5rem !important;
+          }
+
+          /* Optimize form spacing on mobile */
+          .min-h-screen > div.relative.z-10 form[class*="space-y"] {
+            gap: 1rem !important;
+          }
+
+          /* Optimize input fields on mobile */
+          .min-h-screen > div.relative.z-10 form .group label[class*="text-sm"] {
+            font-size: 0.75rem !important;
+            margin-bottom: 0.375rem !important;
+          }
+
+          .min-h-screen > div.relative.z-10 form .group .relative .absolute svg[class*="h-5"] {
+            width: 1rem !important;
+            height: 1rem !important;
+          }
+
+          .min-h-screen > div.relative.z-10 form .group .relative input[class*="pl-10"] {
+            padding-left: 2.25rem !important;
+            padding-top: 0.625rem !important;
+            padding-bottom: 0.625rem !important;
+            font-size: 0.875rem !important;
+          }
+
+          .min-h-screen > div.relative.z-10 form .group .relative input[class*="pr-12"] {
+            padding-right: 2.75rem !important;
+          }
+
+          /* Optimize password toggle button for touch */
+          .min-h-screen > div.relative.z-10 form .group .relative button[type="button"] {
+            min-width: 44px !important;
+            min-height: 44px !important;
+            touch-action: manipulation !important;
+            -webkit-tap-highlight-color: transparent !important;
+          }
+
+          /* Optimize checkbox and remember me */
+          .min-h-screen > div.relative.z-10 form .flex label {
+            min-height: 44px !important;
+            touch-action: manipulation !important;
+            -webkit-tap-highlight-color: transparent !important;
+          }
+
+          .min-h-screen > div.relative.z-10 form .flex label span[class*="text-sm"] {
+            font-size: 0.75rem !important;
+          }
+
+          /* Optimize error message on mobile */
+          .min-h-screen > div.relative.z-10 form .relative.overflow-hidden[class*="p-4"] {
+            padding: 0.75rem !important;
+          }
+
+          .min-h-screen > div.relative.z-10 form .relative.overflow-hidden .flex svg[class*="h-5"] {
+            width: 1rem !important;
+            height: 1rem !important;
+            margin-top: 0.125rem !important;
+          }
+
+          .min-h-screen > div.relative.z-10 form .relative.overflow-hidden .flex p[class*="text-sm"] {
+            font-size: 0.75rem !important;
+            line-height: 1.5rem !important;
+          }
+
+          /* Optimize login button for mobile touch */
+          .min-h-screen > div.relative.z-10 form button[type="submit"] {
+            margin-top: 1rem !important;
+            min-height: 44px !important;
+            padding-top: 0.75rem !important;
+            padding-bottom: 0.75rem !important;
+            font-size: 0.875rem !important;
+            touch-action: manipulation !important;
+            -webkit-tap-highlight-color: transparent !important;
+          }
+
+          /* Optimize forgot password link */
+          .min-h-screen > div.relative.z-10 > div.mt-6 {
+            margin-top: 1rem !important;
+          }
+
+          .min-h-screen > div.relative.z-10 > div.mt-6 a[class*="text-sm"] {
+            font-size: 0.75rem !important;
+            min-height: 44px !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            touch-action: manipulation !important;
+            -webkit-tap-highlight-color: transparent !important;
+          }
+
+          /* Disable animations on mobile if user prefers reduced motion */
+          @media (prefers-reduced-motion: reduce) {
+            .animate-blob {
+              animation: none !important;
+            }
+          }
         }
       `}</style>
     </div>

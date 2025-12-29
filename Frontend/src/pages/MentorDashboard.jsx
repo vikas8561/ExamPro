@@ -9,13 +9,15 @@ export default function MentorDashboard() {
     completedTests: 0,
     recentSubmissions: []
   });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // Changed to false - don't block UI
 
   useEffect(() => {
+    // Load data in background without blocking UI
     fetchMentorData();
   }, []);
 
   const fetchMentorData = async () => {
+    setLoading(true);
     try {
       const token = localStorage.getItem('token');
       const response = await fetch(`${API_BASE_URL}/mentor/dashboard`, {
@@ -38,9 +40,7 @@ export default function MentorDashboard() {
     }
   };
 
-  if (loading) {
-    return <div className="p-6">Loading...</div>;
-  }
+  // Removed blocking loading state - dashboard loads immediately
 
   return (
     <div className="p-6">

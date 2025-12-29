@@ -1,6 +1,17 @@
 // API Configuration - reads from environment variable
 // In Vite, environment variables must be prefixed with VITE_ to be accessible
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || import.meta.env.BACKEND_URL || 'http://localhost:4000/api';
+// Auto-detect hostname for mobile access (use current hostname instead of localhost)
+const getBackendUrl = () => {
+  const envUrl = import.meta.env.VITE_BACKEND_URL || import.meta.env.BACKEND_URL;
+  if (envUrl) return envUrl;
+  
+  // In development, use current hostname (works for both localhost and mobile access)
+  const hostname = window.location.hostname;
+  const port = '4000';
+  return `http://${hostname}:${port}/api`;
+};
+
+const BACKEND_URL = getBackendUrl();
 
 // Construct API base URL - ensure it includes /api if not already present
 export const API_BASE_URL = BACKEND_URL.endsWith('/api') 

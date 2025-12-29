@@ -1,0 +1,310 @@
+/* Mobile-specific styles for Student Sidebar/Hamburger Menu */
+/* These styles apply only on screens smaller than 768px */
+
+@media (max-width: 767px) {
+  /* Mobile Overlay */
+  .student-sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.7) !important;
+    backdrop-filter: blur(4px);
+    z-index: 40;
+    transition: opacity 0.3s ease-in-out;
+  }
+
+  /* Sidebar Container */
+  .student-sidebar-mobile {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 85vw !important;
+    max-width: 320px !important;
+    z-index: 50 !important;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5) !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100vh !important;
+    height: 100dvh !important; /* Dynamic viewport height for mobile */
+    max-height: 100vh !important;
+    max-height: 100dvh !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Override any padding classes from component */
+  .student-sidebar-mobile.p-5 {
+    padding: 0 !important;
+  }
+
+  /* Override h-screen class if present */
+  .student-sidebar-mobile.h-screen {
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-height: 100vh !important;
+    max-height: 100dvh !important;
+  }
+
+  .student-sidebar-mobile.open {
+    transform: translateX(0) !important;
+  }
+
+  /* Sidebar Header - Mobile */
+  .student-sidebar-mobile .sidebar-header {
+    padding: 1rem 1.25rem !important;
+    margin-bottom: 0.5rem !important;
+    padding-bottom: 1rem !important;
+    flex-shrink: 0 !important;
+    position: relative !important;
+    background-color: #0B1220;
+    z-index: 10;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .student-sidebar-mobile .sidebar-header-content {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .student-sidebar-mobile .sidebar-logo {
+    width: 2.5rem !important;
+    height: 2.5rem !important;
+    padding: 0.5rem !important;
+  }
+
+  .student-sidebar-mobile .sidebar-title {
+    font-size: 1rem !important;
+    line-height: 1.2;
+  }
+
+  .student-sidebar-mobile .sidebar-subtitle {
+    font-size: 0.6875rem !important;
+    margin-top: 0.125rem;
+  }
+
+  /* Close Button - Mobile */
+  .student-sidebar-mobile .sidebar-close-btn {
+    position: absolute !important;
+    top: 1rem !important;
+    right: 1rem !important;
+    width: 2.5rem !important;
+    height: 2.5rem !important;
+    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 0.5rem !important;
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    touch-action: manipulation;
+  }
+
+  .student-sidebar-mobile .sidebar-close-btn:active {
+    background-color: rgba(255, 255, 255, 0.2) !important;
+    transform: scale(0.95);
+  }
+
+  /* Navigation Items - Mobile */
+  .student-sidebar-mobile .nav-container {
+    padding: 0.5rem 1.25rem !important;
+    margin-bottom: 0 !important;
+    flex: 1 1 auto !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    min-height: 0 !important;
+    max-height: calc(100vh - 200px) !important; /* Reserve space for header and footer */
+    max-height: calc(100dvh - 200px) !important;
+  }
+
+  .student-sidebar-mobile .nav-item {
+    padding: 1rem 0.875rem !important;
+    margin-bottom: 0.5rem !important;
+    border-radius: 0.75rem !important;
+    min-height: 48px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.75rem !important;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .student-sidebar-mobile .nav-item:active {
+    transform: scale(0.98);
+    background-color: rgba(255, 255, 255, 0.2) !important;
+  }
+
+  .student-sidebar-mobile .nav-item-icon {
+    width: 1.25rem !important;
+    height: 1.25rem !important;
+    flex-shrink: 0;
+  }
+
+  .student-sidebar-mobile .nav-item-text {
+    font-size: 0.9375rem !important;
+    font-weight: 500;
+    flex: 1;
+  }
+
+  .student-sidebar-mobile .nav-item-arrow {
+    width: 1rem !important;
+    height: 1rem !important;
+    flex-shrink: 0;
+  }
+
+  /* Active Indicator - Mobile */
+  .student-sidebar-mobile .nav-item.active .active-indicator {
+    width: 3px !important;
+    height: 60% !important;
+    left: 0 !important;
+    top: 20% !important;
+    border-radius: 0 2px 2px 0 !important;
+  }
+
+  /* Footer Section - Mobile */
+  .student-sidebar-mobile .sidebar-footer {
+    padding: 1rem 1.25rem !important;
+    margin-top: auto !important;
+    margin-bottom: 0 !important;
+    flex: 0 0 auto !important;
+    flex-shrink: 0 !important;
+    flex-grow: 0 !important;
+    background-color: #0B1220;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    position: relative !important;
+    z-index: 5;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    min-height: fit-content !important;
+    visibility: visible !important;
+    display: flex !important;
+    flex-direction: column !important;
+    order: 999 !important; /* Ensure it's always last */
+  }
+
+  /* Ensure footer is always at bottom */
+  .student-sidebar-mobile .sidebar-footer.mt-auto {
+    margin-top: auto !important;
+  }
+
+  .student-sidebar-mobile .profile-button {
+    padding: 1rem 0.875rem !important;
+    margin-bottom: 0.75rem !important;
+    border-radius: 0.75rem !important;
+    min-height: 48px !important;
+    touch-action: manipulation;
+  }
+
+  .student-sidebar-mobile .profile-button:active {
+    transform: scale(0.98);
+  }
+
+  .student-sidebar-mobile .profile-icon {
+    width: 1.25rem !important;
+    height: 1.25rem !important;
+  }
+
+  .student-sidebar-mobile .profile-text {
+    font-size: 0.9375rem !important;
+  }
+
+  /* Logout Button - Mobile */
+  .student-sidebar-mobile .logout-button {
+    width: 100% !important;
+    padding: 1rem !important;
+    font-size: 0.9375rem !important;
+    border-radius: 0.75rem !important;
+    min-height: 48px !important;
+    font-weight: 500 !important;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(255, 255, 255, 0.1);
+    visibility: visible !important;
+    display: flex !important;
+    opacity: 1 !important;
+    position: relative !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Force footer and logout button to be visible */
+  .student-sidebar-mobile .sidebar-footer,
+  .student-sidebar-mobile .sidebar-footer * {
+    visibility: visible !important;
+    display: flex !important;
+  }
+
+  .student-sidebar-mobile .logout-button {
+    display: flex !important;
+    visibility: visible !important;
+  }
+
+  .student-sidebar-mobile .logout-button:active {
+    transform: scale(0.98);
+    background-color: rgba(255, 255, 255, 0.25) !important;
+  }
+
+  .student-sidebar-mobile .logout-icon {
+    width: 1.25rem !important;
+    height: 1.25rem !important;
+  }
+
+  /* Mobile Header Hamburger Button */
+  .mobile-hamburger-btn {
+    width: 2.5rem !important;
+    height: 2.5rem !important;
+    padding: 0.5rem !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 0.5rem !important;
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-hamburger-btn:active {
+    background-color: rgba(255, 255, 255, 0.2) !important;
+    transform: scale(0.95);
+  }
+
+  .mobile-hamburger-btn svg {
+    width: 1.5rem !important;
+    height: 1.5rem !important;
+  }
+
+  /* Mobile Header */
+  .mobile-header {
+    padding: 0.875rem 1rem !important;
+    background-color: #0B1220 !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2) !important;
+  }
+
+  .mobile-header-title {
+    font-size: 1.125rem !important;
+    font-weight: 600;
+    color: #E5E7EB;
+  }
+
+  /* Scrollbar for mobile sidebar */
+  .student-sidebar-mobile::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .student-sidebar-mobile::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .student-sidebar-mobile::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+  }
+
+  /* Prevent body scroll when sidebar is open */
+  body.sidebar-open-mobile {
+    overflow: hidden;
+    position: fixed;
+    width: 100%;
+  }
+}
+

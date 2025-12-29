@@ -40,19 +40,35 @@ router.get("/", authenticateToken, async (req, res, next) => {
       status: "Active" 
     });
     
-    // Get paginated active practice tests - exclude questions for performance but include question count
+    // OPTIMIZED: Get paginated active practice tests - don't load questions array at all
     const tests = await Test.find({ 
       type: "practice", 
       status: "Active" 
     })
-    .select("title subject instructions timeLimit createdBy questions")
+    .select("title subject instructions timeLimit createdBy") // Removed questions from select
     .populate("createdBy", "name email")
     .sort({ createdAt: -1 })
     .limit(limit)
     .skip(skip)
     .lean();
 
-    // Transform tests to include question count but exclude question content
+    // OPTIMIZED: Get question counts using aggregation (faster than loading questions array)
+    const testIds = tests.map(t => t._id);
+    let questionCountMap = {};
+    
+    if (testIds.length > 0) {
+      const mongoose = require('mongoose');
+      const questionCounts = await Test.aggregate([
+        { $match: { _id: { $in: testIds } } },
+        { $project: { _id: 1, questionCount: { $size: { $ifNull: ['$questions', []] } } } }
+      ]);
+      
+      questionCounts.forEach(test => {
+        questionCountMap[test._id.toString()] = test.questionCount || 0;
+      });
+    }
+
+    // Transform tests to include question count from map
     const testsWithQuestionCount = tests.map(test => ({
       _id: test._id,
       title: test.title,
@@ -60,9 +76,7 @@ router.get("/", authenticateToken, async (req, res, next) => {
       instructions: test.instructions,
       timeLimit: test.timeLimit,
       createdBy: test.createdBy,
-      questionCount: test.questions ? test.questions.length : 0,
-      // Exclude the actual questions array for performance
-      questions: undefined
+      questionCount: questionCountMap[test._id.toString()] || 0
     }));
 
     console.log(`🎯 Active practice tests found: ${testsWithQuestionCount.length} (page ${page})`);

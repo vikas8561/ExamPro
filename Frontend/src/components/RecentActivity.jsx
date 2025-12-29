@@ -101,7 +101,7 @@ const RecentActivity = ({ data }) => {
             {data.map((activity, index) => (
               <div 
                 key={index} 
-                className="flex items-start space-x-3 p-3 rounded-lg transition-colors border"
+                className="recent-activity-item flex items-start space-x-3 p-3 rounded-lg transition-colors border"
                 style={{ 
                   backgroundColor: 'rgba(255, 255, 255, 0.05)',
                   borderColor: 'rgba(255, 255, 255, 0.1)'
@@ -115,14 +115,14 @@ const RecentActivity = ({ data }) => {
                   e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
                 }}
               >
-                <div className="text-xl flex-shrink-0">
+                <div className="recent-activity-icon text-xl flex-shrink-0">
                   {getActivityIcon(activity.type)}
                 </div>
-                <div className="flex-1 min-w-0">
+                <div className="recent-activity-content flex-1 min-w-0">
                   <p className="text-sm leading-relaxed" style={{ color: '#E5E7EB' }}>
                     {getActivityMessage(activity)}
                   </p>
-                  <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>
+                  <p className="recent-activity-time text-xs mt-1" style={{ color: '#9CA3AF' }}>
                     {formatDate(activity.timestamp || activity.createdAt || activity.updatedAt)}
                   </p>
                 </div>

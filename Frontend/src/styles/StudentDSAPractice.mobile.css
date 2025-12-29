@@ -1,0 +1,475 @@
+/* Mobile-specific styles for Student DSA Practice Page */
+/* These styles apply only on screens smaller than 768px */
+
+@media (max-width: 767px) {
+  /* Main Container */
+  .student-dsa-practice-mobile {
+    padding: 0.5rem !important;
+    min-height: 100vh;
+    background-color: #0B1220 !important;
+  }
+
+  /* Header Section - Mobile */
+  .student-dsa-practice-mobile .header-section {
+    position: relative !important;
+    margin-bottom: 1.25rem !important;
+    padding: 1.5rem !important;
+    border-radius: 1.25rem !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    z-index: 30 !important;
+  }
+
+  /* Override sticky positioning on mobile */
+  .student-dsa-practice-mobile .header-section.sticky {
+    position: relative !important;
+    top: auto !important;
+  }
+
+  /* Adjust header when sidebar is open - ensure it stays below sidebar */
+  body.sidebar-open-mobile .student-dsa-practice-mobile .header-section {
+    z-index: 30 !important;
+    position: relative !important;
+  }
+
+  /* Header Content - Mobile */
+  .student-dsa-practice-mobile .header-content {
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 1rem !important;
+    text-align: center !important;
+  }
+
+  .student-dsa-practice-mobile .header-title {
+    width: 100% !important;
+    text-align: center !important;
+  }
+
+  .student-dsa-practice-mobile .header-title h2 {
+    font-size: 1.5rem !important;
+    line-height: 1.3 !important;
+    text-align: center !important;
+  }
+
+  /* Stats Section - Mobile */
+  .student-dsa-practice-mobile .stats-section {
+    flex-direction: column !important;
+    gap: 0.75rem !important;
+    width: 100% !important;
+    align-items: stretch !important;
+  }
+
+  .student-dsa-practice-mobile .stat-card {
+    width: 100% !important;
+    padding: 1rem !important;
+    border-radius: 1rem !important;
+    text-align: center !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .student-dsa-practice-mobile .stat-label {
+    font-size: 0.8125rem !important;
+    margin-bottom: 0.5rem !important;
+    text-align: center !important;
+  }
+
+  .student-dsa-practice-mobile .stat-value {
+    font-size: 1.75rem !important;
+    font-weight: 700 !important;
+    text-align: center !important;
+    margin-top: 0 !important;
+  }
+
+  /* Topics Section - Mobile */
+  .student-dsa-practice-mobile .topics-container {
+    gap: 0.75rem !important;
+  }
+
+  /* Topic Card - Mobile */
+  .student-dsa-practice-mobile .topic-card {
+    border-radius: 1.25rem !important;
+    overflow: hidden !important;
+    width: 100% !important;
+  }
+
+  /* Topic Header - Mobile */
+  .student-dsa-practice-mobile .topic-header {
+    padding: 1rem 1.25rem !important;
+    min-height: 44px !important;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .student-dsa-practice-mobile .topic-header:active {
+    background-color: rgba(15, 23, 42, 1) !important;
+  }
+
+  .student-dsa-practice-mobile .topic-header-content {
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 0.75rem !important;
+  }
+
+  .student-dsa-practice-mobile .topic-title-section {
+    flex: 1 !important;
+    min-width: 0 !important;
+  }
+
+  .student-dsa-practice-mobile .topic-title {
+    font-size: 1.125rem !important;
+    line-height: 1.4 !important;
+    margin-bottom: 0.25rem !important;
+  }
+
+  .student-dsa-practice-mobile .topic-count {
+    font-size: 0.8125rem !important;
+    margin-top: 0.25rem !important;
+  }
+
+  .student-dsa-practice-mobile .topic-chevron {
+    width: 1.25rem !important;
+    height: 1.25rem !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Questions Table - Convert to Cards on Mobile */
+  .student-dsa-practice-mobile .questions-table-container {
+    overflow-x: visible !important;
+    padding: 0 !important;
+  }
+
+  /* Hide desktop table on mobile */
+  .student-dsa-practice-mobile .questions-table-container .questions-table,
+  .student-dsa-practice-mobile .questions-table {
+    display: none !important;
+  }
+
+  /* Questions Cards - Mobile - Show on mobile */
+  .student-dsa-practice-mobile .questions-table-container .questions-cards,
+  .student-dsa-practice-mobile .questions-cards {
+    display: block !important;
+    padding: 0.75rem !important;
+  }
+
+  .student-dsa-practice-mobile .questions-cards.hidden {
+    display: none !important;
+  }
+}
+
+/* Desktop styles - Show table, hide cards */
+@media (min-width: 768px) {
+  .student-dsa-practice-mobile .questions-table-container .questions-table,
+  .student-dsa-practice-mobile .questions-table {
+    display: table !important;
+  }
+
+  .student-dsa-practice-mobile .questions-table-container .questions-cards,
+  .student-dsa-practice-mobile .questions-cards {
+    display: none !important;
+  }
+
+  .student-dsa-practice-mobile .question-card {
+    padding: 1rem !important;
+    border-radius: 0.75rem !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    background-color: rgba(15, 23, 42, 0.5) !important;
+    margin-bottom: 0.75rem !important;
+  }
+
+  .student-dsa-practice-mobile .question-card:last-child {
+    margin-bottom: 0 !important;
+  }
+
+  /* Question Card Header - Mobile (Collapsible) */
+  .student-dsa-practice-mobile .question-card-header-mobile {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 0.75rem !important;
+    padding: 1rem !important;
+    cursor: pointer !important;
+    touch-action: manipulation !important;
+    -webkit-tap-highlight-color: rgba(255, 255, 255, 0.1) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+    transition: background-color 0.2s ease !important;
+  }
+
+  .student-dsa-practice-mobile .question-card-header-mobile:active {
+    background-color: rgba(15, 23, 42, 0.7) !important;
+  }
+
+  .student-dsa-practice-mobile .question-header-content {
+    display: flex !important;
+    align-items: flex-start !important;
+    gap: 0.75rem !important;
+    flex: 1 !important;
+    min-width: 0 !important;
+  }
+
+  .student-dsa-practice-mobile .question-number {
+    font-size: 1rem !important;
+    font-weight: 700 !important;
+    color: #E5E7EB !important;
+    flex-shrink: 0 !important;
+    min-width: 2rem !important;
+  }
+
+  .student-dsa-practice-mobile .question-name {
+    font-size: 0.9375rem !important;
+    line-height: 1.5 !important;
+    color: #E5E7EB !important;
+    flex: 1 !important;
+    min-width: 0 !important;
+  }
+
+  .student-dsa-practice-mobile .question-chevron-mobile {
+    flex-shrink: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .student-dsa-practice-mobile .question-chevron-mobile svg {
+    width: 1.25rem !important;
+    height: 1.25rem !important;
+  }
+
+  /* Question Card Actions - Mobile (Collapsible Content) */
+  .student-dsa-practice-mobile .question-actions {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0.75rem !important;
+    padding: 1rem !important;
+    padding-top: 0.75rem !important;
+    animation: slideDown 0.2s ease-out !important;
+  }
+
+  @keyframes slideDown {
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .student-dsa-practice-mobile .question-action-row {
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.5rem !important;
+    flex-wrap: wrap !important;
+  }
+
+  .student-dsa-practice-mobile .question-action-label {
+    font-size: 0.75rem !important;
+    color: #9CA3AF !important;
+    min-width: 4rem !important;
+    flex-shrink: 0 !important;
+  }
+
+  .student-dsa-practice-mobile .question-action-button {
+    padding: 0.625rem 1rem !important;
+    font-size: 0.8125rem !important;
+    border-radius: 0.5rem !important;
+    min-height: 44px !important;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(255, 255, 255, 0.1);
+    transition: all 0.2s ease !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 0.5rem !important;
+  }
+
+  .student-dsa-practice-mobile .question-action-button:active {
+    transform: scale(0.97) !important;
+    opacity: 0.9 !important;
+  }
+
+  /* Disable hover effects on mobile */
+  .student-dsa-practice-mobile .question-action-button:hover {
+    transform: none !important;
+    opacity: 1 !important;
+  }
+
+  .student-dsa-practice-mobile .practice-link {
+    color: #60A5FA !important;
+    text-decoration: none !important;
+  }
+
+  .student-dsa-practice-mobile .video-link {
+    color: #F87171 !important;
+    text-decoration: none !important;
+  }
+
+  .student-dsa-practice-mobile .no-video {
+    font-size: 0.8125rem !important;
+    color: #6B7280 !important;
+  }
+
+  /* Status Button - Mobile */
+  .student-dsa-practice-mobile .status-button {
+    padding: 0.625rem 1rem !important;
+    font-size: 0.8125rem !important;
+    border-radius: 0.5rem !important;
+    min-height: 44px !important;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .student-dsa-practice-mobile .status-button:active {
+    transform: scale(0.97) !important;
+  }
+
+  /* Notes Button - Mobile */
+  .student-dsa-practice-mobile .notes-button {
+    padding: 0.75rem !important;
+    border-radius: 0.5rem !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(255, 255, 255, 0.1);
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .student-dsa-practice-mobile .notes-button:active {
+    transform: scale(0.95) !important;
+  }
+
+  .student-dsa-practice-mobile .notes-button svg {
+    width: 1.125rem !important;
+    height: 1.125rem !important;
+  }
+
+  /* Empty State - Mobile */
+  .student-dsa-practice-mobile .empty-state {
+    padding: 2rem 1rem !important;
+    text-align: center !important;
+    border-radius: 1.25rem !important;
+    font-size: 0.9375rem !important;
+  }
+
+  /* Notes Modal - Mobile */
+  .student-dsa-practice-mobile .notes-modal-overlay {
+    padding: 1rem !important;
+    z-index: 50 !important;
+  }
+
+  .student-dsa-practice-mobile .notes-modal {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 90vh !important;
+    padding: 1.25rem !important;
+    border-radius: 1.25rem !important;
+  }
+
+  .student-dsa-practice-mobile .notes-modal-header {
+    margin-bottom: 1rem !important;
+    padding-bottom: 1rem !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .student-dsa-practice-mobile .notes-modal-title {
+    font-size: 1.125rem !important;
+    line-height: 1.4 !important;
+    margin-bottom: 0.25rem !important;
+  }
+
+  .student-dsa-practice-mobile .notes-modal-subtitle {
+    font-size: 0.8125rem !important;
+    margin-top: 0.25rem !important;
+  }
+
+  .student-dsa-practice-mobile .notes-modal-close {
+    padding: 0.5rem !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    border-radius: 0.5rem !important;
+    touch-action: manipulation;
+  }
+
+  .student-dsa-practice-mobile .notes-modal-close:active {
+    transform: scale(0.95) !important;
+  }
+
+  .student-dsa-practice-mobile .notes-modal-close svg {
+    width: 1.25rem !important;
+    height: 1.25rem !important;
+  }
+
+  .student-dsa-practice-mobile .notes-textarea {
+    min-height: 250px !important;
+    max-height: calc(90vh - 250px) !important;
+    padding: 1rem !important;
+    font-size: 0.9375rem !important;
+    line-height: 1.5 !important;
+    border-radius: 0.75rem !important;
+  }
+
+  .student-dsa-practice-mobile .notes-modal-footer {
+    margin-top: 1rem !important;
+    padding-top: 1rem !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+    flex-direction: column !important;
+    gap: 0.75rem !important;
+  }
+
+  .student-dsa-practice-mobile .notes-modal-button {
+    width: 100% !important;
+    padding: 0.875rem 1rem !important;
+    font-size: 0.9375rem !important;
+    border-radius: 0.75rem !important;
+    min-height: 48px !important;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(255, 255, 255, 0.1);
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0.5rem !important;
+  }
+
+  .student-dsa-practice-mobile .notes-modal-button:active {
+    transform: scale(0.97) !important;
+  }
+
+  /* Loading State - Mobile */
+  .student-dsa-practice-mobile .loading-container {
+    padding: 2rem !important;
+    font-size: 1rem !important;
+  }
+
+  /* Extra small screens optimization */
+  @media (max-width: 375px) {
+    .student-dsa-practice-mobile {
+      padding: 0.5rem !important;
+    }
+
+    .student-dsa-practice-mobile .header-section {
+      padding: 1.25rem !important;
+    }
+
+    .student-dsa-practice-mobile .header-title h2 {
+      font-size: 1.375rem !important;
+    }
+
+    .student-dsa-practice-mobile .stat-value {
+      font-size: 1.5rem !important;
+    }
+
+    .student-dsa-practice-mobile .topic-title {
+      font-size: 1rem !important;
+    }
+
+    .student-dsa-practice-mobile .question-name {
+      font-size: 0.875rem !important;
+    }
+  }
+}
+

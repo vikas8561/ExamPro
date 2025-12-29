@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { 
   LogOut, 
@@ -13,6 +13,7 @@ import {
   ChevronRight,
   GraduationCap,
 } from "lucide-react";
+import "../styles/StudentSidebar.mobile.css";
 
 const Item = ({ to, icon: Icon, children, onClick, end = false }) => {
   return (
@@ -21,9 +22,9 @@ const Item = ({ to, icon: Icon, children, onClick, end = false }) => {
       end={end}
       onClick={onClick}
       className={({ isActive }) =>
-        `group relative flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl transition-all duration-300 nav-item ${
+        `nav-item group relative flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl transition-all duration-300 ${
           isActive
-            ? "text-white shadow-sm active-nav-item"
+            ? "text-white shadow-sm active"
             : "text-gray-300 hover:text-white"
         }`
       }
@@ -36,14 +37,14 @@ const Item = ({ to, icon: Icon, children, onClick, end = false }) => {
           {/* Active indicator */}
           {isActive && (
             <div 
-              className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r-full"
+              className="active-indicator absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r-full"
               style={{ backgroundColor: '#FFFFFF' }}
             ></div>
           )}
           
           {/* Icon with animation */}
           <div className={`
-            relative z-10 transition-all duration-300
+            nav-item-icon relative z-10 transition-all duration-300
             ${isActive ? "scale-110" : "group-hover:scale-110"}
           `}>
             <Icon 
@@ -55,7 +56,7 @@ const Item = ({ to, icon: Icon, children, onClick, end = false }) => {
           {/* Text with animation */}
           <span 
             className={`
-              relative z-10 text-sm font-medium transition-all duration-300
+              nav-item-text relative z-10 text-sm font-medium transition-all duration-300
               ${isActive ? "translate-x-0" : "group-hover:translate-x-1"}
             `}
             style={{ color: isActive ? '#E5E7EB' : undefined }}
@@ -66,7 +67,7 @@ const Item = ({ to, icon: Icon, children, onClick, end = false }) => {
           {/* Arrow indicator */}
           <ChevronRight 
             className={`
-              ml-auto w-3.5 h-3.5 transition-all duration-300
+              nav-item-arrow ml-auto w-3.5 h-3.5 transition-all duration-300
               ${isActive ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0"}
             `}
             style={{ color: isActive ? '#FFFFFF' : undefined }}
@@ -80,6 +81,18 @@ const Item = ({ to, icon: Icon, children, onClick, end = false }) => {
 export default function StudentSidebar({ isOpen, onToggle }) {
   const navigate = useNavigate();
   const [profileHovered, setProfileHovered] = useState(false);
+
+  // Prevent body scroll when sidebar is open on mobile
+  useEffect(() => {
+    if (isOpen && window.innerWidth <= 767) {
+      document.body.classList.add('sidebar-open-mobile');
+    } else {
+      document.body.classList.remove('sidebar-open-mobile');
+    }
+    return () => {
+      document.body.classList.remove('sidebar-open-mobile');
+    };
+  }, [isOpen]);
 
   const handleLogout = () => {
     localStorage.removeItem('user');
@@ -109,7 +122,7 @@ export default function StudentSidebar({ isOpen, onToggle }) {
       {/* Mobile Overlay */}
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300"
+          className="student-sidebar-overlay fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300"
           onClick={onToggle}
         />
       )}
@@ -117,11 +130,11 @@ export default function StudentSidebar({ isOpen, onToggle }) {
       {/* Sidebar */}
       <aside 
         className={`
-          fixed lg:sticky inset-y-0 left-0 z-50 w-68 h-screen 
+          student-sidebar-mobile fixed lg:sticky inset-y-0 left-0 z-50 w-68 h-screen 
           text-slate-100 p-5 flex flex-col
           transform transition-transform duration-300 ease-in-out
           shadow-2xl
-          ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+          ${isOpen ? 'open translate-x-0' : '-translate-x-full lg:translate-x-0'}
         `}
         style={{ 
           backgroundColor: '#0B1220',
@@ -130,23 +143,23 @@ export default function StudentSidebar({ isOpen, onToggle }) {
         }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between mb-7 pb-5" style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.2)' }}>
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-slate-800/70 rounded-xl">
+        <div className="sidebar-header flex items-center justify-between mb-7 pb-5" style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.2)' }}>
+          <div className="sidebar-header-content flex items-center gap-2.5">
+            <div className="sidebar-logo p-2 bg-slate-800/70 rounded-xl">
               <GraduationCap className="w-5 h-5" style={{ color: '#FFFFFF' }} />
             </div>
             <div>
-              <h1 className="text-lg font-bold" style={{ color: '#E5E7EB' }}>
+              <h1 className="sidebar-title text-lg font-bold" style={{ color: '#E5E7EB' }}>
                 Student Portal
               </h1>
-              <p className="text-xs text-gray-400">Exam Management</p>
+              <p className="sidebar-subtitle text-xs text-gray-400">Exam Management</p>
             </div>
           </div>
           
           {/* Mobile Close Button */}
           <button 
             onClick={onToggle}
-            className="lg:hidden p-2 rounded-lg transition-colors"
+            className="sidebar-close-btn lg:hidden p-2 rounded-lg transition-colors"
             style={{ 
               backgroundColor: 'transparent'
             }}
@@ -163,7 +176,7 @@ export default function StudentSidebar({ isOpen, onToggle }) {
         </div>
 
         {/* Navigation */}
-        <nav className="space-y-2 flex-1">
+        <nav className="nav-container space-y-2 flex-1">
           {menuItems.map((item) => (
             <Item 
               key={item.to}
@@ -178,7 +191,7 @@ export default function StudentSidebar({ isOpen, onToggle }) {
         </nav>
 
         {/* Footer Section */}
-        <div className="mt-auto pt-4 space-y-2.5" style={{ borderTop: '1px solid rgba(255, 255, 255, 0.2)' }}>
+        <div className="sidebar-footer mt-auto pt-4 space-y-2.5" style={{ borderTop: '1px solid rgba(255, 255, 255, 0.2)' }}>
           {/* Profile Button */}
           <NavLink
             to="/student/profile"
@@ -186,7 +199,7 @@ export default function StudentSidebar({ isOpen, onToggle }) {
             onMouseEnter={() => setProfileHovered(true)}
             onMouseLeave={() => setProfileHovered(false)}
             className={({ isActive }) =>
-              `group flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl transition-all duration-300 relative ${
+              `profile-button group flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl transition-all duration-300 relative ${
                 isActive ? "text-white shadow-sm" : "text-gray-300 hover:text-white"
               }`
             }
@@ -198,7 +211,7 @@ export default function StudentSidebar({ isOpen, onToggle }) {
               <>
                 {isActive && (
                   <div 
-                    className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r-full"
+                    className="active-indicator absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r-full"
                     style={{ backgroundColor: '#FFFFFF' }}
                   ></div>
                 )}
@@ -208,16 +221,16 @@ export default function StudentSidebar({ isOpen, onToggle }) {
                     backgroundColor: isActive ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 255, 255, 0.1)'
                   }}
                 >
-                  <User className="w-4 h-4" style={{ color: isActive ? '#FFFFFF' : '#FFFFFF' }} />
+                  <User className="profile-icon w-4 h-4" style={{ color: isActive ? '#FFFFFF' : '#FFFFFF' }} />
                 </div>
                 <span 
-                  className="text-sm font-medium flex-1"
+                  className="profile-text text-sm font-medium flex-1"
                   style={{ color: isActive ? '#E5E7EB' : undefined }}
                 >
                   Profile
                 </span>
                 <ChevronRight 
-                  className={`w-3.5 h-3.5 transition-all duration-300 ${
+                  className={`nav-item-arrow w-3.5 h-3.5 transition-all duration-300 ${
                     profileHovered ? "translate-x-1 opacity-100" : "opacity-0"
                   }`}
                   style={{ color: '#FFFFFF' }}
@@ -229,7 +242,7 @@ export default function StudentSidebar({ isOpen, onToggle }) {
           {/* Logout Button */}
           <button
             onClick={handleLogout}
-            className="w-full flex items-center justify-center gap-2.5 
+            className="logout-button w-full flex items-center justify-center gap-2.5 
                      text-sm font-medium
                      px-3.5 py-2.5 rounded-xl 
                      transition-all duration-300 
@@ -249,7 +262,7 @@ export default function StudentSidebar({ isOpen, onToggle }) {
               e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
             }}
           >
-            <LogOut className="w-4 h-4" />
+            <LogOut className="logout-icon w-4 h-4" />
             <span>Logout</span>
           </button>
         </div>

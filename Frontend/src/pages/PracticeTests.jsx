@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import apiRequest from "../services/api";
+import '../styles/PracticeTests.mobile.css';
 
-// Add custom styles for card animations
+// Add custom styles for card animations and skeleton loaders
 const cardAnimationStyles = `
   @keyframes slideInUp {
     from {
@@ -19,11 +20,31 @@ const cardAnimationStyles = `
     animation: slideInUp 0.6s ease-out forwards;
     opacity: 0;
   }
+  
+  @keyframes shimmer {
+    0% {
+      background-position: -1000px 0;
+    }
+    100% {
+      background-position: 1000px 0;
+    }
+  }
+  
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.05) 0%,
+      rgba(255, 255, 255, 0.1) 50%,
+      rgba(255, 255, 255, 0.05) 100%
+    );
+    background-size: 1000px 100%;
+    animation: shimmer 2s infinite;
+  }
 `;
 
 const PracticeTests = () => {
   const [tests, setTests] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // Changed to false - don't block UI
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [subjectFilter, setSubjectFilter] = useState('all');
@@ -35,40 +56,58 @@ const PracticeTests = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchPracticeTests(currentPage);
+    fetchPracticeTests(1); // Always start from page 1 on mount
   }, []);
 
-  // Check which tests have been attempted
+  // Reset to page 1 when search term or filter changes
+  useEffect(() => {
+    if (searchTerm || subjectFilter !== 'all') {
+      setCurrentPage(1);
+    }
+  }, [searchTerm, subjectFilter]);
+
+  // OPTIMIZED: Check which tests have been attempted (non-blocking, batched)
   const checkAttemptedTests = async () => {
+    if (tests.length === 0) return;
+    
     try {
       const attemptedSet = new Set();
-      for (const test of tests) {
+      // OPTIMIZED: Check all tests in parallel instead of sequentially
+      const checkPromises = tests.map(async (test) => {
         try {
           const response = await apiRequest(`/practice-tests/${test._id}/attempts`);
           if (response.submissions && response.submissions.length > 0) {
-            attemptedSet.add(test._id);
+            return test._id;
           }
         } catch (error) {
           // If there's an error (like 404), the test hasn't been attempted
         }
-      }
+        return null;
+      });
+      
+      const results = await Promise.all(checkPromises);
+      results.forEach(testId => {
+        if (testId) attemptedSet.add(testId);
+      });
+      
       setAttemptedTests(attemptedSet);
     } catch (error) {
       console.error("Error checking attempted tests:", error);
     }
   };
 
-  // Check attempted tests when tests are loaded
+  // Check attempted tests when tests are loaded (non-blocking)
   useEffect(() => {
-    if (tests.length > 0) {
+    if (tests.length > 0 && !loading) {
+      // Run in background without blocking UI
       checkAttemptedTests();
     }
   }, [tests, currentPage]);
 
   const fetchPracticeTests = async (page = currentPage) => {
+    setLoading(true); // Set loading when starting fetch
+    setError(null);
     try {
-      setLoading(true);
-      setError(null);
       const data = await apiRequest(`/practice-tests?page=${page}&limit=9`);
       
       // Handle paginated response
@@ -129,15 +168,7 @@ const PracticeTests = () => {
     );
   });
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-900 text-white p-6">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-xl">Loading practice tests...</div>
-        </div>
-      </div>
-    );
-  }
+  // Removed blocking loading screen - UI loads immediately
 
   if (error) {
     return (
@@ -180,21 +211,21 @@ const PracticeTests = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white p-6">
+    <div className="practice-tests-mobile min-h-screen bg-slate-900 text-white p-6">
       <style>{cardAnimationStyles}</style>
       <div className="max-w-6xl mx-auto">
         {/* Header Section */}
-        <div className="sticky top-0 z-50 relative mb-8">
-          <div className="relative bg-slate-800/95 backdrop-blur-md border border-slate-700/50 rounded-2xl p-6 shadow-lg">
+        <div className="header-section sticky top-0 z-50 relative mb-8">
+          <div className="header-container relative bg-slate-800/95 backdrop-blur-md border border-slate-700/50 rounded-2xl p-6 shadow-lg">
             {/* Title and Stats Row */}
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6 gap-4">
+            <div className="title-section flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6 gap-4">
               <div className="flex items-center gap-4">
-                <div className="p-3 bg-slate-800/70 rounded-xl shadow-sm">
+                <div className="title-icon-container p-3 bg-slate-800/70 rounded-xl shadow-sm">
                   <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: '#FFFFFF' }}>
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
-                <div>
+                <div className="title-text">
                   <h1 className="text-3xl font-bold text-white">
                     Practice Tests
                   </h1>
@@ -205,9 +236,9 @@ const PracticeTests = () => {
               </div>
 
               {/* Search Bar and Filter Button */}
-              <div className="flex items-center gap-3">
-                <div className="relative max-w-md w-full lg:w-80">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+              <div className="search-filter-section flex items-center gap-3">
+                <div className="search-container relative max-w-md w-full lg:w-80">
+                  <div className="search-icon absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                     <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: '#FFFFFF' }}>
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
@@ -217,7 +248,7 @@ const PracticeTests = () => {
                     placeholder="Search practice tests..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-12 pr-12 py-3 rounded-xl focus:outline-none transition-all duration-300"
+                    className="search-input w-full pl-12 pr-12 py-3 rounded-xl focus:outline-none transition-all duration-300"
                     style={{
                       backgroundColor: '#1E293B',
                       border: '1px solid rgba(255, 255, 255, 0.3)',
@@ -252,7 +283,7 @@ const PracticeTests = () => {
                   {searchTerm && (
                     <button
                       onClick={() => setSearchTerm('')}
-                      className="absolute inset-y-0 right-0 pr-4 flex items-center transition-colors duration-200"
+                      className="search-clear-btn absolute inset-y-0 right-0 pr-4 flex items-center transition-colors duration-200"
                       style={{ color: '#FFFFFF' }}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.color = '#E5E7EB';
@@ -271,7 +302,7 @@ const PracticeTests = () => {
                 {/* Filter Button */}
                 <button
                   onClick={() => setShowFilters(!showFilters)}
-                  className="flex items-center gap-2 bg-slate-700/60 hover:bg-slate-700/80 text-white px-4 py-3 rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md"
+                  className="filter-button flex items-center gap-2 bg-slate-700/60 hover:bg-slate-700/80 text-white px-4 py-3 rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md"
                 >
                   <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
@@ -286,18 +317,18 @@ const PracticeTests = () => {
 
             {/* Filter Section */}
             {showFilters && (
-              <div className="border-t border-slate-700/50 pt-6">
-                <div className="flex flex-wrap gap-4 items-center">
+              <div className="filter-section border-t border-slate-700/50 pt-6">
+                <div className="filter-items flex flex-wrap gap-4 items-center">
                   {/* Subject Filter */}
-                  <div className="flex items-center gap-3 bg-slate-700/30 rounded-lg px-4 py-2 hover:bg-slate-700/50 transition-colors duration-200">
+                  <div className="filter-item flex items-center gap-3 bg-slate-700/30 rounded-lg px-4 py-2 hover:bg-slate-700/50 transition-colors duration-200">
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                      <label className="text-sm font-medium text-slate-300">Subject:</label>
+                      <label className="filter-label text-sm font-medium text-slate-300">Subject:</label>
                     </div>
                     <select
                       value={subjectFilter}
                       onChange={(e) => setSubjectFilter(e.target.value)}
-                      className="bg-transparent border-none text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-500/50 rounded-md px-2 py-1 transition-all duration-200"
+                      className="filter-select bg-transparent border-none text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-500/50 rounded-md px-2 py-1 transition-all duration-200"
                     >
                       <option value="all" className="bg-slate-700">All Subjects</option>
                       {Array.from(new Set(tests.map(test => test.subject).filter(Boolean))).map(subject => (
@@ -313,7 +344,7 @@ const PracticeTests = () => {
                         setSubjectFilter('all');
                         setSearchTerm('');
                       }}
-                      className="flex items-center gap-2 bg-slate-700/60 hover:bg-slate-700/80 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 shadow-sm hover:shadow-md"
+                      className="clear-filters-button flex items-center gap-2 bg-slate-700/60 hover:bg-slate-700/80 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 shadow-sm hover:shadow-md"
                     >
                       <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -327,22 +358,59 @@ const PracticeTests = () => {
           </div>
         </div>
 
-        {tests.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="text-2xl text-slate-400 mb-4">No practice tests available</div>
-            <p className="text-slate-500">Practice tests will appear here when they are created by your instructors.</p>
+        {loading ? (
+          <div className="cards-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[...Array(9)].map((_, index) => (
+              <div 
+                key={`skeleton-${index}`}
+                className="skeleton-card relative backdrop-blur-sm rounded-2xl p-6 border overflow-hidden"
+                style={{ 
+                  backgroundColor: '#0B1220',
+                  borderColor: 'rgba(255, 255, 255, 0.2)',
+                }}
+              >
+                {/* Header Skeleton */}
+                <div className="mb-1" style={{ height: '85px' }}>
+                  <div className="flex items-start gap-3 h-full">
+                    <div className="p-3 rounded-xl skeleton" style={{ width: '48px', height: '48px' }}></div>
+                    <div className="flex-1 min-w-0">
+                      <div className="skeleton rounded-lg mb-2" style={{ height: '24px', width: '80%' }}></div>
+                      <div className="skeleton rounded-lg" style={{ height: '20px', width: '60%' }}></div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Details Skeleton */}
+                <div className="space-y-2.5 mb-6">
+                  <div className="skeleton rounded-xl" style={{ height: '56px', width: '100%' }}></div>
+                  <div className="skeleton rounded-xl" style={{ height: '56px', width: '100%' }}></div>
+                  <div className="skeleton rounded-xl" style={{ height: '56px', width: '100%' }}></div>
+                </div>
+
+                {/* Button Skeleton */}
+                <div className="mt-6 pt-4" style={{ borderTop: '1px solid rgba(255, 255, 255, 0.2)' }}>
+                  <div className="skeleton rounded-lg mb-3" style={{ height: '40px', width: '100%' }}></div>
+                  <div className="skeleton rounded-lg" style={{ height: '40px', width: '100%' }}></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : tests.length === 0 ? (
+          <div className="empty-state text-center py-12">
+            <div className="empty-state-title text-2xl text-slate-400 mb-4">No practice tests available</div>
+            <p className="empty-state-text text-slate-500">Practice tests will appear here when they are created by your instructors.</p>
           </div>
         ) : filteredTests.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="text-2xl text-slate-400 mb-4">No practice tests match your search</div>
-            <p className="text-slate-500">Try adjusting your search terms.</p>
+          <div className="empty-state text-center py-12">
+            <div className="empty-state-title text-2xl text-slate-400 mb-4">No practice tests match your search</div>
+            <p className="empty-state-text text-slate-500">Try adjusting your search terms.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="cards-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredTests.map((test, index) => (
               <div 
                 key={test._id} 
-                className="group relative backdrop-blur-sm rounded-2xl p-6 border transition-all duration-300 cursor-pointer animate-slide-in-up overflow-hidden"
+                className="practice-test-card group relative backdrop-blur-sm rounded-2xl p-6 border transition-all duration-300 cursor-pointer animate-slide-in-up overflow-hidden"
                 style={{ 
                   animationDelay: `${index * 100}ms`,
                   backgroundColor: '#0B1220',
@@ -363,17 +431,17 @@ const PracticeTests = () => {
 
                 <div className="relative z-10">
                   {/* Header Section */}
-                  <div className="mb-1" style={{ height: '85px' }}>
-                    <div className="flex items-start gap-3 h-full">
-                      <div className="p-3 bg-slate-800/70 rounded-xl shadow-sm group-hover:shadow-md transition-shadow duration-300 flex-shrink-0">
+                  <div className="card-header mb-1" style={{ height: '85px' }}>
+                    <div className="card-header-row flex items-start gap-3 h-full">
+                      <div className="card-icon-container p-3 bg-slate-800/70 rounded-xl shadow-sm group-hover:shadow-md transition-shadow duration-300 flex-shrink-0">
                         <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: '#FFFFFF' }}>
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start gap-2">
+                      <div className="card-title-container flex-1 min-w-0">
+                        <div className="card-title-row flex items-start gap-2">
                           <div 
-                            className="text-xl font-bold transition-colors duration-200 flex-1" 
+                            className="card-title text-xl font-bold transition-colors duration-200 flex-1" 
                             title={test.title}
                             style={{ 
                               color: '#E5E7EB',
@@ -392,7 +460,7 @@ const PracticeTests = () => {
                             {test.title}
                           </div>
                           {attemptedTests.has(test._id) && (
-                            <span className="px-2 py-0.5 rounded text-xs font-semibold flex-shrink-0" style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', color: '#FFFFFF', border: '1px solid rgba(255, 255, 255, 0.3)' }}>
+                            <span className="card-attempted-badge px-2 py-0.5 rounded text-xs font-semibold flex-shrink-0" style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', color: '#FFFFFF', border: '1px solid rgba(255, 255, 255, 0.3)' }}>
                               Attempted
                             </span>
                           )}
@@ -402,55 +470,55 @@ const PracticeTests = () => {
                   </div>
 
                   {/* Test Details - Improved Design with Fixed Widths */}
-                  <div className="space-y-2.5 mb-6">
-                    <div className="flex items-center justify-between p-3.5 bg-slate-900/70 rounded-xl border border-slate-800/50 hover:bg-slate-900/80 transition-all duration-200 group/item">
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className="p-2 bg-slate-800/70 rounded-lg shadow-sm flex-shrink-0">
+                  <div className="card-details space-y-2.5 mb-6">
+                    <div className="detail-item flex items-center justify-between p-3.5 bg-slate-900/70 rounded-xl border border-slate-800/50 hover:bg-slate-900/80 transition-all duration-200 group/item">
+                      <div className="detail-item-row flex items-center gap-3 flex-1 min-w-0">
+                        <div className="detail-icon-container p-2 bg-slate-800/70 rounded-lg shadow-sm flex-shrink-0">
                           <svg className="h-4 w-4 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                           </svg>
                         </div>
-                        <span className="text-slate-300 text-sm font-medium whitespace-nowrap">Subject</span>
+                        <span className="detail-label text-slate-300 text-sm font-medium whitespace-nowrap">Subject</span>
                       </div>
-                      <span className="px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm min-w-[80px] text-center">
+                      <span className="detail-value px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm min-w-[80px] text-center">
                         {test.subject || "General"}
                       </span>
                     </div>
                     
-                    <div className="flex items-center justify-between p-3.5 bg-slate-900/70 rounded-xl border border-slate-800/50 hover:bg-slate-900/80 transition-all duration-200 group/item">
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className="p-2 bg-slate-800/70 rounded-lg shadow-sm flex-shrink-0">
+                    <div className="detail-item flex items-center justify-between p-3.5 bg-slate-900/70 rounded-xl border border-slate-800/50 hover:bg-slate-900/80 transition-all duration-200 group/item">
+                      <div className="detail-item-row flex items-center gap-3 flex-1 min-w-0">
+                        <div className="detail-icon-container p-2 bg-slate-800/70 rounded-lg shadow-sm flex-shrink-0">
                           <svg className="h-4 w-4 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
                         </div>
-                        <span className="text-slate-300 text-sm font-medium whitespace-nowrap">Time Limit</span>
+                        <span className="detail-label text-slate-300 text-sm font-medium whitespace-nowrap">Time Limit</span>
                       </div>
-                      <span className="px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm min-w-[80px] text-center">
+                      <span className="detail-value px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm min-w-[80px] text-center">
                         {test.timeLimit} min
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between p-3.5 bg-slate-900/70 rounded-xl border border-slate-800/50 hover:bg-slate-900/80 transition-all duration-200 group/item">
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className="p-2 bg-slate-800/70 rounded-lg shadow-sm flex-shrink-0">
+                    <div className="detail-item flex items-center justify-between p-3.5 bg-slate-900/70 rounded-xl border border-slate-800/50 hover:bg-slate-900/80 transition-all duration-200 group/item">
+                      <div className="detail-item-row flex items-center gap-3 flex-1 min-w-0">
+                        <div className="detail-icon-container p-2 bg-slate-800/70 rounded-lg shadow-sm flex-shrink-0">
                           <svg className="h-4 w-4 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
                         </div>
-                        <span className="text-slate-300 text-sm font-medium whitespace-nowrap">Questions</span>
+                        <span className="detail-label text-slate-300 text-sm font-medium whitespace-nowrap">Questions</span>
                       </div>
-                      <span className="px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm min-w-[80px] text-center">
+                      <span className="detail-value px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm min-w-[80px] text-center">
                         {test.questionCount || 0}
                       </span>
                     </div>
                   </div>
 
                   {/* Action Buttons Section */}
-                  <div className="mt-6 pt-4" style={{ borderTop: '1px solid rgba(255, 255, 255, 0.2)' }}>
+                  <div className="action-section mt-6 pt-4" style={{ borderTop: '1px solid rgba(255, 255, 255, 0.2)' }}>
                     <button
                       onClick={() => handleStartPracticeTest(test._id)}
-                      className="w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md mb-3"
+                      className="action-button w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md mb-3"
                       style={{ 
                         backgroundColor: '#FFFFFF',
                         color: '#020617',
@@ -469,7 +537,7 @@ const PracticeTests = () => {
                     {attemptedTests.has(test._id) && (
                       <button
                         onClick={() => handleViewResults(test._id)}
-                        className="w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
+                        className="action-button w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
                         style={{ 
                           backgroundColor: 'rgba(255, 255, 255, 0.1)',
                           color: '#FFFFFF',
@@ -494,8 +562,8 @@ const PracticeTests = () => {
 
         {/* Pagination Controls */}
         {totalPages > 1 && (
-          <div className="mt-10 flex flex-col items-center gap-4">
-            <div className="flex items-center justify-center gap-2">
+          <div className="pagination-container mt-10 flex flex-col items-center gap-4">
+            <div className="pagination-buttons pagination-row flex items-center justify-center gap-2">
               <button
                 onClick={() => {
                   if (currentPage > 1) {
@@ -505,7 +573,7 @@ const PracticeTests = () => {
                   }
                 }}
                 disabled={currentPage === 1}
-                className="px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100"
+                className="pagination-button px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100"
                 style={{
                   backgroundColor: currentPage === 1 
                     ? 'rgba(255, 255, 255, 0.05)' 
@@ -537,7 +605,7 @@ const PracticeTests = () => {
                 Previous
               </button>
               
-              <div className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)' }}>
+              <div className="pagination-numbers flex items-center gap-2 px-4 py-2 rounded-xl" style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)' }}>
                 {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                   let pageNum;
                   if (totalPages <= 5) {
@@ -559,7 +627,7 @@ const PracticeTests = () => {
                           fetchPracticeTests(pageNum);
                         }
                       }}
-                      className="w-11 h-11 rounded-xl font-bold transition-all duration-300 transform hover:scale-110 shadow-md hover:shadow-lg"
+                      className="pagination-number w-11 h-11 rounded-xl font-bold transition-all duration-300 transform hover:scale-110 shadow-md hover:shadow-lg"
                       style={{
                         background: pageNum === currentPage 
                           ? '#FFFFFF'
@@ -602,7 +670,7 @@ const PracticeTests = () => {
                   }
                 }}
                 disabled={currentPage === totalPages}
-                className="px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100"
+                className="pagination-button px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100"
                 style={{
                   backgroundColor: currentPage === totalPages 
                     ? 'rgba(255, 255, 255, 0.05)' 

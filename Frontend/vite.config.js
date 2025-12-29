@@ -10,6 +10,8 @@ export default defineConfig({
     // PWA plugin removed to prevent icon errors
   ],
   server: {
+    host: '0.0.0.0', // Allow access from network (mobile devices)
+    port: 5173,
     proxy: {
       '/api': {
         target: process.env.VITE_BACKEND_URL || process.env.BACKEND_URL || 'https://cg-test-app.onrender.com',

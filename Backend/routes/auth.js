@@ -15,8 +15,8 @@ router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Find user by email
-    const user = await User.findOne({ email });
+    // Find user by email - only select fields needed for login (exclude large fields like profileImage)
+    const user = await User.findOne({ email }).select('_id email password role name studentCategory');
     if (!user) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
@@ -30,14 +30,20 @@ router.post("/login", async (req, res) => {
     // Generate JWT token
     const token = generateToken(user);
 
-    // Clear any existing sessions and add new session
-    user.activeSessions = [token];
-    await user.save();
+    // Update activeSessions using updateOne (much faster than save - doesn't load full document or run hooks)
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { activeSessions: [token] } }
+    );
 
     // Return user without password
-    const userResponse = user.toObject();
-    delete userResponse.password;
-    delete userResponse.activeSessions;
+    const userResponse = {
+      _id: user._id,
+      email: user.email,
+      role: user.role,
+      name: user.name,
+      studentCategory: user.studentCategory
+    };
 
     res.json({ 
       user: userResponse,

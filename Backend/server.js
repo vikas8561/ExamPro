@@ -195,10 +195,25 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
+      // Allow requests with no origin (mobile apps, curl, Postman)
+      if (!origin) {
+        console.log(`✅ Socket.IO allowing request with no origin`);
+        return callback(null, true);
+      }
+      
+      // For development, be more permissive
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`✅ Socket.IO allowing request from: ${origin} (development mode)`);
+        return callback(null, true);
+      }
+      
+      // Allow exact matches OR any Vercel subdomain OR localhost or IP addresses
       if (allowedOrigins.includes(origin) || 
           origin.endsWith(".vercel.app") || 
-          origin.includes("vercel.app")) {
+          origin.includes("vercel.app") ||
+          origin.includes("localhost") ||
+          origin.includes("127.0.0.1") ||
+          /^http:\/\/\d+\.\d+\.\d+\.\d+/.test(origin)) { // Allow IP addresses
         console.log(`✅ Socket.IO allowing request from: ${origin}`);
         callback(null, true);
       } else {
@@ -360,12 +375,15 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 4000;
+const HOST = process.env.HOST || '0.0.0.0'; // Listen on all network interfaces for mobile access
 
 // Connect to DB and start server
 connectDB(process.env.MONGODB_URI || 'mongodb://localhost:27017/test-platform')
   .then(() => {
-    server.listen(PORT, () => {
-      // Server started successfully
+    server.listen(PORT, HOST, () => {
+      console.log(`🚀 Server running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+      console.log(`📱 To access from mobile, use your computer's IP address: http://YOUR_IP:${PORT}`);
+      console.log(`💡 Find your IP: Windows (ipconfig) | Mac/Linux (ifconfig or ip addr)`);
     });
   })
   .catch((e) => {
