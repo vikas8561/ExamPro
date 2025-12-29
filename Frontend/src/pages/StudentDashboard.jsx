@@ -90,14 +90,27 @@ const StudentDashboard = () => {
   const fetchStudentData = async () => {
     try {
       // Fetch all assignments for the current student
-      const allAssignments = await apiRequest("/assignments/student");
+      const response = await apiRequest("/assignments/student");
+      
+      // Handle different response formats
+      let allAssignments = [];
+      if (Array.isArray(response)) {
+        allAssignments = response;
+      } else if (response && Array.isArray(response.assignments)) {
+        allAssignments = response.assignments;
+      } else if (response && Array.isArray(response.data)) {
+        allAssignments = response.data;
+      } else {
+        console.warn("Unexpected response format from /assignments/student:", response);
+        allAssignments = [];
+      }
 
       // Filter assignments by status on client side
       const assignedTestsData = allAssignments.filter(assignment =>
-        assignment.status === "Assigned" || assignment.status === "In Progress"
+        assignment && (assignment.status === "Assigned" || assignment.status === "In Progress")
       );
       const completedTestsData = allAssignments.filter(assignment =>
-        assignment.status === "Completed"
+        assignment && assignment.status === "Completed"
       );
 
       setAssignedTests(assignedTestsData);
@@ -105,6 +118,8 @@ const StudentDashboard = () => {
       setLoading(false);
     } catch (error) {
       console.error("Error fetching student data:", error);
+      setAssignedTests([]);
+      setCompletedTests([]);
       setLoading(false);
     }
   };
