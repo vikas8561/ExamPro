@@ -1618,14 +1618,14 @@ const TakeTest = () => {
                   </div>
                 </div>
               </div>
-              <div className="text-xl font-semibold mb-6 whitespace-pre-wrap">{question.text}</div>
+              <h3 className="text-xl font-semibold mb-6">{question.text}</h3>
 
               {question.guidelines && (
               <div className="bg-slate-700 p-4 rounded-lg mb-4 scrollbar-hide" style={{overflowY: 'auto'}}>
                 <h4 className="font-semibold text-slate-300 mb-2">
                   Guidelines:
                 </h4>
-                <p className="text-slate-400 whitespace-pre-wrap">{question.guidelines}</p>
+                <p className="text-slate-400">{question.guidelines}</p>
               </div>
               )}
 
@@ -1753,14 +1753,14 @@ const TakeTest = () => {
                   </div>
                 </div>
               </div>
-              <div className="text-xl font-semibold mb-6 whitespace-pre-wrap">{question.text}</div>
+              <h3 className="text-xl font-semibold mb-6">{question.text}</h3>
 
               {question.guidelines && (
                 <div className="bg-slate-700 p-4 rounded-lg mb-4 scrollbar-hide" style={{overflowY: 'auto'}}>
                   <h4 className="font-semibold text-slate-300 mb-2">
                     Guidelines:
                   </h4>
-                  <p className="text-slate-400 whitespace-pre-wrap">{question.guidelines}</p>
+                  <p className="text-slate-400">{question.guidelines}</p>
                 </div>
               )}
 
@@ -1909,7 +1909,7 @@ const TakeTest = () => {
                     </div>
                   </div>
                 </div>
-                <div className="text-xl font-semibold mb-6 whitespace-pre-wrap">{question.text}</div>
+                <h3 className="text-xl font-semibold mb-6">{question.text}</h3>
 
                 {question.kind === "mcq" && (
                   <div className="space-y-3">
@@ -1930,7 +1930,7 @@ const TakeTest = () => {
                           onChange={() => handleAnswerChange(question._id, index)}
                           className="mr-3"
                         />
-                        <span className="whitespace-pre-wrap">{option.text}</span>
+                        <span>{option.text}</span>
                       </label>
                     ))}
                   </div>
@@ -1944,7 +1944,7 @@ const TakeTest = () => {
                         <h4 className="font-semibold text-slate-300 mb-2">
                           Guidelines:
                         </h4>
-                        <p className="text-slate-400 whitespace-pre-wrap">{question.guidelines}</p>
+                        <p className="text-slate-400">{question.guidelines}</p>
                       </div>
                     )}
 

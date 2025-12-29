@@ -4,29 +4,65 @@ const Test = require("../models/Test");
 const { authenticateToken, requireRole } = require("../middleware/auth");
 const { recalculateScoresForTest } = require("../services/scoreCalculation");
 
-// Get all tests (admin only) - ULTRA FAST VERSION
+// Get all tests (admin only) - ULTRA FAST VERSION with pagination
 router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
     const startTime = Date.now();
-    const { status, search } = req.query;
-    const query = {}; // Include all tests including practice tests
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 9;
+    const skip = (page - 1) * limit;
+    const searchTerm = req.query.search || "";
+    const { status } = req.query;
     
-    if (status) query.status = status;
-    if (search) query.title = { $regex: search, $options: "i" };
+    // Build query
+    const query = {};
+    
+    if (status) {
+      query.status = status;
+    }
+    
+    // Search functionality - search in title, subject, type, status, and OTP
+    if (searchTerm) {
+      query.$or = [
+        { title: { $regex: searchTerm, $options: "i" } },
+        { subject: { $regex: searchTerm, $options: "i" } },
+        { type: { $regex: searchTerm, $options: "i" } },
+        { status: { $regex: searchTerm, $options: "i" } },
+        { otp: { $regex: searchTerm, $options: "i" } }
+      ];
+    }
 
-    // console.log('🚀 ULTRA FAST: Fetching tests for admin');
+    // Get total count for pagination
+    const totalTests = await Test.countDocuments(query);
 
     // ULTRA FAST: Get tests with MINIMAL data (NO questions!)
     const tests = await Test.find(query)
       .select("title subject type instructions timeLimit negativeMarkingPercent allowedTabSwitches otp status createdAt createdBy")
       .populate("createdBy", "name email")
       .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
       .lean(); // Use lean() for 2x faster queries
 
     const totalTime = Date.now() - startTime;
     // console.log(`✅ ULTRA FAST admin tests completed in ${totalTime}ms - Found ${tests.length} tests`);
     
-    res.json({ tests });
+    // Calculate pagination info
+    const totalPages = Math.ceil(totalTests / limit);
+    const hasNextPage = page < totalPages;
+    const hasPrevPage = page > 1;
+    
+    res.json({ 
+      tests,
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalTests,
+        limit,
+        hasNextPage,
+        hasPrevPage
+      }
+    });
   } catch (error) {
     next(error);
   }

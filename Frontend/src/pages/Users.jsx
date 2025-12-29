@@ -1,5 +1,5 @@
-import React, { useMemo, useState, useEffect } from "react";
-import { Search, X as CloseIcon, UserPlus, Users as UsersIcon, Trash2, Image as ImageIcon } from "lucide-react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
+import { Search, X as CloseIcon, UserPlus, Users as UsersIcon, Trash2, Image as ImageIcon, KeyRound } from "lucide-react";
 import StatusPill from "../components/StatusPill";
 import EmailUploader from "../components/EmailUploader";
 import { API_BASE_URL } from "../config/api";
@@ -17,9 +17,22 @@ const cardAnimationStyles = `
     }
   }
   
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  
   .animate-slide-in-up {
     animation: slideInUp 0.6s ease-out forwards;
     opacity: 0;
+  }
+  
+  .animate-fade-in {
+    animation: fadeIn 0.2s ease-out forwards;
   }
 `;
 
@@ -39,6 +52,7 @@ export default function Users() {
   const [filter, setFilter] = useState("All Users"); // "All Users", "RU Students", "SU Students", "Mentor", "Admin"
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [deletingImage, setDeletingImage] = useState(null);
+  const [resettingPassword, setResettingPassword] = useState(null);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState({
@@ -47,6 +61,8 @@ export default function Users() {
     hasNextPage: false,
     hasPrevPage: false
   });
+  const searchDebounceRef = useRef(null);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   // Fetch users from backend with profile details, pagination, search, and filter
   const fetchUsers = (page = currentPage, search = searchTerm, roleFilter = filter) => {
@@ -75,12 +91,19 @@ export default function Users() {
       .then((data) => {
         console.log("Fetched users data:", data);
         if (data.users && Array.isArray(data.users)) {
+          // Mark that initial load is complete after first fetch
+          if (isInitialLoad) {
+            setIsInitialLoad(false);
+          }
           setUsers(data.users);
           if (data.pagination) {
             setPagination(data.pagination);
           }
         } else if (Array.isArray(data)) {
           // Fallback for old format
+          if (isInitialLoad) {
+            setIsInitialLoad(false);
+          }
           setUsers(data);
         } else {
           console.error("Data format unexpected:", data);
@@ -102,7 +125,22 @@ export default function Users() {
   }, [searchTerm, filter]);
 
   useEffect(() => {
-    fetchUsers(currentPage, searchTerm, filter);
+    // Clear previous debounce timer
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+
+    // Debounce search to make it smooth
+    searchDebounceRef.current = setTimeout(() => {
+      fetchUsers(currentPage, searchTerm, filter);
+    }, 300); // 300ms debounce delay
+
+    // Cleanup function
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, searchTerm, filter]);
 
@@ -228,6 +266,33 @@ export default function Users() {
     }
   };
 
+  const resetPassword = async (userId, userName) => {
+    if (!window.confirm(`Are you sure you want to reset the password for ${userName}? The password will be changed to the default: 12345`)) {
+      return;
+    }
+
+    setResettingPassword(userId);
+    try {
+      const response = await fetch(`${API_BASE_URL}/users/${userId}/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        alert(data.message || "Password reset successfully. Default password is now: 12345");
+      } else {
+        const errorData = await response.json();
+        alert(errorData.message || "Failed to reset password");
+      }
+    } catch (err) {
+      console.error("Error resetting password:", err);
+      alert("Error resetting password. Please try again.");
+    } finally {
+      setResettingPassword(null);
+    }
+  };
+
   return (
     <div
       className="p-6 min-h-screen flex flex-col"
@@ -298,22 +363,30 @@ export default function Users() {
                     opacity: 1;
                   }
                 `}</style>
-                {searchTerm && (
-                  <button
-                    onClick={() => setSearchTerm("")}
-                    className="absolute inset-y-0 right-0 pr-4 flex items-center transition-colors duration-200"
-                    style={{ color: "#FFFFFF" }}
-                    onMouseEnter={(e) => {
+                {/* Always render clear button to prevent layout shift, but make it invisible when no text */}
+                <button
+                  onClick={() => setSearchTerm("")}
+                  className="absolute inset-y-0 right-0 pr-4 flex items-center transition-all duration-200"
+                  style={{ 
+                    color: searchTerm ? "#FFFFFF" : "transparent",
+                    pointerEvents: searchTerm ? "auto" : "none",
+                    cursor: searchTerm ? "pointer" : "default"
+                  }}
+                  onMouseEnter={(e) => {
+                    if (searchTerm) {
                       e.currentTarget.style.color = "#E5E7EB";
-                    }}
-                    onMouseLeave={(e) => {
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (searchTerm) {
                       e.currentTarget.style.color = "#FFFFFF";
-                    }}
-                    aria-label="Clear search"
-                  >
-                    <CloseIcon className="h-5 w-5" />
-                  </button>
-                )}
+                    }
+                  }}
+                  aria-label="Clear search"
+                  tabIndex={searchTerm ? 0 : -1}
+                >
+                  <CloseIcon className="h-5 w-5" />
+                </button>
               </div>
 
               {/* Filter Dropdown */}
@@ -681,79 +754,49 @@ export default function Users() {
       )}
 
       {/* Users Grid - cards styled like Tests page */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 overflow-y-auto flex-grow">
+      <div 
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto flex-grow transition-opacity duration-300"
+        style={{ opacity: loading ? 0.5 : 1 }}
+      >
         {users.map((u, index) => (
           <div
             key={u._id}
-            className="group relative backdrop-blur-sm rounded-2xl p-6 border transition-all duration-300 cursor-pointer animate-slide-in-up overflow-hidden flex flex-col min-h-[320px]"
+            className={`relative backdrop-blur-sm rounded-2xl p-5 border overflow-hidden flex flex-col min-h-[300px] ${
+              isInitialLoad ? 'animate-slide-in-up' : 'animate-fade-in'
+            }`}
             style={{
-              backgroundColor: "#0B1220",
-              borderColor: "rgba(255, 255, 255, 0.2)",
-              boxShadow: "0 0 0 rgba(255, 255, 255, 0)",
-              animationDelay: `${index * 100}ms`,
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.4)";
-              e.currentTarget.style.boxShadow =
-                "0 20px 25px -5px rgba(255, 255, 255, 0.1), 0 10px 10px -5px rgba(255, 255, 255, 0.04)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.2)";
-              e.currentTarget.style.boxShadow = "none";
+              backgroundColor: "rgba(15, 23, 42, 0.9)",
+              borderColor: "rgba(148, 163, 184, 0.2)",
+              boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2)",
+              animationDelay: isInitialLoad ? `${index * 100}ms` : '0ms',
             }}
           >
-            {/* Subtle gradient overlay on hover */}
-            <div
-              className="absolute inset-0 rounded-2xl transition-all duration-300 pointer-events-none opacity-0 group-hover:opacity-100"
-              style={{
-                background:
-                  "linear-gradient(to bottom right, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.05))",
-              }}
-            ></div>
 
             <div className="relative z-10">
-              {/* Header Section with Profile Image */}
+              {/* Header Section */}
               <div className="mb-4">
                 <div className="flex items-start gap-3">
-                  {/* Profile Image or Icon */}
+                  {/* Profile Icon with beautiful styling */}
                   <div className="relative flex-shrink-0">
-                    {u.profileImage && u.profileImage.trim() !== '' ? (
-                      <img
-                        src={u.profileImage}
-                        alt={u.name}
-                        className="w-12 h-12 rounded-full object-cover border-2 border-slate-600"
-                        onError={(e) => {
-                          e.target.style.display = 'none';
-                          e.target.nextElementSibling.style.display = 'flex';
-                        }}
-                      />
-                    ) : null}
-                    {(!u.profileImage || u.profileImage.trim() === '') && (
-                      <div className="w-12 h-12 rounded-full bg-slate-700 flex items-center justify-center border-2 border-slate-600">
-                        <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: "#9CA3AF" }}>
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                        </svg>
-                      </div>
-                    )}
-                    {u.profileImageSaved && u.profileImage && u.profileImage.trim() !== '' && (
-                      <div className="absolute -bottom-1 -right-1 bg-green-500 rounded-full p-1 border-2 border-slate-800">
-                        <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      </div>
-                    )}
+                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-slate-700 via-slate-800 to-slate-900 flex items-center justify-center border-2 border-slate-600/50 shadow-xl">
+                      <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: "#94A3B8" }}>
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    </div>
+                    {/* Status indicator ring */}
+                    <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 border-2 border-slate-800 shadow-lg"></div>
                   </div>
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 pt-1">
                     <h3
                       className="text-lg font-bold mb-1 truncate"
-                      style={{ color: "#E5E7EB" }}
+                      style={{ color: "#F1F5F9" }}
                       title={u.name}
                     >
                       {u.name}
                     </h3>
                     <p
                       className="text-sm truncate"
-                      style={{ color: "#9CA3AF" }}
+                      style={{ color: "#94A3B8" }}
                       title={u.email}
                     >
                       {u.email}
@@ -764,48 +807,48 @@ export default function Users() {
 
               {/* User Details */}
               <div className="space-y-2.5 mb-4">
-                <div className="flex items-center justify-between p-3.5 bg-slate-900/70 rounded-xl border border-slate-800/50 hover:bg-slate-900/80 transition-all duration-200">
+                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-slate-800/80 via-slate-900/80 to-slate-800/80 rounded-xl border border-slate-700/50 hover:border-blue-500/30 hover:shadow-lg hover:shadow-blue-500/10 transition-all duration-300 group/item">
                   <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className="p-2 bg-slate-800/70 rounded-lg shadow-sm flex-shrink-0">
-                      <svg className="h-4 w-4 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="p-2 bg-gradient-to-br from-blue-500/20 to-blue-600/20 rounded-lg shadow-md flex-shrink-0 group-hover/item:from-blue-500/30 group-hover/item:to-blue-600/30 transition-all duration-300">
+                      <svg className="h-4 w-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                       </svg>
                     </div>
-                    <span className="text-slate-300 text-sm font-medium whitespace-nowrap">Role</span>
+                    <span className="text-slate-300 text-sm font-semibold whitespace-nowrap">Role</span>
                   </div>
-                  <span className="px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm min-w-[80px] text-center">
+                  <span className="px-3 py-1.5 bg-gradient-to-r from-blue-600/30 to-blue-700/30 text-blue-200 rounded-lg text-xs font-bold border border-blue-500/30 shadow-md min-w-[80px] text-center">
                     {u.role}
                   </span>
                 </div>
 
                 {u.role === "Student" && u.studentCategory && (
-                  <div className="flex items-center justify-between p-3.5 bg-slate-900/70 rounded-xl border border-slate-800/50 hover:bg-slate-900/80 transition-all duration-200">
+                  <div className="flex items-center justify-between p-3 bg-gradient-to-r from-slate-800/80 via-slate-900/80 to-slate-800/80 rounded-xl border border-slate-700/50 hover:border-purple-500/30 hover:shadow-lg hover:shadow-purple-500/10 transition-all duration-300 group/item">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className="p-2 bg-slate-800/70 rounded-lg shadow-sm flex-shrink-0">
-                        <svg className="h-4 w-4 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <div className="p-2 bg-gradient-to-br from-purple-500/20 to-purple-600/20 rounded-lg shadow-md flex-shrink-0 group-hover/item:from-purple-500/30 group-hover/item:to-purple-600/30 transition-all duration-300">
+                        <svg className="h-4 w-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                         </svg>
                       </div>
-                      <span className="text-slate-300 text-sm font-medium whitespace-nowrap">Category</span>
+                      <span className="text-slate-300 text-sm font-semibold whitespace-nowrap">Category</span>
                     </div>
-                    <span className="px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm min-w-[80px] text-center">
+                    <span className="px-3 py-1.5 bg-gradient-to-r from-purple-600/30 to-purple-700/30 text-purple-200 rounded-lg text-xs font-bold border border-purple-500/30 shadow-md min-w-[80px] text-center">
                       {u.studentCategory || "SU"}
                     </span>
                   </div>
                 )}
 
                 {/* Profile Image Status */}
-                <div className="flex items-center justify-between p-3.5 bg-slate-900/70 rounded-xl border border-slate-800/50 hover:bg-slate-900/80 transition-all duration-200">
+                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-slate-800/80 via-slate-900/80 to-slate-800/80 rounded-xl border border-slate-700/50 hover:border-emerald-500/30 hover:shadow-lg hover:shadow-emerald-500/10 transition-all duration-300 group/item">
                   <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className="p-2 bg-slate-800/70 rounded-lg shadow-sm flex-shrink-0">
-                      <ImageIcon className="h-4 w-4 text-gray-200" />
+                    <div className="p-2 bg-gradient-to-br from-emerald-500/20 to-emerald-600/20 rounded-lg shadow-md flex-shrink-0 group-hover/item:from-emerald-500/30 group-hover/item:to-emerald-600/30 transition-all duration-300">
+                      <ImageIcon className="h-4 w-4 text-emerald-400" />
                     </div>
-                    <span className="text-slate-300 text-sm font-medium whitespace-nowrap">Profile Image</span>
+                    <span className="text-slate-300 text-sm font-semibold whitespace-nowrap">Profile Image</span>
                   </div>
-                  <span className={`px-3 py-1.5 rounded-lg text-sm font-semibold border shadow-sm min-w-[80px] text-center ${
+                  <span className={`px-3 py-1.5 rounded-lg text-xs font-bold border shadow-md min-w-[80px] text-center ${
                     u.profileImageSaved 
-                      ? 'bg-green-800/60 text-green-100 border-green-700/50' 
-                      : 'bg-slate-800/60 text-gray-100 border-slate-700/50'
+                      ? 'bg-gradient-to-r from-emerald-600/30 to-emerald-700/30 text-emerald-200 border-emerald-500/30' 
+                      : 'bg-gradient-to-r from-slate-700/50 to-slate-800/50 text-slate-300 border-slate-600/30'
                   }`}>
                     {u.profileImageSaved ? "Uploaded" : "Not Set"}
                   </span>
@@ -813,8 +856,8 @@ export default function Users() {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex flex-col gap-2 mt-2 pt-4" style={{ borderTop: "1px solid rgba(255, 255, 255, 0.2)" }}>
-                <div className="flex justify-between gap-2">
+              <div className="flex flex-col gap-2.5 mt-auto pt-4" style={{ borderTop: "1px solid rgba(148, 163, 184, 0.2)" }}>
+                <div className="flex justify-between gap-2.5">
                   <button
                     onClick={() => {
                       setEditing(u._id);
@@ -825,25 +868,38 @@ export default function Users() {
                         studentCategory: u.studentCategory || "SU",
                       });
                       setShowAddForm(true);
-                      setAddMode("single"); // Show form directly when editing
+                      setAddMode("single");
                     }}
-                    className="px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm flex-1 text-center transition-all duration-300 hover:bg-slate-800/80"
+                    className="px-4 py-2 bg-gradient-to-r from-slate-700/80 to-slate-800/80 hover:from-slate-600/90 hover:to-slate-700/90 text-gray-100 rounded-lg text-xs font-semibold border border-slate-600/50 shadow-md hover:shadow-lg transition-all duration-300 hover:scale-105 flex-1 text-center flex items-center justify-center gap-1.5"
                   >
+                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
                     Edit
                   </button>
                   <button
                     onClick={() => deleteUser(u._id)}
-                    className="px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm flex-1 text-center transition-all duration-300 hover:bg-slate-800/80"
+                    className="px-4 py-2 bg-gradient-to-r from-red-600/20 to-red-700/20 hover:from-red-600/30 hover:to-red-700/30 text-red-300 rounded-lg text-xs font-semibold border border-red-500/30 shadow-md hover:shadow-lg transition-all duration-300 hover:scale-105 flex-1 text-center flex items-center justify-center gap-1.5"
                   >
+                    <Trash2 className="h-3.5 w-3.5" />
                     Delete
                   </button>
                 </div>
-                {/* Delete Profile Image Button */}
-                {u.profileImage && (
+                {/* Reset Password Button */}
+                <button
+                  onClick={() => resetPassword(u._id, u.name)}
+                  disabled={resettingPassword === u._id}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600/20 to-blue-700/20 hover:from-blue-600/30 hover:to-blue-700/30 text-blue-300 rounded-lg text-xs font-semibold border border-blue-500/30 shadow-md hover:shadow-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 hover:scale-105"
+                >
+                  <KeyRound className="h-4 w-4" />
+                  {resettingPassword === u._id ? "Resetting..." : "Reset Password"}
+                </button>
+                {/* Delete Profile Image Button - Only show if image exists in DB */}
+                {u.profileImageSaved && (
                   <button
                     onClick={() => deleteProfileImage(u._id, u.name)}
                     disabled={deletingImage === u._id}
-                    className="w-full flex items-center justify-center gap-2 px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-lg text-sm font-semibold border border-red-600/50 shadow-sm transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-600/20 to-orange-700/20 hover:from-orange-600/30 hover:to-orange-700/30 text-orange-300 rounded-lg text-xs font-semibold border border-orange-500/30 shadow-md hover:shadow-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 hover:scale-105"
                   >
                     <Trash2 className="h-4 w-4" />
                     {deletingImage === u._id ? "Deleting..." : "Delete Profile Image"}

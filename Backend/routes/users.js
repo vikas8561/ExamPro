@@ -63,8 +63,8 @@ router.get("/profiles", async (req, res) => {
     const totalUsers = await User.countDocuments(query);
 
     // Sort directly in database using aggregation pipeline
-    // Order: Students (1) -> Mentors (2) -> Admins (3)
-    // Within each role: newest first (createdAt descending)
+    // Order: Students with profile image (1) -> Students without profile image (2) -> Mentors (3) -> Admins (4)
+    // Within each group: newest first (createdAt descending)
     const users = await User.aggregate([
       { $match: query },
       {
@@ -78,13 +78,36 @@ router.get("/profiles", async (req, res) => {
               ],
               default: 99
             }
+          },
+          // For students: prioritize those with profile images (0 = first, 1 = second)
+          // For others: use role order
+          sortOrder: {
+            $cond: {
+              if: { $eq: ["$role", "Student"] },
+              then: {
+                $cond: {
+                  if: { $eq: ["$profileImageSaved", true] },
+                  then: 0,  // Students with profile image come first
+                  else: 1    // Students without profile image come second
+                }
+              },
+              else: {
+                $switch: {
+                  branches: [
+                    { case: { $eq: ["$role", "Mentor"] }, then: 2 },
+                    { case: { $eq: ["$role", "Admin"] }, then: 3 }
+                  ],
+                  default: 99
+                }
+              }
+            }
           }
         }
       },
       {
         $sort: {
-          roleOrder: 1,    // Sort by role order (Student=1, Mentor=2, Admin=3)
-          createdAt: -1    // Within same role, newest first
+          sortOrder: 1,     // Sort by priority (Students with image=0, Students without=1, Mentors=2, Admins=3)
+          createdAt: -1     // Within same priority, newest first
         }
       },
       { $skip: skip },
@@ -95,7 +118,6 @@ router.get("/profiles", async (req, res) => {
           email: 1,
           role: 1,
           studentCategory: 1,
-          profileImage: 1,
           profileImageSaved: 1,
           createdAt: 1,
           updatedAt: 1,
@@ -145,6 +167,29 @@ router.delete("/:id/profile-image", async (req, res) => {
       message: "Profile image deleted successfully. User can now re-upload their image.",
       profileImage: null,
       profileImageSaved: false
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Reset user password to default (admin only)
+router.post("/:id/reset-password", async (req, res) => {
+  try {
+    const userId = req.params.id;
+    
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Reset password to default "12345"
+    // The pre-save hook will hash it automatically
+    user.password = "12345";
+    await user.save();
+
+    res.json({ 
+      message: "Password reset successfully. Default password is now: 12345"
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
