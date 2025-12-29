@@ -3,24 +3,12 @@ const express = require("express");
 const bcrypt = require("bcrypt");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
-const nodemailer = require("nodemailer");
 const router = express.Router();
 const User = require("../models/User");
-const { generateToken, authenticateToken } = require("../middleware/auth");
+const { generateToken, authenticateToken, requireRole } = require("../middleware/auth");
+const { sendEmailImmediate } = require("../services/emailService");
 
-// Configure nodemailer transporter for Gmail
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || "smtp.gmail.com",
-  port: process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : 587,
-  secure: false, // true for 587, false for other ports
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-  tls: {
-    rejectUnauthorized: false,
-  },
-});
+// Email service is now in Backend/services/emailService.js
 
 // Login endpoint
 router.post("/login", async (req, res) => {
@@ -101,10 +89,10 @@ router.post("/forgot-password", async (req, res) => {
   try {
     // console.log('Forgot password request received:', req.body);
 
-    const { name, newEmail, newPassword, confirmPassword } = req.body;
+    const { email, newPassword, confirmPassword } = req.body;
 
     // Validate input
-    if (!name || !newEmail || !newPassword || !confirmPassword) {
+    if (!email || !newPassword || !confirmPassword) {
       // console.log('Validation failed: Missing fields');
       return res.status(400).json({ message: "All fields are required" });
     }
@@ -119,20 +107,12 @@ router.post("/forgot-password", async (req, res) => {
       return res.status(400).json({ message: "Password must be at least 6 characters long" });
     }
 
-    // console.log('Finding user by name:', name);
-    // Find user by name
-    const user = await User.findOne({ name: name });
+    // console.log('Finding user by email:', email);
+    // Find user by email
+    const user = await User.findOne({ email: email });
     if (!user) {
       // console.log('User not found');
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    // Check if new email is already taken by another user
-    if (newEmail !== user.email) {
-      const existingUser = await User.findOne({ email: newEmail });
-      if (existingUser && existingUser._id.toString() !== user._id.toString()) {
-        return res.status(400).json({ message: "New email is already in use by another account" });
-      }
+      return res.status(404).json({ message: "User not found with this email address" });
     }
 
     // console.log('User found, hashing password');
@@ -142,11 +122,7 @@ router.post("/forgot-password", async (req, res) => {
 
     // Store pending changes
     user.pendingPassword = hashedPassword;
-    user.pendingEmail = newEmail;
-    // Update name if provided
-    if (req.body.name) {
-      user.name = req.body.name;
-    }
+    user.pendingEmail = email;
 
     // Generate reset token
     const resetToken = crypto.randomBytes(32).toString('hex');
@@ -156,61 +132,57 @@ router.post("/forgot-password", async (req, res) => {
     user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
 
     // console.log('Saving user with pending changes');
-    await user.save();
+    try {
+      await user.save();
+    } catch (saveError) {
+      console.error('Error saving user:', saveError);
+      return res.status(500).json({ 
+        message: 'Failed to save password reset request',
+        error: saveError.message 
+      });
+    }
 
-    // Send verification to new email
-    const verificationEmail = newEmail;
+    // Send verification to email
+    const verificationEmail = email;
     // console.log('Verification email will be sent to:', verificationEmail);
 
     // Send email with reset link to verificationEmail
-    const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
-    const mailOptions = {
-      from: process.env.SMTP_FROM || '"ExamPro Support" <support@example.com>',
-      to: verificationEmail,
-      subject: 'Password Reset Verification',
-      html: `
+    const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
+    const emailSubject = 'Password Reset Verification';
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #2563eb;">Password Reset Request</h2>
         <p>You requested to reset your password.</p>
         <p>Please click the link below to confirm your password and email changes:</p>
-        <a href="${resetLink}">${resetLink}</a>
-        <p>If you did not request this, please ignore this email.</p>
-      `
-    };
+        <p style="margin: 20px 0;">
+          <a href="${resetLink}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">Reset Password</a>
+        </p>
+        <p style="word-break: break-all; color: #666; font-size: 12px;">Or copy this link: ${resetLink}</p>
+        <p style="color: #999; font-size: 12px; margin-top: 30px;">If you did not request this, please ignore this email.</p>
+        <p style="color: #999; font-size: 12px;">This link will expire in 1 hour.</p>
+      </div>
+    `;
 
-    // Email options logging disabled
-    // const emailOptions = {
-    //   from: mailOptions.from,
-    //   to: mailOptions.to,
-    //   subject: mailOptions.subject
-    // };
+    // Send email using optimized email service
+    const emailResult = await sendEmailImmediate(verificationEmail, emailSubject, emailHtml);
 
-    try {
-      // Check if email configuration is available
-      if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-        console.warn('Email configuration missing - SMTP_USER or SMTP_PASS not set');
-        return res.json({
-          message: "Password reset initiated but email service not configured",
-          verificationSentTo: verificationEmail,
-          resetToken: resetToken, // For testing purposes
-          warning: "Email service not configured - please contact administrator"
-        });
-      }
-
-      await transporter.sendMail(mailOptions);
-      console.log('Reset email sent successfully to:', verificationEmail);
+    if (emailResult.success) {
+      console.log('✅ Reset email sent successfully to:', verificationEmail);
       return res.json({
         message: "Password reset verification sent",
         verificationSentTo: verificationEmail,
         resetToken: resetToken // For testing purposes
       });
-    } catch (emailError) {
-      console.error('Error sending reset email:', emailError);
-      // Don't fail the request if email fails, but log it
-      // In production, you might want to queue emails or use a service
-      return res.status(500).json({
-        message: 'Password reset initiated but email failed to send',
-        error: emailError.message,
-        resetToken: resetToken, // For testing purposes
-        verificationSentTo: verificationEmail
+    } else {
+      // Email failed but don't fail the request - return success with token
+      console.warn('⚠️ Email send failed:', emailResult.error);
+      return res.json({
+        message: "Password reset initiated successfully",
+        warning: "Email could not be sent due to network/configuration issues",
+        verificationSentTo: verificationEmail,
+        resetToken: resetToken, // For testing/manual use
+        error: emailResult.error,
+        note: "You can use the reset token manually to reset your password"
       });
     }
   } catch (err) {
@@ -552,41 +524,36 @@ router.post("/profile/update-email", authenticateToken, async (req, res) => {
     await user.save();
 
     // Send verification email
-    const verificationLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email?token=${verificationToken}`;
-    const mailOptions = {
-      from: process.env.SMTP_FROM || '"ExamPro Support" <support@example.com>',
-      to: newEmail,
-      subject: 'Email Update Verification',
-      html: `
-        <p>You requested to update your email address to ${newEmail}.</p>
+    const verificationLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify-email?token=${verificationToken}`;
+    const emailSubject = 'Email Update Verification';
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #2563eb;">Email Update Request</h2>
+        <p>You requested to update your email address to <strong>${newEmail}</strong>.</p>
         <p>Please click the link below to verify your new email address:</p>
-        <a href="${verificationLink}">${verificationLink}</a>
-        <p>This link will expire in 1 hour.</p>
-        <p>If you did not request this, please ignore this email.</p>
-      `
-    };
+        <p style="margin: 20px 0;">
+          <a href="${verificationLink}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">Verify Email</a>
+        </p>
+        <p style="word-break: break-all; color: #666; font-size: 12px;">Or copy this link: ${verificationLink}</p>
+        <p style="color: #999; font-size: 12px; margin-top: 30px;">This link will expire in 1 hour.</p>
+        <p style="color: #999; font-size: 12px;">If you did not request this, please ignore this email.</p>
+      </div>
+    `;
 
-    try {
-      if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-        console.warn('Email configuration missing - SMTP_USER or SMTP_PASS not set');
-        return res.json({
-          message: "Email update initiated but email service not configured",
-          verificationToken: verificationToken, // For testing purposes
-          warning: "Email service not configured - please contact administrator"
-        });
-      }
+    // Send email using optimized email service
+    const emailResult = await sendEmailImmediate(newEmail, emailSubject, emailHtml);
 
-      await transporter.sendMail(mailOptions);
-      console.log('Email verification sent successfully to:', newEmail);
+    if (emailResult.success) {
+      console.log('✅ Email verification sent successfully to:', newEmail);
       return res.json({
         message: "Verification email sent to your new email address",
         verificationToken: verificationToken // For testing purposes
       });
-    } catch (emailError) {
-      console.error('Error sending verification email:', emailError);
+    } else {
+      console.error('❌ Error sending verification email:', emailResult.error);
       return res.status(500).json({
         message: 'Email update initiated but verification email failed to send',
-        error: emailError.message,
+        error: emailResult.error,
         verificationToken: verificationToken // For testing purposes
       });
     }
@@ -670,41 +637,36 @@ router.post("/profile/change-password", authenticateToken, async (req, res) => {
     await user.save();
 
     // Send verification email
-    const verificationLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-password?token=${verificationToken}`;
-    const mailOptions = {
-      from: process.env.SMTP_FROM || '"ExamPro Support" <support@example.com>',
-      to: user.email,
-      subject: 'Password Change Verification',
-      html: `
+    const verificationLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify-password?token=${verificationToken}`;
+    const emailSubject = 'Password Change Verification';
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #2563eb;">Password Change Request</h2>
         <p>You requested to change your password.</p>
         <p>Please click the link below to verify and complete the password change:</p>
-        <a href="${verificationLink}">${verificationLink}</a>
-        <p>This link will expire in 1 hour.</p>
-        <p>If you did not request this, please ignore this email.</p>
-      `
-    };
+        <p style="margin: 20px 0;">
+          <a href="${verificationLink}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">Verify Password Change</a>
+        </p>
+        <p style="word-break: break-all; color: #666; font-size: 12px;">Or copy this link: ${verificationLink}</p>
+        <p style="color: #999; font-size: 12px; margin-top: 30px;">This link will expire in 1 hour.</p>
+        <p style="color: #999; font-size: 12px;">If you did not request this, please ignore this email.</p>
+      </div>
+    `;
 
-    try {
-      if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-        console.warn('Email configuration missing - SMTP_USER or SMTP_PASS not set');
-        return res.json({
-          message: "Password change initiated but email service not configured",
-          verificationToken: verificationToken, // For testing purposes
-          warning: "Email service not configured - please contact administrator"
-        });
-      }
+    // Send email using optimized email service
+    const emailResult = await sendEmailImmediate(user.email, emailSubject, emailHtml);
 
-      await transporter.sendMail(mailOptions);
-      console.log('Password change verification email sent successfully to:', user.email);
+    if (emailResult.success) {
+      console.log('✅ Password change verification email sent successfully to:', user.email);
       return res.json({
         message: "Verification email sent to your email address",
         verificationToken: verificationToken // For testing purposes
       });
-    } catch (emailError) {
-      console.error('Error sending verification email:', emailError);
+    } else {
+      console.error('❌ Error sending verification email:', emailResult.error);
       return res.status(500).json({
         message: 'Password change initiated but verification email failed to send',
-        error: emailError.message,
+        error: emailResult.error,
         verificationToken: verificationToken // For testing purposes
       });
     }
@@ -748,6 +710,50 @@ router.post("/profile/verify-password", async (req, res) => {
     res.json({ message: "Password changed successfully" });
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+});
+
+// Test email endpoint (for debugging) - Admin only
+router.post("/test-email", authenticateToken, requireRole("admin"), async (req, res) => {
+  try {
+    const { to } = req.body;
+    const testEmail = to || process.env.SMTP_USER;
+    
+    if (!testEmail) {
+      return res.status(400).json({ message: "Email address required" });
+    }
+
+    const emailSubject = "Test Email from CodingGita";
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #2563eb;">Test Email</h2>
+        <p>This is a test email from CodingGita email service.</p>
+        <p>If you received this email, your email configuration is working correctly!</p>
+        <p style="color: #999; font-size: 12px; margin-top: 30px;">Sent at: ${new Date().toLocaleString()}</p>
+      </div>
+    `;
+
+    console.log(`🧪 Testing email to: ${testEmail}`);
+    const emailResult = await sendEmailImmediate(testEmail, emailSubject, emailHtml);
+
+    if (emailResult.success) {
+      res.json({
+        success: true,
+        message: "Test email sent successfully",
+        to: testEmail,
+        messageId: emailResult.info?.messageId
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: "Failed to send test email",
+        error: emailResult.error,
+        code: emailResult.code
+      });
+    }
+  } catch (err) {
+    console.error('Error in test-email endpoint:', err);
+    res.status(500).json({ message: err.message, stack: err.stack });
   }
 });
 
