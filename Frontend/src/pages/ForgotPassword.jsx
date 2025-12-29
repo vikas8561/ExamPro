@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authAPI } from '../services/api';
-import { X, User, Mail, Lock, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+import { X, Mail, Lock, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 
 export default function ForgotPassword() {
-  const [name, setName] = useState('');
-  const [newEmail, setNewEmail] = useState('');
+  const [email, setEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
@@ -46,8 +45,7 @@ export default function ForgotPassword() {
 
     try {
       const response = await authAPI.forgotPassword({
-        name,
-        newEmail,
+        email,
         newPassword,
         confirmPassword,
       });
@@ -104,35 +102,17 @@ export default function ForgotPassword() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Full Name Input */}
+          {/* Email Address Input */}
           <div className="group">
-            <label className="block text-sm font-medium text-gray-300 mb-2">Full Name</label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <User className="h-5 w-5 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
-              </div>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 hover:border-slate-500"
-                placeholder="Enter your full name"
-                required
-              />
-            </div>
-          </div>
-
-          {/* New Email Input */}
-          <div className="group">
-            <label className="block text-sm font-medium text-gray-300 mb-2">New Email</label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Email Address</label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Mail className="h-5 w-5 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
               </div>
               <input
                 type="email"
-                value={newEmail}
-                onChange={(e) => setNewEmail(e.target.value)}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="w-full pl-10 pr-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 hover:border-slate-500"
                 placeholder="you@example.com"
                 required
