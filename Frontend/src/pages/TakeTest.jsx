@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import apiRequest from "../services/api";
 import Judge0CodeEditor from "../components/Judge0CodeEditor";
+import Proctoring from "../components/Proctoring";
 
 const TakeTest = () => {
   const [timeRemaining, setTimeRemaining] = useState(0);
@@ -17,13 +18,15 @@ const TakeTest = () => {
   const [error, setError] = useState(null);
   const [testStarted, setTestStarted] = useState(false);
   const startRequestMade = useRef(false);
-  const [violationCount, setViolationCount] = useState(0);
-  const [showResumeModal, setShowResumeModal] = useState(false);
   const [showSubmitConfirmModal, setShowSubmitConfirmModal] = useState(false);
-  const [violations, setViolations] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const fullscreenTimeoutRef = useRef(null);
   const debounceTimers = useRef({});
+  
+  // Proctoring state
+  const [proctoringData, setProctoringData] = useState({
+    violationCount: 0,
+    violations: [],
+  });
 
   // Cleanup debounce timers on unmount and save pending answers
   useEffect(() => {
@@ -128,43 +131,8 @@ const TakeTest = () => {
     };
   }, [testStarted, timeRemaining, isSubmitting]);
 
-  const requestFullscreen = async () => {
-    try {
-      if (document.documentElement.requestFullscreen) {
-        await document.documentElement.requestFullscreen();
-      } else if (document.documentElement.webkitRequestFullscreen) {
-        // Safari
-        await document.documentElement.webkitRequestFullscreen();
-      } else if (document.documentElement.msRequestFullscreen) {
-        // IE/Edge
-        await document.documentElement.msRequestFullscreen();
-      } else {
-        console.warn("Fullscreen API not supported in this browser");
-      }
-    } catch (error) {
-      console.error("Failed to enter fullscreen mode:", error);
-      // Continue with test even if fullscreen fails
-    }
-  };
-
-  const exitFullscreen = async () => {
-    try {
-      if (document.exitFullscreen) {
-        await document.exitFullscreen();
-      } else if (document.webkitExitFullscreen) {
-        // Safari
-        await document.webkitExitFullscreen();
-      } else if (document.msExitFullscreen) {
-        // IE/Edge
-        await document.msExitFullscreen();
-      } else {
-        console.warn("Fullscreen API not supported in this browser");
-      }
-    } catch (error) {
-      console.error("Failed to exit fullscreen mode:", error);
-      // Continue with navigation even if fullscreen exit fails
-    }
-  };
+  // Proctoring ref for accessing fullscreen methods
+  const proctoringRef = useRef(null);
 
   const submitTest = async (
     cancelledDueToViolation = false,
@@ -202,8 +170,8 @@ const TakeTest = () => {
           };
         }),
         timeSpent,
-        tabViolationCount: violationCount,
-        tabViolations: violations.map((violation) => ({
+        tabViolationCount: proctoringData.violationCount,
+        tabViolations: proctoringData.violations.map((violation) => ({
           timestamp:
             violation.timestamp instanceof Date
               ? violation.timestamp.toISOString()
@@ -212,13 +180,8 @@ const TakeTest = () => {
           details: String(violation.details),
           tabCount: Number(violation.tabCount),
         })),
-        cancelledDueToViolation: cancelledDueToViolation || (test?.allowedTabSwitches !== -1 && violationCount > (test?.allowedTabSwitches ?? 2)),
+        cancelledDueToViolation: cancelledDueToViolation || (test?.allowedTabSwitches !== -1 && proctoringData.violationCount > (test?.allowedTabSwitches ?? 2)),
         autoSubmit,
-        permissions: {
-          camera: String(cameraPermission),
-          microphone: String(microphonePermission),
-          location: String(locationPermission),
-        },
       };
 
       const safeJSONStringify = (obj) => {
@@ -249,7 +212,9 @@ const TakeTest = () => {
       });
 
       // Exit fullscreen mode before navigating
-      await exitFullscreen();
+      if (proctoringRef.current?.exitFullscreen) {
+        await proctoringRef.current.exitFullscreen();
+      }
 
       setIsSubmitting(false);
       navigate(`/student/assignments`);
@@ -261,229 +226,21 @@ const TakeTest = () => {
     }
   };
 
+  // Proctoring handlers (defined after submitTest)
+  const handleProctoringViolation = useCallback((violationData) => {
+    setProctoringData({
+      violationCount: violationData.violationCount,
+      violations: violationData.violations,
+    });
+  }, []);
 
+  const handleProctoringSubmit = useCallback((cancelledDueToViolation) => {
+    submitTest(cancelledDueToViolation, false);
+  }, [submitTest]);
 
-  useEffect(() => {
-    if (!testStarted) return;
-
-    const handleVisibilityChange = () => {
-      console.log('Visibility change detected:', document.visibilityState);
-      if (document.visibilityState === "hidden") {
-        console.log('Tab switch violation triggered!');
-        setViolationCount(prev => {
-          const newViolationCount = prev + 1;
-          
-          const violation = {
-            timestamp: new Date(),
-            violationType: "tab_switch",
-            details: `Tab switched - violation ${newViolationCount}`,
-            tabCount: newViolationCount,
-          };
-          
-          setViolations(prevViolations => [...prevViolations, violation]);
-
-          // Get the allowed tab switches from test data, default to 2 if not available
-          const allowedSwitches = test?.allowedTabSwitches ?? 2;
-          
-          // Handle unlimited switches (practice tests with -1 value)
-          if (allowedSwitches === -1) {
-            // For practice tests, show warning but don't cancel
-            if (newViolationCount === 1 || newViolationCount === 2) {
-              setShowResumeModal(true);
-            }
-          } else {
-            // For regular tests, enforce the limit
-            if (newViolationCount < allowedSwitches) {
-              setShowResumeModal(true);
-            } else if (newViolationCount >= allowedSwitches) {
-              alert(
-                `Test cancelled due to tab violations (${newViolationCount} violations detected, limit: ${allowedSwitches}).`
-              );
-              submitTest(true);
-            }
-          }
-          
-          return newViolationCount;
-        });
-      }
-    };
-
-    window.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      window.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [testStarted, submitTest]); // ✅ Fixed: Removed violationCount dependency, added submitTest
-
-  useEffect(() => {
-    if (!testStarted) return;
-
-    const handleFullscreenChange = () => {
-      const isFullscreen = !!(
-        document.fullscreenElement ||
-        document.webkitFullscreenElement ||
-        document.msFullscreenElement
-      );
-      console.log('Fullscreen change detected:', isFullscreen);
-
-      if (!isFullscreen && testStarted && !isSubmitting) {
-        console.log('Fullscreen exit violation triggered!');
-        setViolationCount(prev => {
-          const newViolationCount = prev + 1;
-          
-          const violation = {
-            timestamp: new Date(),
-            violationType: "fullscreen_exit",
-            details: `Fullscreen exited - violation ${newViolationCount}`,
-            tabCount: newViolationCount,
-          };
-          setViolations(prevViolations => [...prevViolations, violation]);
-
-          // Get the allowed tab switches from test data, default to 2 if not available
-          const allowedSwitches = test?.allowedTabSwitches ?? 2;
-          
-          // Handle unlimited switches (practice tests with -1 value)
-          if (allowedSwitches === -1) {
-            // For practice tests, show warning but don't cancel
-            if (newViolationCount === 1 || newViolationCount === 2) {
-              setShowResumeModal(true);
-              // ✅ Fixed: Clear existing timeout and set new one
-              if (fullscreenTimeoutRef.current) {
-                clearTimeout(fullscreenTimeoutRef.current);
-              }
-              fullscreenTimeoutRef.current = setTimeout(() => {
-                requestFullscreen();
-              }, 1000);
-            }
-          } else {
-            // For regular tests, enforce the limit
-            if (newViolationCount < allowedSwitches) {
-              setShowResumeModal(true);
-              // ✅ Fixed: Clear existing timeout and set new one
-              if (fullscreenTimeoutRef.current) {
-                clearTimeout(fullscreenTimeoutRef.current);
-              }
-              fullscreenTimeoutRef.current = setTimeout(() => {
-                requestFullscreen();
-              }, 1000);
-            } else if (newViolationCount >= allowedSwitches) {
-              alert(
-                `Test cancelled due to violations (${newViolationCount} violations detected, limit: ${allowedSwitches}).`
-              );
-              submitTest(true);
-            }
-          }
-          
-          return newViolationCount;
-        });
-      }
-    };
-
-    // Add event listeners for fullscreen changes
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
-    document.addEventListener("msfullscreenchange", handleFullscreenChange);
-
-    return () => {
-      // ✅ Fixed: Clean up timeout on unmount
-      if (fullscreenTimeoutRef.current) {
-        clearTimeout(fullscreenTimeoutRef.current);
-      }
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);
-      document.removeEventListener(
-        "webkitfullscreenchange",
-        handleFullscreenChange
-      );
-      document.removeEventListener(
-        "msfullscreenchange",
-        handleFullscreenChange
-      );
-    };
-  }, [testStarted, isSubmitting, submitTest, requestFullscreen]); // ✅ Fixed: Removed violationCount dependency
-
-  useEffect(() => {
-    if (!testStarted) return;
-
-    const handleKeyDown = (e) => {
-      const isInEditor = e.target.closest('.monaco-editor');
-      const isInTextarea = e.target.tagName === 'TEXTAREA';
-      const isInInput = e.target.tagName === 'INPUT';
-
-      if (isInEditor) {
-        // In Monaco editor, block shortcuts
-        const isFKey = (e.key && /^F\d+$/i.test(e.key) && parseInt(e.key.slice(1)) >= 1 && parseInt(e.key.slice(1)) <= 12) ||
-                         (e.keyCode >= 112 && e.keyCode <= 123);
-        if (
-          e.ctrlKey ||
-          e.altKey ||
-          e.key === "Tab" || e.keyCode === 9 ||
-          isFKey
-        ) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-      } else if (!isInTextarea && !isInInput) {
-        // Outside editor and not in textarea/input, block all keys except Tab
-        if (e.key !== "Tab" && e.keyCode !== 9) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-      }
-      // Allow normal typing in textareas and inputs
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [testStarted]); // ✅ Fixed: Only depends on testStarted
-
-  useEffect(() => {
-    if (!testStarted) return;
-
-    const handleKeyUp = (e) => {
-      const isInEditor = e.target.closest('.monaco-editor');
-      const isInTextarea = e.target.tagName === 'TEXTAREA';
-      const isInInput = e.target.tagName === 'INPUT';
-
-      // Only block shortcuts in Monaco editor, allow normal typing in textareas and inputs
-      if (isInEditor) {
-        const isFKey = (e.key && /^F\d+$/i.test(e.key) && parseInt(e.key.slice(1)) >= 1 && parseInt(e.key.slice(1)) <= 12) ||
-                       (e.keyCode >= 112 && e.keyCode <= 123);
-        if (
-          e.ctrlKey ||
-          e.altKey ||
-          e.key === "Tab" || e.keyCode === 9 ||
-          isFKey
-        ) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-      }
-    };
-
-    window.addEventListener("keyup", handleKeyUp);
-
-    return () => {
-      window.removeEventListener("keyup", handleKeyUp);
-    };
-  }, [testStarted]); // ✅ Fixed: Only depends on testStarted
-
-  useEffect(() => {
-    if (!testStarted) return;
-
-    const handleContextMenu = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-    };
-
-    window.addEventListener("contextmenu", handleContextMenu);
-
-    return () => {
-      window.removeEventListener("contextmenu", handleContextMenu);
-    };
-  }, [testStarted]);
+  const handleProctoringExitFullscreen = useCallback(() => {
+    // Optional: Add any cleanup logic here
+  }, []);
 
   const startTest = async () => {
     try {
@@ -539,20 +296,10 @@ const TakeTest = () => {
       setTestStarted(true);
       setLoading(false);
 
-      // Request fullscreen mode after test starts
-      setTimeout(async () => {
-        try {
-          await requestFullscreen();
-        } catch (error) {
-          console.error("Fullscreen failed, but continuing with test:", error);
-          // Try again after a brief moment
-          setTimeout(async () => {
-            try {
-              await requestFullscreen();
-            } catch (retryError) {
-              console.error("Fullscreen retry failed:", retryError);
-            }
-          }, 500);
+      // Request fullscreen mode after test starts (via proctoring component)
+      setTimeout(() => {
+        if (proctoringRef.current?.requestFullscreen) {
+          proctoringRef.current.requestFullscreen();
         }
       }, 100);
     } catch (error) {
@@ -694,9 +441,11 @@ const TakeTest = () => {
       setTestStarted(true);
       setLoading(false);
 
-      // Request fullscreen mode when resuming existing test - after all state updates with small delay
-      setTimeout(async () => {
-        await requestFullscreen();
+      // Request fullscreen mode when resuming existing test (via proctoring component)
+      setTimeout(() => {
+        if (proctoringRef.current?.requestFullscreen) {
+          proctoringRef.current.requestFullscreen();
+        }
       }, 100);
     } catch (error) {
       console.error("[TakeTest] Error loading test data:", error);
@@ -867,13 +616,6 @@ const TakeTest = () => {
     alert("Time is up! Your test has been submitted automatically.");
   };
 
-  const handleResumeTest = () => {
-    setShowResumeModal(false);
-    // Immediately return to fullscreen mode when resuming
-    setTimeout(() => {
-      requestFullscreen();
-    }, 100); // Small delay to ensure modal is closed
-  };
 
   const handleSubmitClick = () => {
     // Fullscreen check removed to allow submission even if fullscreen is exited
@@ -1507,45 +1249,18 @@ const TakeTest = () => {
         )}
       </div>
 
-      {showResumeModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-800 rounded-lg p-6 max-w-md w-full">
-            <h2 className="text-xl font-bold mb-4 text-red-400">
-              ⚠️ Tab Switch Detected
-            </h2>
-
-            <div className="mb-6">
-              <p className="text-slate-300 mb-2">
-                You have switched tabs/windows {violationCount} time(s) during
-                this test.
-                {test?.allowedTabSwitches !== undefined && test.allowedTabSwitches !== -1 && (
-                  <span className="block text-slate-400 text-sm mt-1">
-                    (Limit: {test.allowedTabSwitches} switches)
-                  </span>
-                )}
-              </p>
-              <p className="text-slate-400 text-sm">
-                {test?.allowedTabSwitches === -1 
-                  ? "This is a practice test - tab switching is allowed but monitored."
-                  : violationCount === 1
-                  ? "First warning: Please remain focused on the test."
-                  : violationCount < (test?.allowedTabSwitches ?? 2)
-                  ? `Warning: ${violationCount} of ${test?.allowedTabSwitches ?? 2} allowed switches used.`
-                  : "Final warning: This is your last allowed switch."}
-              </p>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={handleResumeTest}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-md font-medium"
-              >
-                Resume Exam
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Proctoring Component */}
+      <Proctoring
+        ref={proctoringRef}
+        enabled={testStarted}
+        test={test}
+        onViolation={handleProctoringViolation}
+        onSubmit={handleProctoringSubmit}
+        onExitFullscreen={handleProctoringExitFullscreen}
+        isSubmitting={isSubmitting}
+        blockKeyboardShortcuts={true}
+        blockContextMenu={true}
+      />
 
       {showSubmitConfirmModal && (
         <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">

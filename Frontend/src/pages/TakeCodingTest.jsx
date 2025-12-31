@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import apiRequest from '../services/api';
 import LazyMonacoEditor from '../components/LazyMonacoEditor';
+import Proctoring from '../components/Proctoring';
 
 // Custom Dropdown Component
 function CustomDropdown({ value, onChange, options, className = "" }) {
@@ -98,22 +99,51 @@ export default function TakeCodingTest() {
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
   const [lastSaved, setLastSaved] = useState(null);
   
-  // Proctoring system state
+  // Test state
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [timeSpent, setTimeSpent] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [testStarted, setTestStarted] = useState(false);
   const startRequestMade = useRef(false);
-  const [violationCount, setViolationCount] = useState(0);
-  const [showResumeModal, setShowResumeModal] = useState(false);
   const [showSubmitConfirmModal, setShowSubmitConfirmModal] = useState(false);
-  const [violations, setViolations] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [otpInput, setOtpInput] = useState("");
-  const [otpError, setOtpError] = useState("");
-  const fullscreenTimeoutRef = useRef(null);
   const debounceTimers = useRef({});
+  
+  // Proctoring state
+  const [proctoringData, setProctoringData] = useState({
+    violationCount: 0,
+    violations: [],
+  });
+  const proctoringRef = useRef(null);
+
+  // Auto-start test if already started, or start it automatically
+  useEffect(() => {
+    const checkExistingTest = async () => {
+      if (assignmentId && !testStarted && !startRequestMade.current && assignment && test) {
+        try {
+          console.log('🔍 Checking if test is already started...', assignment);
+          
+          if (assignment.startedAt) {
+            // Test already started, load existing data
+            console.log('✅ Test already started, loading existing data...');
+            await loadExistingTestData();
+          } else if (assignment.status === 'Assigned') {
+            // Test not started, start it directly
+            console.log('🚀 Test not started, starting now...');
+            await startTest();
+          }
+        } catch (error) {
+          console.error("Error checking for existing test:", error);
+          setError(error.message || "Failed to load test");
+          setLoading(false);
+          startRequestMade.current = false;
+        }
+      }
+    };
+
+    checkExistingTest();
+  }, [assignmentId, testStarted, assignment, test]);
 
   useEffect(() => {
     console.log('🔄 useEffect triggered with assignmentId:', assignmentId);
@@ -126,97 +156,66 @@ export default function TakeCodingTest() {
       return;
     }
 
-        const load = async () => {
-          try {
-            console.log('📋 Loading assignment with ID:', assignmentId);
-            if (!assignmentId) {
-              setError('Assignment ID not found in URL');
-              setLoading(false);
-              return;
-            }
-            
-            // Load assignment first
-            const assignmentData = await apiRequest(`/assignments/${assignmentId}`);
-            console.log('✅ Assignment loaded:', assignmentData);
-            setAssignment(assignmentData);
-            
-            // Check if assignment is already completed
-            if (assignmentData.status === 'Completed') {
-              console.log('📋 Assignment already completed, redirecting to results...');
-              setError('This test has already been completed. Redirecting to results...');
-              setTimeout(() => {
-                nav(`/student/view-test/${assignmentData._id}`);
-              }, 2000);
-              setLoading(false);
-              return;
-            }
-            
-            // Load test from assignment
-            const t = await apiRequest(`/tests/${assignmentData.testId._id}`);
-            console.log('✅ Test loaded:', t);
-            setTest(t);
-            
-            const initial = {};
-            const langs = {};
-            (t.questions || []).forEach(q => {
-              if (q.kind === 'coding') {
-                // Use question's language from database, fallback to 'python'
-                langs[q._id] = q.language || 'python';
-                console.log(`🔤 Question ${q._id} language: ${langs[q._id]}`);
-                // Provide basic code template for the language
-                initial[q._id] = getLanguageTemplate(langs[q._id]);
-              }
-            });
-            setLanguageByQ(langs);
-            setCodeByQ(initial);
+    // Only load assignment/test data if not already started
+    if (!testStarted) {
+      const load = async () => {
+        try {
+          console.log('📋 Loading assignment with ID:', assignmentId);
+          if (!assignmentId) {
+            setError('Assignment ID not found in URL');
             setLoading(false);
-          } catch (e) {
-            console.error('Error loading assignment/test:', e);
-            setError(e.message || 'Failed to load assignment');
-            setLoading(false);
-            if (e.message && e.message.includes('Authentication required')) {
-              alert('Your session has expired. Please log in again.');
-              window.location.href = '/login';
-            }
+            return;
           }
-        };
-        load();
-      }, [assignmentId]);
-
-  // Proctoring system functions (same as TakeTest.jsx)
-  const requestFullscreen = async () => {
-    try {
-      if (document.documentElement.requestFullscreen) {
-        await document.documentElement.requestFullscreen();
-      } else if (document.documentElement.webkitRequestFullscreen) {
-        // Safari
-        await document.documentElement.webkitRequestFullscreen();
-      } else if (document.documentElement.msRequestFullscreen) {
-        // IE/Edge
-        await document.documentElement.msRequestFullscreen();
-      }
-    } catch (error) {
-      console.error("Failed to enter fullscreen mode:", error);
-      // Continue with test even if fullscreen fails
+          
+          // Load assignment first
+          const assignmentData = await apiRequest(`/assignments/${assignmentId}`);
+          console.log('✅ Assignment loaded:', assignmentData);
+          setAssignment(assignmentData);
+          
+          // Check if assignment is already completed
+          if (assignmentData.status === 'Completed') {
+            console.log('📋 Assignment already completed, redirecting to results...');
+            setError('This test has already been completed. Redirecting to results...');
+            setTimeout(() => {
+              nav(`/student/view-test/${assignmentData._id}`);
+            }, 2000);
+            setLoading(false);
+            return;
+          }
+          
+          // Load test from assignment
+          const t = await apiRequest(`/tests/${assignmentData.testId._id}`);
+          console.log('✅ Test loaded:', t);
+          setTest(t);
+          
+          const initial = {};
+          const langs = {};
+          (t.questions || []).forEach(q => {
+            if (q.kind === 'coding') {
+              // Use question's language from database, fallback to 'python'
+              langs[q._id] = q.language || 'python';
+              console.log(`🔤 Question ${q._id} language: ${langs[q._id]}`);
+              // Provide basic code template for the language
+              initial[q._id] = getLanguageTemplate(langs[q._id]);
+            }
+          });
+          setLanguageByQ(langs);
+          setCodeByQ(initial);
+          setLoading(false);
+        } catch (e) {
+          console.error('Error loading assignment/test:', e);
+          setError(e.message || 'Failed to load assignment');
+          setLoading(false);
+          if (e.message && e.message.includes('Authentication required')) {
+            alert('Your session has expired. Please log in again.');
+            window.location.href = '/login';
+          }
+        }
+      };
+      load();
     }
-  };
+  }, [assignmentId, testStarted]);
 
-  const exitFullscreen = async () => {
-    try {
-      if (document.exitFullscreen) {
-        await document.exitFullscreen();
-      } else if (document.webkitExitFullscreen) {
-        // Safari
-        await document.webkitExitFullscreen();
-      } else if (document.msExitFullscreen) {
-        // IE/Edge
-        await document.msExitFullscreen();
-      }
-    } catch (error) {
-      console.error("Failed to exit fullscreen mode:", error);
-      // Continue with navigation even if fullscreen exit fails
-    }
-  };
 
   const submitTest = async (cancelledDueToViolation = false, autoSubmit = false) => {
     if (isSubmitting) return;
@@ -245,8 +244,8 @@ export default function TakeCodingTest() {
         timeSpent,
         mentorReviewed: false,
         reviewStatus: 'Pending',
-        tabViolationCount: violationCount,
-        tabViolations: violations.map((violation) => ({
+        tabViolationCount: proctoringData.violationCount,
+        tabViolations: proctoringData.violations.map((violation) => ({
           timestamp: violation.timestamp instanceof Date
             ? violation.timestamp.toISOString()
             : String(violation.timestamp),
@@ -254,7 +253,7 @@ export default function TakeCodingTest() {
           details: String(violation.details),
           tabCount: Number(violation.tabCount),
         })),
-        cancelledDueToViolation: cancelledDueToViolation || (test?.allowedTabSwitches !== -1 && violationCount > (test?.allowedTabSwitches ?? 2)),
+        cancelledDueToViolation: cancelledDueToViolation || (test?.allowedTabSwitches !== -1 && proctoringData.violationCount > (test?.allowedTabSwitches ?? 2)),
         autoSubmit,
       };
 
@@ -264,7 +263,9 @@ export default function TakeCodingTest() {
       });
 
       // Exit fullscreen mode before navigating
-      await exitFullscreen();
+      if (proctoringRef.current?.exitFullscreen) {
+        await proctoringRef.current.exitFullscreen();
+      }
 
       setIsSubmitting(false);
       nav(`/student/assignments`);
@@ -275,130 +276,21 @@ export default function TakeCodingTest() {
     }
   };
 
-  // Tab switch detection
-  useEffect(() => {
-    if (!testStarted) return;
+  // Proctoring handlers (defined after submitTest)
+  const handleProctoringViolation = useCallback((violationData) => {
+    setProctoringData({
+      violationCount: violationData.violationCount,
+      violations: violationData.violations,
+    });
+  }, []);
 
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "hidden") {
-        console.log('Tab switch violation triggered!');
-        setViolationCount(prev => {
-          const newViolationCount = prev + 1;
-          
-          const violation = {
-            timestamp: new Date(),
-            violationType: "tab_switch",
-            details: `Tab switched - violation ${newViolationCount}`,
-            tabCount: newViolationCount,
-          };
-          
-          setViolations(prevViolations => [...prevViolations, violation]);
+  const handleProctoringSubmit = useCallback((cancelledDueToViolation) => {
+    submitTest(cancelledDueToViolation, false);
+  }, [submitTest]);
 
-          // Get the allowed tab switches from test data, default to 2 if not available
-          const allowedSwitches = test?.allowedTabSwitches ?? 2;
-          
-          // For practice tests, allow unlimited switches but still track them
-          if (test?.isPracticeTest) {
-            console.log(`Practice test: Tab switch ${newViolationCount} recorded (unlimited allowed)`);
-          } else {
-            // For regular tests, enforce the limit
-            if (newViolationCount >= allowedSwitches) {
-              alert(
-                `Test cancelled due to tab violations (${newViolationCount} violations detected, limit: ${allowedSwitches}).`
-              );
-              submitTest(true);
-            }
-          }
-          
-          return newViolationCount;
-        });
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [testStarted, submitTest]);
-
-  // Fullscreen monitoring
-  useEffect(() => {
-    if (!testStarted) return;
-
-    const handleFullscreenChange = () => {
-      const isFullscreen = !!(
-        document.fullscreenElement ||
-        document.webkitFullscreenElement ||
-        document.msFullscreenElement
-      );
-      console.log('Fullscreen change detected:', isFullscreen);
-
-      if (!isFullscreen && testStarted && !isSubmitting) {
-        console.log('Fullscreen exit violation triggered!');
-        setViolationCount(prev => {
-          const newViolationCount = prev + 1;
-          
-          const violation = {
-            timestamp: new Date(),
-            violationType: "fullscreen_exit",
-            details: `Fullscreen exited - violation ${newViolationCount}`,
-            tabCount: newViolationCount,
-          };
-          setViolations(prevViolations => [...prevViolations, violation]);
-
-          // Get the allowed tab switches from test data, default to 2 if not available
-          const allowedSwitches = test?.allowedTabSwitches ?? 2;
-          
-          // For practice tests, allow unlimited switches but still track them
-          if (test?.isPracticeTest) {
-            console.log(`Practice test: Fullscreen exit ${newViolationCount} recorded (unlimited allowed)`);
-            if (newViolationCount < 3) { // Show resume modal for first few violations
-              setShowResumeModal(true);
-              // Clear existing timeout and set new one
-              if (fullscreenTimeoutRef.current) {
-                clearTimeout(fullscreenTimeoutRef.current);
-              }
-              fullscreenTimeoutRef.current = setTimeout(() => {
-                requestFullscreen();
-              }, 1000);
-            }
-          } else {
-            // For regular tests, enforce the limit
-            if (newViolationCount < allowedSwitches) {
-              setShowResumeModal(true);
-              // Clear existing timeout and set new one
-              if (fullscreenTimeoutRef.current) {
-                clearTimeout(fullscreenTimeoutRef.current);
-              }
-              fullscreenTimeoutRef.current = setTimeout(() => {
-                requestFullscreen();
-              }, 1000);
-            } else if (newViolationCount >= allowedSwitches) {
-              alert(
-                `Test cancelled due to violations (${newViolationCount} violations detected, limit: ${allowedSwitches}).`
-              );
-              submitTest(true);
-            }
-          }
-          
-          return newViolationCount;
-        });
-      }
-    };
-
-    // Add event listeners for fullscreen changes
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
-    document.addEventListener("msfullscreenchange", handleFullscreenChange);
-
-    return () => {
-      // Clean up timeout on unmount
-      if (fullscreenTimeoutRef.current) {
-        clearTimeout(fullscreenTimeoutRef.current);
-      }
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);
-      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
-      document.removeEventListener("msfullscreenchange", handleFullscreenChange);
-    };
-  }, [testStarted, isSubmitting, submitTest, requestFullscreen]);
+  const handleProctoringExitFullscreen = useCallback(() => {
+    // Optional: Add any cleanup logic here
+  }, []);
 
   // Timer countdown
   useEffect(() => {
@@ -421,21 +313,19 @@ export default function TakeCodingTest() {
 
 
   const startTest = async () => {
+    if (startRequestMade.current) {
+      console.log('⚠️ Start request already made, skipping...');
+      return;
+    }
+    startRequestMade.current = true;
+
     try {
       console.log('🚀 startTest called');
       console.log('🚀 assignmentId from useParams:', assignmentId);
       console.log('🚀 assignment state:', assignment);
       console.log('🚀 assignment._id:', assignment?._id);
       
-      // Check if assignment is already completed
-      if (assignment?.status === 'Completed') {
-        console.log('❌ Cannot start completed test');
-        setOtpError('This test has already been completed. Redirecting to results...');
-        setTimeout(() => {
-          nav(`/student/view-test/${assignment._id}`);
-        }, 2000);
-        return;
-      }
+      setLoading(true);
       
       // Use assignmentId from URL, fallback to assignment._id
       const finalAssignmentId = assignmentId || assignment?._id;
@@ -444,11 +334,26 @@ export default function TakeCodingTest() {
         console.error('❌ No assignment ID available!');
         console.error('❌ assignmentId from URL:', assignmentId);
         console.error('❌ assignment._id:', assignment?._id);
-        setOtpError('Assignment ID not found');
+        setError('Assignment ID not found');
+        setLoading(false);
+        startRequestMade.current = false;
         return;
       }
       
       console.log('✅ Using assignmentId:', finalAssignmentId);
+      
+      // Check if assignment is already completed
+      const assignmentCheck = assignment || await apiRequest(`/assignments/${finalAssignmentId}`);
+      if (assignmentCheck?.status === 'Completed') {
+        console.log('❌ Cannot start completed test');
+        setError('This test has already been completed. Redirecting to results...');
+        setTimeout(() => {
+          nav(`/student/view-test/${assignmentCheck._id}`);
+        }, 2000);
+        setLoading(false);
+        startRequestMade.current = false;
+        return;
+      }
       
       // Fetch current server time (same as TakeTest.jsx)
       const timeResponse = await apiRequest("/time");
@@ -456,9 +361,7 @@ export default function TakeCodingTest() {
       
       const response = await apiRequest(`/assignments/${finalAssignmentId}/start`, {
         method: 'POST',
-        body: JSON.stringify({
-          otp: otpInput.trim(),
-        }),
+        body: JSON.stringify({}),
       });
 
       if (response.alreadyStarted) {
@@ -496,20 +399,16 @@ export default function TakeCodingTest() {
       setTestStarted(true);
       setLoading(false);
 
-      // Request fullscreen mode after test starts
-      setTimeout(async () => {
-        try {
-          await requestFullscreen();
-        } catch (error) {
-          console.error("Fullscreen failed, but continuing with test:", error);
-          // Try again after a brief moment
-          setTimeout(async () => {
-            try {
-              await requestFullscreen();
-            } catch (retryError) {
-              console.error("Fullscreen retry failed:", retryError);
-            }
-          }, 500);
+      console.log('🚀 Test started! testStarted:', true, 'test:', test);
+      console.log('🚀 Proctoring ref:', proctoringRef.current);
+
+      // Request fullscreen mode after test starts (via proctoring component)
+      setTimeout(() => {
+        console.log('🚀 Requesting fullscreen via proctoring ref:', proctoringRef.current);
+        if (proctoringRef.current?.requestFullscreen) {
+          proctoringRef.current.requestFullscreen();
+        } else {
+          console.error('❌ Proctoring ref requestFullscreen not available!');
         }
       }, 100);
     } catch (error) {
@@ -517,92 +416,18 @@ export default function TakeCodingTest() {
       
       // Handle completed test error
       if (error.message === "Test already completed") {
-        setOtpError("This test has already been completed. Redirecting to results...");
+        setError("This test has already been completed. Redirecting to results...");
         setTimeout(() => {
           nav(`/student/view-test/${assignment?._id}`);
         }, 2000);
         return;
       }
       
-      setOtpError(error.message || "Failed to start test");
+      setError(error.message || "Failed to start test");
+      startRequestMade.current = false;
     }
   };
 
-  const verifyOTP = async () => {
-    if (!otpInput.trim()) {
-      setOtpError("Please enter the OTP");
-      return;
-    } else if (otpInput.length !== 6 || !/^\d{6}$/.test(otpInput)) {
-      setOtpError("OTP must be 6 digits");
-      return;
-    }
-
-    try {
-      console.log('🔐 Verifying OTP');
-      console.log('🔐 assignmentId from URL:', assignmentId);
-      console.log('🔐 assignment._id:', assignment?._id);
-      
-      // Use assignmentId from URL, fallback to assignment._id
-      const finalAssignmentId = assignmentId || assignment?._id;
-      
-      if (!finalAssignmentId) {
-        console.error('❌ No assignment ID available for OTP verification!');
-        setOtpError('Assignment ID not found');
-        return;
-      }
-      
-      console.log('✅ Using assignmentId for OTP:', finalAssignmentId);
-      
-      // Fetch current server time (same as TakeTest.jsx)
-      const timeResponse = await apiRequest("/time");
-      const serverTime = new Date(timeResponse.serverTime);
-      
-      const response = await apiRequest(`/assignments/${finalAssignmentId}/start`, {
-        method: 'POST',
-        body: JSON.stringify({
-          otp: otpInput.trim(),
-        }),
-      });
-
-      if (response.alreadyStarted) {
-        await loadExistingTestData();
-        return;
-      }
-
-      if (!response.assignment || !response.test) {
-        throw new Error("Unexpected response format from backend. Expected assignment and test data.");
-      }
-
-      setAssignment(response.assignment);
-      setTest(response.test);
-
-      // Calculate timeRemaining the same way as TakeTest.jsx
-      const testTimeLimit = response.test.timeLimit;
-      const totalSeconds = testTimeLimit * 60;
-      const testStartTime = new Date(
-        response.assignment.startedAt || response.assignment.startTime
-      );
-      const currentTime = serverTime;
-      const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
-      const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
-
-      setTimeRemaining(remainingSeconds);
-      setTestStarted(true);
-      setLoading(false);
-    } catch (error) {
-      if (error.message === "Test already started") {
-        await loadExistingTestData();
-      } else if (
-        error.message === "Invalid OTP" ||
-        error.message === "OTP required"
-      ) {
-        setOtpError(error.message);
-      } else {
-        console.error("Error starting test:", error);
-        setOtpError(error.message || "Failed to start test");
-      }
-    }
-  };
 
   const loadExistingTestData = async () => {
     try {
@@ -653,9 +478,11 @@ export default function TakeCodingTest() {
       setTestStarted(true);
       setLoading(false);
 
-      // Request fullscreen mode when resuming existing test
-      setTimeout(async () => {
-        await requestFullscreen();
+      // Request fullscreen mode when resuming existing test (via proctoring component)
+      setTimeout(() => {
+        if (proctoringRef.current?.requestFullscreen) {
+          proctoringRef.current.requestFullscreen();
+        }
       }, 100);
     } catch (error) {
       console.error("Error loading test data:", error);
@@ -664,13 +491,6 @@ export default function TakeCodingTest() {
     }
   };
 
-  const handleResumeTest = () => {
-    setShowResumeModal(false);
-    // Immediately return to fullscreen mode when resuming
-    setTimeout(() => {
-      requestFullscreen();
-    }, 100);
-  };
 
   const handleSubmitClick = () => {
     if (isSubmitting) return; // Prevent opening modal if already submitting
@@ -768,75 +588,123 @@ int main() {
     }
   };
 
+  // CSS styles for scrollbars
+  const scrollbarStyles = `
+    .coding-test-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+    
+    .coding-test-scrollbar::-webkit-scrollbar-track {
+      background: rgba(30, 41, 59, 0.3);
+      border-radius: 10px;
+    }
+    
+    .coding-test-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.4);
+      border-radius: 10px;
+      transition: background 0.2s ease;
+    }
+    
+    .coding-test-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: rgba(148, 163, 184, 0.6);
+    }
+    
+    .coding-test-scrollbar {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(148, 163, 184, 0.4) rgba(30, 41, 59, 0.3);
+    }
 
+    .custom-dropdown-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+    
+    .custom-dropdown-scrollbar::-webkit-scrollbar-track {
+      background: rgba(30, 41, 59, 0.3);
+      border-radius: 10px;
+    }
+    
+    .custom-dropdown-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.4);
+      border-radius: 10px;
+      transition: background 0.2s ease;
+    }
+    
+    .custom-dropdown-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: rgba(148, 163, 184, 0.6);
+    }
+    
+    .custom-dropdown-scrollbar {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(148, 163, 184, 0.4) rgba(30, 41, 59, 0.3);
+    }
 
-      if (showResumeModal) {
-        return (
-          <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-4">
-            <div className="bg-slate-800 rounded-lg p-8 max-w-md w-full">
-              <h2 className="text-2xl font-bold mb-6 text-center">Resume Test</h2>
-              <p className="text-slate-300 mb-6">
-                You have switched tabs/windows {violationCount} time(s) during this test.
-                {test?.allowedTabSwitches !== undefined && test.allowedTabSwitches !== -1 && (
-                  <span className="block text-slate-400 text-sm mt-1">
-                    Allowed switches: {test.allowedTabSwitches}
-                  </span>
-                )}
-                {test?.isPracticeTest
-                  ? "This is a practice test - tab switching is allowed but monitored."
-                  : violationCount === 1
-                  ? "First warning: Please remain focused on the test."
-                  : violationCount < (test?.allowedTabSwitches ?? 2)
-                  ? `Warning: ${violationCount} of ${test?.allowedTabSwitches ?? 2} allowed switches used.`
-                  : "Final warning: This is your last allowed switch."}
-              </p>
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .animate-in {
+      animation: fadeIn 0.2s ease-out;
+    }
+  `;
+
+  return (
+    <>
+      {/* Proctoring Component - Always rendered, enabled when testStarted */}
+      <Proctoring
+        ref={proctoringRef}
+        enabled={testStarted}
+        test={test}
+        onViolation={handleProctoringViolation}
+        onSubmit={handleProctoringSubmit}
+        onExitFullscreen={handleProctoringExitFullscreen}
+        isSubmitting={isSubmitting}
+        blockKeyboardShortcuts={true}
+        blockContextMenu={true}
+      />
+
+      {/* Custom Scrollbar Styles */}
+      <style dangerouslySetInnerHTML={{__html: scrollbarStyles}} />
+
+      {showSubmitConfirmModal && (
+        <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-4">
+          <div className="bg-slate-800 rounded-lg p-8 max-w-md w-full">
+            <h2 className="text-2xl font-bold mb-6 text-center">Confirm Submission</h2>
+            <p className="text-slate-300 mb-6">
+              Are you sure you want to submit your test? This action cannot be undone.
+            </p>
+            <div className="flex space-x-4">
               <button
-                onClick={handleResumeTest}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-md font-semibold"
+                onClick={() => setShowSubmitConfirmModal(false)}
+                className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-3 rounded-md font-semibold"
               >
-                Resume Test
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmSubmit}
+                disabled={isSubmitting}
+                className={`flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-md font-semibold ${
+                  isSubmitting ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+              >
+                {isSubmitting ? 'Submitting...' : 'Submit Test'}
               </button>
             </div>
           </div>
-        );
-      }
+        </div>
+      )}
 
-      if (showSubmitConfirmModal) {
-        return (
-          <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-4">
-            <div className="bg-slate-800 rounded-lg p-8 max-w-md w-full">
-              <h2 className="text-2xl font-bold mb-6 text-center">Confirm Submission</h2>
-              <p className="text-slate-300 mb-6">
-                Are you sure you want to submit your test? This action cannot be undone.
-              </p>
-              <div className="flex space-x-4">
-                <button
-                  onClick={() => setShowSubmitConfirmModal(false)}
-                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-3 rounded-md font-semibold"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleConfirmSubmit}
-                  disabled={isSubmitting}
-                  className={`flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-md font-semibold ${
-                    isSubmitting ? 'opacity-50 cursor-not-allowed' : ''
-                  }`}
-                >
-                  {isSubmitting ? 'Submitting...' : 'Submit Test'}
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      }
+      {loading && <div className="p-6">Loading...</div>}
+      {error && <div className="p-6 text-red-400">Error: {error}</div>}
+      {!test && !loading && <div className="p-6">Loading...</div>}
 
-      if (loading) return <div className="p-6">Loading...</div>;
-      if (error) return <div className="p-6 text-red-400">Error: {error}</div>;
-      if (!test) return <div className="p-6">Loading...</div>;
-
-      return (
-        <>
+      {!loading && !error && test && (
         <div className="h-[calc(100vh-4px)] flex overflow-hidden">
           <div className="w-1/2 border-r border-slate-700 flex flex-col h-full">
             <div className="p-4 flex-shrink-0">
@@ -1136,80 +1004,9 @@ int main() {
           />
         </div>
           </div>
-        </div>
 
-        {/* Custom Scrollbar Styles for Left Sidebar */}
-        <style>{`
-          .coding-test-scrollbar::-webkit-scrollbar {
-            width: 6px;
-          }
-          
-          .coding-test-scrollbar::-webkit-scrollbar-track {
-            background: rgba(30, 41, 59, 0.3);
-            border-radius: 10px;
-          }
-          
-          .coding-test-scrollbar::-webkit-scrollbar-thumb {
-            background: rgba(148, 163, 184, 0.4);
-            border-radius: 10px;
-            transition: background 0.2s ease;
-          }
-          
-          .coding-test-scrollbar::-webkit-scrollbar-thumb:hover {
-            background: rgba(148, 163, 184, 0.6);
-          }
-          
-          /* Firefox */
-          .coding-test-scrollbar {
-            scrollbar-width: thin;
-            scrollbar-color: rgba(148, 163, 184, 0.4) rgba(30, 41, 59, 0.3);
-          }
-
-          /* Custom Dropdown Scrollbar */
-          .custom-dropdown-scrollbar::-webkit-scrollbar {
-            width: 6px;
-          }
-          
-          .custom-dropdown-scrollbar::-webkit-scrollbar-track {
-            background: rgba(30, 41, 59, 0.3);
-            border-radius: 10px;
-          }
-          
-          .custom-dropdown-scrollbar::-webkit-scrollbar-thumb {
-            background: rgba(148, 163, 184, 0.4);
-            border-radius: 10px;
-            transition: background 0.2s ease;
-          }
-          
-          .custom-dropdown-scrollbar::-webkit-scrollbar-thumb:hover {
-            background: rgba(148, 163, 184, 0.6);
-          }
-          
-          /* Firefox */
-          .custom-dropdown-scrollbar {
-            scrollbar-width: thin;
-            scrollbar-color: rgba(148, 163, 184, 0.4) rgba(30, 41, 59, 0.3);
-          }
-
-          /* Dropdown Animation */
-          @keyframes fadeIn {
-            from {
-              opacity: 0;
-              transform: translateY(-10px);
-            }
-            to {
-              opacity: 1;
-              transform: translateY(0);
-            }
-          }
-
-          .animate-in {
-            animation: fadeIn 0.2s ease-out;
-          }
-        `}</style>
-
-        {/* Keyboard Shortcuts Modal */}
-        {showShortcuts && (
+          {/* Keyboard Shortcuts Modal */}
+          {showShortcuts && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowShortcuts(false)}>
               <div className="bg-slate-800 border border-slate-700 rounded-lg p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between mb-4">
@@ -1257,6 +1054,8 @@ int main() {
               </div>
             </div>
           )}
+        </div>
+      )}
         </>
       );
     }
