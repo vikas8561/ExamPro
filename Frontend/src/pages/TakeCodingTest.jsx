@@ -2,7 +2,83 @@ import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import apiRequest from '../services/api';
 import LazyMonacoEditor from '../components/LazyMonacoEditor';
-import '../styles/TakeTestPermissionModal.mobile.css';
+
+// Custom Dropdown Component
+function CustomDropdown({ value, onChange, options, className = "" }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
+
+  const selectedOption = options.find(opt => opt.value === value) || options[0];
+
+  const handleSelect = (optionValue) => {
+    onChange(optionValue);
+    setIsOpen(false);
+  };
+
+  return (
+    <div className={`relative ${className}`} ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full bg-gradient-to-r from-slate-800 to-slate-700 border border-slate-600 text-slate-200 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 hover:border-blue-500 hover:shadow-lg hover:shadow-blue-500/20 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer flex items-center justify-between"
+      >
+        <span>{selectedOption.label}</span>
+        <svg
+          className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'transform rotate-180' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-50 w-full mt-2 bg-gradient-to-br from-slate-800 via-slate-800 to-slate-900 border border-slate-600 rounded-lg shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="max-h-60 overflow-y-auto custom-dropdown-scrollbar">
+            {options.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => handleSelect(option.value)}
+                className={`w-full text-left px-4 py-3 text-sm font-medium transition-all duration-200 ${
+                  value === option.value
+                    ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white'
+                    : 'text-slate-200 hover:bg-gradient-to-r hover:from-slate-700 hover:to-slate-600 hover:text-white'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span>{option.label}</span>
+                  {value === option.value && (
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function TakeCodingTest() {
   const { assignmentId } = useParams();
@@ -22,13 +98,9 @@ export default function TakeCodingTest() {
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
   const [lastSaved, setLastSaved] = useState(null);
   
-  // Proctoring system state (same as TakeTest.jsx)
+  // Proctoring system state
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [timeSpent, setTimeSpent] = useState(0);
-  const [permissionsGranted, setPermissionsGranted] = useState(false);
-  const [cameraPermission, setCameraPermission] = useState("prompt");
-  const [microphonePermission, setMicrophonePermission] = useState("prompt");
-  const [locationPermission, setLocationPermission] = useState("prompt");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [testStarted, setTestStarted] = useState(false);
@@ -37,23 +109,11 @@ export default function TakeCodingTest() {
   const [showResumeModal, setShowResumeModal] = useState(false);
   const [showSubmitConfirmModal, setShowSubmitConfirmModal] = useState(false);
   const [violations, setViolations] = useState([]);
-  const [stream, setStream] = useState(null);
-  const [isVideoActive, setIsVideoActive] = useState(false);
-  const videoRef = useRef(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showPermissionModal, setShowPermissionModal] = useState(true);
   const [otpInput, setOtpInput] = useState("");
   const [otpError, setOtpError] = useState("");
-  const [permissionsAttempted, setPermissionsAttempted] = useState(false);
   const fullscreenTimeoutRef = useRef(null);
   const debounceTimers = useRef({});
-  const [faceVerificationStatus, setFaceVerificationStatus] = useState(null);
-  const [faceVerifying, setFaceVerifying] = useState(false);
-  const [cameraStream, setCameraStream] = useState(null);
-  const [showCameraModal, setShowCameraModal] = useState(false);
-  const [showNoProfileImageModal, setShowNoProfileImageModal] = useState(false);
-  const cameraVideoRef = useRef(null);
-  const cameraCanvasRef = useRef(null);
 
   useEffect(() => {
     console.log('🔄 useEffect triggered with assignmentId:', assignmentId);
@@ -196,11 +256,6 @@ export default function TakeCodingTest() {
         })),
         cancelledDueToViolation: cancelledDueToViolation || (test?.allowedTabSwitches !== -1 && violationCount > (test?.allowedTabSwitches ?? 2)),
         autoSubmit,
-        permissions: {
-          camera: String(cameraPermission),
-          microphone: String(microphonePermission),
-          location: String(locationPermission),
-        },
       };
 
       await apiRequest('/test-submissions', {
@@ -364,294 +419,9 @@ export default function TakeCodingTest() {
     return () => clearInterval(timer);
   }, [testStarted, timeRemaining, submitTest]);
 
-  // Face verification functions
-  const verifyFaceMatch = async (capturedImage) => {
-    try {
-      setFaceVerifying(true);
-      const response = await apiRequest("/auth/verify-face", {
-        method: "POST",
-        body: JSON.stringify({ image: capturedImage }),
-      });
-      
-      console.log("Face verification response:", {
-        match: response.match,
-        confidence: response.confidence,
-        threshold: response.threshold,
-        message: response.message,
-        warning: response.warning
-      });
-      
-      // Check if this is a fallback response (bypassed verification)
-      const isFallbackMode = response.warning && response.warning.includes("fallback");
-      
-      // Strict validation: match must be explicitly true
-      // For fallback mode, accept any match regardless of confidence
-      // For real verification, confidence must be >= 0.7
-      const isValidMatch = response.match === true && (
-        isFallbackMode || 
-        (typeof response.confidence === 'number' && response.confidence >= 0.7)
-      );
-      
-      if (isValidMatch) {
-        if (isFallbackMode) {
-          console.log("✅ Face verification bypassed (fallback mode):", response.message);
-        } else {
-          console.log("✅ Face verification successful:", response.confidence);
-        }
-        setFaceVerificationStatus("verified");
-        return true;
-      } else {
-        console.log("❌ Face verification failed:", {
-          match: response.match,
-          confidence: response.confidence,
-          reason: response.confidence < 0.7 ? "Confidence too low" : "Match is false"
-        });
-        setFaceVerificationStatus("failed");
-        const errorMsg = response.message || 
-                        `Face verification failed. Confidence: ${response.confidence?.toFixed(2) || 'N/A'}, Required: 0.70. The captured face does not match your profile image.`;
-        alert(errorMsg);
-        return false;
-      }
-    } catch (error) {
-      console.error("Face verification error:", error);
-      setFaceVerificationStatus("error");
-      const errorMsg = error.message || "Face verification error. Please ensure the face recognition service is running and try again.";
-      alert(errorMsg);
-      return false;
-    } finally {
-      setFaceVerifying(false);
-    }
-  };
-
-  const captureImageForVerification = async () => {
-    if (!cameraVideoRef.current || !cameraCanvasRef.current) return null;
-    
-    const video = cameraVideoRef.current;
-    const canvas = cameraCanvasRef.current;
-    const ctx = canvas.getContext("2d");
-    
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.drawImage(video, 0, 0);
-    
-    return canvas.toDataURL("image/png");
-  };
-
-  const checkAllPermissionsGranted = () => {
-    setPermissionsAttempted(true);
-  };
-
-  // useEffect to watch permission changes and update permissionsGranted
-  useEffect(() => {
-    // Allow test to proceed if:
-    // - Camera is granted OR unavailable (not found)
-    // - Microphone is granted
-    // - Location is granted
-    const allGranted = 
-      (cameraPermission === "granted" || cameraPermission === "unavailable") &&
-      microphonePermission === "granted" &&
-      locationPermission === "granted";
-    
-    if (allGranted && permissionsAttempted) {
-      setPermissionsGranted(true);
-    } else if (permissionsAttempted) {
-      setPermissionsGranted(false);
-    }
-  }, [cameraPermission, microphonePermission, locationPermission, permissionsAttempted]);
-
-  // Permission request functions
-  const requestCameraPermission = async () => {
-    // Check if user has a profile image in database
-    try {
-      const userData = JSON.parse(localStorage.getItem('user') || '{}');
-      
-      // Check if profileImage exists and is not empty
-      if (!userData.profileImage || userData.profileImage.trim() === '') {
-        setShowNoProfileImageModal(true);
-        return;
-      }
-    } catch (error) {
-      console.error("Error checking user profile:", error);
-      // If we can't check, still try to proceed (fallback)
-    }
-
-    // Check if getUserMedia is available
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      alert("Camera access is not supported in your browser. Please use a modern browser with camera support.");
-      setCameraPermission("denied");
-      return;
-    }
-
-    try {
-      // Request camera permission - this will show the browser's permission prompt
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      setCameraStream(stream);
-      setShowCameraModal(true);
-      setTimeout(() => {
-        if (cameraVideoRef.current) {
-          cameraVideoRef.current.srcObject = stream;
-        }
-      }, 100);
-    } catch (error) {
-      console.error("Camera permission error:", error);
-      
-      // Handle different error types
-      if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
-        // Camera not found - allow test to proceed without camera
-        setCameraPermission("unavailable");
-        checkAllPermissionsGranted();
-        // Don't show alert for missing camera - allow test to proceed
-        return;
-      } else if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-        setCameraPermission("denied");
-        checkAllPermissionsGranted();
-        alert("Camera permission was denied. Please allow camera access in your browser settings and try again.");
-      } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
-        setCameraPermission("denied");
-        checkAllPermissionsGranted();
-        alert("Camera is already in use by another application. Please close other apps using the camera and try again.");
-      } else if (error.name === 'OverconstrainedError' || error.name === 'ConstraintNotSatisfiedError') {
-        setCameraPermission("denied");
-        checkAllPermissionsGranted();
-        alert("Camera settings are not supported. Please try again.");
-      } else if (error.name === 'SecurityError') {
-        setCameraPermission("denied");
-        checkAllPermissionsGranted();
-        alert("Camera access is blocked for security reasons. Please ensure you're using HTTPS and try again.");
-      } else {
-        setCameraPermission("denied");
-        checkAllPermissionsGranted();
-        alert("Camera permission is required to start the test.");
-      }
-    }
-  };
-
-  const handleCaptureImage = async () => {
-    const capturedImage = await captureImageForVerification();
-    if (!capturedImage) {
-      alert("Failed to capture image. Please try again.");
-      return;
-    }
-
-    const verified = await verifyFaceMatch(capturedImage);
-    if (verified) {
-      const newStream = await navigator.mediaDevices.getUserMedia({ video: true });
-      
-      if (cameraStream) {
-        cameraStream.getTracks().forEach(track => track.stop());
-        setCameraStream(null);
-      }
-      
-      setShowCameraModal(false);
-      setCameraPermission("granted");
-      setStream(newStream);
-      setIsVideoActive(true);
-      setFaceVerificationStatus(null);
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = newStream;
-      }
-      
-      checkAllPermissionsGranted();
-    }
-  };
-
-  const requestMicrophonePermission = async () => {
-    // Check if getUserMedia is available
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      alert("Microphone access is not supported in your browser. Please use a modern browser with microphone support.");
-      setMicrophonePermission("denied");
-      checkAllPermissionsGranted();
-      return;
-    }
-
-    try {
-      // Request microphone permission - this will show the browser's permission prompt
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Stop the stream immediately as we only needed permission
-      stream.getTracks().forEach(track => track.stop());
-      setMicrophonePermission("granted");
-      checkAllPermissionsGranted();
-    } catch (error) {
-      console.error("Microphone permission error:", error);
-      setMicrophonePermission("denied");
-      checkAllPermissionsGranted();
-      
-      // Provide specific error messages based on error type
-      let errorMessage = "Microphone permission is required to start the test.";
-      
-      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-        errorMessage = "Microphone permission was denied. Please allow microphone access in your browser settings and try again.";
-      } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
-        errorMessage = "No microphone found. Please connect a microphone and try again.";
-      } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
-        errorMessage = "Microphone is already in use by another application. Please close other apps using the microphone and try again.";
-      } else if (error.name === 'SecurityError') {
-        errorMessage = "Microphone access is blocked for security reasons. Please ensure you're using HTTPS and try again.";
-      }
-      
-      alert(errorMessage);
-    }
-  };
-
-  const requestLocationPermission = async () => {
-    try {
-      if ("geolocation" in navigator) {
-        await new Promise((resolve, reject) => {
-          // Request location permission - this will show the browser's permission prompt
-          navigator.geolocation.getCurrentPosition(
-            (position) => {
-              setLocationPermission("granted");
-              checkAllPermissionsGranted();
-              resolve();
-            },
-            (error) => {
-              console.error("Location permission error:", error);
-              setLocationPermission("denied");
-              checkAllPermissionsGranted();
-              
-              // Provide specific error messages based on error type
-              let errorMessage = "Location permission is required to start the test.";
-              
-              if (error.code === error.PERMISSION_DENIED) {
-                errorMessage = "Location permission was denied. Please allow location access in your browser settings and try again.";
-              } else if (error.code === error.POSITION_UNAVAILABLE) {
-                errorMessage = "Location information is unavailable. Please ensure location services are enabled on your device.";
-              } else if (error.code === error.TIMEOUT) {
-                errorMessage = "Location request timed out. Please try again.";
-              }
-              
-              alert(errorMessage);
-              reject(error);
-            },
-            {
-              enableHighAccuracy: false,
-              timeout: 10000,
-              maximumAge: 0
-            }
-          );
-        });
-      } else {
-        setLocationPermission("denied");
-        checkAllPermissionsGranted();
-        alert("Geolocation is not supported in your browser.");
-      }
-    } catch (error) {
-      setLocationPermission("denied");
-      checkAllPermissionsGranted();
-      console.error("Location permission error:", error);
-      alert("An error occurred while requesting location permission. Please try again.");
-    }
-  };
 
   const startTest = async () => {
     try {
-      // Check if all permissions are granted before starting
-      if (!permissionsGranted) {
-        alert("Please enable all permissions before starting the test.");
-        return;
-      }
-
       console.log('🚀 startTest called');
       console.log('🚀 assignmentId from useParams:', assignmentId);
       console.log('🚀 assignment state:', assignment);
@@ -687,11 +457,6 @@ export default function TakeCodingTest() {
       const response = await apiRequest(`/assignments/${finalAssignmentId}/start`, {
         method: 'POST',
         body: JSON.stringify({
-          permissions: {
-            camera: cameraPermission,
-            microphone: microphonePermission,
-            location: locationPermission,
-          },
           otp: otpInput.trim(),
         }),
       });
@@ -729,7 +494,6 @@ export default function TakeCodingTest() {
 
       setTimeRemaining(remainingSeconds);
       setTestStarted(true);
-      setShowPermissionModal(false);
       setLoading(false);
 
       // Request fullscreen mode after test starts
@@ -766,11 +530,8 @@ export default function TakeCodingTest() {
 
   const verifyOTP = async () => {
     if (!otpInput.trim()) {
-      if (!permissionsGranted) {
-        setOtpError("Please enter the OTP");
-        return;
-      }
-      // Allow empty OTP if permissions are granted (auto-start)
+      setOtpError("Please enter the OTP");
+      return;
     } else if (otpInput.length !== 6 || !/^\d{6}$/.test(otpInput)) {
       setOtpError("OTP must be 6 digits");
       return;
@@ -799,11 +560,6 @@ export default function TakeCodingTest() {
       const response = await apiRequest(`/assignments/${finalAssignmentId}/start`, {
         method: 'POST',
         body: JSON.stringify({
-          permissions: {
-            camera: cameraPermission,
-            microphone: microphonePermission,
-            location: locationPermission,
-          },
           otp: otpInput.trim(),
         }),
       });
@@ -832,7 +588,6 @@ export default function TakeCodingTest() {
 
       setTimeRemaining(remainingSeconds);
       setTestStarted(true);
-      setShowPermissionModal(false);
       setLoading(false);
     } catch (error) {
       if (error.message === "Test already started") {
@@ -896,7 +651,6 @@ export default function TakeCodingTest() {
 
       setTimeRemaining(remainingSeconds);
       setTestStarted(true);
-      setShowPermissionModal(false);
       setLoading(false);
 
       // Request fullscreen mode when resuming existing test
@@ -997,24 +751,6 @@ int main() {
     return () => clearTimeout(timer);
   }, [codeByQ, activeQ, autoSaveEnabled]);
 
-  // Cleanup camera streams on unmount
-  useEffect(() => {
-    return () => {
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
-      }
-      if (cameraStream) {
-        cameraStream.getTracks().forEach((track) => track.stop());
-      }
-    };
-  }, []);
-
-  // Connect camera video when modal opens
-  useEffect(() => {
-    if (showCameraModal && cameraStream && cameraVideoRef.current) {
-      cameraVideoRef.current.srcObject = cameraStream;
-    }
-  }, [showCameraModal, cameraStream]);
 
   const formatCode = async () => {
     if (!activeQ) return;
@@ -1033,202 +769,6 @@ int main() {
   };
 
 
-      if (showPermissionModal && assignment) {
-        return (
-          <>
-            <div className="permission-modal-mobile min-h-screen bg-slate-900 text-white flex items-center justify-center p-4">
-              <div className="permission-modal-content bg-slate-800 rounded-lg p-8 max-w-md w-full">
-                <h2 className="permission-modal-title text-2xl font-bold mb-6 text-center">Test Permissions</h2>
-                
-                <div className="permissions-list space-y-4 mb-6">
-                  <div className="permission-item flex items-center justify-between">
-                    <span className="permission-label">Camera Access</span>
-                    {cameraPermission === "granted" ? (
-                      <button
-                        disabled
-                        className="permission-button permission-button-granted w-40 px-4 py-2 bg-white text-green-600 rounded-md font-semibold flex items-center justify-center gap-2 cursor-default whitespace-nowrap border-2 border-green-600"
-                      >
-                        <span className="text-xl">✓</span>
-                      </button>
-                    ) : cameraPermission === "unavailable" ? (
-                      <button
-                        disabled
-                        className="permission-button permission-button-granted w-40 px-4 py-2 bg-white text-blue-600 rounded-md font-semibold flex items-center justify-center gap-2 cursor-default whitespace-nowrap border-2 border-blue-600"
-                      >
-                        <span className="text-xl">N/A</span>
-                      </button>
-                    ) : (
-                      <button
-                        onClick={requestCameraPermission}
-                        disabled={faceVerifying}
-                        className="permission-button permission-button-action w-40 px-4 py-2 bg-white hover:bg-gray-100 disabled:bg-gray-200 disabled:cursor-not-allowed text-slate-900 rounded-md font-semibold flex items-center justify-center gap-2 whitespace-nowrap border-2 border-slate-300"
-                      >
-                        {faceVerifying ? (
-                          <>
-                            <span className="animate-spin">⟳</span> Verifying...
-                          </>
-                        ) : (
-                          "Capture Image"
-                        )}
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="permission-item flex items-center justify-between">
-                    <span className="permission-label">Microphone Access</span>
-                    {microphonePermission === "granted" ? (
-                      <button
-                        disabled
-                        className="permission-button permission-button-granted w-40 px-4 py-2 bg-white text-green-600 rounded-md font-semibold flex items-center justify-center gap-2 cursor-default whitespace-nowrap border-2 border-green-600"
-                      >
-                        <span className="text-xl">✓</span>
-                      </button>
-                    ) : (
-                      <button
-                        onClick={requestMicrophonePermission}
-                        className="permission-button permission-button-action w-40 px-4 py-2 bg-white hover:bg-gray-100 text-slate-900 rounded-md font-semibold whitespace-nowrap border-2 border-slate-300"
-                      >
-                        Enable Microphone
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="permission-item flex items-center justify-between">
-                    <span className="permission-label">Location Access</span>
-                    {locationPermission === "granted" ? (
-                      <button
-                        disabled
-                        className="permission-button permission-button-granted w-40 px-4 py-2 bg-white text-green-600 rounded-md font-semibold flex items-center justify-center gap-2 cursor-default whitespace-nowrap border-2 border-green-600"
-                      >
-                        <span className="text-xl">✓</span>
-                      </button>
-                    ) : (
-                      <button
-                        onClick={requestLocationPermission}
-                        className="permission-button permission-button-action w-40 px-4 py-2 bg-white hover:bg-gray-100 text-slate-900 rounded-md font-semibold whitespace-nowrap border-2 border-slate-300"
-                      >
-                        Enable Location
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="mb-4">
-                  {permissionsGranted ? (
-                    <>
-                      <div className="permission-status-message permission-status-success text-green-400 text-center mb-4">
-                        All permissions granted! Click the button below to start the test.
-                      </div>
-                      <button
-                        onClick={startTest}
-                        className="start-test-button w-full bg-white hover:bg-gray-100 text-slate-900 py-3 rounded-md font-semibold border-2 border-slate-300"
-                      >
-                        Start Test
-                      </button>
-                    </>
-                  ) : (
-                    <div className="permission-status-message permission-status-warning text-yellow-400 text-center mb-4">
-                      Please enable all permissions to start the test.
-                    </div>
-                  )}
-
-                  {!permissionsGranted && (
-                    <div className="permission-status-message permission-status-info text-slate-400 text-sm text-center">
-                      All permissions must be enabled before starting the test.
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Camera Modal for Face Verification */}
-            {showCameraModal && (
-              <div className="face-verification-modal fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
-                <div className="face-verification-content bg-slate-800 rounded-lg p-6 max-w-md w-full">
-                  <h3 className="face-verification-title text-xl font-bold mb-4 text-center">Face Verification</h3>
-                  <p className="face-verification-text text-slate-300 text-sm mb-4 text-center">
-                    Please position your face in the camera frame. We need to verify your identity before starting the test.
-                  </p>
-                  
-                  <div className="relative mb-4">
-                    <video
-                      ref={cameraVideoRef}
-                      autoPlay
-                      playsInline
-                      className="face-verification-video w-full rounded-lg"
-                      style={{ maxHeight: "400px" }}
-                    />
-                    <canvas ref={cameraCanvasRef} className="hidden" />
-                  </div>
-
-                  <div className="face-verification-buttons flex gap-3">
-                    <button
-                      onClick={handleCaptureImage}
-                      disabled={faceVerifying}
-                      className="face-verification-button flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white py-2 rounded-md font-semibold"
-                    >
-                      {faceVerifying ? "Verifying..." : "Capture & Verify"}
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (cameraStream) {
-                          cameraStream.getTracks().forEach(track => track.stop());
-                          setCameraStream(null);
-                        }
-                        setShowCameraModal(false);
-                        setFaceVerificationStatus(null);
-                      }}
-                      className="face-verification-button flex-1 bg-slate-600 hover:bg-slate-700 text-white py-2 rounded-md font-semibold"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* No Profile Image Modal */}
-            {showNoProfileImageModal && (
-              <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
-                <div className="bg-slate-800 rounded-lg p-6 max-w-md w-full">
-                  <div className="text-center mb-6">
-                    <div className="mx-auto w-16 h-16 bg-yellow-500 rounded-full flex items-center justify-center mb-4">
-                      <span className="text-3xl">⚠️</span>
-                    </div>
-                    <h3 className="text-xl font-bold mb-3 text-white">Profile Image Required</h3>
-                    <p className="text-slate-300 text-sm mb-2">
-                      To ensure test security and identity verification, you need to upload your profile image first.
-                    </p>
-                    <p className="text-slate-400 text-sm mb-4">
-                      Your profile image will be used to verify your identity before starting the test. Please upload your photo in the profile section to continue.
-                    </p>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => {
-                        setShowNoProfileImageModal(false);
-                        nav("/student/profile");
-                      }}
-                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-md font-semibold"
-                    >
-                      Go to Profile Section
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowNoProfileImageModal(false);
-                      }}
-                      className="flex-1 bg-slate-600 hover:bg-slate-700 text-white py-3 rounded-md font-semibold"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </>
-        );
-      }
 
       if (showResumeModal) {
         return (
@@ -1297,236 +837,246 @@ int main() {
 
       return (
         <>
-        <div className="h-[calc(100vh-64px)] flex">
-          <div className="w-1/2 border-r border-slate-700 overflow-auto p-4 flex flex-col">
-        <div className="mb-3">
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-xs text-slate-400">Question {activeIndex + 1} of {codingQuestions.length}</div>
-            {testStarted && (
-              <div className={`
-                px-6 py-3 rounded-xl font-mono font-bold text-xl shadow-2xl
-                flex items-center justify-center gap-2
-                border-2 backdrop-blur-sm
-                transition-all duration-300
-                ${
-                  timeRemaining <= 60 
-                    ? 'bg-black text-white border-white animate-pulse shadow-white/50' 
-                    : timeRemaining <= 300
-                    ? 'bg-gray-900 text-white border-gray-300 shadow-gray-400/50'
-                    : 'bg-white text-black border-black shadow-black/30'
-                }
-              `}>
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span className="tracking-wider">
-                  {Math.floor((timeRemaining || 0) / 3600)}:{Math.floor(((timeRemaining || 0) % 3600) / 60).toString().padStart(2, '0')}:{((timeRemaining || 0) % 60).toString().padStart(2, '0')}
-                </span>
+        <div className="h-[calc(100vh-4px)] flex overflow-hidden">
+          <div className="w-1/2 border-r border-slate-700 flex flex-col h-full">
+            <div className="p-4 flex-shrink-0">
+              <div className="mb-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-xs text-slate-400">Question {activeIndex + 1} of {codingQuestions.length}</div>
+                  {testStarted && (
+                    <div className={`
+                      px-6 py-3 rounded-xl font-mono font-bold text-xl shadow-2xl
+                      flex items-center justify-center gap-2
+                      border-2 backdrop-blur-sm
+                      transition-all duration-300
+                      ${
+                        timeRemaining <= 60 
+                          ? 'bg-black text-white border-white animate-pulse shadow-white/50' 
+                          : timeRemaining <= 300
+                          ? 'bg-gray-900 text-white border-gray-300 shadow-gray-400/50'
+                          : 'bg-white text-black border-black shadow-black/30'
+                      }
+                    `}>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="tracking-wider">
+                        {Math.floor((timeRemaining || 0) / 3600)}:{Math.floor(((timeRemaining || 0) % 3600) / 60).toString().padStart(2, '0')}:{((timeRemaining || 0) % 60).toString().padStart(2, '0')}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="text-lg font-semibold flex items-center gap-2">
+                    {test.title}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      disabled={activeIndex===0}
+                      onClick={()=>setActiveIndex(i=>Math.max(0,i-1))}
+                      className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-purple-500/30 flex items-center gap-2"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                      </svg>
+                      Prev
+                    </button>
+                    <button
+                      disabled={activeIndex===codingQuestions.length-1}
+                      onClick={()=>setActiveIndex(i=>Math.min(codingQuestions.length-1,i+1))}
+                      className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-indigo-500/30 flex items-center gap-2"
+                    >
+                      Next
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </div>
+                  <button
+                    onClick={handleSubmitClick}
+                    disabled={isSubmitting}
+                    className={`px-4 py-2 bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 text-white rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg shadow-red-500/30 flex items-center gap-2 ${
+                      isSubmitting ? 'opacity-50 cursor-not-allowed transform-none' : ''
+                    }`}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                    {isSubmitting ? 'Submitting...' : 'Submit Test'}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {activeQ?.difficulty && (
+                    <span className="bg-gradient-to-r from-green-500 to-emerald-600 text-white text-xs px-3 py-1 rounded-full shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-105 flex items-center gap-1">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      {activeQ.difficulty}
+                    </span>
+                  )}
+                  {activeQ?.topics && activeQ.topics.length > 0 && activeQ.topics.map((topic, idx) => (
+                    <span key={idx} className="bg-gradient-to-r from-blue-500 to-cyan-600 text-white text-xs px-3 py-1 rounded-full shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-105 flex items-center gap-1">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                      </svg>
+                      {topic}
+                    </span>
+                  ))}
+                  {activeQ?.companies && activeQ.companies.length > 0 && (
+                    <span className="bg-gradient-to-r from-yellow-500 to-orange-600 text-yellow-100 text-xs px-3 py-1 rounded-full shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-105 flex items-center gap-1">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 1.343-3 3v3h6v-3c0-1.657-1.343-3-3-3z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2m0 14v2m7-7h-2M5 12H3" />
+                      </svg>
+                      Companies
+                    </span>
+                  )}
+                  {activeQ?.hint && (
+                    <span className="bg-gradient-to-r from-purple-500 to-pink-600 text-white text-xs px-3 py-1 rounded-full shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-105 flex items-center gap-1">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01M12 3a9 9 0 110 18 9 9 0 010-18z" />
+                      </svg>
+                      Hint
+                    </span>
+                  )}
+                </div>
               </div>
-            )}
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="text-lg font-semibold flex items-center gap-2">
-              {test.title}
             </div>
-            <div className="flex gap-2">
-              <button
-                disabled={activeIndex===0}
-                onClick={()=>setActiveIndex(i=>Math.max(0,i-1))}
-                className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-purple-500/30 flex items-center gap-2"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                </svg>
-                Prev
-              </button>
-              <button
-                disabled={activeIndex===codingQuestions.length-1}
-                onClick={()=>setActiveIndex(i=>Math.min(codingQuestions.length-1,i+1))}
-                className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-indigo-500/30 flex items-center gap-2"
-              >
-                Next
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
-            </div>
-                <button
-                  onClick={handleSubmitClick}
-                  disabled={isSubmitting}
-                  className={`px-4 py-2 bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 text-white rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg shadow-red-500/30 flex items-center gap-2 ${
-                    isSubmitting ? 'opacity-50 cursor-not-allowed transform-none' : ''
-                  }`}
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                  </svg>
-                  {isSubmitting ? 'Submitting...' : 'Submit Test'}
-                </button>
-          </div>
-          <div className="flex flex-wrap gap-2 mt-2">
-            {activeQ?.difficulty && (
-              <span className="bg-gradient-to-r from-green-500 to-emerald-600 text-white text-xs px-3 py-1 rounded-full shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-105 flex items-center gap-1">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                {activeQ.difficulty}
-              </span>
-            )}
-            {activeQ?.topics && activeQ.topics.length > 0 && activeQ.topics.map((topic, idx) => (
-              <span key={idx} className="bg-gradient-to-r from-blue-500 to-cyan-600 text-white text-xs px-3 py-1 rounded-full shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-105 flex items-center gap-1">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                </svg>
-                {topic}
-              </span>
-            ))}
-            {activeQ?.companies && activeQ.companies.length > 0 && (
-              <span className="bg-gradient-to-r from-yellow-500 to-orange-600 text-yellow-100 text-xs px-3 py-1 rounded-full shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-105 flex items-center gap-1">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 1.343-3 3v3h6v-3c0-1.657-1.343-3-3-3z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2m0 14v2m7-7h-2M5 12H3" />
-                </svg>
-                Companies
-              </span>
-            )}
-            {activeQ?.hint && (
-              <span className="bg-gradient-to-r from-purple-500 to-pink-600 text-white text-xs px-3 py-1 rounded-full shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-105 flex items-center gap-1">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01M12 3a9 9 0 110 18 9 9 0 010-18z" />
-                </svg>
-                Hint
-              </span>
-            )}
-          </div>
-        </div>
 
-        <div className="flex-1 overflow-auto">
-          <div>
-              <div className="prose prose-invert whitespace-pre-wrap mb-6">{activeQ?.text}</div>
-              {activeQ?.examples && activeQ.examples.length > 0 && (
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <div className="flex-1 overflow-y-auto p-4 pt-0 coding-test-scrollbar">
+              <div>
+                <div className="prose prose-invert whitespace-pre-wrap mb-6">{activeQ?.text}</div>
+                {activeQ?.examples && activeQ.examples.length > 0 && (
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Examples
+                    </h3>
+                    {activeQ.examples.map((example, index) => (
+                      <div key={index} className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-lg p-4 shadow-lg hover:shadow-xl transition-all duration-300 ">
+                        <div className="mb-3">
+                          <span className="text-sm font-semibold text-slate-200 bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent">Example {index + 1}:</span>
+                        </div>
+                        {example.input && (
+                          <div className="mb-3">
+                            <div className="text-sm text-slate-400 mb-2 flex items-center gap-1">
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M7 16l-4-4m0 0l4-4m-4 4h18" />
+                              </svg>
+                              Input:
+                            </div>
+                            <pre className="bg-gradient-to-r from-slate-900 to-slate-950 border border-slate-600 rounded-lg p-3 text-sm text-slate-200 whitespace-pre-wrap shadow-inner overflow-x-auto">{example.input}</pre>
+                          </div>
+                        )}
+                        {example.output && (
+                          <div className="mb-3">
+                            <div className="text-sm text-slate-400 mb-2 flex items-center gap-1">
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                              </svg>
+                              Output:
+                            </div>
+                            <pre className="bg-gradient-to-r from-slate-900 to-slate-950 border border-slate-600 rounded-lg p-3 text-sm text-slate-200 whitespace-pre-wrap shadow-inner overflow-x-auto">{example.output}</pre>
+                          </div>
+                        )}
+                        {example.explanation && (
+                          <div>
+                            <div className="text-sm text-slate-400 mb-2 flex items-center gap-1">
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01M12 3a9 9 0 110 18 9 9 0 010-18z" />
+                              </svg>
+                              Explanation:
+                            </div>
+                            <div className="text-sm text-slate-200 whitespace-pre-wrap bg-gradient-to-r from-slate-900 to-slate-950 border border-slate-600 rounded-lg p-3 shadow-inner">{example.explanation}</div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="w-1/2 flex flex-col h-full">
+            <div className="p-3 flex items-center justify-between border-b border-slate-700 bg-gradient-to-r from-slate-800 to-slate-900 flex-shrink-0">
+              <div className="flex items-center gap-6">
+                <div className="text-slate-300 font-semibold text-lg flex items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                  </svg>
+                  Code
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={formatCode}
+                  disabled={isFormatting}
+                  className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-all duration-300 transform hover:scale-105 shadow-lg shadow-purple-500/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center gap-2"
+                  title="Format Code"
+                >
+                  {isFormatting ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                    Examples
-                  </h3>
-                  {activeQ.examples.map((example, index) => (
-                    <div key={index} className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 rounded-lg p-4 shadow-lg hover:shadow-xl transition-all duration-300 ">
-                      <div className="mb-3">
-                        <span className="text-sm font-semibold text-slate-200 bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent">Example {index + 1}:</span>
-                      </div>
-                      {example.input && (
-                        <div className="mb-3">
-                          <div className="text-sm text-slate-400 mb-2 flex items-center gap-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M7 16l-4-4m0 0l4-4m-4 4h18" />
-                            </svg>
-                            Input:
-                          </div>
-                          <pre className="bg-gradient-to-r from-slate-900 to-slate-950 border border-slate-600 rounded-lg p-3 text-sm text-slate-200 whitespace-pre-wrap shadow-inner overflow-x-auto">{example.input}</pre>
-                        </div>
-                      )}
-                      {example.output && (
-                        <div className="mb-3">
-                          <div className="text-sm text-slate-400 mb-2 flex items-center gap-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                            </svg>
-                            Output:
-                          </div>
-                          <pre className="bg-gradient-to-r from-slate-900 to-slate-950 border border-slate-600 rounded-lg p-3 text-sm text-slate-200 whitespace-pre-wrap shadow-inner overflow-x-auto">{example.output}</pre>
-                        </div>
-                      )}
-                      {example.explanation && (
-                        <div>
-                          <div className="text-sm text-slate-400 mb-2 flex items-center gap-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01M12 3a9 9 0 110 18 9 9 0 010-18z" />
-                            </svg>
-                            Explanation:
-                          </div>
-                          <div className="text-sm text-slate-200 whitespace-pre-wrap bg-gradient-to-r from-slate-900 to-slate-950 border border-slate-600 rounded-lg p-3 shadow-inner">{example.explanation}</div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                  )}
+                  Format
+                </button>
+                <div className="w-32">
+                  <CustomDropdown
+                    value={languageByQ[activeQ?._id] || 'python'}
+                    onChange={(newLang) => {
+                      setLanguageByQ(prev=>({ ...prev, [activeQ._id]: newLang }));
+                      // Update code with new language template if code is empty or matches old template
+                      const currentCode = codeByQ[activeQ._id] || '';
+                      const oldTemplate = getLanguageTemplate(languageByQ[activeQ._id] || 'python');
+                      if (currentCode === '' || currentCode === oldTemplate) {
+                        setCodeByQ(prev=>({ ...prev, [activeQ._id]: getLanguageTemplate(newLang) }));
+                      }
+                    }}
+                    options={[
+                      { value: 'python', label: 'Python' },
+                      { value: 'javascript', label: 'JavaScript' },
+                      { value: 'c', label: 'C' },
+                      { value: 'cpp', label: 'C++' },
+                      { value: 'java', label: 'Java' }
+                    ]}
+                  />
                 </div>
-              )}
-
-            </div>
-          </div>
-        </div>
-
-          <div className="w-1/2 flex flex-col overflow-auto">
-            <div className="p-3 flex items-center justify-between border-b border-slate-700 bg-gradient-to-r from-slate-800 to-slate-900">
-          <div className="flex items-center gap-3">
-            <div className="text-slate-300 font-semibold text-lg flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-              </svg>
-              Code
-            </div>
-            {autoSaveEnabled && lastSaved && (
-              <div className=" text-green-400 flex items-center gap-1  px-1 py-0  border-green-700/50 shadow-md">
-                  {/* <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg> */}
-                Auto-saved {lastSaved.toLocaleTimeString()}
+                <div className="w-32">
+                  <CustomDropdown
+                    value={editorTheme}
+                    onChange={setEditorTheme}
+                    options={[
+                      { value: 'vs-dark', label: 'Dark' },
+                      { value: 'vs', label: 'Light' },
+                      { value: 'hc-black', label: 'High Contrast' }
+                    ]}
+                  />
+                </div>
+                <div className="w-36">
+                  <CustomDropdown
+                    value={fontSize}
+                    onChange={setFontSize}
+                    options={[
+                      { value: 'small', label: 'Small' },
+                      { value: 'medium', label: 'Medium' },
+                      { value: 'large', label: 'Large' },
+                      { value: 'extra-large', label: 'Extra Large' }
+                    ]}
+                  />
+                </div>
               </div>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={formatCode}
-              disabled={isFormatting}
-              className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-all duration-300 transform hover:scale-105 shadow-lg shadow-purple-500/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center gap-2"
-              title="Format Code"
-            >
-              {isFormatting ? (
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-              ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              )}
-              Format
-            </button>
-            <select value={languageByQ[activeQ?._id] || 'python'} onChange={(e)=>{
-              const newLang = e.target.value;
-              setLanguageByQ(prev=>({ ...prev, [activeQ._id]: newLang }));
-              // Update code with new language template if code is empty or matches old template
-              const currentCode = codeByQ[activeQ._id] || '';
-              const oldTemplate = getLanguageTemplate(languageByQ[activeQ._id] || 'python');
-              if (currentCode === '' || currentCode === oldTemplate) {
-                setCodeByQ(prev=>({ ...prev, [activeQ._id]: getLanguageTemplate(newLang) }));
-              }
-            }} className="bg-slate-800 border border-slate-600 text-slate-200 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-300 hover:border-slate-500 hover:shadow-md hover:shadow-slate-500/20 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-              <option value="python">Python</option>
-              <option value="javascript">JavaScript</option>
-              <option value="c">C</option>
-              <option value="cpp">C++</option>
-              <option value="java">Java</option>
-            </select>
-            <select value={editorTheme} onChange={(e)=>setEditorTheme(e.target.value)} className="bg-slate-800 border border-slate-600 text-slate-200 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-300 hover:border-slate-500 hover:shadow-md hover:shadow-slate-500/20 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-              <option value="vs-dark">Dark</option>
-              <option value="vs">Light</option>
-              <option value="hc-black">High Contrast</option>
-            </select>
-            <select value={fontSize} onChange={(e)=>setFontSize(e.target.value)} className="bg-slate-800 border border-slate-600 text-slate-200 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-300 hover:border-slate-500 hover:shadow-md hover:shadow-slate-500/20 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-              <option value="small">Small</option>
-              <option value="medium">Medium</option>
-              <option value="large">Large</option>
-              <option value="extra-large">Extra Large</option>
-            </select>
-          </div>
-        </div>
-        <div className="flex-1 flex flex-col">
-          <LazyMonacoEditor
-            height="100%"
+            </div>
+            <div className="flex-1 flex flex-col min-h-0">
+              <LazyMonacoEditor
+                height="100%"
             language={(languageByQ[activeQ?._id] || 'python') === 'javascript' ? 'javascript' : (languageByQ[activeQ?._id] || 'python')}
             theme={editorTheme}
             value={codeByQ[activeQ?._id] || ''}
@@ -1587,6 +1137,76 @@ int main() {
         </div>
           </div>
         </div>
+
+        {/* Custom Scrollbar Styles for Left Sidebar */}
+        <style>{`
+          .coding-test-scrollbar::-webkit-scrollbar {
+            width: 6px;
+          }
+          
+          .coding-test-scrollbar::-webkit-scrollbar-track {
+            background: rgba(30, 41, 59, 0.3);
+            border-radius: 10px;
+          }
+          
+          .coding-test-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.4);
+            border-radius: 10px;
+            transition: background 0.2s ease;
+          }
+          
+          .coding-test-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(148, 163, 184, 0.6);
+          }
+          
+          /* Firefox */
+          .coding-test-scrollbar {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(148, 163, 184, 0.4) rgba(30, 41, 59, 0.3);
+          }
+
+          /* Custom Dropdown Scrollbar */
+          .custom-dropdown-scrollbar::-webkit-scrollbar {
+            width: 6px;
+          }
+          
+          .custom-dropdown-scrollbar::-webkit-scrollbar-track {
+            background: rgba(30, 41, 59, 0.3);
+            border-radius: 10px;
+          }
+          
+          .custom-dropdown-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.4);
+            border-radius: 10px;
+            transition: background 0.2s ease;
+          }
+          
+          .custom-dropdown-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(148, 163, 184, 0.6);
+          }
+          
+          /* Firefox */
+          .custom-dropdown-scrollbar {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(148, 163, 184, 0.4) rgba(30, 41, 59, 0.3);
+          }
+
+          /* Dropdown Animation */
+          @keyframes fadeIn {
+            from {
+              opacity: 0;
+              transform: translateY(-10px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+
+          .animate-in {
+            animation: fadeIn 0.2s ease-out;
+          }
+        `}</style>
 
         {/* Keyboard Shortcuts Modal */}
         {showShortcuts && (

@@ -52,8 +52,8 @@ const memoryUsage = () => {
   }
 };
 
-// Monitor memory every 15 seconds (more frequent for 500+ users)
-setInterval(memoryUsage, 15000);
+// Monitor memory every 60 seconds (reduced frequency to improve performance)
+setInterval(memoryUsage, 60000);
 
 // Log initial memory usage
 memoryUsage();
@@ -159,21 +159,60 @@ app.options("*", (req, res) => {
   res.sendStatus(200);
 });
 
-// Memory optimization middleware
+// Response timing middleware - track actual server response time
 app.use((req, res, next) => {
-  // Set memory-friendly limits
-  req.setTimeout(30000); // 30 second timeout
+  const startTime = Date.now();
+  
+  // Set reasonable timeouts
+  req.setTimeout(30000);
   res.setTimeout(30000);
+  
+  // Track response time
+  res.on('finish', () => {
+    const duration = Date.now() - startTime;
+    res['response-time'] = duration;
+    
+    // Log slow requests
+    if (duration > 1000) {
+      console.warn(`⚠️ SLOW REQUEST: ${req.method} ${req.url} took ${duration}ms`);
+    }
+  });
   
   // Add memory usage to response headers for monitoring
   const memUsage = process.memoryUsage();
   res.set('X-Memory-Usage', Math.round(memUsage.heapUsed / 1024 / 1024));
+  res.set('X-Server-Response-Time', '0'); // Will be updated on finish
   
   next();
 });
 
+// Add compression middleware for faster responses
+// TEMPORARILY DISABLED to test if it's causing the 17s delay
+// const compression = require('compression');
+// app.use(compression({ 
+//   level: 1, // Lower compression level for faster processing (1-9, 1 is fastest)
+//   threshold: 512, // Compress responses > 512 bytes
+//   filter: (req, res) => {
+//     // Don't compress if client doesn't support it
+//     if (req.headers['x-no-compression']) {
+//       return false;
+//     }
+//     return compression.filter(req, res);
+//   }
+// }));
+
 app.use(express.json({ limit: '10mb' })); // Limit JSON payload size
-app.use(morgan("dev"));
+
+// Enable morgan with custom format to see response times
+if (process.env.NODE_ENV === 'production') {
+  app.use(morgan("combined"));
+} else {
+  // Custom format to show response time
+  morgan.token('response-time-ms', (req, res) => {
+    return res['response-time'] ? `${res['response-time']}ms` : '-';
+  });
+  app.use(morgan(':method :url :status :response-time ms - :res[content-length]'));
+}
 
 // Add CORS headers to all responses
 app.use((req, res, next) => {

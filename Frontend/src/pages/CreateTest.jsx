@@ -27,6 +27,23 @@ const emptyQuestion = (kind) => ({
   }),
 });
 
+
+// Helper function to capitalize first letter of each word, preserving numbers
+const capitalizeWords = (str) => {
+  if (!str) return str;
+  return str
+    .split(' ')
+    .map(word => {
+      // If word starts with a number, leave it as is
+      if (/^\d/.test(word)) {
+        return word;
+      }
+      // Otherwise, capitalize first letter and lowercase the rest
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .join(' ');
+};
+
 export default function CreateTest() {
   const [searchParams] = useSearchParams();
   const editId = searchParams.get("id");
@@ -35,15 +52,14 @@ export default function CreateTest() {
   const [form, setForm] = useState({
     title: "",
     subject: "",
-    type: "mixed",
+    type: "mcq",
     instructions: "",
     timeLimit: 30,
     negativeMarkingPercent: 0,
-    allowedTabSwitches: 0,
+    allowedTabSwitches: "",
     questions: [],
   });
   const [assignmentOptions, setAssignmentOptions] = useState({
-    assignToAll: false,
     startTime: "",
     duration: "",
   });
@@ -60,6 +76,7 @@ export default function CreateTest() {
   const [createdOtp, setCreatedOtp] = useState("");
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [previewQuestion, setPreviewQuestion] = useState(null);
+  const [allowedTabSwitchesError, setAllowedTabSwitchesError] = useState("");
   const nav = useNavigate();
 
   // Fetch subjects on component mount
@@ -78,14 +95,15 @@ export default function CreateTest() {
     try {
       setLoading(true);
       const test = await apiRequest(`/tests/${editId}`);
+      setAllowedTabSwitchesError(""); // Clear any previous errors
       setForm({
-        title: test.title,
+        title: capitalizeWords(test.title || ""),
         subject: test.subject || "",
         type: test.type,
         instructions: test.instructions,
         timeLimit: test.timeLimit,
         negativeMarkingPercent: test.negativeMarkingPercent || 0,
-        allowedTabSwitches: test.allowedTabSwitches || 0,
+        allowedTabSwitches: test.allowedTabSwitches ?? "",
         questions: test.questions.map((q) => ({
           id: crypto.randomUUID(),
           kind: q.kind === "theoretical" ? "theory" : q.kind,
@@ -121,10 +139,10 @@ export default function CreateTest() {
 
   // Fetch students when manual assignment mode is selected
   useEffect(() => {
-    if (assignmentMode === "manual" && assignmentOptions.assignToAll) {
+    if (assignmentMode === "manual") {
       fetchStudents();
     }
-  }, [assignmentMode, assignmentOptions.assignToAll]);
+  }, [assignmentMode]);
 
   const fetchStudents = async () => {
     try {
@@ -174,9 +192,8 @@ export default function CreateTest() {
         return ["theory"];
       case "practice":
         return ["mcq"];
-      case "mixed":
       default:
-        return ["mcq", "coding", "theory"];
+        return ["mcq"];
     }
   };
 
@@ -395,17 +412,27 @@ export default function CreateTest() {
       return;
     }
     
+    // Validate allowed tab switches if not practice test
+    if (form.type !== "practice" && form.allowedTabSwitches !== "") {
+      const tabSwitchesValue = Number(form.allowedTabSwitches);
+      if (isNaN(tabSwitchesValue) || tabSwitchesValue < 0 || tabSwitchesValue > 100) {
+        setAllowedTabSwitchesError("Value should be between 0 to 100");
+        alert("Please fix the Allowed Tab Switches field before submitting.");
+        return;
+      }
+    }
+    
     setLoading(true);
 
     try {
       const payload = {
-        title: form.title.trim(),
+        title: capitalizeWords(form.title.trim()),
         subject: form.subject.trim(),
         type: form.type,
         instructions: form.instructions,
         timeLimit: Number(form.timeLimit),
         negativeMarkingPercent: Number(form.negativeMarkingPercent),
-        allowedTabSwitches: Number(form.allowedTabSwitches),
+        allowedTabSwitches: Number(form.allowedTabSwitches) || 0,
         questions: form.questions.map((q) => ({
           kind: q.kind,
           text: q.text,
@@ -444,58 +471,55 @@ export default function CreateTest() {
           body: JSON.stringify(payload),
         });
 
-        // Check if assignment is enabled
-        if (assignmentOptions.assignToAll) {
-          // Convert local datetime string to ISO string with timezone offset
-          const startTimeISO = new Date(
-            assignmentOptions.startTime
-          ).toISOString();
+        // Always assign test to students after creation
+        // The startTime is already in ISO format (UTC) from the DateTimePicker
+        // which converts IST to UTC automatically
+        const startTimeISO = assignmentOptions.startTime ? new Date(assignmentOptions.startTime).toISOString() : new Date().toISOString();
 
-          if (assignmentMode === "all") {
-            await apiRequest("/assignments/assign-all", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                testId: createdTest._id,
-                startTime: startTimeISO,
-                duration: parseInt(assignmentOptions.duration),
-              }),
-            });
-          } else if (
-            assignmentMode === "manual" &&
-            selectedStudents.length > 0
-          ) {
-            await apiRequest("/assignments/assign-manual", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                testId: createdTest._id,
-                studentIds: selectedStudents,
-                startTime: startTimeISO,
-                duration: parseInt(assignmentOptions.duration),
-              }),
-            });
-          } else if (assignmentMode === "ru") {
-            await apiRequest("/assignments/assign-ru", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                testId: createdTest._id,
-                startTime: startTimeISO,
-                duration: parseInt(assignmentOptions.duration),
-              }),
-            });
-          } else if (assignmentMode === "su") {
-            await apiRequest("/assignments/assign-su", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                testId: createdTest._id,
-                startTime: startTimeISO,
-                duration: parseInt(assignmentOptions.duration),
-              }),
-            });
-          }
+        if (assignmentMode === "all") {
+          await apiRequest("/assignments/assign-all", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              testId: createdTest._id,
+              startTime: startTimeISO,
+              duration: parseInt(assignmentOptions.duration),
+            }),
+          });
+        } else if (
+          assignmentMode === "manual" &&
+          selectedStudents.length > 0
+        ) {
+          await apiRequest("/assignments/assign-manual", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              testId: createdTest._id,
+              studentIds: selectedStudents,
+              startTime: startTimeISO,
+              duration: parseInt(assignmentOptions.duration),
+            }),
+          });
+        } else if (assignmentMode === "ru") {
+          await apiRequest("/assignments/assign-ru", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              testId: createdTest._id,
+              startTime: startTimeISO,
+              duration: parseInt(assignmentOptions.duration),
+            }),
+          });
+        } else if (assignmentMode === "su") {
+          await apiRequest("/assignments/assign-su", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              testId: createdTest._id,
+              startTime: startTimeISO,
+              duration: parseInt(assignmentOptions.duration),
+            }),
+          });
         }
 
         // Show OTP modal for new test
@@ -614,9 +638,10 @@ export default function CreateTest() {
           <input
             type="text"
             value={form.title}
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, title: e.target.value }))
-            }
+            onChange={(e) => {
+              const capitalizedTitle = capitalizeWords(e.target.value);
+              setForm((prev) => ({ ...prev, title: capitalizedTitle }));
+            }}
               className="w-full p-4 bg-slate-600/50 border border-slate-500/50 rounded-lg focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200"
               placeholder="Enter test title..."
             required
@@ -684,7 +709,6 @@ export default function CreateTest() {
             onChange={(e) => handleTestTypeChange(e.target.value)}
               className="w-full p-4 bg-slate-600/50 border border-slate-500/50 rounded-lg focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200 appearance-none cursor-pointer"
           >
-            <option value="mixed">Mixed (All Types)</option>
             <option value="mcq">MCQ Only</option>
             <option value="coding">Coding Only</option>
             <option value="theory">Theory Only</option>
@@ -795,20 +819,66 @@ export default function CreateTest() {
                 max="100"
               value={form.allowedTabSwitches}
               onChange={(e) => {
-                const value = Math.max(0, Math.min(100, parseInt(e.target.value) || 0));
-                setForm((prev) => ({ ...prev, allowedTabSwitches: value }));
+                const inputValue = e.target.value;
+                // Clear error when user starts typing
+                setAllowedTabSwitchesError("");
+                
+                // Handle empty string - allow it
+                if (inputValue === '' || inputValue === null || inputValue === undefined) {
+                  setForm((prev) => ({ ...prev, allowedTabSwitches: "" }));
+                  return;
+                }
+                
+                // Parse as integer (this automatically handles "01" -> 1)
+                const numValue = parseInt(inputValue, 10);
+                if (!isNaN(numValue)) {
+                  // Validate range: 0 to 100
+                  if (numValue < 0 || numValue > 100) {
+                    setAllowedTabSwitchesError("Value should be between 0 to 100");
+                    // Still update the form value so user can see what they typed
+                    setForm((prev) => ({ ...prev, allowedTabSwitches: numValue }));
+                  } else {
+                    // Valid value
+                    setAllowedTabSwitchesError("");
+                    setForm((prev) => ({ ...prev, allowedTabSwitches: numValue }));
+                  }
+                } else {
+                  // If parsing fails, clear the field
+                  setForm((prev) => ({ ...prev, allowedTabSwitches: "" }));
+                }
               }}
-                className="w-full p-4 bg-slate-600/50 border border-slate-500/50 rounded-lg focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50 transition-all duration-200"
-                placeholder="0"
+              onBlur={(e) => {
+                // On blur, if there's an invalid value, show error
+                const inputValue = e.target.value;
+                if (inputValue !== '' && inputValue !== null && inputValue !== undefined) {
+                  const numValue = parseInt(inputValue, 10);
+                  if (!isNaN(numValue) && (numValue < 0 || numValue > 100)) {
+                    setAllowedTabSwitchesError("Value should be between 0 to 100");
+                  }
+                }
+              }}
+                className={`w-full p-4 bg-slate-600/50 border rounded-lg focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50 transition-all duration-200 ${
+                  allowedTabSwitchesError 
+                    ? "border-red-500/50 focus:ring-red-500/50 focus:border-red-500/50" 
+                    : "border-slate-500/50"
+                }`}
+                placeholder="Enter number (0-100)"
               />
               <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 text-sm">
                 times
               </div>
             </div>
-            <div className="mt-2 text-xs text-slate-400">
-              {form.allowedTabSwitches == 0 ? "No tab switching allowed" : 
-               `Students can switch tabs ${form.allowedTabSwitches} time${form.allowedTabSwitches != 1 ? 's' : ''}`}
-            </div>
+            {allowedTabSwitchesError && (
+              <div className="mt-2 text-xs text-red-400">
+                {allowedTabSwitchesError}
+              </div>
+            )}
+            {!allowedTabSwitchesError && form.allowedTabSwitches !== "" && (
+              <div className="mt-2 text-xs text-slate-400">
+                {form.allowedTabSwitches == 0 ? "No tab switching allowed" : 
+                 `Students can switch tabs ${form.allowedTabSwitches} time${form.allowedTabSwitches != 1 ? 's' : ''}`}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -857,42 +927,6 @@ export default function CreateTest() {
             </div>
 
             <div className="space-y-6">
-              {/* Enable Assignment Toggle */}
-              <div className="bg-slate-700 p-4 rounded-lg border border-slate-600">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-green-600 rounded-lg">
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <label htmlFor="assignToAll" className="text-lg font-medium cursor-pointer">
-                        Enable Assignment
-                      </label>
-                      <p className="text-sm text-slate-400">Assign this test to students immediately after creation</p>
-                    </div>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      id="assignToAll"
-                      checked={assignmentOptions.assignToAll}
-                      onChange={(e) =>
-                        setAssignmentOptions((prev) => ({
-                          ...prev,
-                          assignToAll: e.target.checked,
-                        }))
-                      }
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-slate-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                  </label>
-                </div>
-              </div>
-
-              {assignmentOptions.assignToAll && (
-                <div className="space-y-6">
                   {/* Assignment Mode Selection */}
                   <div>
                     <div className="flex items-center gap-2 mb-4">
@@ -1044,14 +1078,15 @@ export default function CreateTest() {
                         </label>
                         <input
                           type="datetime-local"
-                          value={assignmentOptions.startTime}
+                          value={assignmentOptions.startTime || ''}
                           onChange={(e) =>
                             setAssignmentOptions((prev) => ({
                               ...prev,
                               startTime: e.target.value,
                             }))
                           }
-                          className="w-full p-3 bg-slate-600 border border-slate-500 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                          className="w-full p-3 bg-slate-600/50 border border-slate-500/50 rounded-lg text-white focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
+                          min={new Date().toISOString().slice(0, 16)}
                           required
                         />
                       </div>
@@ -1194,9 +1229,7 @@ export default function CreateTest() {
                     </div>
                   )}
                 </div>
-              )}
             </div>
-          </div>
 
           {/* Questions Section */}
           <div className="bg-slate-800 p-6 rounded-lg">

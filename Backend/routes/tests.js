@@ -3,6 +3,7 @@ const router = express.Router();
 const Test = require("../models/Test");
 const { authenticateToken, requireRole } = require("../middleware/auth");
 const { recalculateScoresForTest } = require("../services/scoreCalculation");
+const { invalidateTestCache } = require("../utils/testCache");
 
 // Get all tests (admin only) - ULTRA FAST VERSION with pagination
 router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) => {
@@ -122,7 +123,7 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
     const testData = {
       title: title.trim(),
       subject: subject || "",
-      type: type || "mixed",
+      type: type || "mcq",
       instructions: instructions || "",
       timeLimit: Number(timeLimit || 30),
       negativeMarkingPercent: Number(negativeMarkingPercent || 0),
@@ -150,6 +151,9 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
 
     const test = await Test.create(testData);
     console.log('DEBUG: Test created in database:', test);
+
+    // Invalidate test cache when new test is created
+    invalidateTestCache();
 
     const populatedTest = await Test.findById(test._id)
       .populate("createdBy", "name email");
@@ -244,6 +248,9 @@ router.put("/:id", authenticateToken, requireRole("admin"), async (req, res, nex
       await recalculateScoresForTest(req.params.id);
     }
 
+    // Invalidate test cache when test is updated
+    invalidateTestCache();
+
     res.json(test);
   } catch (error) {
     next(error);
@@ -270,6 +277,9 @@ router.delete("/:id", authenticateToken, requireRole("admin"), async (req, res, 
 
     // Delete the test
     await Test.findByIdAndDelete(req.params.id);
+
+    // Invalidate test cache when test is deleted
+    invalidateTestCache();
 
     res.json({ message: "Test and all associated data deleted successfully" });
   } catch (error) {

@@ -67,7 +67,29 @@ const apiRequest = async (endpoint, options = {}) => {
   }
 
   try {
-    const response = await fetch(url, config);
+    const fetchStart = Date.now();
+    
+    // Add keep-alive and other performance optimizations
+    const optimizedConfig = {
+      ...config,
+      keepalive: true, // Keep connection alive for faster subsequent requests
+      cache: 'no-cache', // Don't cache to avoid stale data
+      credentials: 'include', // Include credentials for CORS
+    };
+    
+    console.log(`🌐 Starting fetch to ${endpoint} at ${new Date().toISOString()}`);
+    const response = await fetch(url, optimizedConfig);
+    const fetchTime = Date.now() - fetchStart;
+    
+    console.log(`📥 Fetch completed in ${fetchTime}ms - Status: ${response.status}, Headers:`, {
+      'content-type': response.headers.get('content-type'),
+      'content-length': response.headers.get('content-length'),
+      'x-response-time': response.headers.get('x-response-time'),
+    });
+    
+    if (fetchTime > 1000) {
+      console.warn(`⚠️ fetch() took ${fetchTime}ms for ${endpoint}`);
+    }
     
     // Handle authentication errors
     if (response.status === 401) {
@@ -119,7 +141,20 @@ const apiRequest = async (endpoint, options = {}) => {
       throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
     }
     
-    return await response.json();
+    const jsonStart = Date.now();
+    const data = await response.json();
+    const jsonTime = Date.now() - jsonStart;
+    
+    if (jsonTime > 1000) {
+      console.warn(`⚠️ response.json() took ${jsonTime}ms for ${endpoint}`);
+    }
+    
+    const totalTime = Date.now() - fetchStart;
+    if (totalTime > 2000) {
+      console.warn(`⚠️ Total apiRequest took ${totalTime}ms for ${endpoint} (fetch: ${fetchTime}ms, json: ${jsonTime}ms)`);
+    }
+    
+    return data;
   } catch (error) {
     // Don't log "Test already started" errors or 404 errors for test submissions to console as they are expected
     if (!error.message.includes("Test already started") && 

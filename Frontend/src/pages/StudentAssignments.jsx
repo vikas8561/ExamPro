@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
 import { Search, X as CloseIcon } from "lucide-react";
@@ -130,6 +130,7 @@ const StudentAssignments = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [lastFetchTime, setLastFetchTime] = useState(0);
   const navigate = useNavigate();
+  const fetchInProgressRef = useRef(false); // Prevent duplicate requests
 
   useEffect(() => {
     // ✅ Fixed: Always fetch fresh data on component mount to show new assignments
@@ -137,8 +138,11 @@ const StudentAssignments = () => {
     const now = Date.now();
     const shouldFetch = now - lastFetchTime > 5000; // 5 seconds cache instead of 30
     
+    console.log(`🔄 useEffect triggered - shouldFetch: ${shouldFetch}, lastFetchTime: ${lastFetchTime}, now: ${now}`);
+    
     if (shouldFetch) {
       // Fetch data in parallel for better performance
+      console.log('📡 Starting parallel data fetch...');
       Promise.all([
         fetchAssignments(0, currentPage),
         fetchSubjects()
@@ -146,8 +150,12 @@ const StudentAssignments = () => {
         console.error("Error in parallel data fetching:", error);
       });
     } else {
+      console.log('⏭️ Skipping fetch - within cache window');
       setLoading(false);
     }
+    
+    // Prevent multiple simultaneous requests
+    let isMounted = true;
 
     // Setup Socket.IO client - use the same base URL as API
     const socketUrl = BASE_URL; // Use BASE_URL from config
@@ -213,20 +221,35 @@ const StudentAssignments = () => {
   };
 
   const fetchAssignments = async (retryCount = 0, page = currentPage) => {
+    // Prevent multiple simultaneous requests
+    if (fetchInProgressRef.current && retryCount === 0) {
+      console.log('⏸️ Request already in progress, skipping duplicate request');
+      return;
+    }
+    
+    fetchInProgressRef.current = true;
     setLoading(true); // Set loading when starting fetch
+    const controller = new AbortController();
+    let timeoutId = null;
+    
     try {
       const startTime = Date.now();
       
-      // Add timeout to prevent hanging requests
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      // Add timeout to prevent hanging requests (increased to 30 seconds to match backend response time)
+      timeoutId = setTimeout(() => {
+        controller.abort();
+        console.warn('⏱️ Request timeout after 30 seconds');
+      }, 30000); // 30 second timeout
       
-      const data = await apiRequest(`/assignments/student?page=${page}&limit=9`, {
+      const data = await apiRequest(`/assignments/student?page=${page}&limit=9${typeFilter !== 'all' ? `&type=${typeFilter}` : ''}`, {
         signal: controller.signal
       });
       
-      clearTimeout(timeoutId);
+      if (timeoutId) clearTimeout(timeoutId);
       const endTime = Date.now();
+      const requestTime = endTime - startTime;
+      
+      console.log(`✅ Assignment fetch completed in ${requestTime}ms`);
       
       // Handle paginated response
       if (data && data.assignments && data.pagination) {
@@ -239,29 +262,42 @@ const StudentAssignments = () => {
         setAssignments(data || []);
       }
       setLastFetchTime(endTime);
+      fetchInProgressRef.current = false;
     } catch (error) {
-      console.error("Error fetching assignments:", error);
+      if (timeoutId) clearTimeout(timeoutId);
+      fetchInProgressRef.current = false;
       
-      // Handle timeout errors
+      // Don't log AbortError as it's expected when timeout occurs
+      if (error.name !== 'AbortError') {
+        console.error("Error fetching assignments:", error);
+      }
+      
+      // Handle timeout errors - don't retry immediately, wait longer
       if (error.name === 'AbortError') {
         if (retryCount === 0) {
-          setTimeout(() => fetchAssignments(1), 1000);
+          console.log('⏳ Request aborted, will retry in 2 seconds...');
+          setTimeout(() => fetchAssignments(1, page), 2000);
           return;
+        } else {
+          console.error('❌ Request failed after retry');
         }
       }
       
       // Retry once if it's a network error and we haven't retried yet
       if (retryCount === 0 && (error.message?.includes('fetch') || error.message?.includes('network'))) {
-        setTimeout(() => fetchAssignments(1, page), 1000);
+        setTimeout(() => fetchAssignments(1, page), 2000);
         return;
       }
       
       // Don't show alert - just log the error and set empty array
-      setAssignments([]);
-      setTotalPages(1);
-      setTotalItems(0);
+      if (retryCount > 0) {
+        setAssignments([]);
+        setTotalPages(1);
+        setTotalItems(0);
+      }
     } finally {
       setLoading(false);
+      fetchInProgressRef.current = false;
     }
   };
 

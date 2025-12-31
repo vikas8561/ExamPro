@@ -1,9 +1,11 @@
 const express = require("express");
 const router = express.Router();
+const mongoose = require("mongoose");
 const Assignment = require("../models/Assignment");
 const Test = require("../models/Test");
 const User = require("../models/User");
 const { authenticateToken, requireRole } = require("../middleware/auth");
+const { getCachedTestIds, setCachedTestIds } = require("../utils/testCache");
 
 // Get all assignments (admin only) - ULTRA FAST VERSION
 router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) => {
@@ -50,6 +52,12 @@ router.get("/student", authenticateToken, async (req, res, next) => {
       return res.status(403).json({ message: "Access denied. Student access only." });
     }
 
+    // Disable ETag for this route to prevent 304 delays
+    res.set('ETag', false);
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+
     const startTime = Date.now();
     console.log('🚀 ULTRA FAST: Fetching assignments for student:', req.user.userId);
 
@@ -59,70 +67,97 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     const skip = (page - 1) * limit;
     const testType = req.query.type; // Optional filter for test type (e.g., 'coding')
 
-    // OPTIMIZED: Use aggregation pipeline for efficient counting and filtering
-    // First, get test IDs that match our criteria (non-practice, optional type filter)
+    // OPTIMIZED: Filter in database, not in memory
     const testQuery = { type: { $ne: "practice" } };
     if (testType) {
       testQuery.type = testType;
     }
     
-    const validTestIds = await Test.find(testQuery).select('_id').lean();
-    const validTestIdArray = validTestIds.map(t => t._id);
-
-    // Count valid assignments efficiently
-    const validCount = await Assignment.countDocuments({
-      userId: req.user.userId,
-      testId: { $in: validTestIdArray }
-    });
-
-    // Fetch paginated assignments - OPTIMIZED: Don't load questions array
-    const assignments = await Assignment.find({ 
-      userId: req.user.userId,
-      testId: { $in: validTestIdArray }
-    })
-      .select("testId mentorId status startTime duration deadline startedAt completedAt score autoScore mentorScore mentorFeedback reviewStatus timeSpent createdAt")
-      .populate({
-        path: "testId",
-        select: "title type instructions timeLimit subject", // REMOVED questions - we'll count separately
-        match: testQuery
+    // Step 1: Get test IDs from cache or database (CACHED for 5 minutes)
+    const cacheKey = testType ? `tests_${testType}` : 'tests_all';
+    const testQueryStart = Date.now();
+    let validTestIds = getCachedTestIds(cacheKey);
+    
+    if (!validTestIds) {
+      const validTests = await Test.find(testQuery).select('_id').lean();
+      validTestIds = validTests.map(t => t._id);
+      setCachedTestIds(cacheKey, validTestIds);
+      console.log(`💾 Cached test IDs for key: ${cacheKey}`);
+    } else {
+      console.log(`⚡ Using cached test IDs for key: ${cacheKey}`);
+    }
+    const testQueryTime = Date.now() - testQueryStart;
+    console.log(`⏱️ Test query: ${testQueryTime}ms - Found ${validTestIds.length} valid tests`);
+    
+    // Step 2 & 3: Run count and assignment queries in PARALLEL for maximum speed
+    const parallelStart = Date.now();
+    const [validCount, assignments] = await Promise.all([
+      // Count total valid assignments
+      Assignment.countDocuments({
+        userId: req.user.userId,
+        testId: { $in: validTestIds }
+      }),
+      // Get paginated assignments (optimized - removed populate match, filter in DB)
+      Assignment.find({ 
+        userId: req.user.userId,
+        testId: { $in: validTestIds }
       })
-      .populate("mentorId", "name email")
-      .sort({ deadline: 1 })
-      .limit(limit)
-      .skip(skip)
-      .lean(); // Use lean() for faster queries
-
-    // Filter out assignments where testId is null (due to the match filter above)
-    let filteredAssignments = assignments.filter(assignment => assignment.testId !== null);
+        .select("testId mentorId status startTime duration deadline startedAt completedAt score autoScore mentorScore mentorFeedback reviewStatus timeSpent createdAt")
+        .populate({
+          path: "testId",
+          select: "title type instructions timeLimit subject" // No match filter - we already filtered with $in
+        })
+        .populate("mentorId", "name email")
+        .sort({ deadline: 1 })
+        .limit(limit)
+        .skip(skip)
+        .lean()
+    ]);
+    const parallelTime = Date.now() - parallelStart;
+    console.log(`⏱️ Parallel queries (count + assignments): ${parallelTime}ms - Found ${validCount} total, ${assignments.length} assignments`);
     
-    // OPTIMIZED: Get question counts using aggregation (faster than loading questions array)
-    const testIds = [...new Set(filteredAssignments.map(a => a.testId?._id).filter(Boolean))];
+    // Step 4: Get question counts for tests (single aggregation query)
+    const questionCountStart = Date.now();
+    const testIds = [...new Set(assignments.map(a => a.testId?._id).filter(Boolean))];
     let questionCountMap = {};
-    
     if (testIds.length > 0) {
-      const mongoose = require('mongoose');
       const questionCounts = await Test.aggregate([
         { $match: { _id: { $in: testIds } } },
         { $project: { _id: 1, questionCount: { $size: { $ifNull: ['$questions', []] } } } }
       ]);
-      
       questionCounts.forEach(test => {
         questionCountMap[test._id.toString()] = test.questionCount || 0;
       });
     }
+    const questionCountTime = Date.now() - questionCountStart;
+    console.log(`⏱️ Question count query: ${questionCountTime}ms`);
+    
+    // Step 5: Transform assignments with question counts
+    // SAFETY: Filter out null testIds (can happen if test was deleted but still in cache)
+    // This is safe - stale cache data is handled gracefully
+    const transformStart = Date.now();
+    const assignmentsWithQuestionCount = assignments
+      .filter(a => a.testId !== null) // Filter out null testIds (deleted tests or cache staleness)
+      .map(assignment => ({
+        ...assignment,
+        testId: {
+          _id: assignment.testId._id,
+          title: assignment.testId.title,
+          type: assignment.testId.type,
+          instructions: assignment.testId.instructions,
+          timeLimit: assignment.testId.timeLimit,
+          subject: assignment.testId.subject,
+          questionCount: questionCountMap[assignment.testId._id.toString()] || 0
+        }
+      }));
+    const transformTime = Date.now() - transformStart;
+    console.log(`⏱️ Transform: ${transformTime}ms`);
+    
+    const totalQueryTime = Date.now() - startTime;
+    console.log(`📊 Query breakdown - Tests: ${testQueryTime}ms (cached), Parallel (Count+Assignments): ${parallelTime}ms, Questions: ${questionCountTime}ms, Transform: ${transformTime}ms, Total: ${totalQueryTime}ms`);
 
-    // Transform assignments to include question count from map
-    const assignmentsWithQuestionCount = filteredAssignments.map(assignment => ({
-      ...assignment,
-      testId: {
-        ...assignment.testId,
-        questionCount: questionCountMap[assignment.testId._id.toString()] || 0
-      }
-    }));
-
-    console.log(`📊 Found ${assignmentsWithQuestionCount.length} assignments in ${Date.now() - startTime}ms`);
-
-    // ULTRA FAST: Auto-start logic - batch update instead of individual updates
+    // Auto-start logic - batch update instead of individual updates
+    const autoStartStart = Date.now();
     const now = new Date();
     const assignmentsToAutoStart = assignmentsWithQuestionCount.filter(assignment => 
       assignment.status === "Assigned" &&
@@ -132,11 +167,8 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     );
 
     if (assignmentsToAutoStart.length > 0) {
-      // console.log(`Auto-starting ${assignmentsToAutoStart.length} assignments for user ${req.user.userId}`);
-      
-      // ULTRA FAST: Batch update all assignments at once
       const assignmentIds = assignmentsToAutoStart.map(a => a._id);
-      const updateResult = await Assignment.updateMany(
+      await Assignment.updateMany(
         { _id: { $in: assignmentIds } },
         { 
           status: "In Progress",
@@ -144,19 +176,20 @@ router.get("/student", authenticateToken, async (req, res, next) => {
         }
       );
       
-      // console.log(`📊 Updated ${updateResult.modifiedCount} assignments in ${Date.now() - startTime}ms`);
-      
       // Update local assignment objects
       assignmentsToAutoStart.forEach(assignment => {
         assignment.status = "In Progress";
         assignment.startedAt = now;
       });
     }
+    const autoStartTime = Date.now() - autoStartStart;
+    if (autoStartTime > 0) {
+      console.log(`⏱️ Auto-start: ${autoStartTime}ms`);
+    }
 
-    const totalTime = Date.now() - startTime;
-    // console.log(`✅ ULTRA FAST student assignments completed in ${totalTime}ms - Found ${assignmentsWithQuestionCount.length} assignments`);
-
-    res.json({
+    // Prepare response
+    const responseStart = Date.now();
+    const responseData = {
       assignments: assignmentsWithQuestionCount,
       pagination: {
         currentPage: page,
@@ -166,7 +199,14 @@ router.get("/student", authenticateToken, async (req, res, next) => {
         hasNextPage: page < Math.ceil(validCount / limit),
         hasPrevPage: page > 1
       }
-    });
+    };
+    
+    // Send response
+    res.json(responseData);
+    const responseTime = Date.now() - responseStart;
+    const totalTime = Date.now() - startTime;
+    
+    console.log(`✅ Response sent - Response prep: ${responseTime}ms, Total: ${totalTime}ms`);
   } catch (error) {
     console.error('❌ Error in student assignments:', error);
     next(error);
@@ -185,11 +225,12 @@ router.get("/student/recent-activity", authenticateToken, async (req, res, next)
     // console.log('🚀 ULTRA FAST: Fetching recent activity for student:', userId);
     const activities = [];
 
-    // ULTRA FAST: Get all student assignments in one query with minimal data
+    // ULTRA FAST: Get only recent assignments with limit to reduce data processing
     const assignments = await Assignment.find({ userId })
       .select("testId status completedAt startedAt createdAt")
       .populate("testId", "title")
       .sort({ createdAt: -1 })
+      .limit(20) // Limit to recent 20 assignments only
       .lean(); // Use lean() for 2x faster queries
 
     // Process assignments into activities
@@ -237,9 +278,18 @@ router.get("/student/recent-activity", authenticateToken, async (req, res, next)
     const recentActivities = activities.slice(0, 7);
 
     const totalTime = Date.now() - startTime;
-    // console.log(`✅ ULTRA FAST student recent activity completed in ${totalTime}ms - Found ${recentActivities.length} activities`);
+    console.log(`✅ ULTRA FAST student recent activity completed in ${totalTime}ms - Found ${recentActivities.length} activities`);
 
-    res.json(recentActivities);
+    // Optimize response - ensure clean JSON structure
+    const optimizedActivities = recentActivities.map(activity => ({
+      type: activity.type,
+      testId: activity.testId?._id || activity.testId,
+      testTitle: activity.testTitle,
+      timestamp: activity.timestamp,
+      message: activity.message
+    }));
+
+    res.json(optimizedActivities);
   } catch (error) {
     next(error);
   }
@@ -265,7 +315,7 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
     }
 
     // Check if user has access to this assignment
-    if (req.user.role !== "admin" && assignment.userId._id.toString() !== req.user.userId) {
+    if (req.user.role !== "admin" && assignment.userId && assignment.userId._id && assignment.userId._id.toString() !== req.user.userId) {
       return res.status(403).json({ message: "Access denied" });
     }
 
@@ -449,11 +499,12 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
       return res.status(400).json({ message: "Test deadline has passed. The test was available until " + endTime.toLocaleString() });
     }
 
-    // Handle permissions
+    // Handle permissions (skip for coding tests)
     let permissionStatus = "Pending";
     let hasAllPermissionsGranted = false;
+    const isCodingTest = assignment.testId?.type === "coding";
 
-    if (permissions) {
+    if (!isCodingTest && permissions) {
       const cameraGranted = permissions.cameraGranted || permissions.camera === "granted";
       const microphoneGranted = permissions.microphoneGranted || permissions.microphone === "granted";
       const locationGranted = permissions.locationGranted || permissions.location === "granted";
@@ -479,9 +530,9 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
     }
 
     // Check if OTP is required
-    // Skip OTP if user is Admin/Mentor OR if all permissions are granted
+    // Skip OTP if user is Admin/Mentor OR if all permissions are granted OR if it's a coding test
     const hasRolePermissions = req.user.role === "Admin" || req.user.role === "Mentor";
-    const requiresOtp = assignment.testId.otp && !hasRolePermissions && !hasAllPermissionsGranted;
+    const requiresOtp = assignment.testId.otp && !hasRolePermissions && !hasAllPermissionsGranted && !isCodingTest;
 
     // console.log(`User role: ${req.user.role}, hasRolePermissions: ${hasRolePermissions}, hasAllPermissionsGranted: ${hasAllPermissionsGranted}, test OTP: ${assignment.testId.otp}, requiresOtp: ${requiresOtp}`);
 
