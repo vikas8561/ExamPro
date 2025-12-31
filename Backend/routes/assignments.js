@@ -228,6 +228,62 @@ router.get("/student", authenticateToken, async (req, res, next) => {
   }
 });
 
+// Get assignment statistics for current student (counts only - ULTRA FAST)
+router.get("/student/stats", authenticateToken, async (req, res, next) => {
+  try {
+    if (req.user.role !== "Student") {
+      return res.status(403).json({ message: "Access denied. Student access only." });
+    }
+
+    // Disable ETag for this route to prevent 304 delays
+    res.set('ETag', false);
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+
+    const startTime = Date.now();
+
+    // Get test IDs from cache or database (exclude practice tests only - match main endpoint logic)
+    // NOTE: Don't filter by test status here - assignments can exist for any test status
+    const cacheKey = 'tests_all';
+    let validTestIds = getCachedTestIds(cacheKey);
+    
+    if (!validTestIds) {
+      const validTests = await Test.find({ type: { $ne: "practice" } }).select('_id').lean();
+      validTestIds = validTests.map(t => t._id);
+      setCachedTestIds(cacheKey, validTestIds);
+    }
+
+    // Count assignments in parallel - ULTRA FAST
+    const [assignedCount, completedCount] = await Promise.all([
+      // Assigned: status is "Assigned" or "In Progress"
+      Assignment.countDocuments({
+        userId: req.user.userId,
+        testId: { $in: validTestIds },
+        status: { $in: ["Assigned", "In Progress"] }
+      }),
+      // Completed: status is "Completed" AND completedAt exists (actually submitted)
+      Assignment.countDocuments({
+        userId: req.user.userId,
+        testId: { $in: validTestIds },
+        status: "Completed",
+        completedAt: { $exists: true, $ne: null }
+      })
+    ]);
+
+    const totalTime = Date.now() - startTime;
+    console.log(`✅ Stats fetched in ${totalTime}ms - Assigned: ${assignedCount}, Completed: ${completedCount}`);
+
+    res.json({
+      assignedCount,
+      completedCount
+    });
+  } catch (error) {
+    console.error('❌ Error fetching assignment stats:', error);
+    next(error);
+  }
+});
+
 // Get recent activity for current student - ULTRA FAST VERSION
 router.get("/student/recent-activity", authenticateToken, async (req, res, next) => {
   try {

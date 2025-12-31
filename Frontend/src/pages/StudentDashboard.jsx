@@ -30,8 +30,10 @@ const skeletonStyles = `
 `;
 
 const StudentDashboard = () => {
-  const [assignedTests, setAssignedTests] = useState([]);
-  const [completedTests, setCompletedTests] = useState([]);
+  const [assignedCount, setAssignedCount] = useState(0);
+  const [completedCount, setCompletedCount] = useState(0);
+  const [assignedTests, setAssignedTests] = useState([]); // Keep for upcoming tests filtering
+  const [completedTests, setCompletedTests] = useState([]); // Keep for compatibility
   const [recentActivities, setRecentActivities] = useState([]);
   const [loading, setLoading] = useState(false); // Changed to false - don't block UI
   const [socketConnected, setSocketConnected] = useState(false);
@@ -115,36 +117,41 @@ const StudentDashboard = () => {
   const fetchStudentData = async () => {
     setLoading(true);
     try {
-      // Fetch all assignments for the current student
-      const response = await apiRequest("/assignments/student");
+      // Fetch stats (counts only) and upcoming tests in parallel
+      const [stats, upcomingResponse] = await Promise.all([
+        apiRequest("/assignments/student/stats"),
+        apiRequest("/assignments/student?page=1&limit=10") // Fetch first 10 for upcoming tests
+      ]);
       
-      // Handle different response formats
-      let allAssignments = [];
-      if (Array.isArray(response)) {
-        allAssignments = response;
-      } else if (response && Array.isArray(response.assignments)) {
-        allAssignments = response.assignments;
-      } else if (response && Array.isArray(response.data)) {
-        allAssignments = response.data;
-      } else {
-        console.warn("Unexpected response format from /assignments/student:", response);
-        allAssignments = [];
+
+      // Store counts for display
+      setAssignedCount(stats.assignedCount || 0);
+      setCompletedCount(stats.completedCount || 0);
+
+      // Extract upcoming tests from response
+      let upcomingAssignments = [];
+      if (Array.isArray(upcomingResponse)) {
+        upcomingAssignments = upcomingResponse;
+      } else if (upcomingResponse && Array.isArray(upcomingResponse.assignments)) {
+        upcomingAssignments = upcomingResponse.assignments;
+      } else if (upcomingResponse && Array.isArray(upcomingResponse.data)) {
+        upcomingAssignments = upcomingResponse.data;
       }
 
-      // Filter assignments by status on client side
-      const assignedTestsData = allAssignments.filter(assignment =>
-        assignment && (assignment.status === "Assigned" || assignment.status === "In Progress")
-      );
-      const completedTestsData = allAssignments.filter(assignment =>
-        assignment && assignment.status === "Completed"
+      // Filter for upcoming tests (status is "Assigned" or "In Progress")
+      const upcomingTestsData = upcomingAssignments.filter(assignment =>
+        assignment && 
+        assignment.testId && 
+        assignment.testId.type !== 'practice' && 
+        (assignment.status === "Assigned" || assignment.status === "In Progress")
       );
 
-      setAssignedTests(assignedTestsData);
-      setCompletedTests(completedTestsData);
+      setAssignedTests(upcomingTestsData);
     } catch (error) {
       console.error("Error fetching student data:", error);
+      setAssignedCount(0);
+      setCompletedCount(0);
       setAssignedTests([]);
-      setCompletedTests([]);
     } finally {
       setLoading(false);
     }
@@ -258,7 +265,7 @@ const StudentDashboard = () => {
                 </div>
                 <p className="stat-label text-slate-400">Total Assigned Tests</p>
               </div>
-              <p className="stat-value text-4xl font-bold mt-2" style={{ color: '#E5E7EB' }}>{assignedTests.length}</p>
+              <p className="stat-value text-4xl font-bold mt-2" style={{ color: '#E5E7EB' }}>{assignedCount}</p>
             </div>
             <div 
               className="stat-card rounded-2xl p-6 border transition-all duration-300"
@@ -286,7 +293,7 @@ const StudentDashboard = () => {
                 </div>
                 <p className="stat-label text-slate-400">Completed Tests</p>
               </div>
-              <p className="stat-value text-4xl font-bold mt-2" style={{ color: '#E5E7EB' }}>{completedTests.length}</p>
+              <p className="stat-value text-4xl font-bold mt-2" style={{ color: '#E5E7EB' }}>{completedCount}</p>
             </div>
           </>
         )}
