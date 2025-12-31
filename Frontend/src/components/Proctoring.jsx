@@ -38,10 +38,6 @@ const Proctoring = forwardRef(({
   const [violations, setViolations] = useState([]);
   const fullscreenTimeoutRef = useRef(null);
 
-  // Debug: Log when component renders
-  useEffect(() => {
-    console.log('🔒 Proctoring component mounted/updated - enabled:', enabled, 'test:', test);
-  }, [enabled, test]);
 
   // Request fullscreen mode
   const requestFullscreen = useCallback(async () => {

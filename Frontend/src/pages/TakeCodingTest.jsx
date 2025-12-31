@@ -85,8 +85,6 @@ export default function TakeCodingTest() {
   const { assignmentId } = useParams();
   const nav = useNavigate();
   
-  // Debug logging for assignmentId
-  console.log('🔍 TakeCodingTest component - assignmentId from useParams:', assignmentId);
   const [test, setTest] = useState(null);
   const [assignment, setAssignment] = useState(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -122,15 +120,11 @@ export default function TakeCodingTest() {
     const checkExistingTest = async () => {
       if (assignmentId && !testStarted && !startRequestMade.current && assignment && test) {
         try {
-          console.log('🔍 Checking if test is already started...', assignment);
-          
           if (assignment.startedAt) {
             // Test already started, load existing data
-            console.log('✅ Test already started, loading existing data...');
             await loadExistingTestData();
           } else if (assignment.status === 'Assigned') {
             // Test not started, start it directly
-            console.log('🚀 Test not started, starting now...');
             await startTest();
           }
         } catch (error) {
@@ -146,8 +140,6 @@ export default function TakeCodingTest() {
   }, [assignmentId, testStarted, assignment, test]);
 
   useEffect(() => {
-    console.log('🔄 useEffect triggered with assignmentId:', assignmentId);
-    
     // Check authentication first
     const token = localStorage.getItem('token');
     if (!token) {
@@ -160,7 +152,6 @@ export default function TakeCodingTest() {
     if (!testStarted) {
       const load = async () => {
         try {
-          console.log('📋 Loading assignment with ID:', assignmentId);
           if (!assignmentId) {
             setError('Assignment ID not found in URL');
             setLoading(false);
@@ -169,12 +160,10 @@ export default function TakeCodingTest() {
           
           // Load assignment first
           const assignmentData = await apiRequest(`/assignments/${assignmentId}`);
-          console.log('✅ Assignment loaded:', assignmentData);
           setAssignment(assignmentData);
           
           // Check if assignment is already completed
           if (assignmentData.status === 'Completed') {
-            console.log('📋 Assignment already completed, redirecting to results...');
             setError('This test has already been completed. Redirecting to results...');
             setTimeout(() => {
               nav(`/student/view-test/${assignmentData._id}`);
@@ -185,7 +174,6 @@ export default function TakeCodingTest() {
           
           // Load test from assignment
           const t = await apiRequest(`/tests/${assignmentData.testId._id}`);
-          console.log('✅ Test loaded:', t);
           setTest(t);
           
           const initial = {};
@@ -194,7 +182,6 @@ export default function TakeCodingTest() {
             if (q.kind === 'coding') {
               // Use question's language from database, fallback to 'python'
               langs[q._id] = q.language || 'python';
-              console.log(`🔤 Question ${q._id} language: ${langs[q._id]}`);
               // Provide basic code template for the language
               initial[q._id] = getLanguageTemplate(langs[q._id]);
             }
@@ -314,16 +301,11 @@ export default function TakeCodingTest() {
 
   const startTest = async () => {
     if (startRequestMade.current) {
-      console.log('⚠️ Start request already made, skipping...');
       return;
     }
     startRequestMade.current = true;
 
     try {
-      console.log('🚀 startTest called');
-      console.log('🚀 assignmentId from useParams:', assignmentId);
-      console.log('🚀 assignment state:', assignment);
-      console.log('🚀 assignment._id:', assignment?._id);
       
       setLoading(true);
       
@@ -340,12 +322,10 @@ export default function TakeCodingTest() {
         return;
       }
       
-      console.log('✅ Using assignmentId:', finalAssignmentId);
       
       // Check if assignment is already completed
       const assignmentCheck = assignment || await apiRequest(`/assignments/${finalAssignmentId}`);
       if (assignmentCheck?.status === 'Completed') {
-        console.log('❌ Cannot start completed test');
         setError('This test has already been completed. Redirecting to results...');
         setTimeout(() => {
           nav(`/student/view-test/${assignmentCheck._id}`);
@@ -386,25 +366,14 @@ export default function TakeCodingTest() {
       const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
       const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
 
-      console.log('⏰ Time calculation:', {
-        testTimeLimit,
-        totalSeconds,
-        testStartTime: testStartTime.toISOString(),
-        currentTime: currentTime.toISOString(),
-        elapsedSeconds,
-        remainingSeconds
-      });
 
       setTimeRemaining(remainingSeconds);
       setTestStarted(true);
       setLoading(false);
 
-      console.log('🚀 Test started! testStarted:', true, 'test:', test);
-      console.log('🚀 Proctoring ref:', proctoringRef.current);
 
       // Request fullscreen mode after test starts (via proctoring component)
       setTimeout(() => {
-        console.log('🚀 Requesting fullscreen via proctoring ref:', proctoringRef.current);
         if (proctoringRef.current?.requestFullscreen) {
           proctoringRef.current.requestFullscreen();
         } else {
@@ -431,9 +400,6 @@ export default function TakeCodingTest() {
 
   const loadExistingTestData = async () => {
     try {
-      console.log('📋 Loading existing test data');
-      console.log('📋 assignmentId from URL:', assignmentId);
-      console.log('📋 assignment._id:', assignment?._id);
       
       // Use assignmentId from URL, fallback to assignment._id
       const finalAssignmentId = assignmentId || assignment?._id;
@@ -444,7 +410,6 @@ export default function TakeCodingTest() {
         return;
       }
       
-      console.log('✅ Using assignmentId for resume:', finalAssignmentId);
       
       // Fetch current server time (same as TakeTest.jsx)
       const timeResponse = await apiRequest("/time");
@@ -465,14 +430,6 @@ export default function TakeCodingTest() {
       const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
       const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
 
-      console.log('⏰ Time calculation (resume):', {
-        testTimeLimit,
-        totalSeconds,
-        testStartTime: testStartTime.toISOString(),
-        currentTime: currentTime.toISOString(),
-        elapsedSeconds,
-        remainingSeconds
-      });
 
       setTimeRemaining(remainingSeconds);
       setTestStarted(true);

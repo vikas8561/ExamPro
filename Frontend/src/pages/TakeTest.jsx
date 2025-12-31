@@ -270,8 +270,6 @@ const TakeTest = () => {
 
       setAssignment(response.assignment);
       setTest(response.test);
-      console.log('Test data loaded in startTest:', response.test);
-      console.log('Test allowedTabSwitches:', response.test?.allowedTabSwitches);
 
       // Initialize questionStatuses to 'not-answered' for all questions
       const initialStatuses = {};
@@ -380,7 +378,6 @@ const TakeTest = () => {
                 const longestAnswer = textAnswers.reduce((longest, current) => 
                   current.length > longest.length ? current : longest
                 );
-                console.log(`📥 Loading theory answer for question ${questionId}:`, longestAnswer);
                 existingAnswers[questionId] = longestAnswer;
               }
             } else if (question.kind === "mcq") {
@@ -397,11 +394,6 @@ const TakeTest = () => {
             }
           });
           setAnswers(existingAnswers);
-          console.log(
-            `[TakeTest] Restored ${
-              Object.keys(existingAnswers).length
-            } answers from existing answers`
-          );
         } else {
         }
       } catch (answersError) {
@@ -435,8 +427,6 @@ const TakeTest = () => {
       setQuestionStatuses(initialStatuses);
 
       setTest(assignmentData.testId);
-      console.log('Test data loaded in loadExistingTestData:', assignmentData.testId);
-      console.log('Test allowedTabSwitches:', assignmentData.testId?.allowedTabSwitches);
       setTimeRemaining(remainingSeconds);
       setTestStarted(true);
       setLoading(false);
@@ -460,7 +450,6 @@ const TakeTest = () => {
     let textAnswer = undefined;
     let hasAnswer = false;
 
-    console.log(`🔄 handleAnswerChange called for question ${questionId}:`, { answerValue, questionKind: question?.kind });
 
     if (question.kind === "mcq") {
       // For MCQ, answerValue is the index (number)
@@ -506,9 +495,7 @@ const TakeTest = () => {
       }, 1000); // Wait 1 second after user stops typing
     } else if (question.kind === "theory") {
       // For theory questions, debounce with shorter delay to preserve more content
-      console.log(`⏰ Setting debounce timer for theory question ${questionId}, textAnswer:`, textAnswer);
       debounceTimers.current[questionId] = setTimeout(async () => {
-        console.log(`⏰ Debounce timer triggered for theory question ${questionId}`);
         await saveAnswerToBackend(questionId, selectedOption, textAnswer, hasAnswer);
       }, 500); // Wait 500ms after user stops typing
     } else {
@@ -550,13 +537,11 @@ const TakeTest = () => {
           textAnswer: textAnswer || "", // Ensure textAnswer is always a string
         };
         
-        console.log(`🔄 Saving answer for question ${questionId}:`, payload);
         
         await apiRequest("/answers", {
           method: "POST",
           body: JSON.stringify(payload),
         });
-        console.log(`✅ Answer saved successfully for question ${questionId}:`, payload);
       } catch (error) {
         console.error("❌ Failed to save answer:", error);
         // Don't show alert for coding questions as it's too frequent
