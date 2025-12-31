@@ -2,15 +2,10 @@ import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import apiRequest from "../services/api";
 import Judge0CodeEditor from "../components/Judge0CodeEditor";
-import '../styles/TakeTestPermissionModal.mobile.css';
 
 const TakeTest = () => {
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [timeSpent, setTimeSpent] = useState(0);
-  const [permissionsGranted, setPermissionsGranted] = useState(false);
-  const [cameraPermission, setCameraPermission] = useState("prompt");
-  const [microphonePermission, setMicrophonePermission] = useState("prompt");
-  const [locationPermission, setLocationPermission] = useState("prompt");
   const { assignmentId } = useParams();
   const navigate = useNavigate();
   const [test, setTest] = useState(null);
@@ -26,23 +21,9 @@ const TakeTest = () => {
   const [showResumeModal, setShowResumeModal] = useState(false);
   const [showSubmitConfirmModal, setShowSubmitConfirmModal] = useState(false);
   const [violations, setViolations] = useState([]);
-  const [stream, setStream] = useState(null);
-  const [isVideoActive, setIsVideoActive] = useState(false);
-  const videoRef = useRef(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showPermissionModal, setShowPermissionModal] = useState(true);
-  const [otpInput, setOtpInput] = useState("");
-  const [otpError, setOtpError] = useState("");
-  const [permissionsAttempted, setPermissionsAttempted] = useState(false);
   const fullscreenTimeoutRef = useRef(null);
   const debounceTimers = useRef({});
-  const [faceVerificationStatus, setFaceVerificationStatus] = useState(null);
-  const [faceVerifying, setFaceVerifying] = useState(false);
-  const [cameraStream, setCameraStream] = useState(null);
-  const [showCameraModal, setShowCameraModal] = useState(false);
-  const [showNoProfileImageModal, setShowNoProfileImageModal] = useState(false);
-  const cameraVideoRef = useRef(null);
-  const cameraCanvasRef = useRef(null);
 
   // Cleanup debounce timers on unmount and save pending answers
   useEffect(() => {
@@ -94,18 +75,15 @@ const TakeTest = () => {
             `/assignments/${assignmentId}`
           );
           if (assignmentData && assignmentData.startedAt) {
-            setShowPermissionModal(true);
-            setLoading(false);
+            // Test already started, load existing data
+            await loadExistingTestData();
           } else {
-            setShowPermissionModal(true);
-            setLoading(false);
+            // Test not started, start it directly
+            await startTest();
           }
         } catch (error) {
-(
-            "Error checking for existing test, showing permission modal:",
-            error
-          );
-          setShowPermissionModal(true);
+          console.error("Error checking for existing test:", error);
+          setError(error.message || "Failed to load test");
           setLoading(false);
         }
       }
@@ -507,454 +485,8 @@ const TakeTest = () => {
     };
   }, [testStarted]);
 
-
-
-  const verifyOTP = async () => {
-    if (!otpInput.trim()) {
-      if (!permissionsGranted) {
-        setOtpError("Please enter the OTP");
-        return;
-      }
-      // Allow empty OTP if permissions are granted (auto-start)
-    } else if (otpInput.length !== 6 || !/^\d{6}$/.test(otpInput)) {
-      setOtpError("OTP must be 6 digits");
-      return;
-    }
-
-    try {
-      setOtpError("");
-      const response = await apiRequest(`/assignments/${assignmentId}/start`, {
-        method: "POST",
-        body: JSON.stringify({
-          permissions: {
-            camera: cameraPermission,
-            microphone: microphonePermission,
-            location: locationPermission,
-          },
-          otp: otpInput.trim(),
-        }),
-      });
-
-      if (response.alreadyStarted) {
-        await loadExistingTestData();
-        return;
-      }
-
-      if (!response.assignment || !response.test) {
-        throw new Error("Unexpected response format from backend. Expected assignment and test data.");
-      }
-
-      if (!permissionsGranted && !otpInput.trim()) {
-        setOtpError("OTP is required when permissions are denied.");
-        return;
-      }
-
-      setAssignment(response.assignment);
-      setTest(response.test);
-      console.log('Test data loaded in startTest:', response.test);
-      console.log('Test allowedTabSwitches:', response.test?.allowedTabSwitches);
-
-      // Initialize questionStatuses to 'not-answered' for all questions
-      const initialStatuses = {};
-      response.test.questions.forEach((q) => {
-        initialStatuses[q._id] = "not-answered";
-      });
-      setQuestionStatuses(initialStatuses);
-
-      const assignmentDuration = response.assignment.duration;
-      const testTimeLimit = response.test.timeLimit;
-
-      // Always use test.timeLimit as timer duration
-      const totalSeconds = testTimeLimit * 60;
-      const testStartTime = new Date(response.assignment.startedAt || response.assignment.startTime);
-      const currentTime = new Date(); // Use client time for OTP start
-      const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
-      const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
-
-      setTimeRemaining(remainingSeconds);
-      setTestStarted(true);
-      setShowPermissionModal(false);
-      setLoading(false);
-
-      // Fullscreen will be requested by the Start Test button click handler
-    } catch (error) {
-      console.error("OTP verification failed:", error);
-      setOtpError(error.message || "Invalid OTP. Please try again.");
-    }
-  };
-
-  const verifyFaceMatch = async (capturedImage) => {
-    try {
-      setFaceVerifying(true);
-      const response = await apiRequest("/auth/verify-face", {
-        method: "POST",
-        body: JSON.stringify({ image: capturedImage }),
-      });
-      
-      console.log("Face verification response:", {
-        match: response.match,
-        confidence: response.confidence,
-        threshold: response.threshold,
-        message: response.message,
-        warning: response.warning
-      });
-      
-      // Check if this is a fallback response (bypassed verification)
-      const isFallbackMode = response.warning && response.warning.includes("fallback");
-      
-      // Strict validation: match must be explicitly true
-      // For fallback mode, accept any match regardless of confidence
-      // For real verification, confidence must be >= 0.7
-      const isValidMatch = response.match === true && (
-        isFallbackMode || 
-        (typeof response.confidence === 'number' && response.confidence >= 0.7)
-      );
-      
-      if (isValidMatch) {
-        if (isFallbackMode) {
-          console.log("✅ Face verification bypassed (fallback mode):", response.message);
-        } else {
-          console.log("✅ Face verification successful:", response.confidence);
-        }
-        setFaceVerificationStatus("verified");
-        return true;
-      } else {
-        console.log("❌ Face verification failed:", {
-          match: response.match,
-          confidence: response.confidence,
-          reason: response.confidence < 0.7 ? "Confidence too low" : "Match is false"
-        });
-        setFaceVerificationStatus("failed");
-        const errorMsg = response.message || 
-                        `Face verification failed. Confidence: ${response.confidence?.toFixed(2) || 'N/A'}, Required: 0.70. The captured face does not match your profile image.`;
-        alert(errorMsg);
-        return false;
-      }
-    } catch (error) {
-      console.error("Face verification error:", error);
-      setFaceVerificationStatus("error");
-      // Try to extract user-friendly message from error
-      let errorMsg = "Face verification error. Please try again.";
-      
-      // Check if error has a response with message
-      if (error.response && error.response.message) {
-        errorMsg = error.response.message;
-      } else if (error.message) {
-        // If error message contains technical details, provide a generic message
-        if (error.message.includes("Exception while processing") || error.message.includes("img2_path")) {
-          errorMsg = "No face detected in the captured image. Please ensure your face is clearly visible and try again.";
-        } else if (error.message.includes("img1_path")) {
-          errorMsg = "No face detected in your profile image. Please ensure your face is clearly visible.";
-        } else {
-          // Use the error message if it's user-friendly, otherwise use generic
-          errorMsg = error.message;
-        }
-      }
-      
-      alert(errorMsg);
-      return false;
-    } finally {
-      setFaceVerifying(false);
-    }
-  };
-
-  const captureImageForVerification = async () => {
-    if (!cameraVideoRef.current || !cameraCanvasRef.current) return null;
-    
-    const video = cameraVideoRef.current;
-    const canvas = cameraCanvasRef.current;
-    const ctx = canvas.getContext("2d");
-    
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.drawImage(video, 0, 0);
-    
-    return canvas.toDataURL("image/png");
-  };
-
-  const requestCameraPermission = async () => {
-    // Check if user has a profile image in database
-    try {
-      const userData = JSON.parse(localStorage.getItem('user') || '{}');
-      
-      // Check if profileImage exists and is not empty
-      if (!userData.profileImage || userData.profileImage.trim() === '') {
-        setShowNoProfileImageModal(true);
-        return;
-      }
-    } catch (error) {
-      console.error("Error checking user profile:", error);
-      // If we can't check, still try to proceed (fallback)
-    }
-
-    // Check if getUserMedia is available
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      alert("Camera access is not supported in your browser. Please use a modern browser with camera support.");
-      setCameraPermission("denied");
-      return;
-    }
-
-    try {
-      // Request camera permission - this will show the browser's permission prompt
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      setCameraStream(stream);
-      setShowCameraModal(true);
-      // Wait for video to load
-      setTimeout(() => {
-        if (cameraVideoRef.current) {
-          cameraVideoRef.current.srcObject = stream;
-        }
-      }, 100);
-    } catch (error) {
-      console.error("Camera permission error:", error);
-      
-      // Handle different error types
-      if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
-        // Camera not found - allow test to proceed without camera
-        setCameraPermission("unavailable");
-        setPermissionsAttempted(true);
-        setTimeout(() => {
-          checkAllPermissionsGranted();
-        }, 100);
-        // Don't show alert for missing camera - allow test to proceed
-        return;
-      } else if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-        setCameraPermission("denied");
-        setPermissionsAttempted(true);
-        alert("Camera permission was denied. Please allow camera access in your browser settings and try again.");
-      } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
-        setCameraPermission("denied");
-        setPermissionsAttempted(true);
-        alert("Camera is already in use by another application. Please close other apps using the camera and try again.");
-      } else if (error.name === 'OverconstrainedError' || error.name === 'ConstraintNotSatisfiedError') {
-        setCameraPermission("denied");
-        setPermissionsAttempted(true);
-        alert("Camera settings are not supported. Please try again.");
-      } else if (error.name === 'SecurityError') {
-        setCameraPermission("denied");
-        setPermissionsAttempted(true);
-        alert("Camera access is blocked for security reasons. Please ensure you're using HTTPS and try again.");
-      } else {
-        setCameraPermission("denied");
-        setPermissionsAttempted(true);
-        alert("Camera permission is required to start the test.");
-      }
-    }
-  };
-
-  const handleCaptureImage = async () => {
-    const capturedImage = await captureImageForVerification();
-    if (!capturedImage) {
-      alert("Failed to capture image. Please try again.");
-      return;
-    }
-
-    const verified = await verifyFaceMatch(capturedImage);
-    if (verified) {
-      // Create a new stream for the test (keep camera active)
-      const newStream = await navigator.mediaDevices.getUserMedia({ video: true });
-      
-      // Stop the modal camera stream
-      if (cameraStream) {
-        cameraStream.getTracks().forEach(track => track.stop());
-        setCameraStream(null);
-      }
-      
-      setShowCameraModal(false);
-      setCameraPermission("granted");
-      setStream(newStream);
-      setIsVideoActive(true);
-      setFaceVerificationStatus(null);
-      
-      // Check if all permissions are granted after state update
-      setTimeout(() => {
-        checkAllPermissionsGranted();
-      }, 100);
-    }
-  };
-
-  const checkAllPermissionsGranted = () => {
-    setPermissionsAttempted(true);
-  };
-
-  // useEffect to watch permission changes and update permissionsGranted
-  useEffect(() => {
-    if (!permissionsAttempted) return;
-    
-    // Allow test to proceed if:
-    // - Camera is granted OR unavailable (not found)
-    // - Microphone is granted
-    // - Location is granted
-    const allGranted = 
-      (cameraPermission === "granted" || cameraPermission === "unavailable") &&
-      microphonePermission === "granted" &&
-      locationPermission === "granted";
-    
-    setPermissionsGranted(allGranted);
-  }, [cameraPermission, microphonePermission, locationPermission, permissionsAttempted]);
-
-  const requestMicrophonePermission = async () => {
-    // Check if getUserMedia is available
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      alert("Microphone access is not supported in your browser. Please use a modern browser with microphone support.");
-      setMicrophonePermission("denied");
-      setPermissionsAttempted(true);
-      return;
-    }
-
-    try {
-      // Request microphone permission - this will show the browser's permission prompt
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Stop the stream immediately as we only needed permission
-      stream.getTracks().forEach(track => track.stop());
-      setMicrophonePermission("granted");
-      setPermissionsAttempted(true);
-      setTimeout(() => {
-        checkAllPermissionsGranted();
-      }, 100);
-    } catch (error) {
-      console.error("Microphone permission error:", error);
-      setMicrophonePermission("denied");
-      setPermissionsAttempted(true);
-      
-      // Provide specific error messages based on error type
-      let errorMessage = "Microphone permission is required to start the test.";
-      
-      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-        errorMessage = "Microphone permission was denied. Please allow microphone access in your browser settings and try again.";
-      } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
-        errorMessage = "No microphone found. Please connect a microphone and try again.";
-      } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
-        errorMessage = "Microphone is already in use by another application. Please close other apps using the microphone and try again.";
-      } else if (error.name === 'SecurityError') {
-        errorMessage = "Microphone access is blocked for security reasons. Please ensure you're using HTTPS and try again.";
-      }
-      
-      alert(errorMessage);
-    }
-  };
-
-  const requestLocationPermission = async () => {
-    try {
-      if ("geolocation" in navigator) {
-        await new Promise((resolve, reject) => {
-          // Request location permission - this will show the browser's permission prompt
-          navigator.geolocation.getCurrentPosition(
-            (position) => {
-              setLocationPermission("granted");
-              setPermissionsAttempted(true);
-              setTimeout(() => {
-                checkAllPermissionsGranted();
-                resolve();
-              }, 100);
-            },
-            (error) => {
-              console.error("Location permission error:", error);
-              setLocationPermission("denied");
-              setPermissionsAttempted(true);
-              
-              // Provide specific error messages based on error type
-              let errorMessage = "Location permission is required to start the test.";
-              
-              if (error.code === error.PERMISSION_DENIED) {
-                errorMessage = "Location permission was denied. Please allow location access in your browser settings and try again.";
-              } else if (error.code === error.POSITION_UNAVAILABLE) {
-                errorMessage = "Location information is unavailable. Please ensure location services are enabled on your device.";
-              } else if (error.code === error.TIMEOUT) {
-                errorMessage = "Location request timed out. Please try again.";
-              }
-              
-              alert(errorMessage);
-              reject(error);
-            },
-            {
-              enableHighAccuracy: false,
-              timeout: 10000,
-              maximumAge: 0
-            }
-          );
-        });
-      } else {
-        setLocationPermission("denied");
-        setPermissionsAttempted(true);
-        alert("Geolocation is not supported in your browser.");
-      }
-    } catch (error) {
-      setLocationPermission("denied");
-      setPermissionsAttempted(true);
-      console.error("Location permission error:", error);
-      alert("An error occurred while requesting location permission. Please try again.");
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
-      }
-      if (cameraStream) {
-        cameraStream.getTracks().forEach((track) => track.stop());
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (showCameraModal && cameraStream && cameraVideoRef.current) {
-      cameraVideoRef.current.srcObject = cameraStream;
-    }
-  }, [showCameraModal, cameraStream]);
-
-  useEffect(() => {
-    const connectStreamToVideo = () => {
-      if (stream && videoRef.current) {
-        videoRef.current.srcObject = stream;
-
-        videoRef.current.onloadedmetadata = () => {
-        };
-
-        videoRef.current.onplay = () => {
-        };
-
-        videoRef.current.onerror = (e) => {
-          console.error("Video error:", e);
-        };
-        return true;
-      } else {
-("Stream or videoRef not available:", {
-          streamAvailable: !!stream,
-          videoRefAvailable: !!videoRef.current,
-        });
-        return false;
-      }
-    };
-
-    const connected = connectStreamToVideo();
-
-    let interval;
-    if (!connected) {
-      interval = setInterval(() => {
-        const connectedNow = connectStreamToVideo();
-        if (connectedNow) {
-          clearInterval(interval);
-        }
-      }, 500);
-    }
-
-    return () => {
-      if (interval) {
-        clearInterval(interval);
-      }
-    };
-  }, [stream, videoRef]);
-
   const startTest = async () => {
     try {
-      // Check if all permissions are granted before starting
-      if (!permissionsGranted) {
-        alert("Please enable all permissions before starting the test.");
-        return;
-      }
-
       setLoading(true);
 
       // Fetch current server time and browser timezone
@@ -964,14 +496,7 @@ const TakeTest = () => {
 
     const response = await apiRequest(`/assignments/${assignmentId}/start`, {
       method: "POST",
-      body: JSON.stringify({
-        permissions: {
-          camera: cameraPermission,
-          microphone: microphonePermission,
-          location: locationPermission,
-        },
-        otp: otpInput.trim()
-      }),
+      body: JSON.stringify({}),
     });
 
       if (response.alreadyStarted) {
@@ -1012,7 +537,6 @@ const TakeTest = () => {
 
       setTimeRemaining(remainingSeconds);
       setTestStarted(true);
-      setShowPermissionModal(false);
       setLoading(false);
 
       // Request fullscreen mode after test starts
@@ -1168,7 +692,6 @@ const TakeTest = () => {
       console.log('Test allowedTabSwitches:', assignmentData.testId?.allowedTabSwitches);
       setTimeRemaining(remainingSeconds);
       setTestStarted(true);
-      setShowPermissionModal(false);
       setLoading(false);
 
       // Request fullscreen mode when resuming existing test - after all state updates with small delay
@@ -1397,202 +920,6 @@ const TakeTest = () => {
     );
   }
 
-  if (showPermissionModal) {
-    return (
-      <>
-        <div className="permission-modal-mobile min-h-screen bg-slate-900 text-white flex items-center justify-center p-4">
-          <div className="permission-modal-content bg-slate-800 rounded-lg p-8 max-w-md w-full">
-            <h2 className="permission-modal-title text-2xl font-bold mb-6 text-center">Test Permissions</h2>
-
-            <div className="permissions-list space-y-4 mb-6">
-              <div className="permission-item flex items-center justify-between">
-                <span className="permission-label">Camera Access</span>
-                {cameraPermission === "granted" ? (
-                  <button
-                    disabled
-                    className="permission-button permission-button-granted w-40 px-4 py-2 bg-white text-green-600 rounded-md font-semibold flex items-center justify-center gap-2 cursor-default whitespace-nowrap border-2 border-green-600"
-                  >
-                    <span className="text-xl">✓</span>
-                  </button>
-                ) : cameraPermission === "unavailable" ? (
-                  <button
-                    disabled
-                    className="permission-button permission-button-granted w-40 px-4 py-2 bg-white text-blue-600 rounded-md font-semibold flex items-center justify-center gap-2 cursor-default whitespace-nowrap border-2 border-blue-600"
-                  >
-                    <span className="text-xl">N/A</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={requestCameraPermission}
-                    disabled={faceVerifying}
-                    className="permission-button permission-button-action w-40 px-4 py-2 bg-white hover:bg-gray-100 disabled:bg-gray-200 disabled:cursor-not-allowed text-slate-900 rounded-md font-semibold flex items-center justify-center gap-2 whitespace-nowrap border-2 border-slate-300"
-                  >
-                    {faceVerifying ? (
-                      <>
-                        <span className="animate-spin">⟳</span> Verifying...
-                      </>
-                    ) : (
-                      "Capture Image"
-                    )}
-                  </button>
-                )}
-              </div>
-
-              <div className="permission-item flex items-center justify-between">
-                <span className="permission-label">Microphone Access</span>
-                {microphonePermission === "granted" ? (
-                  <button
-                    disabled
-                    className="permission-button permission-button-granted w-40 px-4 py-2 bg-white text-green-600 rounded-md font-semibold flex items-center justify-center gap-2 cursor-default whitespace-nowrap border-2 border-green-600"
-                  >
-                    <span className="text-xl">✓</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={requestMicrophonePermission}
-                    className="permission-button permission-button-action w-40 px-4 py-2 bg-white hover:bg-gray-100 text-slate-900 rounded-md font-semibold whitespace-nowrap border-2 border-slate-300"
-                  >
-                    Enable Microphone
-                  </button>
-                )}
-              </div>
-
-              <div className="permission-item flex items-center justify-between">
-                <span className="permission-label">Location Access</span>
-                {locationPermission === "granted" ? (
-                  <button
-                    disabled
-                    className="permission-button permission-button-granted w-40 px-4 py-2 bg-white text-green-600 rounded-md font-semibold flex items-center justify-center gap-2 cursor-default whitespace-nowrap border-2 border-green-600"
-                  >
-                    <span className="text-xl">✓</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={requestLocationPermission}
-                    className="permission-button permission-button-action w-40 px-4 py-2 bg-white hover:bg-gray-100 text-slate-900 rounded-md font-semibold whitespace-nowrap border-2 border-slate-300"
-                  >
-                    Enable Location
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="mb-4">
-              {permissionsGranted ? (
-                <>
-                  <div className="permission-status-message permission-status-success text-green-400 text-center mb-4">
-                    All permissions granted! Click the button below to start the test.
-                  </div>
-                  <button
-                    onClick={startTest}
-                    className="start-test-button w-full bg-white hover:bg-gray-100 text-slate-900 py-3 rounded-md font-semibold border-2 border-slate-300"
-                  >
-                    Start Test
-                  </button>
-                </>
-              ) : (
-                <div className="permission-status-message permission-status-warning text-yellow-400 text-center mb-4">
-                  Please enable all permissions to start the test.
-                </div>
-              )}
-
-              {!permissionsGranted && (
-                <div className="permission-status-message permission-status-info text-slate-400 text-sm text-center">
-                  All permissions must be enabled before starting the test.
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Camera Modal for Face Verification */}
-        {showCameraModal && (
-          <div className="face-verification-modal fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
-            <div className="face-verification-content bg-slate-800 rounded-lg p-6 max-w-md w-full">
-              <h3 className="face-verification-title text-xl font-bold mb-4 text-center">Face Verification</h3>
-              <p className="face-verification-text text-slate-300 text-sm mb-4 text-center">
-                Please position your face in the camera frame. We need to verify your identity before starting the test.
-              </p>
-              
-              <div className="relative mb-4">
-                <video
-                  ref={cameraVideoRef}
-                  autoPlay
-                  playsInline
-                  className="face-verification-video w-full rounded-lg"
-                  style={{ maxHeight: "400px" }}
-                />
-                <canvas ref={cameraCanvasRef} className="hidden" />
-              </div>
-
-              <div className="face-verification-buttons flex gap-3">
-                <button
-                  onClick={handleCaptureImage}
-                  disabled={faceVerifying}
-                  className="face-verification-button flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white py-2 rounded-md font-semibold"
-                >
-                  {faceVerifying ? "Verifying..." : "Capture & Verify"}
-                </button>
-                <button
-                  onClick={() => {
-                    if (cameraStream) {
-                      cameraStream.getTracks().forEach(track => track.stop());
-                      setCameraStream(null);
-                    }
-                    setShowCameraModal(false);
-                    setFaceVerificationStatus(null);
-                  }}
-                  className="face-verification-button flex-1 bg-slate-600 hover:bg-slate-700 text-white py-2 rounded-md font-semibold"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* No Profile Image Modal */}
-        {showNoProfileImageModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
-            <div className="bg-slate-800 rounded-lg p-6 max-w-md w-full">
-              <div className="text-center mb-6">
-                <div className="mx-auto w-16 h-16 bg-yellow-500 rounded-full flex items-center justify-center mb-4">
-                  <span className="text-3xl">⚠️</span>
-                </div>
-                <h3 className="text-xl font-bold mb-3 text-white">Profile Image Required</h3>
-                <p className="text-slate-300 text-sm mb-2">
-                  To ensure test security and identity verification, you need to upload your profile image first.
-                </p>
-                <p className="text-slate-400 text-sm mb-4">
-                  Your profile image will be used to verify your identity before starting the test. Please upload your photo in the profile section to continue.
-                </p>
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setShowNoProfileImageModal(false);
-                    navigate("/student/profile");
-                  }}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-md font-semibold"
-                >
-                  Go to Profile Section
-                </button>
-                <button
-                  onClick={() => {
-                    setShowNoProfileImageModal(false);
-                  }}
-                  className="flex-1 bg-slate-600 hover:bg-slate-700 text-white py-3 rounded-md font-semibold"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </>
-    );
-  }
 
   if (!testStarted || !test) {
     return (
@@ -1638,17 +965,6 @@ const TakeTest = () => {
             </p>
           </div>
 
-          {isVideoActive && (
-            <div className="flex-shrink-0">
-              <video
-                ref={videoRef}
-                autoPlay
-                muted
-                playsInline
-                className="w-40 h-auto rounded-lg border border-slate-600"
-              />
-            </div>
-          )}
 
           <div className="text-right">
             <div className="text-2xl font-mono bg-slate-700 px-4 py-2 rounded-md text-white">

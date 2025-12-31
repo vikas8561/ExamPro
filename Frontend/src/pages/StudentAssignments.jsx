@@ -253,6 +253,18 @@ const StudentAssignments = () => {
       
       // Handle paginated response
       if (data && data.assignments && data.pagination) {
+        // Debug: Log what we received
+        const statusCounts = data.assignments.reduce((acc, a) => {
+          acc[a.status] = (acc[a.status] || 0) + 1;
+          return acc;
+        }, {});
+        const typeCounts = data.assignments.reduce((acc, a) => {
+          const type = a.testId?.type || 'unknown';
+          acc[type] = (acc[type] || 0) + 1;
+          return acc;
+        }, {});
+        console.log(`📋 Received ${data.assignments.length} assignments - Status:`, statusCounts, 'Types:', typeCounts);
+        
         setAssignments(data.assignments);
         setCurrentPage(data.pagination.currentPage);
         setTotalPages(data.pagination.totalPages);
@@ -364,11 +376,12 @@ const StudentAssignments = () => {
 
   const filteredAssignments = assignments.filter((assignment) => {
     // Exclude coding tests from assigned tests section
+    // Coding tests should only appear in the "Coding Tests" section
     if (assignment.testId?.type === 'coding') {
       return false;
     }
 
-    // Status filter
+    // Status filter - show all statuses when filter is 'all'
     if (statusFilter !== 'all' && assignment.status !== statusFilter) {
       return false;
     }
@@ -393,27 +406,37 @@ const StudentAssignments = () => {
       assignment.status.toLowerCase().includes(term)
     );
   }).sort((a, b) => {
-    // Sort so that currently assigned tests appear first, then by date (newest first)
-    // Currently assigned means status "Assigned" or "In Progress" and test is active (not past deadline)
-    const isActive = (assignment) => {
-      if (!assignment.startTime || !assignment.duration) return false;
-      const now = new Date();
-      const start = new Date(assignment.startTime);
-      const end = new Date(start.getTime() + assignment.duration * 60000);
-      return now >= start && now <= end;
-    };
+    // Sort by date and time order (newest first)
+    // Primary sort: startTime (when test starts)
+    // Secondary sort: createdAt (when assignment was created)
+    const aStart = new Date(a.startTime || a.createdAt || 0);
+    const bStart = new Date(b.startTime || b.createdAt || 0);
 
-    const aActive = (a.status === "Assigned" || a.status === "In Progress") && isActive(a);
-    const bActive = (b.status === "Assigned" || b.status === "In Progress") && isActive(b);
+    // If startTime is the same, sort by createdAt
+    if (aStart.getTime() === bStart.getTime()) {
+      const aCreated = new Date(a.createdAt || 0);
+      const bCreated = new Date(b.createdAt || 0);
+      return bCreated - aCreated; // Newest first
+    }
 
-    if (aActive && !bActive) return -1;
-    if (!aActive && bActive) return 1;
-
-    // If both active or both not active, sort by startTime descending (newest first)
-    const aStart = new Date(a.startTime || 0);
-    const bStart = new Date(b.startTime || 0);
-    return bStart - aStart;
+    return bStart - aStart; // Newest first
   });
+
+  // Debug: Log filtered results
+  useEffect(() => {
+    if (filteredAssignments.length > 0 || assignments.length > 0) {
+      const filteredStatusCounts = filteredAssignments.reduce((acc, a) => {
+        acc[a.status] = (acc[a.status] || 0) + 1;
+        return acc;
+      }, {});
+      const filteredTypeCounts = filteredAssignments.reduce((acc, a) => {
+        const type = a.testId?.type || 'unknown';
+        acc[type] = (acc[type] || 0) + 1;
+        return acc;
+      }, {});
+      console.log(`🔍 Filtered ${filteredAssignments.length}/${assignments.length} assignments - Status:`, filteredStatusCounts, 'Types:', filteredTypeCounts, 'Filters:', { statusFilter, typeFilter, subjectFilter, searchTerm });
+    }
+  }, [filteredAssignments, assignments, statusFilter, typeFilter, subjectFilter, searchTerm]);
 
   // Removed blocking loading screen - UI loads immediately
 

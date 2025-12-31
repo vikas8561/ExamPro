@@ -108,13 +108,20 @@ router.get("/student", authenticateToken, async (req, res, next) => {
           select: "title type instructions timeLimit subject" // No match filter - we already filtered with $in
         })
         .populate("mentorId", "name email")
-        .sort({ deadline: 1 })
+        .sort({ startTime: -1, createdAt: -1 }) // Sort by startTime descending (newest first), then by createdAt
         .limit(limit)
         .skip(skip)
         .lean()
     ]);
     const parallelTime = Date.now() - parallelStart;
     console.log(`⏱️ Parallel queries (count + assignments): ${parallelTime}ms - Found ${validCount} total, ${assignments.length} assignments`);
+    
+    // Debug: Log assignment status breakdown
+    const statusBreakdown = assignments.reduce((acc, a) => {
+      acc[a.status] = (acc[a.status] || 0) + 1;
+      return acc;
+    }, {});
+    console.log(`📊 Assignment status breakdown:`, statusBreakdown);
     
     // Step 4: Get question counts for tests (single aggregation query)
     const questionCountStart = Date.now();
@@ -189,6 +196,14 @@ router.get("/student", authenticateToken, async (req, res, next) => {
 
     // Prepare response
     const responseStart = Date.now();
+    
+    // Debug: Log final assignment status breakdown after auto-start
+    const finalStatusBreakdown = assignmentsWithQuestionCount.reduce((acc, a) => {
+      acc[a.status] = (acc[a.status] || 0) + 1;
+      return acc;
+    }, {});
+    console.log(`📊 Final assignment status breakdown (after auto-start):`, finalStatusBreakdown);
+    
     const responseData = {
       assignments: assignmentsWithQuestionCount,
       pagination: {
@@ -301,7 +316,7 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
     const assignment = await Assignment.findById(req.params.id)
       .populate({
         path: "testId",
-        select: "title type instructions timeLimit allowedTabSwitches questions otp",
+        select: "title type instructions timeLimit allowedTabSwitches questions",
         populate: {
           path: "questions",
           select: "kind text options answer guidelines examples points"
@@ -437,12 +452,12 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
 
 router.post("/:id/start", authenticateToken, async (req, res, next) => {
   try {
-    const { permissions, otp } = req.body;
+    const { permissions } = req.body;
 
     const assignment = await Assignment.findById(req.params.id)
       .populate({
         path: "testId",
-        select: "title type instructions timeLimit allowedTabSwitches questions otp",
+        select: "title type instructions timeLimit allowedTabSwitches questions",
         populate: {
           path: "questions",
           select: "kind text options answer guidelines examples points"
@@ -529,24 +544,6 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
       };
     }
 
-    // Check if OTP is required
-    // Skip OTP if user is Admin/Mentor OR if all permissions are granted OR if it's a coding test
-    const hasRolePermissions = req.user.role === "Admin" || req.user.role === "Mentor";
-    const requiresOtp = assignment.testId.otp && !hasRolePermissions && !hasAllPermissionsGranted && !isCodingTest;
-
-    // console.log(`User role: ${req.user.role}, hasRolePermissions: ${hasRolePermissions}, hasAllPermissionsGranted: ${hasAllPermissionsGranted}, test OTP: ${assignment.testId.otp}, requiresOtp: ${requiresOtp}`);
-
-    if (requiresOtp) {
-      if (!otp) {
-        return res.status(400).json({ message: "OTP is required to start this test" });
-      }
-
-      // Verify OTP (this would need to be implemented based on your OTP system)
-      if (otp !== assignment.testId.otp) {
-        return res.status(400).json({ message: "Invalid OTP" });
-      }
-    }
-
     // Store timeLimit before saving (populated testId might be lost after save)
     let timeLimitMinutes = assignment.testId?.timeLimit;
     
@@ -627,7 +624,7 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
     const populatedAssignment = await Assignment.findById(assignment._id)
       .populate({
         path: "testId",
-        select: "title type instructions timeLimit allowedTabSwitches questions otp"
+        select: "title type instructions timeLimit allowedTabSwitches questions"
       });
 
     res.json({
