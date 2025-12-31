@@ -375,7 +375,10 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
         select: "title type instructions timeLimit allowedTabSwitches questions",
         populate: {
           path: "questions",
-          select: "kind text options answer guidelines examples points"
+          // Include answer only for admins, not for students
+          select: req.user.role === "admin" 
+            ? "kind text options answer guidelines examples points"
+            : "kind text options guidelines examples points"
         }
       })
       .populate("userId", "name email")
@@ -388,6 +391,14 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
     // Check if user has access to this assignment
     if (req.user.role !== "admin" && assignment.userId && assignment.userId._id && assignment.userId._id.toString() !== req.user.userId) {
       return res.status(403).json({ message: "Access denied" });
+    }
+
+    // Remove answers from questions if user is a student
+    if (req.user.role !== "admin" && assignment.testId && assignment.testId.questions) {
+      assignment.testId.questions = assignment.testId.questions.map(q => {
+        const { answer, answers, ...questionWithoutAnswer } = q.toObject ? q.toObject() : q;
+        return questionWithoutAnswer;
+      });
     }
 
     res.json(assignment);
@@ -516,7 +527,7 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
         select: "title type instructions timeLimit allowedTabSwitches questions",
         populate: {
           path: "questions",
-          select: "kind text options answer guidelines examples points"
+          select: "kind text options guidelines examples points" // REMOVED 'answer' - students should not see answers!
         }
       });
 
@@ -546,9 +557,18 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
         timeRemaining = Math.max(0, Math.floor(remainingMs / 1000)); // Convert to seconds
       }
       
+      // Remove answers from questions before sending to student
+      const testData = assignment.testId;
+      if (testData && testData.questions) {
+        testData.questions = testData.questions.map(q => {
+          const { answer, answers, ...questionWithoutAnswer } = q.toObject ? q.toObject() : q;
+          return questionWithoutAnswer;
+        });
+      }
+      
       return res.status(200).json({
         assignment,
-        test: assignment.testId,
+        test: testData,
         message: "Test already started",
         alreadyStarted: true,
         timeRemaining
@@ -676,16 +696,29 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
       'timeRemaining (minutes)': Math.floor(timeRemaining / 60)
     });
 
-    // Ensure testId is populated in response
+    // Ensure testId is populated in response (without answers for students)
     const populatedAssignment = await Assignment.findById(assignment._id)
       .populate({
         path: "testId",
-        select: "title type instructions timeLimit allowedTabSwitches questions"
+        select: "title type instructions timeLimit allowedTabSwitches questions",
+        populate: {
+          path: "questions",
+          select: "kind text options guidelines examples points" // REMOVED 'answer' - students should not see answers!
+        }
       });
+
+    // Remove answers from questions before sending to student
+    const testData = populatedAssignment.testId || assignment.testId;
+    if (testData && testData.questions) {
+      testData.questions = testData.questions.map(q => {
+        const { answer, answers, ...questionWithoutAnswer } = q.toObject ? q.toObject() : q;
+        return questionWithoutAnswer;
+      });
+    }
 
     res.json({
       assignment: populatedAssignment,
-      test: populatedAssignment.testId || assignment.testId,
+      test: testData,
       message: "Test started successfully",
       timeRemaining: timeRemaining
     });
@@ -780,8 +813,6 @@ router.post("/assign-all", authenticateToken, requireRole("admin"), async (req, 
         assignments.push(assignment);
       }
     }
-
-    await Promise.all(assignments);
 
     // Update test status from "Draft" to "Active" when assigned to students
     // Refetch test to ensure we have the latest status
@@ -894,8 +925,6 @@ router.post("/assign-manual", authenticateToken, requireRole("admin"), async (re
       }
     }
 
-    await Promise.all(assignments);
-
     // Update test status from "Draft" to "Active" when assigned to students
     // Refetch test to ensure we have the latest status
     const updatedTest = await Test.findById(testId);
@@ -939,40 +968,96 @@ const isSUStudent = (email) => {
 
 // Assign test to RU students (admin only)
 router.post("/assign-ru", authenticateToken, requireRole("admin"), async (req, res, next) => {
+  console.log('📥 POST /assignments/assign-ru - Request received');
   try {
     const { testId, startTime, duration, mentorId } = req.body;
+    console.log('📋 Request body:', { testId, startTime, duration, mentorId });
 
     if (!testId || !startTime || !duration) {
+      console.log('❌ Missing required fields');
       return res.status(400).json({ message: "testId, startTime, and duration are required" });
     }
 
     // Get test to validate timeLimit
+    console.log('🔍 Fetching test:', testId);
     const test = await Test.findById(testId);
     if (!test) {
+      console.log('❌ Test not found:', testId);
       return res.status(404).json({ message: "Test not found" });
     }
 
     // Validate duration >= timeLimit
     if (Number(duration) < test.timeLimit) {
+      console.log(`❌ Duration validation failed: ${duration} < ${test.timeLimit}`);
       return res.status(400).json({
         message: `Duration (${duration} minutes) must be greater than or equal to test time limit (${test.timeLimit} minutes)`
       });
     }
 
     // Get RU students (students with studentCategory = "RU")
-    const ruStudents = await User.find({
-      role: "Student",
-      studentCategory: "RU"
-    });
+    console.log('🔍 Fetching RU students...');
+    let ruStudents;
+    try {
+      // Add a timeout wrapper to prevent indefinite hanging
+      const queryPromise = User.find({
+        role: "Student",
+        studentCategory: "RU"
+      })
+      .select("_id name email") // Only select needed fields for performance
+      .lean() // Use lean() for better performance
+      .maxTimeMS(10000); // 10 second timeout
+      
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Query timeout: Fetching RU students took longer than 15 seconds')), 15000);
+      });
+      
+      ruStudents = await Promise.race([queryPromise, timeoutPromise]);
+      console.log(`✅ Found ${ruStudents.length} RU students`);
+    } catch (queryError) {
+      console.error('❌ Error fetching RU students:', queryError);
+      console.error('📍 Error details:', {
+        message: queryError.message,
+        name: queryError.name,
+        code: queryError.code
+      });
+      
+      // If it's a timeout or hint error, try a simpler query
+      if (queryError.message && (queryError.message.includes('timeout') || queryError.message.includes('hint'))) {
+        console.log('⚠️ Retrying with simpler query...');
+        try {
+          ruStudents = await User.find({
+            role: "Student",
+            studentCategory: "RU"
+          })
+          .select("_id")
+          .lean()
+          .maxTimeMS(10000)
+          .limit(10000); // Add a safety limit
+          console.log(`✅ Found ${ruStudents.length} RU students (simplified query)`);
+        } catch (retryError) {
+          console.error('❌ Retry also failed:', retryError);
+          return res.status(500).json({ 
+            message: "Failed to fetch RU students. Please try again or contact support.",
+            error: process.env.NODE_ENV === 'development' ? retryError.message : undefined
+          });
+        }
+      } else {
+        throw queryError;
+      }
+    }
 
     if (!ruStudents.length) {
+      console.log('❌ No RU students found');
       return res.status(404).json({ message: "No RU students found" });
     }
 
     // Create assignments for RU students
     const assignments = [];
+    console.log('🔍 Fetching existing assignments...');
     const existingAssignments = await Assignment.find({ testId });
+    console.log(`✅ Found ${existingAssignments.length} existing assignments`);
 
+    console.log('📝 Creating assignments for RU students...');
     for (const student of ruStudents) {
       const existingAssignment = existingAssignments.find(
         assignment => assignment.userId.toString() === student._id.toString()
@@ -997,8 +1082,7 @@ router.post("/assign-ru", authenticateToken, requireRole("admin"), async (req, r
         assignments.push(assignment);
       }
     }
-
-    await Promise.all(assignments);
+    console.log(`✅ Created ${assignments.length} new assignments`);
 
     // Update test status from "Draft" to "Active" when assigned to students
     // Refetch test to ensure we have the latest status
@@ -1006,9 +1090,11 @@ router.post("/assign-ru", authenticateToken, requireRole("admin"), async (req, r
     if (updatedTest && updatedTest.status === "Draft") {
       updatedTest.status = "Active";
       await updatedTest.save();
+      console.log('✅ Updated test status to Active');
     }
 
     if (assignments.length === 0) {
+      console.log('ℹ️ All RU students already have this assignment');
       return res.status(200).json({
         message: "All RU students already have this assignment",
         assignedCount: 0
@@ -1016,20 +1102,49 @@ router.post("/assign-ru", authenticateToken, requireRole("admin"), async (req, r
     }
 
     // Emit real-time update to specific student for each assignment
-    const io = req.app.get('io');
-    assignments.forEach(assignment => {
-      io.to(assignment.userId.toString()).emit('assignmentCreated', {
-        userId: assignment.userId.toString(),
-        assignment: assignment
-      });
-    });
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        console.log('📡 Emitting socket.io events...');
+        assignments.forEach(assignment => {
+          try {
+            // Convert Mongoose document to plain object for socket.io
+            const assignmentObj = assignment.toObject ? assignment.toObject() : assignment;
+            io.to(assignment.userId.toString()).emit('assignmentCreated', {
+              userId: assignment.userId.toString(),
+              assignment: assignmentObj
+            });
+          } catch (emitError) {
+            console.error('❌ Error emitting assignmentCreated event:', emitError);
+            // Continue with other assignments even if one fails
+          }
+        });
+        console.log('✅ Socket.io events emitted');
+      } else {
+        console.log('⚠️ Socket.io not available, skipping emit');
+      }
+    } catch (socketError) {
+      console.error('❌ Error with socket.io:', socketError);
+      // Continue even if socket.io fails - assignment creation was successful
+    }
 
-    res.status(201).json({
-      message: `Successfully assigned to ${assignments.length} RU students`,
-      assignedCount: assignments.length
-    });
+    console.log('✅ Sending success response');
+    if (!res.headersSent) {
+      res.status(201).json({
+        message: `Successfully assigned to ${assignments.length} RU students`,
+        assignedCount: assignments.length
+      });
+    } else {
+      console.warn('⚠️ Response already sent, skipping');
+    }
   } catch (error) {
-    next(error);
+    console.error('❌ Error in /assign-ru route:', error);
+    console.error('📍 Error stack:', error.stack);
+    if (!res.headersSent) {
+      next(error);
+    } else {
+      console.error('❌ Response already sent, cannot send error response');
+    }
   }
 });
 
@@ -1093,8 +1208,6 @@ router.post("/assign-su", authenticateToken, requireRole("admin"), async (req, r
         assignments.push(assignment);
       }
     }
-
-    await Promise.all(assignments);
 
     // Update test status from "Draft" to "Active" when assigned to students
     // Refetch test to ensure we have the latest status
