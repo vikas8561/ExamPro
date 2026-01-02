@@ -5,7 +5,7 @@ const Assignment = require("../models/Assignment");
 const Test = require("../models/Test");
 const User = require("../models/User");
 const { authenticateToken, requireRole } = require("../middleware/auth");
-const { getCachedTestIds, setCachedTestIds } = require("../utils/testCache");
+const { getCachedTestIds, setCachedTestIds, invalidateTestCache } = require("../utils/testCache");
 
 // Get all assignments (admin only) - ULTRA FAST VERSION
 router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) => {
@@ -511,6 +511,9 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
       assignment: populatedAssignment
     });
 
+    // Invalidate test cache so students see the newly assigned test immediately
+    invalidateTestCache();
+
     res.status(201).json(populatedAssignment);
   } catch (error) {
     next(error);
@@ -838,6 +841,9 @@ router.post("/assign-all", authenticateToken, requireRole("admin"), async (req, 
       });
     });
 
+    // Invalidate test cache so students see the newly assigned test immediately
+    invalidateTestCache();
+
     res.status(201).json({
       message: `Successfully assigned to ${assignments.length} students`,
       assignedCount: assignments.length
@@ -948,6 +954,9 @@ router.post("/assign-manual", authenticateToken, requireRole("admin"), async (re
         assignment: assignment
       });
     });
+
+    // Invalidate test cache so students see the newly assigned test immediately
+    invalidateTestCache();
 
     res.status(201).json({
       message: `Successfully assigned to ${assignments.length} students`,
@@ -1128,6 +1137,10 @@ router.post("/assign-ru", authenticateToken, requireRole("admin"), async (req, r
       // Continue even if socket.io fails - assignment creation was successful
     }
 
+    // Invalidate test cache so students see the newly assigned test immediately
+    invalidateTestCache();
+    console.log('🗑️ Test cache invalidated after assignment creation');
+
     console.log('✅ Sending success response');
     if (!res.headersSent) {
       res.status(201).json({
@@ -1150,40 +1163,96 @@ router.post("/assign-ru", authenticateToken, requireRole("admin"), async (req, r
 
 // Assign test to SU students (admin only)
 router.post("/assign-su", authenticateToken, requireRole("admin"), async (req, res, next) => {
+  console.log('📥 POST /assignments/assign-su - Request received');
   try {
     const { testId, startTime, duration, mentorId } = req.body;
+    console.log('📋 Request body:', { testId, startTime, duration, mentorId });
 
     if (!testId || !startTime || !duration) {
+      console.log('❌ Missing required fields');
       return res.status(400).json({ message: "testId, startTime, and duration are required" });
     }
 
     // Get test to validate timeLimit
+    console.log('🔍 Fetching test:', testId);
     const test = await Test.findById(testId);
     if (!test) {
+      console.log('❌ Test not found:', testId);
       return res.status(404).json({ message: "Test not found" });
     }
 
     // Validate duration >= timeLimit
     if (Number(duration) < test.timeLimit) {
+      console.log(`❌ Duration validation failed: ${duration} < ${test.timeLimit}`);
       return res.status(400).json({
         message: `Duration (${duration} minutes) must be greater than or equal to test time limit (${test.timeLimit} minutes)`
       });
     }
 
     // Get SU students (students with studentCategory = "SU")
-    const suStudents = await User.find({
-      role: "Student",
-      studentCategory: "SU"
-    });
+    console.log('🔍 Fetching SU students...');
+    let suStudents;
+    try {
+      // Add a timeout wrapper to prevent indefinite hanging
+      const queryPromise = User.find({
+        role: "Student",
+        studentCategory: "SU"
+      })
+      .select("_id name email") // Only select needed fields for performance
+      .lean() // Use lean() for better performance
+      .maxTimeMS(10000); // 10 second timeout
+      
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Query timeout: Fetching SU students took longer than 15 seconds')), 15000);
+      });
+      
+      suStudents = await Promise.race([queryPromise, timeoutPromise]);
+      console.log(`✅ Found ${suStudents.length} SU students`);
+    } catch (queryError) {
+      console.error('❌ Error fetching SU students:', queryError);
+      console.error('📍 Error details:', {
+        message: queryError.message,
+        name: queryError.name,
+        code: queryError.code
+      });
+      
+      // If it's a timeout or hint error, try a simpler query
+      if (queryError.message && (queryError.message.includes('timeout') || queryError.message.includes('hint'))) {
+        console.log('⚠️ Retrying with simpler query...');
+        try {
+          suStudents = await User.find({
+            role: "Student",
+            studentCategory: "SU"
+          })
+          .select("_id")
+          .lean()
+          .maxTimeMS(10000)
+          .limit(10000); // Add a safety limit
+          console.log(`✅ Found ${suStudents.length} SU students (simplified query)`);
+        } catch (retryError) {
+          console.error('❌ Retry also failed:', retryError);
+          return res.status(500).json({ 
+            message: "Failed to fetch SU students. Please try again or contact support.",
+            error: process.env.NODE_ENV === 'development' ? retryError.message : undefined
+          });
+        }
+      } else {
+        throw queryError;
+      }
+    }
 
     if (!suStudents.length) {
+      console.log('❌ No SU students found');
       return res.status(404).json({ message: "No SU students found" });
     }
 
     // Create assignments for SU students
     const assignments = [];
+    console.log('🔍 Fetching existing assignments...');
     const existingAssignments = await Assignment.find({ testId });
+    console.log(`✅ Found ${existingAssignments.length} existing assignments`);
 
+    console.log('📝 Creating assignments for SU students...');
     for (const student of suStudents) {
       const existingAssignment = existingAssignments.find(
         assignment => assignment.userId.toString() === student._id.toString()
@@ -1208,6 +1277,7 @@ router.post("/assign-su", authenticateToken, requireRole("admin"), async (req, r
         assignments.push(assignment);
       }
     }
+    console.log(`✅ Created ${assignments.length} new assignments`);
 
     // Update test status from "Draft" to "Active" when assigned to students
     // Refetch test to ensure we have the latest status
@@ -1215,9 +1285,11 @@ router.post("/assign-su", authenticateToken, requireRole("admin"), async (req, r
     if (updatedTest && updatedTest.status === "Draft") {
       updatedTest.status = "Active";
       await updatedTest.save();
+      console.log('✅ Updated test status to Active');
     }
 
     if (assignments.length === 0) {
+      console.log('ℹ️ All SU students already have this assignment');
       return res.status(200).json({
         message: "All SU students already have this assignment",
         assignedCount: 0
@@ -1225,20 +1297,53 @@ router.post("/assign-su", authenticateToken, requireRole("admin"), async (req, r
     }
 
     // Emit real-time update to specific student for each assignment
-    const io = req.app.get('io');
-    assignments.forEach(assignment => {
-      io.to(assignment.userId.toString()).emit('assignmentCreated', {
-        userId: assignment.userId.toString(),
-        assignment: assignment
-      });
-    });
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        console.log('📡 Emitting socket.io events...');
+        assignments.forEach(assignment => {
+          try {
+            // Convert Mongoose document to plain object for socket.io
+            const assignmentObj = assignment.toObject ? assignment.toObject() : assignment;
+            io.to(assignment.userId.toString()).emit('assignmentCreated', {
+              userId: assignment.userId.toString(),
+              assignment: assignmentObj
+            });
+          } catch (emitError) {
+            console.error('❌ Error emitting assignmentCreated event:', emitError);
+            // Continue with other assignments even if one fails
+          }
+        });
+        console.log('✅ Socket.io events emitted');
+      } else {
+        console.log('⚠️ Socket.io not available, skipping emit');
+      }
+    } catch (socketError) {
+      console.error('❌ Error with socket.io:', socketError);
+      // Continue even if socket.io fails - assignment creation was successful
+    }
 
-    res.status(201).json({
-      message: `Successfully assigned to ${assignments.length} SU students`,
-      assignedCount: assignments.length
-    });
+    // Invalidate test cache so students see the newly assigned test immediately
+    invalidateTestCache();
+    console.log('🗑️ Test cache invalidated after assignment creation');
+
+    console.log('✅ Sending success response');
+    if (!res.headersSent) {
+      res.status(201).json({
+        message: `Successfully assigned to ${assignments.length} SU students`,
+        assignedCount: assignments.length
+      });
+    } else {
+      console.warn('⚠️ Response already sent, skipping');
+    }
   } catch (error) {
-    next(error);
+    console.error('❌ Error in /assign-su route:', error);
+    console.error('📍 Error stack:', error.stack);
+    if (!res.headersSent) {
+      next(error);
+    } else {
+      console.error('❌ Response already sent, cannot send error response');
+    }
   }
 });
 
