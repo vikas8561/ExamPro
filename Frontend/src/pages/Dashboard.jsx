@@ -37,17 +37,45 @@ export default function Dashboard() {
           }),
         ]);
 
-        const [testsData, usersData, reviewsData] = await Promise.all([
-          testsResponse.json(),
-          usersResponse.json(),
-          reviewsResponse.json(),
-        ]);
+        // Check if responses are ok before parsing
+        let testsData = [];
+        let usersData = [];
+        let reviewsData = [];
 
-        setTests(testsData.tests || testsData || []);
-        setUsers(usersData || []);
-        setReviews(reviewsData || []);
+        if (testsResponse.ok) {
+          const data = await testsResponse.json();
+          testsData = Array.isArray(data.tests) ? data.tests : (Array.isArray(data) ? data : []);
+        } else {
+          console.warn(`Failed to fetch tests: ${testsResponse.status} ${testsResponse.statusText}`);
+          if (testsResponse.status === 403) {
+            console.warn("Access denied to tests endpoint - user may not have admin role");
+          }
+        }
+
+        if (usersResponse.ok) {
+          const data = await usersResponse.json();
+          usersData = Array.isArray(data) ? data : (Array.isArray(data.users) ? data.users : []);
+        } else {
+          console.warn(`Failed to fetch users: ${usersResponse.status} ${usersResponse.statusText}`);
+        }
+
+        if (reviewsResponse.ok) {
+          const data = await reviewsResponse.json();
+          reviewsData = Array.isArray(data) ? data : (Array.isArray(data.reviews) ? data.reviews : []);
+        } else {
+          console.warn(`Failed to fetch reviews: ${reviewsResponse.status} ${reviewsResponse.statusText}`);
+        }
+
+        // Ensure all are arrays before setting state
+        setTests(Array.isArray(testsData) ? testsData : []);
+        setUsers(Array.isArray(usersData) ? usersData : []);
+        setReviews(Array.isArray(reviewsData) ? reviewsData : []);
       } catch (err) {
         console.error("Error fetching dashboard data:", err);
+        // Set empty arrays on error to prevent filter errors
+        setTests([]);
+        setUsers([]);
+        setReviews([]);
       } finally {
         setLoading(false);
       }
@@ -56,8 +84,9 @@ export default function Dashboard() {
     fetchDashboardData();
   }, []);
 
-  const activeTestsCount = tests.filter((t) => t.status === "Active").length;
-  const pendingReviewsCount = reviews.filter((r) => r.status === "Pending").length;
+  // Ensure tests and reviews are arrays before filtering
+  const activeTestsCount = Array.isArray(tests) ? tests.filter((t) => t && t.status === "Active").length : 0;
+  const pendingReviewsCount = Array.isArray(reviews) ? reviews.filter((r) => r && r.status === "Pending").length : 0;
 
   return (
     <div
@@ -302,7 +331,7 @@ export default function Dashboard() {
           <div className="max-h-72 overflow-y-auto">
             <table className="w-full">
               <tbody>
-                {tests.slice(0, 10).map((t) => (
+                {Array.isArray(tests) && tests.slice(0, 10).map((t) => (
                   <tr
                     key={t._id}
                     className="border-t"
