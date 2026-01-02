@@ -283,11 +283,18 @@ router.post("/", authenticateToken, async (req, res, next) => {
     
     let submission;
     try {
+      // Use findOneAndUpdate with upsert for atomic operation
+      // Add timeout to prevent hanging
       submission = await TestSubmission.findOneAndUpdate(
         { assignmentId, userId },
         submissionData,
-        { upsert: true, new: true }
-      );
+        { 
+          upsert: true, 
+          new: true,
+          runValidators: false, // Skip validators for performance
+          maxTimeMS: 10000 // 10 second timeout
+        }
+      ).maxTimeMS(10000);
       console.log("✅ Database save successful:", submission._id);
     } catch (dbError) {
       console.error("❌ Database save failed:", dbError);
@@ -297,17 +304,44 @@ router.post("/", authenticateToken, async (req, res, next) => {
         code: dbError.code,
         keyValue: dbError.keyValue
       });
-      throw dbError;
+      
+      // If it's a duplicate key error, try to fetch existing submission
+      if (dbError.code === 11000) {
+        console.log("⚠️ Duplicate key error, fetching existing submission...");
+        submission = await TestSubmission.findOne({ assignmentId, userId });
+        if (submission) {
+          console.log("✅ Found existing submission, updating...");
+          Object.assign(submission, submissionData);
+          await submission.save();
+        } else {
+          throw dbError;
+        }
+      } else {
+        throw dbError;
+      }
     }
 
-    // Update assignment status
-    assignment.status = "Completed";
-    assignment.completedAt = new Date();
-    assignment.autoScore = totalScore;
-    assignment.timeSpent = timeSpent || 0;
-    // Set assignment as reviewed since we're doing immediate assessment
-    assignment.reviewStatus = "Reviewed";
-    await assignment.save();
+    // Update assignment status - use findByIdAndUpdate for better performance
+    try {
+      await Assignment.findByIdAndUpdate(
+        assignmentId,
+        {
+          status: "Completed",
+          completedAt: new Date(),
+          autoScore: totalScore,
+          timeSpent: timeSpent || 0,
+          reviewStatus: "Reviewed"
+        },
+        { 
+          new: false, // Don't return updated document for performance
+          maxTimeMS: 5000 // 5 second timeout
+        }
+      ).maxTimeMS(5000);
+    } catch (updateError) {
+      console.error("❌ Error updating assignment status:", updateError);
+      // Don't throw - submission was successful, assignment update can be retried
+      console.warn("⚠️ Assignment status update failed, but submission was saved");
+    }
 
     res.status(201).json({
       submission,

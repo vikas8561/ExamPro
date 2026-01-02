@@ -70,15 +70,33 @@ const apiRequest = async (endpoint, options = {}) => {
     const fetchStart = Date.now();
     
     // Add keep-alive and other performance optimizations
+    // Increase timeout for assignment operations (60 seconds)
+    const isAssignmentOperation = endpoint.includes('/assignments/assign-');
+    const timeout = isAssignmentOperation ? 60000 : 30000; // 60s for assignments, 30s for others
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
     const optimizedConfig = {
       ...config,
+      signal: controller.signal,
       keepalive: true, // Keep connection alive for faster subsequent requests
       cache: 'no-cache', // Don't cache to avoid stale data
       credentials: 'include', // Include credentials for CORS
     };
     
     console.log(`🌐 Starting fetch to ${endpoint} at ${new Date().toISOString()}`);
-    const response = await fetch(url, optimizedConfig);
+    let response;
+    try {
+      response = await fetch(url, optimizedConfig);
+      clearTimeout(timeoutId);
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        throw new Error(`Request timeout: Operation took longer than ${timeout/1000} seconds. Please try again.`);
+      }
+      throw error;
+    }
     const fetchTime = Date.now() - fetchStart;
     
     console.log(`📥 Fetch completed in ${fetchTime}ms - Status: ${response.status}, Headers:`, {

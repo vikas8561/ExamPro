@@ -39,22 +39,44 @@ const Proctoring = forwardRef(({
   const fullscreenTimeoutRef = useRef(null);
 
 
-  // Request fullscreen mode
+  // Request fullscreen mode with better error handling
   const requestFullscreen = useCallback(async () => {
     try {
+      // Check if already in fullscreen
+      const isAlreadyFullscreen = !!(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.msFullscreenElement
+      );
+      
+      if (isAlreadyFullscreen) {
+        console.log("Already in fullscreen mode");
+        return;
+      }
+
+      // Try standard fullscreen API first
       if (document.documentElement.requestFullscreen) {
         await document.documentElement.requestFullscreen();
+        console.log("✅ Entered fullscreen mode (standard API)");
       } else if (document.documentElement.webkitRequestFullscreen) {
         // Safari
         await document.documentElement.webkitRequestFullscreen();
+        console.log("✅ Entered fullscreen mode (webkit API)");
       } else if (document.documentElement.msRequestFullscreen) {
         // IE/Edge
         await document.documentElement.msRequestFullscreen();
+        console.log("✅ Entered fullscreen mode (ms API)");
       } else {
-        console.warn("Fullscreen API not supported in this browser");
+        console.warn("⚠️ Fullscreen API not supported in this browser");
       }
     } catch (error) {
-      console.error("Failed to enter fullscreen mode:", error);
+      // Common error: user interaction required
+      if (error.name === 'NotAllowedError' || error.message.includes('user gesture')) {
+        console.warn("⚠️ Fullscreen requires user interaction. It will be requested when user interacts with the page.");
+        // Don't throw - we'll retry later
+      } else {
+        console.error("❌ Failed to enter fullscreen mode:", error);
+      }
       // Continue with test even if fullscreen fails
     }
   }, []);

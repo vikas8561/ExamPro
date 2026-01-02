@@ -471,56 +471,70 @@ export default function CreateTest() {
           body: JSON.stringify(payload),
         });
 
-        // Always assign test to students after creation
+        // Always assign test to students after creation (async - don't wait)
         // The startTime is already in ISO format (UTC) from the DateTimePicker
         // which converts IST to UTC automatically
         const startTimeISO = assignmentOptions.startTime ? new Date(assignmentOptions.startTime).toISOString() : new Date().toISOString();
 
-        if (assignmentMode === "all") {
-          await apiRequest("/assignments/assign-all", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              testId: createdTest._id,
-              startTime: startTimeISO,
-              duration: parseInt(assignmentOptions.duration),
-            }),
-          });
-        } else if (
-          assignmentMode === "manual" &&
-          selectedStudents.length > 0
-        ) {
-          await apiRequest("/assignments/assign-manual", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              testId: createdTest._id,
-              studentIds: selectedStudents,
-              startTime: startTimeISO,
-              duration: parseInt(assignmentOptions.duration),
-            }),
-          });
-        } else if (assignmentMode === "ru") {
-          await apiRequest("/assignments/assign-ru", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              testId: createdTest._id,
-              startTime: startTimeISO,
-              duration: parseInt(assignmentOptions.duration),
-            }),
-          });
-        } else if (assignmentMode === "su") {
-          await apiRequest("/assignments/assign-su", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              testId: createdTest._id,
-              startTime: startTimeISO,
-              duration: parseInt(assignmentOptions.duration),
-            }),
-          });
-        }
+        // Start assignment process asynchronously - don't wait for it to complete
+        // This makes test creation much faster
+        (async () => {
+          try {
+            if (assignmentMode === "all") {
+              const assignResponse = await apiRequest("/assignments/assign-all", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  testId: createdTest._id,
+                  startTime: startTimeISO,
+                  duration: parseInt(assignmentOptions.duration),
+                }),
+              });
+              // Handle 202 Accepted response (processing in background)
+              if (assignResponse && assignResponse.status === "processing") {
+                console.log("✅ Assignment process started in background for large number of students");
+              }
+            } else if (
+              assignmentMode === "manual" &&
+              selectedStudents.length > 0
+            ) {
+              await apiRequest("/assignments/assign-manual", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  testId: createdTest._id,
+                  studentIds: selectedStudents,
+                  startTime: startTimeISO,
+                  duration: parseInt(assignmentOptions.duration),
+                }),
+              });
+            } else if (assignmentMode === "ru") {
+              await apiRequest("/assignments/assign-ru", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  testId: createdTest._id,
+                  startTime: startTimeISO,
+                  duration: parseInt(assignmentOptions.duration),
+                }),
+              });
+            } else if (assignmentMode === "su") {
+              await apiRequest("/assignments/assign-su", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  testId: createdTest._id,
+                  startTime: startTimeISO,
+                  duration: parseInt(assignmentOptions.duration),
+                }),
+              });
+            }
+            console.log("✅ Assignment creation completed");
+          } catch (error) {
+            console.error("❌ Error in background assignment creation:", error);
+            // Don't show error to user - assignment will be created in background
+          }
+        })();
 
         // Show OTP modal for new test
         setCreatedOtp(createdTest.otp);

@@ -206,10 +206,32 @@ const TakeTest = () => {
         });
       };
 
-      const response = await apiRequest("/test-submissions", {
-        method: "POST",
-        body: safeJSONStringify(submissionData),
-      });
+      // Retry logic for test submission
+      let response;
+      let retries = 3;
+      let lastError;
+      
+      while (retries > 0) {
+        try {
+          response = await apiRequest("/test-submissions", {
+            method: "POST",
+            body: safeJSONStringify(submissionData),
+          });
+          break; // Success, exit retry loop
+        } catch (error) {
+          lastError = error;
+          retries--;
+          if (retries > 0) {
+            console.warn(`⚠️ Submission failed, retrying... (${retries} attempts remaining)`);
+            // Wait before retry (exponential backoff)
+            await new Promise(resolve => setTimeout(resolve, 1000 * (4 - retries)));
+          }
+        }
+      }
+      
+      if (!response && lastError) {
+        throw lastError;
+      }
 
       // Exit fullscreen mode before navigating
       if (proctoringRef.current?.exitFullscreen) {
@@ -220,9 +242,9 @@ const TakeTest = () => {
       navigate(`/student/assignments`);
     } catch (error) {
       console.error("Test submission failed:", error);
-      alert(error.message || "Failed to submit test");
+      alert(error.message || "Failed to submit test. Please try again or contact support.");
       setIsSubmitting(false);
-      navigate("/student/assignments");
+      // Don't navigate away - let user try again
     }
   };
 
@@ -295,11 +317,26 @@ const TakeTest = () => {
       setLoading(false);
 
       // Request fullscreen mode after test starts (via proctoring component)
-      setTimeout(() => {
+      // Use longer timeout and ensure it's triggered after user interaction
+      setTimeout(async () => {
         if (proctoringRef.current?.requestFullscreen) {
-          proctoringRef.current.requestFullscreen();
+          try {
+            await proctoringRef.current.requestFullscreen();
+          } catch (error) {
+            console.warn("Fullscreen request failed (may require user interaction):", error);
+            // Try again after a short delay - sometimes browser needs more time
+            setTimeout(async () => {
+              if (proctoringRef.current?.requestFullscreen) {
+                try {
+                  await proctoringRef.current.requestFullscreen();
+                } catch (retryError) {
+                  console.warn("Fullscreen retry also failed:", retryError);
+                }
+              }
+            }, 500);
+          }
         }
-      }, 100);
+      }, 300);
     } catch (error) {
       if (error.message === "Test already started") {
         await loadExistingTestData();
@@ -432,11 +469,26 @@ const TakeTest = () => {
       setLoading(false);
 
       // Request fullscreen mode when resuming existing test (via proctoring component)
-      setTimeout(() => {
+      // Use longer timeout and ensure it's triggered after user interaction
+      setTimeout(async () => {
         if (proctoringRef.current?.requestFullscreen) {
-          proctoringRef.current.requestFullscreen();
+          try {
+            await proctoringRef.current.requestFullscreen();
+          } catch (error) {
+            console.warn("Fullscreen request failed (may require user interaction):", error);
+            // Try again after a short delay - sometimes browser needs more time
+            setTimeout(async () => {
+              if (proctoringRef.current?.requestFullscreen) {
+                try {
+                  await proctoringRef.current.requestFullscreen();
+                } catch (retryError) {
+                  console.warn("Fullscreen retry also failed:", retryError);
+                }
+              }
+            }, 500);
+          }
         }
-      }, 100);
+      }, 300);
     } catch (error) {
       console.error("[TakeTest] Error loading test data:", error);
       setError(error.message || "Failed to load test data");

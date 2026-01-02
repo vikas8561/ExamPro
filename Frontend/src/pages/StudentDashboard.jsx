@@ -91,7 +91,11 @@ const StudentDashboard = () => {
     });
 
     socket.on("assignmentCreated", (data) => {
-      if (data.userId === getCurrentUserId()) {
+      console.log("📨 Dashboard: Socket event received: assignmentCreated", data);
+      const currentUserId = getCurrentUserId();
+      // Refresh if event is for current user OR if no userId specified (broadcast)
+      if (!data.userId || data.userId === currentUserId || data.testId) {
+        console.log("🔄 Dashboard: Refreshing data due to assignment creation");
         // Refresh student data and recent activity
         fetchStudentData();
         fetchRecentActivity();

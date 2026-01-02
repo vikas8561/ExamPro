@@ -134,9 +134,9 @@ const StudentAssignments = () => {
 
   useEffect(() => {
     // ✅ Fixed: Always fetch fresh data on component mount to show new assignments
-    // Reduced cache time to 5 seconds for better responsiveness
+    // Reduced cache time to 2 seconds for better responsiveness
     const now = Date.now();
-    const shouldFetch = now - lastFetchTime > 5000; // 5 seconds cache instead of 30
+    const shouldFetch = now - lastFetchTime > 2000; // 2 seconds cache for faster updates
     
     console.log(`🔄 useEffect triggered - shouldFetch: ${shouldFetch}, lastFetchTime: ${lastFetchTime}, now: ${now}`);
     
@@ -187,16 +187,27 @@ const StudentAssignments = () => {
     });
 
     socket.on("disconnect", (reason) => {
+      console.log("Socket disconnected:", reason);
       // Clear fallback polling if it exists
       if (pollInterval) {
         clearInterval(pollInterval);
         pollInterval = null;
       }
+      // Start fallback polling when disconnected
+      pollInterval = setInterval(() => {
+        console.log("🔄 Fallback polling: Refreshing assignments");
+        fetchAssignments(0, currentPage);
+      }, 30000); // Poll every 30 seconds as fallback
     });
 
     socket.on("assignmentCreated", (data) => {
-      // Refresh assignments data on current page
-      fetchAssignments(0, currentPage);
+      console.log("📨 Socket event received: assignmentCreated", data);
+      // Force immediate refresh by resetting lastFetchTime and bypassing cache
+      setLastFetchTime(0);
+      // Force refresh by clearing fetchInProgress flag
+      fetchInProgressRef.current = false;
+      // Immediately fetch fresh data with forceRefresh flag
+      fetchAssignments(0, currentPage, true);
     });
 
     // ✅ Fixed: Proper cleanup function
@@ -220,9 +231,9 @@ const StudentAssignments = () => {
     }
   };
 
-  const fetchAssignments = async (retryCount = 0, page = currentPage) => {
-    // Prevent multiple simultaneous requests
-    if (fetchInProgressRef.current && retryCount === 0) {
+  const fetchAssignments = async (retryCount = 0, page = currentPage, forceRefresh = false) => {
+    // Prevent multiple simultaneous requests (unless force refresh)
+    if (fetchInProgressRef.current && retryCount === 0 && !forceRefresh) {
       console.log('⏸️ Request already in progress, skipping duplicate request');
       return;
     }
@@ -241,7 +252,9 @@ const StudentAssignments = () => {
         console.warn('⏱️ Request timeout after 30 seconds');
       }, 30000); // 30 second timeout
       
-      const data = await apiRequest(`/assignments/student?page=${page}&limit=9${typeFilter !== 'all' ? `&type=${typeFilter}` : ''}`, {
+      // Add forceRefresh parameter to bypass cache
+      const forceRefreshParam = forceRefresh ? '&forceRefresh=true' : '';
+      const data = await apiRequest(`/assignments/student?page=${page}&limit=9${typeFilter !== 'all' ? `&type=${typeFilter}` : ''}${forceRefreshParam}`, {
         signal: controller.signal
       });
       

@@ -155,11 +155,32 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
     // Invalidate test cache when new test is created
     invalidateTestCache();
 
-    const populatedTest = await Test.findById(test._id)
-      .populate("createdBy", "name email");
-    console.log('DEBUG: Populated test returned to frontend:', populatedTest);
+    // Return test without populate for faster response - frontend can fetch details if needed
+    // This significantly speeds up test creation, especially for tests with many questions
+    const testResponse = {
+      _id: test._id,
+      title: test.title,
+      subject: test.subject,
+      type: test.type,
+      instructions: test.instructions,
+      timeLimit: test.timeLimit,
+      negativeMarkingPercent: test.negativeMarkingPercent,
+      allowedTabSwitches: test.allowedTabSwitches,
+      otp: test.otp,
+      status: test.status,
+      questions: test.questions,
+      createdBy: {
+        _id: req.user.userId,
+        name: req.user.name || '',
+        email: req.user.email || ''
+      },
+      createdAt: test.createdAt,
+      updatedAt: test.updatedAt
+    };
+    
+    console.log('DEBUG: Test response prepared (without populate)');
 
-    res.status(201).json(populatedTest);
+    res.status(201).json(testResponse);
   } catch (error) {
     next(error);
   }
