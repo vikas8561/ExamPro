@@ -30,6 +30,7 @@ import ViewCompletedTest from "./pages/ViewCompletedTest";
 import AdminSidebar from "./components/AdminSidebar";
 import AdminDSAPractice from "./pages/AdminDSAPractice";
 import StudentDSAPractice from "./pages/StudentDSAPractice";
+import MigrateFaceDescriptors from "./pages/MigrateFaceDescriptors";
 
 // Protected Route Component
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -79,6 +80,7 @@ const AdminLayout = () => {
           <Route path="/tests/create" element={<CreateTest />} />
           <Route path="/dsa-practice" element={<AdminDSAPractice />} />
           <Route path="/users" element={<Users />} />
+          <Route path="/migrate-face-descriptors" element={<MigrateFaceDescriptors />} />
           <Route path="*" element={<div className="p-6">Not Found</div>} />
         </Routes>
       </main>

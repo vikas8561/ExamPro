@@ -378,11 +378,7 @@ const TakeTest = () => {
 
       let answersData = [];
       try {
-        answersData = await apiRequest(`/answers/assignment/${assignmentId}`, {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
-        });
+        answersData = await apiRequest(`/answers/assignment/${assignmentId}`);
 
         if (answersData && answersData.length > 0) {
           const existingAnswers = {};

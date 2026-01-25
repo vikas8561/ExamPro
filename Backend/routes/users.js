@@ -2,6 +2,7 @@ const express = require("express");
 const bcrypt = require("bcrypt");
 const router = express.Router();
 const User = require("../models/User");
+const { authenticateToken, requireRole } = require("../middleware/auth");
 
 // Get all users - ULTRA FAST VERSION
 router.get("/", async (req, res) => {
@@ -167,6 +168,56 @@ router.delete("/:id/profile-image", async (req, res) => {
       message: "Profile image deleted successfully. User can now re-upload their image.",
       profileImage: null,
       profileImageSaved: false
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Get full user profile including profileImage (admin only - for migration)
+router.get("/:id/full-profile", authenticateToken, requireRole("admin"), async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const user = await User.findById(userId).select("-password -activeSessions");
+    
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Update face descriptor (admin only - for migration purposes)
+router.post("/:id/update-face-descriptor", authenticateToken, requireRole("admin"), async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const { faceDescriptor } = req.body;
+    
+    if (!faceDescriptor || !Array.isArray(faceDescriptor) || faceDescriptor.length !== 128) {
+      return res.status(400).json({ 
+        message: "Face descriptor is required and must be a 128-dimensional array" 
+      });
+    }
+    
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Update face descriptor (admin override for migration)
+    user.faceDescriptor = faceDescriptor;
+    user.faceDescriptorSaved = true;
+    await user.save();
+
+    res.json({ 
+      message: "Face descriptor updated successfully",
+      userId: user._id,
+      name: user.name,
+      email: user.email,
+      faceDescriptorSaved: true
     });
   } catch (err) {
     res.status(500).json({ message: err.message });

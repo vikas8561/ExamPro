@@ -1,224 +1,1025 @@
 import React, { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from "react";
+import { useNavigate } from "react-router-dom";
+import * as faceapi from "face-api.js";
+import apiRequest from "../services/api";
+
+// Helper component for warning modal with dev tools and fullscreen check
+const WarningModalWithDevToolsCheck = ({ currentWarning, devToolsOpen, setDevToolsOpen, onClose, requestFullscreen }) => {
+  // Continuously check if dev tools are open or fullscreen is exited while modal is showing
+  useEffect(() => {
+    if (!currentWarning) return;
+
+    const checkConditions = () => {
+      // Check dev tools
+      if (currentWarning.violationType === 'devtools_opened') {
+        const widthThreshold = 160;
+        const isDevToolsOpen = window.outerWidth - window.innerWidth > widthThreshold ||
+          window.outerHeight - window.innerHeight > widthThreshold;
+        setDevToolsOpen(isDevToolsOpen);
+      }
+
+      // Check fullscreen
+      if (currentWarning.violationType === 'fullscreen_exit') {
+        const isFullscreen = !!(
+          document.fullscreenElement ||
+          document.webkitFullscreenElement ||
+          document.msFullscreenElement
+        );
+        setDevToolsOpen(!isFullscreen); // Use same state for fullscreen check
+      }
+    };
+
+    // Check immediately
+    checkConditions();
+
+    // Check every 500ms while modal is open
+    const interval = setInterval(checkConditions, 500);
+
+    return () => clearInterval(interval);
+  }, [currentWarning?.violationType, setDevToolsOpen]);
+
+  const handleContinue = async () => {
+    // Check if dev tools are still open for devtools violations
+    if (currentWarning.violationType === 'devtools_opened') {
+      const widthThreshold = 160;
+      const isDevToolsOpen = window.outerWidth - window.innerWidth > widthThreshold ||
+        window.outerHeight - window.innerHeight > widthThreshold;
+
+      if (isDevToolsOpen) {
+        setDevToolsOpen(true);
+        return; // Don't close modal if dev tools are still open
+      }
+    }
+
+    // Check if fullscreen is still exited for fullscreen violations
+    if (currentWarning.violationType === 'fullscreen_exit') {
+      const isFullscreen = !!(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.msFullscreenElement
+      );
+
+      if (!isFullscreen) {
+        // Try to re-enter fullscreen
+        try {
+          await requestFullscreen();
+          // Wait a bit and check again
+          setTimeout(() => {
+            const stillFullscreen = !!(
+              document.fullscreenElement ||
+              document.webkitFullscreenElement ||
+              document.msFullscreenElement
+            );
+            if (!stillFullscreen) {
+              setDevToolsOpen(true);
+              return; // Don't close if still not fullscreen
+            }
+            setDevToolsOpen(false);
+            onClose();
+          }, 500);
+          return;
+        } catch (error) {
+          setDevToolsOpen(true);
+          return; // Don't close if fullscreen request failed
+        }
+      }
+    }
+
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-[9999] p-4">
+      <div className="bg-slate-800 rounded-lg p-8 max-w-md w-full">
+        <h2 className={`text-2xl font-bold mb-4 text-center ${currentWarning.type === 'auto_submit' ? 'text-red-400' :
+          currentWarning.type === 'final_warning' ? 'text-orange-400' :
+            'text-yellow-400'
+          }`}>
+          {currentWarning.type === 'auto_submit' ? '⚠️ Test Will Be Submitted' :
+            currentWarning.type === 'final_warning' ? '⚠️ Final Warning' :
+              '⚠️ Warning'}
+        </h2>
+        <p className="text-slate-300 mb-6 text-center">
+          {currentWarning.message}
+        </p>
+        <p className="text-slate-400 text-sm mb-6 text-center">
+          {currentWarning.limit === 'unlimited'
+            ? `Violation count: ${currentWarning.count} (Practice test - unlimited allowed)`
+            : `Violation count: ${currentWarning.count} of ${currentWarning.limit}`
+          }
+        </p>
+        {/* Show error if dev tools are still open or fullscreen is exited */}
+        {currentWarning.violationType === 'devtools_opened' && devToolsOpen && (
+          <p className="text-red-400 text-sm mb-4 text-center font-semibold">
+            ⚠️ Developer tools are still open. Please close them before continuing.
+          </p>
+        )}
+        {currentWarning.violationType === 'fullscreen_exit' && devToolsOpen && (
+          <p className="text-red-400 text-sm mb-4 text-center font-semibold">
+            ⚠️ Fullscreen mode is not active. Please ensure fullscreen mode is enabled before continuing.
+          </p>
+        )}
+        <div className="flex gap-4">
+          <button
+            onClick={handleContinue}
+            disabled={(currentWarning.violationType === 'devtools_opened' || currentWarning.violationType === 'fullscreen_exit') && devToolsOpen}
+            className={`flex-1 py-3 rounded-md font-semibold ${((currentWarning.violationType === 'devtools_opened' || currentWarning.violationType === 'fullscreen_exit') && devToolsOpen)
+              ? 'bg-slate-600 text-slate-400 cursor-not-allowed'
+              : 'bg-white/90 hover:bg-white text-black'
+              }`}
+          >
+            {currentWarning.type === 'auto_submit' ? 'Understood' : 'Continue Exam'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 /**
- * Proctoring Component
+ * Proctoring Component - Complete Proctoring System
  * 
- * A reusable component for monitoring and enforcing test security during exams.
  * Features:
+ * - Screen sharing monitoring
+ * - Face matching using face-api.js
+ * - Microphone permission
+ * - Location permission
  * - Tab switch detection
  * - Fullscreen enforcement
- * - Violation tracking
- * - Resume modal
- * - Keyboard shortcuts blocking
- * - Context menu blocking
- * - Auto-submit on violation limit
+ * - Copy/paste blocking
+ * - DevTools detection
+ * - Warning system (1st warning, 2nd final warning, 3rd auto submit)
+ * 
+ * IMPORTANT: All detection mechanisms work INDEPENDENTLY of fullscreen state.
+ * - Tab/window switch detection uses visibilitychange and focus events (works without fullscreen)
+ * - DevTools detection uses window dimension checks (works without fullscreen)
+ * - Copy/paste blocking uses event listeners (works without fullscreen)
+ * - Keyboard blocking uses keydown events (works without fullscreen)
+ * Fullscreen is only for UI enforcement, NOT for detection. Detection continues even if fullscreen fails.
  * 
  * @param {Object} props
  * @param {boolean} props.enabled - Whether proctoring is enabled
- * @param {Object} props.test - Test object with allowedTabSwitches property
- * @param {Function} props.onViolation - Callback when violation occurs (receives violation data)
- * @param {Function} props.onSubmit - Callback to submit test (receives cancelledDueToViolation flag)
- * @param {Function} props.onExitFullscreen - Callback when exiting fullscreen (for cleanup)
+ * @param {Object} props.test - Test object
+ * @param {Function} props.onViolation - Callback when violation occurs
+ * @param {Function} props.onSubmit - Callback to submit test
+ * @param {Function} props.onExitFullscreen - Callback when exiting fullscreen
  * @param {boolean} props.isSubmitting - Whether test is currently being submitted
- * @param {boolean} props.blockKeyboardShortcuts - Whether to block keyboard shortcuts (default: true)
- * @param {boolean} props.blockContextMenu - Whether to block context menu (default: true)
  */
 const Proctoring = forwardRef(({
   enabled = true,
   test = {},
-  onViolation = () => {},
-  onSubmit = () => {},
-  onExitFullscreen = () => {},
+  onViolation = () => { },
+  onSubmit = () => { },
+  onExitFullscreen = () => { },
   isSubmitting = false,
-  blockKeyboardShortcuts = true,
-  blockContextMenu = true,
 }, ref) => {
+  const navigate = useNavigate();
+
+  // Permission states
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
+  const [permissions, setPermissions] = useState({
+    screenShare: false,
+    faceMatch: false,
+    microphone: false,
+    location: false,
+  });
+  const [permissionErrors, setPermissionErrors] = useState({});
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
+
+  // Monitoring states
   const [violationCount, setViolationCount] = useState(0);
-  const [showResumeModal, setShowResumeModal] = useState(false);
   const [violations, setViolations] = useState([]);
+  const [showWarningModal, setShowWarningModal] = useState(false);
+  const [currentWarning, setCurrentWarning] = useState(null);
+  const [devToolsOpen, setDevToolsOpen] = useState(false);
+
+  // Refs
+  const screenStreamRef = useRef(null);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const faceDetectionIntervalRef = useRef(null);
+  const devToolsCheckIntervalRef = useRef(null);
   const fullscreenTimeoutRef = useRef(null);
+  const modelsLoadedRef = useRef(false);
+  const initialFaceDescriptorRef = useRef(null);
+  const profileImageDescriptorRef = useRef(null);
+  const hasRequestedPermissionsRef = useRef(false);
+  const profileImageLoadedRef = useRef(false);
+  // CRITICAL: Shared cooldown timestamp across ALL detection mechanisms to prevent duplicate violations
+  const lastViolationTimeRef = useRef(0);
 
+  // Load face-api.js models
+  useEffect(() => {
+    const loadModels = async () => {
+      if (modelsLoadedRef.current) return;
 
-  // Request fullscreen mode with better error handling
+      try {
+        setIsLoadingModels(true);
+        const MODEL_URL = '/models'; // Models should be in public/models folder
+
+        console.log('🔄 Loading face-api.js models from:', MODEL_URL);
+
+        // Load models sequentially to avoid race conditions and ensure proper loading
+        console.log('Loading tinyFaceDetector...');
+        await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+        console.log('✅ tinyFaceDetector loaded');
+
+        console.log('Loading faceLandmark68Net...');
+        await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+        console.log('✅ faceLandmark68Net loaded');
+
+        console.log('Loading faceRecognitionNet...');
+        await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+        console.log('✅ faceRecognitionNet loaded');
+
+        modelsLoadedRef.current = true;
+        setIsLoadingModels(false);
+        console.log('✅ Face-api.js models loaded successfully');
+      } catch (error) {
+        console.error('❌ Error loading face-api.js models:', error);
+        console.error('Error details:', {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        });
+        setIsLoadingModels(false);
+
+        // Provide more detailed error message
+        let errorMessage = 'Failed to load face detection models. ';
+        if (error.message) {
+          errorMessage += `Error: ${error.message}. `;
+        }
+        errorMessage += 'Please ensure models are downloaded and placed in /public/models folder. See README for instructions.';
+
+        setPermissionErrors(prev => ({
+          ...prev,
+          faceMatch: errorMessage
+        }));
+      }
+    };
+
+    // Load models as soon as component mounts (don't wait for enabled)
+    if (!modelsLoadedRef.current) {
+      loadModels();
+    }
+  }, []);
+
+  // Load face descriptor from database for face matching (SECURE: only descriptor, not image)
+  useEffect(() => {
+    const loadFaceDescriptor = async () => {
+      if (profileImageLoadedRef.current || !modelsLoadedRef.current) return;
+
+      try {
+        // Fetch face descriptor from secure endpoint (descriptor only, not the image)
+        const response = await apiRequest('/auth/profile/face-descriptor');
+
+        if (!response.faceDescriptor || !Array.isArray(response.faceDescriptor)) {
+          console.warn('⚠️ No face descriptor found in database');
+          setPermissionErrors(prev => ({
+            ...prev,
+            faceMatch: 'Face descriptor not found. Please upload a profile image first.'
+          }));
+          return;
+        }
+
+        // Convert array to Float32Array for face-api.js
+        profileImageDescriptorRef.current = new Float32Array(response.faceDescriptor);
+        profileImageLoadedRef.current = true;
+        console.log('✅ Face descriptor loaded from database (secure, non-reversible)');
+
+        // Update permission status - face recognition is ready (descriptor loaded)
+        // The actual activation will happen when camera is accessed during exam
+        setPermissions(prev => ({ ...prev, faceMatch: true }));
+      } catch (error) {
+        console.error('❌ Error loading face descriptor:', error);
+        setPermissionErrors(prev => ({
+          ...prev,
+          faceMatch: 'Face descriptor not found. Please upload a profile image first.'
+        }));
+      }
+    };
+
+    // Check periodically if models are loaded, then load face descriptor
+    const checkAndLoad = setInterval(() => {
+      if (modelsLoadedRef.current && !profileImageLoadedRef.current) {
+        clearInterval(checkAndLoad);
+        loadFaceDescriptor();
+      }
+    }, 500);
+
+    return () => clearInterval(checkAndLoad);
+  }, []);
+
+  // Show permission modal when proctoring is enabled
+  // This will show for both new tests and continuing tests
+  useEffect(() => {
+    if (enabled && !hasRequestedPermissionsRef.current && !isSubmitting) {
+      // Check if permissions were already granted (for continuing tests, we still need to verify)
+      // For now, always show modal to ensure permissions are active
+      setPermissions({
+        screenShare: false,
+        faceMatch: false,
+        microphone: false,
+        location: false,
+      });
+      setShowPermissionModal(true);
+      hasRequestedPermissionsRef.current = true;
+    }
+  }, [enabled, isSubmitting]);
+
+  // Reset permission request flag when proctoring is disabled (for new test sessions)
+  useEffect(() => {
+    if (!enabled) {
+      hasRequestedPermissionsRef.current = false;
+    }
+  }, [enabled]);
+
+  // Handle violations (defined early to avoid initialization order issues)
+  const handleViolation = useCallback((violationType, details) => {
+    let newViolationCount;
+    let violation;
+
+    setViolationCount(prevCount => {
+      newViolationCount = prevCount + 1;
+
+      // Get allowed tab switches from test (default to 2 if not set)
+      // -1 means unlimited (practice tests)
+      const allowedSwitches = test?.allowedTabSwitches ?? 2;
+      const isUnlimited = allowedSwitches === -1;
+
+      violation = {
+        timestamp: new Date().toISOString(),
+        violationType,
+        details,
+        count: newViolationCount,
+      };
+
+      setViolations(prevViolations => {
+        const updatedViolations = [...prevViolations, violation];
+
+        // Notify parent component - defer to avoid React warning about updating during render
+        setTimeout(() => {
+          onViolation({
+            violationCount: newViolationCount,
+            violation,
+            violations: updatedViolations,
+          });
+        }, 0);
+
+        return updatedViolations;
+      });
+
+      return newViolationCount;
+    });
+
+    // Show warning modal after state update completes
+    // First close any existing modal, then show new one
+    setShowWarningModal(false);
+    setCurrentWarning(null);
+    setDevToolsOpen(false);
+
+    // Use setTimeout to ensure state has been updated and modal is closed
+    setTimeout(() => {
+      const allowedSwitches = test?.allowedTabSwitches ?? 2;
+      const isUnlimited = allowedSwitches === -1;
+
+      // Warning system based on allowedTabSwitches
+      if (isUnlimited) {
+        // For practice tests (-1), show warnings but don't auto-submit
+        if (newViolationCount === 1) {
+          setCurrentWarning({
+            type: 'warning',
+            message: `First Warning: ${details}`,
+            count: 1,
+            limit: 'unlimited',
+            violationType: violationType
+          });
+          setShowWarningModal(true);
+          // Check if dev tools are open for devtools violations
+          if (violationType === 'devtools_opened') {
+            const widthThreshold = 160;
+            const isDevToolsOpen = window.outerWidth - window.innerWidth > widthThreshold ||
+              window.outerHeight - window.innerHeight > widthThreshold;
+            setDevToolsOpen(isDevToolsOpen);
+          }
+        } else if (newViolationCount === 2) {
+          setCurrentWarning({
+            type: 'final_warning',
+            message: `Warning: ${details}`,
+            count: 2,
+            limit: 'unlimited',
+            violationType: violationType
+          });
+          setShowWarningModal(true);
+          // Check if dev tools are open for devtools violations
+          if (violationType === 'devtools_opened') {
+            const widthThreshold = 160;
+            const isDevToolsOpen = window.outerWidth - window.innerWidth > widthThreshold ||
+              window.outerHeight - window.innerHeight > widthThreshold;
+            setDevToolsOpen(isDevToolsOpen);
+          }
+        }
+        // No auto-submit for practice tests
+      } else if (allowedSwitches === 0) {
+        // No violations allowed - auto-submit immediately
+        setCurrentWarning({
+          type: 'auto_submit',
+          message: `Test will be automatically submitted. No violations are allowed for this test.`,
+          count: newViolationCount,
+          limit: 0,
+          violationType: violationType
+        });
+        setShowWarningModal(true);
+        setTimeout(() => {
+          onSubmit(true); // cancelledDueToViolation = true
+        }, 2000);
+      } else {
+        // For regular tests, use the allowedTabSwitches limit
+        if (newViolationCount === 1) {
+          setCurrentWarning({
+            type: 'warning',
+            message: `First Warning: ${details}`,
+            count: 1,
+            limit: allowedSwitches,
+            violationType: violationType
+          });
+          setShowWarningModal(true);
+          // Check if dev tools are open for devtools violations
+          if (violationType === 'devtools_opened') {
+            const widthThreshold = 160;
+            const isDevToolsOpen = window.outerWidth - window.innerWidth > widthThreshold ||
+              window.outerHeight - window.innerHeight > widthThreshold;
+            setDevToolsOpen(isDevToolsOpen);
+          }
+        } else if (newViolationCount < allowedSwitches) {
+          // Intermediate warnings (2 to limit-1)
+          setCurrentWarning({
+            type: 'warning',
+            message: `Warning #${newViolationCount}: ${details}`,
+            count: newViolationCount,
+            limit: allowedSwitches,
+            violationType: violationType
+          });
+          setShowWarningModal(true);
+          // Check if dev tools are open for devtools violations
+          if (violationType === 'devtools_opened') {
+            const widthThreshold = 160;
+            const isDevToolsOpen = window.outerWidth - window.innerWidth > widthThreshold ||
+              window.outerHeight - window.innerHeight > widthThreshold;
+            setDevToolsOpen(isDevToolsOpen);
+          }
+        } else if (newViolationCount === allowedSwitches) {
+          // Final warning when reaching the limit
+          setCurrentWarning({
+            type: 'final_warning',
+            message: `Final Warning: ${details}. This is your last allowed violation.`,
+            count: newViolationCount,
+            limit: allowedSwitches,
+            violationType: violationType
+          });
+          setShowWarningModal(true);
+          // Check if dev tools are open for devtools violations
+          if (violationType === 'devtools_opened') {
+            const widthThreshold = 160;
+            const isDevToolsOpen = window.outerWidth - window.innerWidth > widthThreshold ||
+              window.outerHeight - window.innerHeight > widthThreshold;
+            setDevToolsOpen(isDevToolsOpen);
+          }
+        } else if (newViolationCount > allowedSwitches) {
+          // Auto-submit when exceeding the limit
+          setCurrentWarning({
+            type: 'auto_submit',
+            message: `Test will be automatically submitted. You have exceeded the allowed violation limit (${allowedSwitches}).`,
+            count: newViolationCount,
+            limit: allowedSwitches,
+            violationType: violationType
+          });
+          setShowWarningModal(true);
+          setTimeout(() => {
+            onSubmit(true); // cancelledDueToViolation = true
+          }, 2000);
+        }
+      }
+    }, 50); // Small delay to ensure modal closes first
+  }, [test, onViolation, onSubmit]);
+
+  // Request screen sharing permission
+  const requestScreenShare = useCallback(async () => {
+    // Check if screen sharing is already active
+    if (permissions.screenShare && screenStreamRef.current) {
+      const tracks = screenStreamRef.current.getVideoTracks();
+      if (tracks.length > 0 && tracks[0].readyState === 'live') {
+        console.log('✅ Screen sharing already active, skipping request');
+        return true;
+      }
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          frameRate: 5,
+          cursor: 'always',
+          displaySurface: 'monitor' // Prefer entire screen (monitor)
+        },
+        audio: false
+      });
+
+      // Check if user selected entire screen (monitor) or window/tab
+      const videoTrack = stream.getVideoTracks()[0];
+      const settings = videoTrack.getSettings();
+      const displaySurface = settings.displaySurface;
+
+      // Reject if user selected window or browser tab instead of entire screen
+      if (displaySurface && displaySurface !== 'monitor') {
+        // Stop the stream immediately
+        videoTrack.stop();
+        stream.getTracks().forEach(track => track.stop());
+
+        setPermissionErrors(prev => ({
+          ...prev,
+          screenShare: 'You must share your ENTIRE SCREEN, not a window or tab. Please try again and select "Entire Screen".'
+        }));
+        return false;
+      }
+
+      screenStreamRef.current = stream;
+
+      // Monitor if user stops sharing
+      videoTrack.onended = () => {
+        if (handleViolation) {
+          handleViolation('screen_share_stopped', 'Screen sharing was stopped');
+        }
+        setPermissions(prev => ({ ...prev, screenShare: false }));
+      };
+
+      setPermissions(prev => ({ ...prev, screenShare: true }));
+      setPermissionErrors(prev => ({ ...prev, screenShare: null }));
+      return true;
+    } catch (error) {
+      console.error('Screen share error:', error);
+      setPermissionErrors(prev => ({
+        ...prev,
+        screenShare: error.message || 'Failed to start screen sharing'
+      }));
+      return false;
+    }
+  }, [handleViolation, permissions.screenShare]);
+
+  // Request microphone permission
+  const requestMicrophone = useCallback(async () => {
+    // Check if microphone permission is already granted
+    if (permissions.microphone) {
+      console.log('✅ Microphone permission already granted, skipping request');
+      return true;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      // Stop the stream immediately, we just needed permission
+      stream.getTracks().forEach(track => track.stop());
+
+      setPermissions(prev => ({ ...prev, microphone: true }));
+      setPermissionErrors(prev => ({ ...prev, microphone: null }));
+      return true;
+    } catch (error) {
+      console.error('Microphone error:', error);
+      setPermissionErrors(prev => ({
+        ...prev,
+        microphone: error.message || 'Failed to access microphone'
+      }));
+      return false;
+    }
+  }, [permissions.microphone]);
+
+  // Request location permission
+  const requestLocation = useCallback(async () => {
+    // Check if location permission is already granted
+    if (permissions.location) {
+      console.log('✅ Location permission already granted, skipping request');
+      return true;
+    }
+
+    try {
+      if (!navigator.geolocation) {
+        throw new Error('Geolocation is not supported by your browser');
+      }
+
+      await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            setPermissions(prev => ({ ...prev, location: true }));
+            setPermissionErrors(prev => ({ ...prev, location: null }));
+            resolve(position);
+          },
+          (error) => {
+            reject(error);
+          },
+          { timeout: 10000 }
+        );
+      });
+      return true;
+    } catch (error) {
+      console.error('Location error:', error);
+      setPermissionErrors(prev => ({
+        ...prev,
+        location: error.message || 'Failed to access location'
+      }));
+      return false;
+    }
+  }, [permissions.location]);
+
+  // Start continuous face matching
+  const startFaceMatching = useCallback(() => {
+    if (faceDetectionIntervalRef.current) {
+      clearInterval(faceDetectionIntervalRef.current);
+    }
+
+    faceDetectionIntervalRef.current = setInterval(async () => {
+      if (!videoRef.current || !modelsLoadedRef.current) return;
+
+      // Use profile image descriptor if available, otherwise fall back to initial capture
+      const referenceDescriptor = profileImageDescriptorRef.current || initialFaceDescriptorRef.current;
+
+      if (!referenceDescriptor) {
+        console.warn('No reference face descriptor available');
+        return;
+      }
+
+      try {
+        const detection = await faceapi
+          .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
+          .withFaceLandmarks()
+          .withFaceDescriptor();
+
+        if (detection) {
+          const distance = faceapi.euclideanDistance(
+            referenceDescriptor,
+            detection.descriptor
+          );
+
+          // Threshold: 0.6 is a good balance (lower = stricter)
+          // Compare against profile image from database
+          if (distance > 0.6) {
+            const referenceType = profileImageDescriptorRef.current ? 'profile image' : 'initial capture';
+            handleViolation('face_mismatch', `Face does not match your ${referenceType} (distance: ${distance.toFixed(2)})`);
+          }
+        } else {
+          handleViolation('face_not_detected', 'Face not detected in frame');
+        }
+      } catch (error) {
+        console.error('Face matching error:', error);
+      }
+    }, 3000); // Check every 3 seconds
+  }, [handleViolation]);
+
+  // Initialize face detection
+  const initializeFaceDetection = useCallback(async () => {
+    if (!modelsLoadedRef.current || !videoRef.current) return;
+
+    // Check if profile image is loaded
+    if (!profileImageLoadedRef.current || !profileImageDescriptorRef.current) {
+      setPermissionErrors(prev => ({
+        ...prev,
+        faceMatch: 'Profile image not loaded. Please ensure you have uploaded a profile image.'
+      }));
+      return;
+    }
+
+    try {
+      // Request webcam access
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 640, height: 480 }
+      });
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+
+      // Capture initial face descriptor from video (for fallback comparison)
+      const detection = await faceapi
+        .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+
+      if (detection) {
+        initialFaceDescriptorRef.current = detection.descriptor;
+        console.log('✅ Initial face captured from video');
+
+        // Update permission status - face detection is now active
+        setPermissions(prev => ({ ...prev, faceMatch: true }));
+
+        // Start continuous face matching against profile image
+        startFaceMatching();
+      } else {
+        setPermissionErrors(prev => ({
+          ...prev,
+          faceMatch: 'No face detected. Please ensure your face is visible.'
+        }));
+      }
+    } catch (error) {
+      console.error('Face detection initialization error:', error);
+      setPermissionErrors(prev => ({
+        ...prev,
+        faceMatch: error.message || 'Failed to access camera for face detection'
+      }));
+    }
+  }, [startFaceMatching]);
+
+  // Request fullscreen (defined early to avoid initialization order issues)
   const requestFullscreen = useCallback(async () => {
     try {
-      // Check if already in fullscreen
       const isAlreadyFullscreen = !!(
         document.fullscreenElement ||
         document.webkitFullscreenElement ||
         document.msFullscreenElement
       );
-      
-      if (isAlreadyFullscreen) {
-        console.log("Already in fullscreen mode");
-        return;
-      }
 
-      // Try standard fullscreen API first
+      if (isAlreadyFullscreen) return;
+
       if (document.documentElement.requestFullscreen) {
         await document.documentElement.requestFullscreen();
-        console.log("✅ Entered fullscreen mode (standard API)");
       } else if (document.documentElement.webkitRequestFullscreen) {
-        // Safari
         await document.documentElement.webkitRequestFullscreen();
-        console.log("✅ Entered fullscreen mode (webkit API)");
       } else if (document.documentElement.msRequestFullscreen) {
-        // IE/Edge
         await document.documentElement.msRequestFullscreen();
-        console.log("✅ Entered fullscreen mode (ms API)");
-      } else {
-        console.warn("⚠️ Fullscreen API not supported in this browser");
       }
     } catch (error) {
-      // Common error: user interaction required
-      if (error.name === 'NotAllowedError' || error.message.includes('user gesture')) {
-        console.warn("⚠️ Fullscreen requires user interaction. It will be requested when user interacts with the page.");
-        // Don't throw - we'll retry later
-      } else {
-        console.error("❌ Failed to enter fullscreen mode:", error);
+      // Silently fail - fullscreen requires user gesture
+      // Don't log errors for automatic fullscreen requests
+      if (error.name !== 'NotAllowedError' && error.message !== 'Permissions check failed') {
+        console.warn('Fullscreen request failed:', error);
       }
-      // Continue with test even if fullscreen fails
     }
   }, []);
 
-  // Exit fullscreen mode
+  // Exit fullscreen
   const exitFullscreen = useCallback(async () => {
     try {
       if (document.exitFullscreen) {
         await document.exitFullscreen();
       } else if (document.webkitExitFullscreen) {
-        // Safari
         await document.webkitExitFullscreen();
       } else if (document.msExitFullscreen) {
-        // IE/Edge
         await document.msExitFullscreen();
-      } else {
-        console.warn("Fullscreen API not supported in this browser");
       }
       onExitFullscreen();
     } catch (error) {
-      console.error("Failed to exit fullscreen mode:", error);
-      // Continue with navigation even if fullscreen exit fails
+      console.error('Failed to exit fullscreen:', error);
       onExitFullscreen();
     }
   }, [onExitFullscreen]);
 
-  // Handle violation
-  const handleViolation = useCallback((violationType, details) => {
-    setViolationCount(prevCount => {
-      const newViolationCount = prevCount + 1;
-      
-      const violation = {
-        timestamp: new Date(),
-        violationType,
-        details,
-        tabCount: newViolationCount,
-      };
-      
-      setViolations(prevViolations => {
-        const updatedViolations = [...prevViolations, violation];
-        
-        // Notify parent component
-        onViolation({
-          violationCount: newViolationCount,
-          violation,
-          violations: updatedViolations,
-        });
-        
-        return updatedViolations;
-      });
+  // Request all permissions
+  const requestAllPermissions = useCallback(async () => {
+    const results = {
+      screenShare: await requestScreenShare(),
+      microphone: await requestMicrophone(),
+      location: await requestLocation(),
+      faceMatch: false,
+    };
 
-      // Get the allowed tab switches from test data, default to 2 if not available
-      const allowedSwitches = test?.allowedTabSwitches ?? 2;
-      
-      // Handle unlimited switches (practice tests with -1 value)
-      if (allowedSwitches === -1) {
-        // For practice tests, show warning but don't cancel
-        if (newViolationCount === 1 || newViolationCount === 2) {
-          setShowResumeModal(true);
-        }
-      } else {
-        // For regular tests, enforce the limit
-        if (newViolationCount < allowedSwitches) {
-          setShowResumeModal(true);
-          // Auto-request fullscreen for fullscreen exit violations
-          if (violationType === "fullscreen_exit") {
-            if (fullscreenTimeoutRef.current) {
-              clearTimeout(fullscreenTimeoutRef.current);
-            }
-            fullscreenTimeoutRef.current = setTimeout(() => {
-              requestFullscreen();
-            }, 1000);
-          }
-        } else if (newViolationCount >= allowedSwitches) {
-          alert(
-            `Test cancelled due to violations (${newViolationCount} violations detected, limit: ${allowedSwitches}).`
-          );
-          onSubmit(true); // cancelledDueToViolation = true
-        }
+    // Face detection will be initialized separately
+    // Check if face descriptor is already loaded (from async loading)
+    if (modelsLoadedRef.current && profileImageLoadedRef.current && profileImageDescriptorRef.current) {
+      try {
+        await initializeFaceDetection();
+        results.faceMatch = true;
+      } catch (error) {
+        console.error('Face detection initialization failed:', error);
+        // If initialization fails but descriptor is loaded, still mark as ready
+        // The actual activation will happen when camera is accessed
+        results.faceMatch = profileImageLoadedRef.current;
       }
-      
-      return newViolationCount;
-    });
-  }, [test, onViolation, onSubmit, requestFullscreen]);
-
-  // Tab switch detection
-  useEffect(() => {
-    console.log('🔒 Proctoring: Tab switch detection useEffect - enabled:', enabled);
-    if (!enabled) {
-      console.log('🔒 Proctoring: Disabled, not monitoring');
-      return;
+    } else if (profileImageLoadedRef.current && profileImageDescriptorRef.current) {
+      // Descriptor is loaded, mark as ready (will activate when camera is accessed)
+      results.faceMatch = true;
     }
 
-    console.log('🔒 Proctoring: Setting up tab switch monitoring');
+    return results;
+  }, [requestScreenShare, requestMicrophone, requestLocation, initializeFaceDetection]);
+
+  // Handle permission modal continue
+  const handleContinue = useCallback(async () => {
+    const results = await requestAllPermissions();
+
+    // Check if all critical permissions are granted
+    // Face matching is optional but recommended
+    if (results.screenShare && results.microphone && results.location) {
+      setShowPermissionModal(false);
+      setPermissions(prev => ({
+        ...prev,
+        screenShare: results.screenShare,
+        microphone: results.microphone,
+        location: results.location,
+        faceMatch: results.faceMatch,
+      }));
+      // Request fullscreen after permissions
+      setTimeout(() => {
+        requestFullscreen();
+      }, 500);
+    } else {
+      const missing = [];
+      if (!results.screenShare) missing.push('Screen Sharing');
+      if (!results.microphone) missing.push('Microphone');
+      if (!results.location) missing.push('Location');
+      alert(`Please grant all required permissions to continue: ${missing.join(', ')}`);
+    }
+  }, [requestAllPermissions, requestFullscreen]);
+
+  // Tab switch, window switch, and application switch detection
+  // This MUST work regardless of fullscreen state - detection never stops
+  // CRITICAL: State tracking must properly reset to detect repeated violations
+  useEffect(() => {
+    if (!enabled || showPermissionModal) return;
+
+    // Initialize with current state
+    let lastVisibilityState = document.visibilityState;
+    let lastFocusState = document.hasFocus();
+    // Use the shared cooldown ref to prevent duplicate violations across all detection mechanisms
+    const VIOLATION_COOLDOWN = 1500; // 1.5 seconds cooldown shared with other detectors
+
+    console.log('🔵 Detection initialized:', {
+      initialFocus: lastFocusState,
+      initialVisibility: lastVisibilityState
+    });
+
     const handleVisibilityChange = () => {
-      console.log('🔒 Proctoring: Visibility change detected:', document.visibilityState);
-      if (document.visibilityState === "hidden") {
-        console.log('🔒 Proctoring: Tab switch violation triggered!');
-        handleViolation("tab_switch", "Tab switched");
+      const currentState = document.visibilityState;
+      // Detect when tab becomes hidden (regardless of fullscreen state)
+      // CRITICAL: Check for transition from visible to hidden
+      if (currentState === "hidden" && lastVisibilityState === "visible") {
+        const now = Date.now();
+        if (now - lastViolationTimeRef.current > VIOLATION_COOLDOWN) {
+          // CRITICAL: Update shared timestamp BEFORE calling handleViolation to prevent race condition
+          lastViolationTimeRef.current = now;
+          console.log('🔴 [visibilitychange] Tab switch detected - violation triggered');
+          handleViolation("tab_switch", "Tab switched or window minimized");
+          // Try to re-enter fullscreen if exited
+          requestFullscreen().catch(() => { });
+        }
+      } else if (currentState === "visible" && lastVisibilityState === "hidden") {
+        // User returned - reset state for next detection
+        console.log('✅ [visibilitychange] Tab returned - state reset');
       }
+      // CRITICAL: Always update state to current state
+      // This allows us to detect the next transition
+      lastVisibilityState = currentState;
     };
+
+    const handleBlur = () => {
+      // Window lost focus (user switched to another window/application)
+      const currentFocus = document.hasFocus();
+      // CRITICAL: Check for transition from focused to unfocused
+      if (currentFocus === false && lastFocusState === true) {
+        const now = Date.now();
+        if (now - lastViolationTimeRef.current > VIOLATION_COOLDOWN) {
+          // CRITICAL: Update shared timestamp BEFORE calling handleViolation to prevent race condition
+          lastViolationTimeRef.current = now;
+          console.log('🔴 [blur] Window switch detected - violation triggered');
+          handleViolation("window_switch", "Window or application switched");
+          // Try to re-enter fullscreen if exited
+          requestFullscreen().catch(() => { });
+        }
+      }
+      // CRITICAL: Always update state
+      lastFocusState = currentFocus;
+    };
+
+    const handleFocus = () => {
+      // When window regains focus, reset state so we can detect next violation
+      const currentFocus = document.hasFocus();
+      if (currentFocus) {
+        console.log('✅ [focus] Window focus returned - resetting state for next detection');
+        const isFullscreen = !!(
+          document.fullscreenElement ||
+          document.webkitFullscreenElement ||
+          document.msFullscreenElement
+        );
+        if (!isFullscreen) {
+          // Immediately try to re-enter fullscreen
+          requestFullscreen().catch(() => { });
+        }
+      }
+      // CRITICAL: Update state when focus returns
+      // This resets the state so we can detect the next violation
+      lastFocusState = currentFocus;
+      // Also update visibility state when focus returns
+      lastVisibilityState = document.visibilityState;
+    };
+
+    // Periodic state tracking and fullscreen re-entry
+    // IMPORTANT: This interval does NOT trigger violations - only event listeners do
+    // The interval only tracks state changes and handles fullscreen re-entry
+    const focusCheckInterval = setInterval(() => {
+      const currentFocus = document.hasFocus();
+      const currentVisibility = document.visibilityState;
+
+      // Update focus state tracking (no violation triggering here)
+      if (currentFocus !== lastFocusState) {
+        if (currentFocus === true && lastFocusState === false) {
+          console.log('✅ [interval] Window focus returned - state reset for next detection');
+        }
+        lastFocusState = currentFocus;
+      }
+
+      // Update visibility state tracking (no violation triggering here)
+      if (currentVisibility !== lastVisibilityState) {
+        if (currentVisibility === "visible" && lastVisibilityState === "hidden") {
+          console.log('✅ [interval] Tab visibility returned - state reset for next detection');
+        }
+        lastVisibilityState = currentVisibility;
+      }
+
+      // If we have focus but not fullscreen, try to re-enter
+      if (currentFocus && currentVisibility === "visible") {
+        const isFullscreen = !!(
+          document.fullscreenElement ||
+          document.webkitFullscreenElement ||
+          document.msFullscreenElement
+        );
+        if (!isFullscreen) {
+          requestFullscreen().catch(() => { });
+        }
+      }
+    }, 500); // Check every 500ms for state tracking and fullscreen re-entry
 
     window.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("blur", handleBlur);
+    window.addEventListener("focus", handleFocus);
 
     return () => {
+      clearInterval(focusCheckInterval);
       window.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", handleBlur);
+      window.removeEventListener("focus", handleFocus);
     };
-  }, [enabled, handleViolation]);
+  }, [enabled, showPermissionModal, handleViolation, requestFullscreen]);
 
-  // Fullscreen change detection
+  // Fullscreen change detection - show warning modal like devtools
+  // This MUST continue running even if fullscreen is exited to keep detection active
   useEffect(() => {
-    console.log('🔒 Proctoring: Fullscreen detection useEffect - enabled:', enabled);
-    if (!enabled) {
-      console.log('🔒 Proctoring: Disabled, not monitoring fullscreen');
-      return;
-    }
+    if (!enabled || showPermissionModal) return;
 
-    console.log('🔒 Proctoring: Setting up fullscreen monitoring');
+    let wasFullscreen = !!(
+      document.fullscreenElement ||
+      document.webkitFullscreenElement ||
+      document.msFullscreenElement
+    );
+    // Use the shared cooldown ref - same as tab/window detection
+    const VIOLATION_COOLDOWN = 1500; // Must match other detectors
+
     const handleFullscreenChange = () => {
       const isFullscreen = !!(
         document.fullscreenElement ||
         document.webkitFullscreenElement ||
         document.msFullscreenElement
       );
-      console.log('🔒 Proctoring: Fullscreen change detected:', isFullscreen);
 
-      if (!isFullscreen && !isSubmitting) {
-        console.log('Fullscreen exit violation triggered!');
-        handleViolation("fullscreen_exit", "Fullscreen exited");
-        
-        // Auto-request fullscreen after violation (handled in handleViolation)
-        // The timeout will be set in handleViolation based on violation count
+      // User exited fullscreen
+      if (!isFullscreen && wasFullscreen && !isSubmitting) {
+        const now = Date.now();
+        if (now - lastViolationTimeRef.current > VIOLATION_COOLDOWN) {
+          // CRITICAL: Update shared timestamp BEFORE calling handleViolation
+          lastViolationTimeRef.current = now;
+          handleViolation("fullscreen_exit", "Fullscreen mode exited");
+        }
+
+        // Immediately try to re-enter fullscreen (aggressive)
+        setTimeout(() => {
+          requestFullscreen().catch(() => {
+            // If fullscreen request fails, keep trying
+          });
+        }, 50);
       }
+
+      wasFullscreen = isFullscreen;
     };
 
-    // Add event listeners for fullscreen changes
+    // Periodic fullscreen re-entry check - NO violation triggering here
+    // Violations are only triggered by the fullscreenchange event
+    const fullscreenCheckInterval = setInterval(() => {
+      const isFullscreen = !!(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.msFullscreenElement
+      );
+
+      // Just try to re-enter fullscreen if needed (no violation triggering)
+      if (!isFullscreen && !isSubmitting) {
+        requestFullscreen().catch(() => { });
+      }
+
+      wasFullscreen = isFullscreen;
+    }, 500); // Check every 500ms for fullscreen re-entry
+
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
     document.addEventListener("msfullscreenchange", handleFullscreenChange);
 
     return () => {
-      // Clean up timeout on unmount
+      clearInterval(fullscreenCheckInterval);
       if (fullscreenTimeoutRef.current) {
         clearTimeout(fullscreenTimeoutRef.current);
       }
@@ -226,96 +1027,174 @@ const Proctoring = forwardRef(({
       document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
       document.removeEventListener("msfullscreenchange", handleFullscreenChange);
     };
-  }, [enabled, isSubmitting, handleViolation, requestFullscreen]);
+  }, [enabled, showPermissionModal, isSubmitting, handleViolation, requestFullscreen]);
 
-  // Keyboard shortcuts blocking
+  // Copy/paste blocking - works regardless of fullscreen state
+  // This blocking is completely independent of fullscreen mode
   useEffect(() => {
-    if (!enabled || !blockKeyboardShortcuts) return;
+    if (!enabled || showPermissionModal) return;
+
+    const handleCopy = (e) => e.preventDefault();
+    const handlePaste = (e) => e.preventDefault();
+    const handleCut = (e) => e.preventDefault();
+    const handleContextMenu = (e) => e.preventDefault();
+
+    document.addEventListener("copy", handleCopy);
+    document.addEventListener("paste", handlePaste);
+    document.addEventListener("cut", handleCut);
+    document.addEventListener("contextmenu", handleContextMenu);
+
+    return () => {
+      document.removeEventListener("copy", handleCopy);
+      document.removeEventListener("paste", handlePaste);
+      document.removeEventListener("cut", handleCut);
+      document.removeEventListener("contextmenu", handleContextMenu);
+    };
+  }, [enabled, showPermissionModal]);
+
+  // DevTools detection - works regardless of fullscreen state
+  // This detection is completely independent of fullscreen mode
+  useEffect(() => {
+    if (!enabled || showPermissionModal) return;
+
+    let lastViolationTime = 0;
+    const VIOLATION_COOLDOWN = 2000; // Prevent spam violations
+
+    devToolsCheckIntervalRef.current = setInterval(() => {
+      const widthThreshold = 160;
+      const isDevToolsOpen = window.outerWidth - window.innerWidth > widthThreshold ||
+        window.outerHeight - window.innerHeight > widthThreshold;
+
+      if (isDevToolsOpen) {
+        const now = Date.now();
+        if (now - lastViolationTime > VIOLATION_COOLDOWN) {
+          handleViolation("devtools_opened", "Developer tools detected");
+          lastViolationTime = now;
+          // Try to re-enter fullscreen if exited (but detection works regardless)
+          requestFullscreen().catch(() => { });
+        }
+      }
+    }, 1000);
+
+    return () => {
+      if (devToolsCheckIntervalRef.current) {
+        clearInterval(devToolsCheckIntervalRef.current);
+      }
+    };
+  }, [enabled, showPermissionModal, handleViolation, requestFullscreen]);
+
+  // Click handler to ensure fullscreen is active on any interaction
+  useEffect(() => {
+    if (!enabled || showPermissionModal) return;
+
+    const handleClick = () => {
+      // Check if fullscreen is active
+      const isFullscreen = !!(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.msFullscreenElement
+      );
+
+      // If not fullscreen, try to re-enter immediately
+      if (!isFullscreen) {
+        requestFullscreen().catch(() => { });
+      }
+    };
+
+    // Use capture phase to catch clicks early
+    document.addEventListener("click", handleClick, true);
+    document.addEventListener("mousedown", handleClick, true);
+    document.addEventListener("touchstart", handleClick, true);
+
+    return () => {
+      document.removeEventListener("click", handleClick, true);
+      document.removeEventListener("mousedown", handleClick, true);
+      document.removeEventListener("touchstart", handleClick, true);
+    };
+  }, [enabled, showPermissionModal, requestFullscreen]);
+
+  // Keyboard shortcuts blocking - including ESC to prevent fullscreen exit
+  useEffect(() => {
+    if (!enabled || showPermissionModal) return;
 
     const handleKeyDown = (e) => {
       const isInEditor = e.target.closest('.monaco-editor');
       const isInTextarea = e.target.tagName === 'TEXTAREA';
       const isInInput = e.target.tagName === 'INPUT';
 
+      // Block ESC key to prevent fullscreen exit
+      if (e.key === 'Escape' || e.keyCode === 27) {
+        e.preventDefault();
+        e.stopPropagation();
+        // Immediately try to re-enter fullscreen if user tries to exit
+        requestFullscreen().catch(() => { });
+        return;
+      }
+
+      // Block F11 (fullscreen toggle)
+      if (e.key === 'F11' || e.keyCode === 122) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
       if (isInEditor) {
-        // In Monaco editor, block shortcuts
         const isFKey = (e.key && /^F\d+$/i.test(e.key) && parseInt(e.key.slice(1)) >= 1 && parseInt(e.key.slice(1)) <= 12) ||
-                       (e.keyCode >= 112 && e.keyCode <= 123);
+          (e.keyCode >= 112 && e.keyCode <= 123);
         if (
           e.ctrlKey ||
           e.altKey ||
           e.key === "Tab" || e.keyCode === 9 ||
-          isFKey
+          isFKey ||
+          (e.ctrlKey && e.shiftKey && e.key === 'I') || // Ctrl+Shift+I
+          (e.ctrlKey && e.shiftKey && e.key === 'J') || // Ctrl+Shift+J
+          (e.ctrlKey && e.shiftKey && e.key === 'C') || // Ctrl+Shift+C
+          (e.key === 'F12')
         ) {
           e.preventDefault();
           e.stopPropagation();
         }
       } else if (!isInTextarea && !isInInput) {
-        // Outside editor and not in textarea/input, block all keys except Tab
         if (e.key !== "Tab" && e.keyCode !== 9) {
           e.preventDefault();
           e.stopPropagation();
         }
       }
-      // Allow normal typing in textareas and inputs
     };
 
-    const handleKeyUp = (e) => {
-      const isInEditor = e.target.closest('.monaco-editor');
-      const isInTextarea = e.target.tagName === 'TEXTAREA';
-      const isInInput = e.target.tagName === 'INPUT';
+    window.addEventListener("keydown", handleKeyDown, true); // Use capture phase for better blocking
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [enabled, showPermissionModal, requestFullscreen]);
 
-      // Only block shortcuts in Monaco editor, allow normal typing in textareas and inputs
-      if (isInEditor) {
-        const isFKey = (e.key && /^F\d+$/i.test(e.key) && parseInt(e.key.slice(1)) >= 1 && parseInt(e.key.slice(1)) <= 12) ||
-                       (e.keyCode >= 112 && e.keyCode <= 123);
-        if (
-          e.ctrlKey ||
-          e.altKey ||
-          e.key === "Tab" || e.keyCode === 9 ||
-          isFKey
-        ) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // Stop screen sharing
+      if (screenStreamRef.current) {
+        screenStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+
+      // Stop video stream
+      if (videoRef.current && videoRef.current.srcObject) {
+        videoRef.current.srcObject.getTracks().forEach(track => track.stop());
+      }
+
+      // Clear intervals
+      if (faceDetectionIntervalRef.current) {
+        clearInterval(faceDetectionIntervalRef.current);
+      }
+      if (devToolsCheckIntervalRef.current) {
+        clearInterval(devToolsCheckIntervalRef.current);
+      }
+      if (fullscreenTimeoutRef.current) {
+        clearTimeout(fullscreenTimeoutRef.current);
       }
     };
+  }, []);
 
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-    };
-  }, [enabled, blockKeyboardShortcuts]);
-
-  // Context menu blocking
-  useEffect(() => {
-    if (!enabled || !blockContextMenu) return;
-
-    const handleContextMenu = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-    };
-
-    window.addEventListener("contextmenu", handleContextMenu);
-
-    return () => {
-      window.removeEventListener("contextmenu", handleContextMenu);
-    };
-  }, [enabled, blockContextMenu]);
-
-  // Handle resume test
-  const handleResumeTest = () => {
-    setShowResumeModal(false);
-    // Immediately return to fullscreen mode when resuming
-    setTimeout(() => {
-      requestFullscreen();
-    }, 100);
-  };
-
-  // Expose methods via useImperativeHandle (if ref is provided)
+  // Expose methods via ref
   useImperativeHandle(ref, () => ({
     violationCount,
     violations,
@@ -329,45 +1208,162 @@ const Proctoring = forwardRef(({
 
   return (
     <>
-      {/* Resume Modal */}
-      {showResumeModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-800 rounded-lg p-6 max-w-md w-full">
-            <h2 className="text-xl font-bold mb-4 text-red-400">
-              ⚠️ Tab Switch Detected
-            </h2>
-
-            <div className="mb-6">
-              <p className="text-slate-300 mb-2">
-                You have switched tabs/windows {violationCount} time(s) during
-                this test.
-                {test?.allowedTabSwitches !== undefined && test.allowedTabSwitches !== -1 && (
-                  <span className="block text-slate-400 text-sm mt-1">
-                    (Limit: {test.allowedTabSwitches} switches)
-                  </span>
-                )}
-              </p>
-              <p className="text-slate-400 text-sm">
-                {test?.allowedTabSwitches === -1 
-                  ? "This is a practice test - tab switching is allowed but monitored."
-                  : violationCount === 1
-                  ? "First warning: Please remain focused on the test."
-                  : violationCount < (test?.allowedTabSwitches ?? 2)
-                  ? `Warning: ${violationCount} of ${test?.allowedTabSwitches ?? 2} allowed switches used.`
-                  : "Final warning: This is your last allowed switch."}
-              </p>
+      {/* Permission Modal - Blocks all interaction until permissions granted */}
+      {showPermissionModal && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-[9999] p-4"
+          style={{ pointerEvents: 'auto' }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="bg-slate-800 rounded-lg max-w-2xl w-full max-h-[95vh] flex flex-col">
+            <div className="p-6 pb-4 flex-shrink-0">
+              <h2 className="text-xl font-bold text-white text-center">
+                Proctoring System - Permission Required
+              </h2>
             </div>
 
-            <div className="flex gap-3">
+            <div className="px-6 overflow-y-auto flex-1 space-y-4 pb-4">
+              {/* Screen Sharing */}
+              <div className="bg-slate-700 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <h3 className="text-base font-semibold text-white">Screen Sharing</h3>
+                  {permissions.screenShare ? (
+                    <span className="text-green-400">✓ Granted</span>
+                  ) : (
+                    <button
+                      onClick={requestScreenShare}
+                      className="bg-white/90 hover:bg-white text-black px-4 py-2 rounded-md text-sm font-semibold"
+                    >
+                      Grant Permission
+                    </button>
+                  )}
+                </div>
+                <p className="text-slate-300 text-sm">
+                  You must share your ENTIRE SCREEN (not a window or tab) for monitoring during the exam.
+                </p>
+                {permissionErrors.screenShare && (
+                  <p className="text-red-400 text-sm mt-1">{permissionErrors.screenShare}</p>
+                )}
+              </div>
+
+              {/* Face Matching */}
+              <div className="bg-slate-700 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <h3 className="text-base font-semibold text-white">Face Recognition</h3>
+                  {isLoadingModels ? (
+                    <span className="text-yellow-400">Loading models...</span>
+                  ) : permissions.faceMatch ? (
+                    <span className="text-green-400">✓ Active</span>
+                  ) : (
+                    <span className="text-slate-400">Pending</span>
+                  )}
+                </div>
+                <p className="text-slate-300 text-sm">
+                  Your face will be monitored to ensure you are the one taking the exam.
+                </p>
+                {permissionErrors.faceMatch && (
+                  <div className="mt-2">
+                    <p className="text-red-400 text-sm mb-2">{permissionErrors.faceMatch}</p>
+                    {(permissionErrors.faceMatch.includes('Face descriptor not found') ||
+                      permissionErrors.faceMatch.includes('No face descriptor') ||
+                      permissionErrors.faceMatch.includes('Failed to load face descriptor') ||
+                      permissionErrors.faceMatch.includes('upload a profile image')) && (
+                        <button
+                          onClick={() => navigate('/student/profile')}
+                          className="bg-white/90 hover:bg-white text-black px-4 py-2 rounded-md text-sm font-semibold transition-colors w-full"
+                        >
+                          Go to Profile Settings
+                        </button>
+                      )}
+                  </div>
+                )}
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  muted
+                  playsInline
+                  className="hidden"
+                />
+                <canvas ref={canvasRef} className="hidden" />
+              </div>
+
+              {/* Microphone */}
+              <div className="bg-slate-700 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <h3 className="text-base font-semibold text-white">Microphone</h3>
+                  {permissions.microphone ? (
+                    <span className="text-green-400">✓ Granted</span>
+                  ) : (
+                    <button
+                      onClick={requestMicrophone}
+                      className="bg-white/90 hover:bg-white text-black px-4 py-2 rounded-md text-sm font-semibold"
+                    >
+                      Grant Permission
+                    </button>
+                  )}
+                </div>
+                <p className="text-slate-300 text-sm">
+                  Microphone access is required for audio monitoring.
+                </p>
+                {permissionErrors.microphone && (
+                  <p className="text-red-400 text-sm mt-1">{permissionErrors.microphone}</p>
+                )}
+              </div>
+
+              {/* Location */}
+              <div className="bg-slate-700 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <h3 className="text-base font-semibold text-white">Location</h3>
+                  {permissions.location ? (
+                    <span className="text-green-400">✓ Granted</span>
+                  ) : (
+                    <button
+                      onClick={requestLocation}
+                      className="bg-white/90 hover:bg-white text-black px-4 py-2 rounded-md text-sm font-semibold"
+                    >
+                      Grant Permission
+                    </button>
+                  )}
+                </div>
+                <p className="text-slate-300 text-sm">
+                  Location access is required for exam security.
+                </p>
+                {permissionErrors.location && (
+                  <p className="text-red-400 text-sm mt-1">{permissionErrors.location}</p>
+                )}
+              </div>
+
+            </div>
+
+            <div className="p-6 pt-4 flex-shrink-0 border-t border-slate-700">
               <button
-                onClick={handleResumeTest}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-md font-medium"
+                onClick={handleContinue}
+                disabled={!permissions.screenShare || !permissions.microphone || !permissions.location}
+                className={`w-full py-2.5 px-6 rounded-md font-semibold ${permissions.screenShare && permissions.microphone && permissions.location
+                  ? 'bg-green-600 hover:bg-green-700 text-white'
+                  : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                  }`}
               >
-                Resume Exam
+                Continue to Exam
               </button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Warning Modal */}
+      {showWarningModal && currentWarning && (
+        <WarningModalWithDevToolsCheck
+          currentWarning={currentWarning}
+          devToolsOpen={devToolsOpen}
+          setDevToolsOpen={setDevToolsOpen}
+          requestFullscreen={requestFullscreen}
+          onClose={() => {
+            setShowWarningModal(false);
+            setCurrentWarning(null);
+            setDevToolsOpen(false);
+          }}
+        />
       )}
     </>
   );
@@ -376,4 +1372,3 @@ const Proctoring = forwardRef(({
 Proctoring.displayName = 'Proctoring';
 
 export default Proctoring;
-

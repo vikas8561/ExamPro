@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Camera, Mail, Lock, User as UserIcon, Building2 } from "lucide-react";
-
 import { API_BASE_URL } from '../config/api';
+import * as faceapi from "face-api.js";
 
 export default function ProfileSection() {
   // Initialize user from localStorage immediately
@@ -91,18 +91,74 @@ export default function ProfileSection() {
   // Camera Functions
   const startCamera = async () => {
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'user' },
-        audio: false 
-      });
+      // Check if getUserMedia is supported
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('Camera access is not supported in this browser. Please use a modern browser like Chrome, Firefox, or Edge.');
+        return;
+      }
+
+      // Try with preferred settings first
+      let mediaStream;
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: 'user' },
+          audio: false 
+        });
+      } catch (firstError) {
+        // If facingMode fails, try with simpler constraints
+        if (firstError.name === 'OverconstrainedError' || firstError.name === 'ConstraintNotSatisfiedError') {
+          console.log('FacingMode not supported, trying with default video constraints...');
+          try {
+            mediaStream = await navigator.mediaDevices.getUserMedia({ 
+              video: true,
+              audio: false 
+            });
+          } catch (secondError) {
+            throw secondError; // Re-throw if this also fails
+          }
+        } else {
+          throw firstError; // Re-throw other errors
+        }
+      }
+
       setStream(mediaStream);
       setShowCamera(true);
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
+        videoRef.current.play().catch(error => {
+          console.error('Error playing video:', error);
+        });
       }
     } catch (error) {
       console.error('Error accessing camera:', error);
-      alert('Unable to access camera. Please check permissions.');
+      
+      // Provide specific error messages based on error type
+      let errorMessage = 'Unable to access camera. ';
+      
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+        errorMessage = 'Camera permission is required. Please:\n\n1. Click the lock/camera icon in your browser\'s address bar\n2. Allow camera access for this site\n3. Refresh the page and try again';
+      } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+        // Check if we can enumerate devices to provide better error message
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoDevices = devices.filter(device => device.kind === 'videoinput');
+          if (videoDevices.length === 0) {
+            errorMessage = 'No camera device found. Please:\n\n1. Connect a camera to your device\n2. Ensure the camera is not being used by another application\n3. Check your device settings to ensure the camera is enabled';
+          } else {
+            errorMessage = 'Camera found but cannot be accessed. Please:\n\n1. Check if the camera is being used by another application\n2. Try refreshing the page\n3. Check your browser\'s camera permissions for this site';
+          }
+        } catch (enumError) {
+          errorMessage = 'Unable to access camera. Please:\n\n1. Ensure a camera is connected\n2. Check browser permissions (click the lock/camera icon in address bar)\n3. Close other applications that might be using the camera\n4. Try refreshing the page';
+        }
+      } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+        errorMessage = 'Camera is already in use by another application. Please close other applications using the camera (Zoom, Teams, Skype, etc.) and try again.';
+      } else if (error.name === 'OverconstrainedError' || error.name === 'ConstraintNotSatisfiedError') {
+        errorMessage = 'Camera settings are not supported. Please try again or check if your camera supports the required features.';
+      } else {
+        errorMessage += `Error: ${error.message || error.name}. Please check your browser settings and ensure camera permissions are granted.`;
+      }
+      
+      alert(errorMessage);
     }
   };
 
@@ -173,13 +229,117 @@ export default function ProfileSection() {
     if (!capturedImage) return;
 
     // Check if image was already saved
-    if (user?.profileImageSaved) {
+    if (user?.profileImageSaved || user?.faceDescriptorSaved) {
       alert('Profile image can only be saved once and cannot be changed.');
       return;
     }
 
     setUploadingImage(true);
     try {
+      // Extract face descriptor using face-api.js
+      let faceDescriptor = null;
+      try {
+        // Load models if not already loaded (they should be in /public/models)
+        const MODEL_URL = '/models';
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+          faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+          faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+        ]);
+
+        // Load image and extract descriptor
+        const img = await faceapi.fetchImage(capturedImage);
+        
+        // Validate image dimensions
+        if (!img || img.width === 0 || img.height === 0) {
+          alert('Invalid image captured. Please try capturing again.');
+          setUploadingImage(false);
+          return;
+        }
+        
+        console.log(`Image loaded: ${img.width}x${img.height}`);
+        
+        // Try multiple detection methods with different options for better reliability
+        let detection = null;
+        
+        // First try with TinyFaceDetector with standard settings
+        try {
+          detection = await faceapi
+            .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ 
+              inputSize: 512, 
+              scoreThreshold: 0.5 
+            }))
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+          console.log('✅ Face detected with TinyFaceDetector (standard)');
+        } catch (err) {
+          console.log('TinyFaceDetector (standard) failed:', err);
+        }
+        
+        // If no detection, try with larger input size (better for larger faces)
+        if (!detection) {
+          try {
+            detection = await faceapi
+              .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ 
+                inputSize: 640, 
+                scoreThreshold: 0.4 
+              }))
+              .withFaceLandmarks()
+              .withFaceDescriptor();
+            console.log('✅ Face detected with TinyFaceDetector (large input)');
+          } catch (err) {
+            console.log('TinyFaceDetector (large input) failed:', err);
+          }
+        }
+        
+        // If still no detection, try with lower threshold (more sensitive)
+        if (!detection) {
+          try {
+            detection = await faceapi
+              .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ 
+                inputSize: 416, 
+                scoreThreshold: 0.3 
+              }))
+              .withFaceLandmarks()
+              .withFaceDescriptor();
+            console.log('✅ Face detected with TinyFaceDetector (low threshold)');
+          } catch (err) {
+            console.log('TinyFaceDetector (low threshold) failed:', err);
+          }
+        }
+        
+        // Last resort: try with very low threshold and smaller input
+        if (!detection) {
+          try {
+            detection = await faceapi
+              .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ 
+                inputSize: 320, 
+                scoreThreshold: 0.2 
+              }))
+              .withFaceLandmarks()
+              .withFaceDescriptor();
+            console.log('✅ Face detected with TinyFaceDetector (very low threshold)');
+          } catch (err) {
+            console.log('TinyFaceDetector (very low threshold) failed:', err);
+          }
+        }
+
+        if (detection) {
+          faceDescriptor = Array.from(detection.descriptor);
+          console.log('✅ Face descriptor extracted successfully');
+        } else {
+          alert('No face detected in the image. Please:\n\n1. Ensure your face is clearly visible\n2. Make sure there is good lighting\n3. Look directly at the camera\n4. Try capturing the image again');
+          setUploadingImage(false);
+          return;
+        }
+      } catch (faceError) {
+        console.error('Error extracting face descriptor:', faceError);
+        alert('Failed to extract face descriptor. Please ensure face-api.js models are downloaded. See README for instructions.');
+        setUploadingImage(false);
+        return;
+      }
+
+      // Send both image (for display) and faceDescriptor (for face recognition) to backend
       const token = localStorage.getItem('token');
       const response = await fetch(`${API_BASE_URL}/auth/profile/image`, {
         method: 'POST',
@@ -187,13 +347,16 @@ export default function ProfileSection() {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ image: capturedImage })
+        body: JSON.stringify({ 
+          image: capturedImage, // Optional: for display purposes
+          faceDescriptor: faceDescriptor // Required: for face recognition (secure, non-reversible)
+        })
       });
 
       const data = await response.json();
       if (response.ok) {
         await fetchProfile(); // Refresh profile data
-        alert('Profile image saved successfully!');
+        alert('Profile image and face descriptor saved successfully!');
         setCapturedImage(null);
       } else {
         alert(data.message || 'Failed to save profile image');
@@ -319,7 +482,7 @@ export default function ProfileSection() {
     );
   }
 
-  const canCaptureImage = !user.profileImageSaved;
+  const canCaptureImage = !user.profileImageSaved && !user.faceDescriptorSaved;
 
   return (
     <div className="p-4 border-t border-slate-700 space-y-4">
@@ -347,7 +510,7 @@ export default function ProfileSection() {
             </button>
           )}
         </div>
-        {canCaptureImage && capturedImage && !user.profileImageSaved && (
+        {canCaptureImage && capturedImage && !user.profileImageSaved && !user.faceDescriptorSaved && (
           <div className="flex gap-2">
             <button
               onClick={saveProfileImage}

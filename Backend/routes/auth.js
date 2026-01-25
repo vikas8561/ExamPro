@@ -246,7 +246,7 @@ router.post("/reset-password", async (req, res) => {
 // Get current user profile
 router.get("/profile", authenticateToken, async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId).select("-password -activeSessions");
+    const user = await User.findById(req.user.userId).select("-password -activeSessions -faceDescriptor");
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -256,17 +256,44 @@ router.get("/profile", authenticateToken, async (req, res) => {
   }
 });
 
-// Upload profile image (camera only, one-time)
+// Get face descriptor for proctoring (secure endpoint, only returns descriptor)
+router.get("/profile/face-descriptor", authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select("faceDescriptor faceDescriptorSaved");
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    
+    if (!user.faceDescriptor || !user.faceDescriptorSaved) {
+      return res.status(400).json({ 
+        message: "Face descriptor not found. Please upload a profile image first.",
+        faceDescriptor: null
+      });
+    }
+    
+    res.json({ 
+      faceDescriptor: user.faceDescriptor,
+      faceDescriptorSaved: user.faceDescriptorSaved
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Upload profile image and face descriptor (camera only, one-time)
+// SECURITY: Only face descriptor is stored for face recognition, image is optional for display
 router.post("/profile/image", authenticateToken, async (req, res) => {
   try {
-    const { image } = req.body; // Base64 encoded image
+    const { image, faceDescriptor } = req.body; // image is optional (for display), faceDescriptor is required for face recognition
     
-    if (!image) {
-      return res.status(400).json({ message: "Image is required" });
+    if (!faceDescriptor || !Array.isArray(faceDescriptor) || faceDescriptor.length !== 128) {
+      return res.status(400).json({ 
+        message: "Face descriptor is required and must be a 128-dimensional array. Please ensure face-api.js extracted the descriptor correctly." 
+      });
     }
 
-    // Validate base64 image format
-    if (!image.startsWith('data:image/')) {
+    // Validate base64 image format if provided (optional, for display only)
+    if (image && !image.startsWith('data:image/')) {
       return res.status(400).json({ message: "Invalid image format. Only images from camera are allowed." });
     }
 
@@ -275,19 +302,27 @@ router.post("/profile/image", authenticateToken, async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Check if profile image was already saved (one-time only)
-    if (user.profileImageSaved) {
-      return res.status(400).json({ message: "Profile image can only be saved once and cannot be changed" });
+    // Check if face descriptor was already saved (one-time only)
+    if (user.faceDescriptorSaved) {
+      return res.status(400).json({ message: "Face descriptor can only be saved once and cannot be changed" });
     }
 
-    // Save the image
-    user.profileImage = image;
-    user.profileImageSaved = true;
+    // Store face descriptor (secure, non-reversible biometric template)
+    user.faceDescriptor = faceDescriptor;
+    user.faceDescriptorSaved = true;
+    
+    // Optionally store image for display purposes only (not used for face recognition)
+    if (image) {
+      user.profileImage = image;
+      user.profileImageSaved = true;
+    }
+    
     await user.save();
 
     res.json({ 
-      message: "Profile image saved successfully",
-      profileImage: user.profileImage,
+      message: "Face descriptor saved successfully",
+      faceDescriptorSaved: user.faceDescriptorSaved,
+      profileImage: user.profileImage || null, // Return image only if stored
       profileImageSaved: user.profileImageSaved
     });
   } catch (err) {

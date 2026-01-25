@@ -145,6 +145,12 @@ const apiRequest = async (endpoint, options = {}) => {
         return null;
       }
       
+      // For answers endpoint, 404 is expected when no answers exist yet
+      if (endpoint.startsWith('/answers/assignment/')) {
+        // Return empty array instead of throwing error for expected 404s
+        return [];
+      }
+      
       // Try to get error message from response body
       try {
         const errorData = await response.json();

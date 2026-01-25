@@ -94,6 +94,7 @@ export default function AdminSidebar({ isOpen, onToggle }) {
     { to: "/admin/tests", icon: ClipboardList, label: "Tests" },
     { to: "/admin/dsa-practice", icon: Code, label: "DSA Practice" },
     { to: "/admin/users", icon: Users, label: "Users" },
+    { to: "/admin/migrate-face-descriptors", icon: Shield, label: "Migrate Face Data" },
   ];
 
   return (
