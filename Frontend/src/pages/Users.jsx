@@ -3,6 +3,7 @@ import { Search, X as CloseIcon, UserPlus, Users as UsersIcon, Trash2, Image as 
 import StatusPill from "../components/StatusPill";
 import EmailUploader from "../components/EmailUploader";
 import { API_BASE_URL } from "../config/api";
+import apiRequest from "../services/api";
 
 // Card animation styles
 const cardAnimationStyles = `
@@ -266,6 +267,35 @@ export default function Users() {
     }
   };
 
+  const deleteAllProfileImages = async () => {
+    if (!window.confirm("⚠️ DANGER ZONE ⚠️\n\nAre you sure you want to delete profile images and face descriptors for ALL users?\n\nThis action CANNOT be undone.")) {
+      return;
+    }
+
+    // Double confirmation
+    const confirmText = "RESET ALL";
+    const input = window.prompt(`To confirm, please type "${confirmText}" below:`);
+
+    if (input !== confirmText) {
+      alert("Action cancelled.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const data = await apiRequest("/users/profile-images/all", {
+        method: "DELETE"
+      });
+      alert(data.message);
+      fetchUsers();
+    } catch (err) {
+      console.error("Error deleting all images:", err);
+      alert(err.message || "Failed to delete all images");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const resetPassword = async (userId, userName) => {
     if (!window.confirm(`Are you sure you want to reset the password for ${userName}? The password will be changed to the default: 12345`)) {
       return;
@@ -422,46 +452,60 @@ export default function Users() {
                 )}
               </div>
 
-              {/* Add User Button */}
-              <button
-                onClick={() => {
-                  if (showAddForm) {
-                    // Close form
-                    setShowAddForm(false);
-                    setAddMode(null);
-                    if (editing) {
-                      setEditing(null);
-                      setForm({
-                        name: "",
-                        email: "",
-                        role: "Student",
-                        studentCategory: "SU",
-                      });
+              {/* Action Buttons Group */}
+              <div className="flex items-center gap-3">
+
+                {/* Reset All Images Button */}
+                <button
+                  onClick={deleteAllProfileImages}
+                  className="bg-red-900/40 hover:bg-red-900/60 text-red-200 px-4 py-3 rounded-xl font-medium transition-all duration-200 border border-red-800/50 shadow-sm hover:shadow-md flex items-center gap-2"
+                  title="Delete all user profile images and face data"
+                >
+                  <Trash2 className="h-5 w-5" />
+                  <span className="hidden xl:inline">Reset All Images</span>
+                </button>
+
+                {/* Add User Button */}
+                <button
+                  onClick={() => {
+                    if (showAddForm) {
+                      // Close form
+                      setShowAddForm(false);
+                      setAddMode(null);
+                      if (editing) {
+                        setEditing(null);
+                        setForm({
+                          name: "",
+                          email: "",
+                          role: "Student",
+                          studentCategory: "SU",
+                        });
+                      }
+                    } else {
+                      // Open form with mode selection
+                      setShowAddForm(true);
+                      setAddMode(null); // Show choice first
                     }
-                  } else {
-                    // Open form with mode selection
-                    setShowAddForm(true);
-                    setAddMode(null); // Show choice first
-                  }
-                }}
-                className="group inline-flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-300 shadow-sm hover:shadow-md"
-                style={{
-                  backgroundColor: "rgba(255, 255, 255, 0.1)",
-                  color: "#FFFFFF",
-                  border: "1px solid rgba(255, 255, 255, 0.3)",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.2)";
-                  e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.5)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
-                  e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
-                }}
-              >
-                <UserPlus className="h-5 w-5" />
-                <span>{editing ? "Cancel Edit" : showAddForm ? "Cancel" : "Add User"}</span>
-              </button>
+                  }}
+                  className="group inline-flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-300 shadow-sm hover:shadow-md"
+                  style={{
+                    backgroundColor: "rgba(255, 255, 255, 0.1)",
+                    color: "#FFFFFF",
+                    border: "1px solid rgba(255, 255, 255, 0.3)",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.2)";
+                    e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.5)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
+                    e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
+                  }}
+                >
+                  <UserPlus className="h-5 w-5" />
+                  <span>{editing ? "Cancel Edit" : showAddForm ? "Cancel" : "Add User"}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -844,8 +888,8 @@ export default function Users() {
                     <span className="text-slate-300 text-sm font-semibold whitespace-nowrap">Profile Image</span>
                   </div>
                   <span className={`px-3 py-1.5 rounded-lg text-xs font-bold border shadow-md min-w-[80px] text-center ${u.profileImageSaved
-                      ? 'bg-gradient-to-r from-emerald-600/30 to-emerald-700/30 text-emerald-200 border-emerald-500/30'
-                      : 'bg-gradient-to-r from-slate-700/50 to-slate-800/50 text-slate-300 border-slate-600/30'
+                    ? 'bg-gradient-to-r from-emerald-600/30 to-emerald-700/30 text-emerald-200 border-emerald-500/30'
+                    : 'bg-gradient-to-r from-slate-700/50 to-slate-800/50 text-slate-300 border-slate-600/30'
                     }`}>
                     {u.profileImageSaved ? "Uploaded" : "Not Set"}
                   </span>
@@ -975,8 +1019,8 @@ export default function Users() {
                     key={pageNum}
                     onClick={() => setCurrentPage(pageNum)}
                     className={`px-4 py-2 rounded-lg font-semibold transition-all duration-300 ${currentPage === pageNum
-                        ? 'bg-white text-black shadow-lg transform scale-105'
-                        : 'text-white hover:bg-white/20 hover:scale-105'
+                      ? 'bg-white text-black shadow-lg transform scale-105'
+                      : 'text-white hover:bg-white/20 hover:scale-105'
                       }`}
                   >
                     {pageNum}

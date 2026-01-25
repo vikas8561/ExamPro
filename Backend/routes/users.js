@@ -150,6 +150,33 @@ router.get("/profiles", async (req, res) => {
   }
 });
 
+// Delete ALL users profile images (admin only)
+router.delete("/profile-images/all", authenticateToken, requireRole("admin"), async (req, res) => {
+  try {
+    // Update all users: clear profileImage and faceDescriptor
+    // Using $unset to remove fields and $set to update boolean flags
+    const result = await User.updateMany(
+      {}, // Target ALL users
+      {
+        $unset: {
+          profileImage: "",
+          faceDescriptor: ""
+        },
+        $set: {
+          profileImageSaved: false,
+          faceDescriptorSaved: false
+        }
+      }
+    );
+
+    res.json({
+      message: `Successfully deleted profile images and face data for ${result.modifiedCount} users.`,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Delete user profile image (admin only)
 router.delete("/:id/profile-image", async (req, res) => {
   try {
