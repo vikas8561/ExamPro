@@ -192,6 +192,7 @@ const Proctoring = forwardRef(({
   const [showWarningModal, setShowWarningModal] = useState(false);
   const [currentWarning, setCurrentWarning] = useState(null);
   const [devToolsOpen, setDevToolsOpen] = useState(false);
+  const [devToolsDetected, setDevToolsDetected] = useState(false); // For blocking test start
 
   // Refs
   const screenStreamRef = useRef(null);
@@ -333,6 +334,26 @@ const Proctoring = forwardRef(({
       hasRequestedPermissionsRef.current = false;
     }
   }, [enabled]);
+
+  // Detect devtools during permission modal phase to block test start
+  useEffect(() => {
+    if (!showPermissionModal) return;
+
+    const checkDevTools = () => {
+      const widthThreshold = 160;
+      const isOpen = window.outerWidth - window.innerWidth > widthThreshold ||
+        window.outerHeight - window.innerHeight > widthThreshold;
+      setDevToolsDetected(isOpen);
+    };
+
+    // Check immediately
+    checkDevTools();
+
+    // Check every 500ms
+    const intervalId = setInterval(checkDevTools, 500);
+
+    return () => clearInterval(intervalId);
+  }, [showPermissionModal]);
 
   // Handle violations (defined early to avoid initialization order issues)
   const handleViolation = useCallback((violationType, details) => {
@@ -1277,13 +1298,6 @@ const Proctoring = forwardRef(({
                       )}
                   </div>
                 )}
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  muted
-                  playsInline
-                  className="hidden"
-                />
                 <canvas ref={canvasRef} className="hidden" />
               </div>
 
@@ -1336,15 +1350,29 @@ const Proctoring = forwardRef(({
             </div>
 
             <div className="p-6 pt-4 flex-shrink-0 border-t border-slate-700">
+              {/* DevTools Warning */}
+              {devToolsDetected && (
+                <div className="bg-red-900/50 border border-red-500 rounded-lg p-4 mb-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-red-400 text-xl">⚠️</span>
+                    <h4 className="text-red-400 font-bold">Developer Tools Detected!</h4>
+                  </div>
+                  <p className="text-red-300 text-sm">
+                    Please close the Developer Tools (press F12 or right-click → Inspect) before starting the exam.
+                    Developer tools are not allowed during the test for security reasons.
+                  </p>
+                </div>
+              )}
+
               <button
                 onClick={handleContinue}
-                disabled={!permissions.screenShare || !permissions.microphone || !permissions.location}
-                className={`w-full py-2.5 px-6 rounded-md font-semibold ${permissions.screenShare && permissions.microphone && permissions.location
-                  ? 'bg-green-600 hover:bg-green-700 text-white'
-                  : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                disabled={!permissions.screenShare || !permissions.microphone || !permissions.location || devToolsDetected}
+                className={`w-full py-2.5 px-6 rounded-md font-semibold ${permissions.screenShare && permissions.microphone && permissions.location && !devToolsDetected
+                    ? 'bg-green-600 hover:bg-green-700 text-white'
+                    : 'bg-gray-600 text-gray-400 cursor-not-allowed'
                   }`}
               >
-                Continue to Exam
+                {devToolsDetected ? 'Close Developer Tools to Continue' : 'Continue to Exam'}
               </button>
             </div>
           </div>
@@ -1365,6 +1393,25 @@ const Proctoring = forwardRef(({
           }}
         />
       )}
+
+      {/* Live Video Preview - Positioned in header area (top center) */}
+      {/* Video element always rendered for face detection, visibility controlled by wrapper */}
+      <div className={`fixed top-[1.65rem] left-1/2 transform -translate-x-1/2 z-40 ${enabled && !showPermissionModal && permissions.faceMatch ? '' : 'hidden'}`}>
+        <div className="bg-slate-700 rounded-lg p-1 shadow-lg border border-slate-600 flex items-center gap-2">
+          <video
+            ref={videoRef}
+            autoPlay
+            muted
+            playsInline
+            className="w-36 h-24 rounded object-cover bg-slate-900"
+            style={{ transform: 'scaleX(-1)' }}
+          />
+          <div className="text-xs text-green-400 flex items-center gap-1 pr-2">
+            <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
+            Live
+          </div>
+        </div>
+      </div>
     </>
   );
 });
