@@ -72,11 +72,11 @@ export default function Users() {
       page: page.toString(),
       limit: "9"
     });
-    
+
     if (search) {
       params.append("search", search);
     }
-    
+
     if (roleFilter && roleFilter !== "All Users") {
       params.append("filter", roleFilter);
     }
@@ -150,9 +150,9 @@ export default function Users() {
         setIsFilterOpen(false);
       }
     };
-    
+
     document.addEventListener('mousedown', handleClickOutside);
-    
+
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
@@ -367,7 +367,7 @@ export default function Users() {
                 <button
                   onClick={() => setSearchTerm("")}
                   className="absolute inset-y-0 right-0 pr-4 flex items-center transition-all duration-200"
-                  style={{ 
+                  style={{
                     color: searchTerm ? "#FFFFFF" : "transparent",
                     pointerEvents: searchTerm ? "auto" : "none",
                     cursor: searchTerm ? "pointer" : "default"
@@ -412,9 +412,8 @@ export default function Users() {
                           setFilter(option);
                           setIsFilterOpen(false);
                         }}
-                        className={`p-3 hover:bg-slate-700/50 cursor-pointer text-white transition-colors ${
-                          filter === option ? 'bg-slate-700/50' : ''
-                        }`}
+                        className={`p-3 hover:bg-slate-700/50 cursor-pointer text-white transition-colors ${filter === option ? 'bg-slate-700/50' : ''
+                          }`}
                       >
                         {option}
                       </div>
@@ -424,7 +423,7 @@ export default function Users() {
               </div>
 
               {/* Add User Button */}
-        <button
+              <button
                 onClick={() => {
                   if (showAddForm) {
                     // Close form
@@ -462,7 +461,7 @@ export default function Users() {
               >
                 <UserPlus className="h-5 w-5" />
                 <span>{editing ? "Cancel Edit" : showAddForm ? "Cancel" : "Add User"}</span>
-        </button>
+              </button>
             </div>
           </div>
         </div>
@@ -600,10 +599,10 @@ export default function Users() {
                   </button>
                 </div>
                 <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <input
-          value={form.name}
+                  <input
+                    value={form.name}
                     onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-          placeholder="Full name"
+                    placeholder="Full name"
                     className="px-4 py-3 rounded-xl focus:outline-none transition-all duration-300"
                     style={{
                       backgroundColor: "#1E293B",
@@ -616,11 +615,11 @@ export default function Users() {
                     onBlur={(e) => {
                       e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
                     }}
-        />
-        <input
-          value={form.email}
+                  />
+                  <input
+                    value={form.email}
                     onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-          placeholder="Email"
+                    placeholder="Email"
                     className="px-4 py-3 rounded-xl focus:outline-none transition-all duration-300"
                     style={{
                       backgroundColor: "#1E293B",
@@ -633,10 +632,10 @@ export default function Users() {
                     onBlur={(e) => {
                       e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
                     }}
-        />
-        <select
-          value={form.role}
-          onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
+                  />
+                  <select
+                    value={form.role}
+                    onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
                     className="px-4 py-3 rounded-xl focus:outline-none transition-all duration-300"
                     style={{
                       backgroundColor: "#1E293B",
@@ -649,15 +648,15 @@ export default function Users() {
                     onBlur={(e) => {
                       e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
                     }}
-        >
+                  >
                     <option value="Student" style={{ backgroundColor: "#1E293B" }}>Student</option>
                     <option value="Mentor" style={{ backgroundColor: "#1E293B" }}>Mentor</option>
                     <option value="Admin" style={{ backgroundColor: "#1E293B" }}>Admin</option>
-        </select>
-        {form.role === "Student" && (
-          <select
-            value={form.studentCategory}
-            onChange={(e) => setForm((f) => ({ ...f, studentCategory: e.target.value }))}
+                  </select>
+                  {form.role === "Student" && (
+                    <select
+                      value={form.studentCategory}
+                      onChange={(e) => setForm((f) => ({ ...f, studentCategory: e.target.value }))}
                       className="px-4 py-3 rounded-xl focus:outline-none transition-all duration-300"
                       style={{
                         backgroundColor: "#1E293B",
@@ -670,11 +669,11 @@ export default function Users() {
                       onBlur={(e) => {
                         e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
                       }}
-          >
+                    >
                       <option value="RU" style={{ backgroundColor: "#1E293B" }}>RU</option>
                       <option value="SU" style={{ backgroundColor: "#1E293B" }}>SU</option>
-          </select>
-        )}
+                    </select>
+                  )}
                 </div>
                 <div className="flex gap-3 mt-4">
                   <button
@@ -749,21 +748,20 @@ export default function Users() {
                 }} />
               </>
             )}
-      </div>
+          </div>
         </div>
       )}
 
       {/* Users Grid - cards styled like Tests page */}
-      <div 
+      <div
         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto flex-grow transition-opacity duration-300"
         style={{ opacity: loading ? 0.5 : 1 }}
       >
         {users.map((u, index) => (
           <div
             key={u._id}
-            className={`relative backdrop-blur-sm rounded-2xl p-5 border overflow-hidden flex flex-col min-h-[300px] ${
-              isInitialLoad ? 'animate-slide-in-up' : 'animate-fade-in'
-            }`}
+            className={`relative backdrop-blur-sm rounded-2xl p-5 border overflow-hidden flex flex-col min-h-[300px] ${isInitialLoad ? 'animate-slide-in-up' : 'animate-fade-in'
+              }`}
             style={{
               backgroundColor: "rgba(15, 23, 42, 0.9)",
               borderColor: "rgba(148, 163, 184, 0.2)",
@@ -845,11 +843,10 @@ export default function Users() {
                     </div>
                     <span className="text-slate-300 text-sm font-semibold whitespace-nowrap">Profile Image</span>
                   </div>
-                  <span className={`px-3 py-1.5 rounded-lg text-xs font-bold border shadow-md min-w-[80px] text-center ${
-                    u.profileImageSaved 
-                      ? 'bg-gradient-to-r from-emerald-600/30 to-emerald-700/30 text-emerald-200 border-emerald-500/30' 
+                  <span className={`px-3 py-1.5 rounded-lg text-xs font-bold border shadow-md min-w-[80px] text-center ${u.profileImageSaved
+                      ? 'bg-gradient-to-r from-emerald-600/30 to-emerald-700/30 text-emerald-200 border-emerald-500/30'
                       : 'bg-gradient-to-r from-slate-700/50 to-slate-800/50 text-slate-300 border-slate-600/30'
-                  }`}>
+                    }`}>
                     {u.profileImageSaved ? "Uploaded" : "Not Set"}
                   </span>
                 </div>
@@ -894,8 +891,8 @@ export default function Users() {
                   <KeyRound className="h-4 w-4" />
                   {resettingPassword === u._id ? "Resetting..." : "Reset Password"}
                 </button>
-                {/* Delete Profile Image Button - Only show if image exists in DB */}
-                {u.profileImageSaved && (
+                {/* Delete Profile Image Button - Show if image OR face descriptor exists in DB */}
+                {(u.profileImageSaved || u.faceDescriptorSaved) && (
                   <button
                     onClick={() => deleteProfileImage(u._id, u.name)}
                     disabled={deletingImage === u._id}
@@ -933,8 +930,8 @@ export default function Users() {
               disabled={!pagination.hasPrevPage || currentPage === 1}
               className="px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100"
               style={{
-                backgroundColor: !pagination.hasPrevPage || currentPage === 1 
-                  ? 'rgba(255, 255, 255, 0.05)' 
+                backgroundColor: !pagination.hasPrevPage || currentPage === 1
+                  ? 'rgba(255, 255, 255, 0.05)'
                   : '#FFFFFF',
                 color: !pagination.hasPrevPage || currentPage === 1 ? '#FFFFFF' : '#000000',
                 border: '2px solid rgba(255, 255, 255, 0.2)'
@@ -959,7 +956,7 @@ export default function Users() {
               </svg>
               Previous
             </button>
-            
+
             <div className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)' }}>
               {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
                 let pageNum;
@@ -972,23 +969,22 @@ export default function Users() {
                 } else {
                   pageNum = currentPage - 2 + i;
                 }
-                
+
                 return (
                   <button
                     key={pageNum}
                     onClick={() => setCurrentPage(pageNum)}
-                    className={`px-4 py-2 rounded-lg font-semibold transition-all duration-300 ${
-                      currentPage === pageNum
+                    className={`px-4 py-2 rounded-lg font-semibold transition-all duration-300 ${currentPage === pageNum
                         ? 'bg-white text-black shadow-lg transform scale-105'
                         : 'text-white hover:bg-white/20 hover:scale-105'
-                    }`}
+                      }`}
                   >
                     {pageNum}
                   </button>
                 );
               })}
             </div>
-            
+
             <button
               onClick={() => {
                 if (currentPage < pagination.totalPages) {
@@ -999,7 +995,7 @@ export default function Users() {
               className="px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100"
               style={{
                 backgroundColor: !pagination.hasNextPage || currentPage >= pagination.totalPages
-                  ? 'rgba(255, 255, 255, 0.05)' 
+                  ? 'rgba(255, 255, 255, 0.05)'
                   : '#FFFFFF',
                 color: !pagination.hasNextPage || currentPage >= pagination.totalPages ? '#FFFFFF' : '#000000',
                 border: '2px solid rgba(255, 255, 255, 0.2)'

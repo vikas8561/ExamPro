@@ -9,6 +9,39 @@ const { authenticateToken, requireRole } = require("../middleware/auth");
 
 // Submit test results
 router.post("/", authenticateToken, async (req, res, next) => {
+  // ... existing submit logic
+});
+
+// Sync violations (progress update)
+router.put("/sync-violations", authenticateToken, async (req, res, next) => {
+  try {
+    const { assignmentId, tabViolationCount, tabViolations } = req.body;
+    const userId = req.user.userId;
+
+    if (!assignmentId) {
+      return res.status(400).json({ message: "assignmentId is required" });
+    }
+
+    // Update submission violations without completing the test
+    await TestSubmission.findOneAndUpdate(
+      { assignmentId, userId },
+      {
+        $set: {
+          tabViolationCount: tabViolationCount || 0,
+          tabViolations: tabViolations || []
+        }
+      },
+      { upsert: true, new: true }
+    );
+
+    res.json({ message: "Violations synced successfully" });
+  } catch (error) {
+    console.error("Error syncing violations:", error);
+    next(error);
+  }
+});
+
+router.post("/", authenticateToken, async (req, res, next) => {
   try {
     const { assignmentId, responses, timeSpent, permissions, tabViolationCount, tabViolations, cancelledDueToViolation, autoSubmit } = req.body;
     const userId = req.user.userId;
@@ -46,20 +79,20 @@ router.post("/", authenticateToken, async (req, res, next) => {
 
     // Get assignment to check if test time has expired
     console.log("🔍 Looking up assignment:", assignmentId, "Type:", typeof assignmentId);
-    
+
     // Validate assignmentId format
     if (!assignmentId || typeof assignmentId !== 'string' || assignmentId.length !== 24) {
       console.error("❌ Invalid assignmentId format:", assignmentId);
       return res.status(400).json({ message: "Invalid assignment ID format" });
     }
-    
+
     const assignment = await Assignment.findById(assignmentId);
-    
+
     if (!assignment) {
       console.error("❌ Assignment not found:", assignmentId);
       return res.status(404).json({ message: "Assignment not found" });
     }
-    
+
     console.log("✅ Assignment found:", assignment._id);
 
     // Check if test time has expired (skip for auto-submit)
@@ -88,7 +121,7 @@ router.post("/", authenticateToken, async (req, res, next) => {
           select: "kind text options answer answers guidelines examples points"
         }
       });
-    
+
     if (!assignmentWithTest.testId) {
       return res.status(404).json({ message: "Test not found" });
     }
@@ -96,13 +129,13 @@ router.post("/", authenticateToken, async (req, res, next) => {
     // Check if user has access to this assignment
     // console.log(`Assignment userId: ${assignment.userId.toString()}, Request userId: ${userId}`);
     // console.log(`Assignment userId type: ${typeof assignment.userId.toString()}, Request userId type: ${typeof userId}`);
-    
+
     // Allow submission if the assignment belongs to the user OR if the user is assigned to this test
     // This is more permissive to handle cases where assignments might be shared or reassigned
     if (assignment.userId.toString() !== userId) {
       // console.log(`Assignment ownership mismatch: Assignment belongs to user ${assignment.userId.toString()} but request is from user ${userId}`);
       // console.log(`Allowing submission anyway for flexibility in assignment management`);
-      
+
       // We'll allow the submission but log the mismatch for auditing
       // In a production system, you might want additional checks here
     }
@@ -131,7 +164,7 @@ router.post("/", authenticateToken, async (req, res, next) => {
       maxScore += question.points;
 
       const userResponse = responses.find(r => r.questionId === question._id.toString());
-      
+
       // Debug logging for questionId matching
       console.log(`🔍 Processing question ${question._id} (${question.kind}):`, {
         questionId: question._id,
@@ -142,7 +175,7 @@ router.post("/", authenticateToken, async (req, res, next) => {
 
       // Check if response exists and has actual content
       const hasResponse = userResponse && (userResponse.selectedOption !== null && userResponse.selectedOption !== undefined) ||
-                         (userResponse && userResponse.textAnswer !== null && userResponse.textAnswer !== undefined && userResponse.textAnswer.trim() !== "");
+        (userResponse && userResponse.textAnswer !== null && userResponse.textAnswer !== undefined && userResponse.textAnswer.trim() !== "");
 
       if (!hasResponse) {
         notAnsweredCount++;
@@ -154,10 +187,10 @@ router.post("/", authenticateToken, async (req, res, next) => {
           points: 0,
           autoGraded: false,
           geminiFeedback: null,
-        correctAnswer: null,
-        errorAnalysis: null,
-        improvementSteps: [],
-        topicRecommendations: []
+          correctAnswer: null,
+          errorAnalysis: null,
+          improvementSteps: [],
+          topicRecommendations: []
         });
         continue;
       }
@@ -258,7 +291,7 @@ router.post("/", authenticateToken, async (req, res, next) => {
       const cameraGranted = permissions.cameraGranted || permissions.camera === "granted";
       const microphoneGranted = permissions.microphoneGranted || permissions.microphone === "granted";
       const locationGranted = permissions.locationGranted || permissions.location === "granted";
-      
+
       // Determine permission status
       let permissionStatus = "Pending";
       if (cameraGranted && microphoneGranted && locationGranted) {
@@ -280,7 +313,7 @@ router.post("/", authenticateToken, async (req, res, next) => {
 
     console.log("🔍 About to save to database with query:", { assignmentId, userId });
     console.log("🔍 Submission data keys:", Object.keys(submissionData));
-    
+
     let submission;
     try {
       // Use findOneAndUpdate with upsert for atomic operation
@@ -288,8 +321,8 @@ router.post("/", authenticateToken, async (req, res, next) => {
       submission = await TestSubmission.findOneAndUpdate(
         { assignmentId, userId },
         submissionData,
-        { 
-          upsert: true, 
+        {
+          upsert: true,
           new: true,
           runValidators: false, // Skip validators for performance
           maxTimeMS: 10000 // 10 second timeout
@@ -304,7 +337,7 @@ router.post("/", authenticateToken, async (req, res, next) => {
         code: dbError.code,
         keyValue: dbError.keyValue
       });
-      
+
       // If it's a duplicate key error, try to fetch existing submission
       if (dbError.code === 11000) {
         console.log("⚠️ Duplicate key error, fetching existing submission...");
@@ -332,7 +365,7 @@ router.post("/", authenticateToken, async (req, res, next) => {
           timeSpent: timeSpent || 0,
           reviewStatus: "Reviewed"
         },
-        { 
+        {
           new: false, // Don't return updated document for performance
           maxTimeMS: 5000 // 5 second timeout
         }
@@ -372,14 +405,14 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     const validAssignmentIdArray = validAssignmentIds.map(a => a._id);
 
     // OPTIMIZED: Count completed submissions efficiently
-    const totalCount = await TestSubmission.countDocuments({ 
+    const totalCount = await TestSubmission.countDocuments({
       userId,
       assignmentId: { $in: validAssignmentIdArray },
       submittedAt: { $ne: null, $exists: true }
     });
 
     // OPTIMIZED: Get paginated submissions - don't load questions array
-    const submissions = await TestSubmission.find({ 
+    const submissions = await TestSubmission.find({
       userId,
       assignmentId: { $in: validAssignmentIdArray },
       submittedAt: { $ne: null, $exists: true }
@@ -535,7 +568,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
         } else if ((response.selectedOption !== null && response.selectedOption !== undefined) && !response.isCorrect) {
           incorrectCount++;
         } else if ((response.selectedOption === null || response.selectedOption === undefined) &&
-                   (response.textAnswer === null || response.textAnswer === undefined || response.textAnswer.trim() === "")) {
+          (response.textAnswer === null || response.textAnswer === undefined || response.textAnswer.trim() === "")) {
           notAnsweredCount++;
         }
       });
@@ -574,11 +607,11 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
           showResults: true
         });
       } else {
-          // Calculate remaining time until results are available
-          const remainingTime = Math.max(0, assignmentDeadline - currentTime);
-          const remainingMinutes = Math.floor((remainingTime / 1000) / 60);
-          const remainingSeconds = Math.floor((remainingTime / 1000) % 60);
-          const remainingTimeString = `${remainingMinutes} minutes and ${remainingSeconds} seconds`;
+        // Calculate remaining time until results are available
+        const remainingTime = Math.max(0, assignmentDeadline - currentTime);
+        const remainingMinutes = Math.floor((remainingTime / 1000) / 60);
+        const remainingSeconds = Math.floor((remainingTime / 1000) % 60);
+        const remainingTimeString = `${remainingMinutes} minutes and ${remainingSeconds} seconds`;
 
         res.json({
           test: {
@@ -665,7 +698,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
           permissions: null
         },
         showResults: showResults,
-        message: showResults ? 
+        message: showResults ?
           "Test Completion Status\nThis test has been assessed immediately upon submission.\n\nNo test submission data is available as the test was not fully completed." :
           "Test not submitted yet. Results will be available after the deadline."
       });

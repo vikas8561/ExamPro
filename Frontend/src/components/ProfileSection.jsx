@@ -19,7 +19,7 @@ export default function ProfileSection() {
 
   const [user, setUser] = useState(getInitialUser());
   const [loading, setLoading] = useState(true);
-  
+
   // Profile Image States
   const [showCamera, setShowCamera] = useState(false);
   const [stream, setStream] = useState(null);
@@ -27,13 +27,13 @@ export default function ProfileSection() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [uploadingImage, setUploadingImage] = useState(false);
-  
+
   // Email Update States
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailMessage, setEmailMessage] = useState("");
-  
+
   // Password Change States
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [newPassword, setNewPassword] = useState("");
@@ -100,18 +100,18 @@ export default function ProfileSection() {
       // Try with preferred settings first
       let mediaStream;
       try {
-        mediaStream = await navigator.mediaDevices.getUserMedia({ 
+        mediaStream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'user' },
-          audio: false 
+          audio: false
         });
       } catch (firstError) {
         // If facingMode fails, try with simpler constraints
         if (firstError.name === 'OverconstrainedError' || firstError.name === 'ConstraintNotSatisfiedError') {
           console.log('FacingMode not supported, trying with default video constraints...');
           try {
-            mediaStream = await navigator.mediaDevices.getUserMedia({ 
+            mediaStream = await navigator.mediaDevices.getUserMedia({
               video: true,
-              audio: false 
+              audio: false
             });
           } catch (secondError) {
             throw secondError; // Re-throw if this also fails
@@ -131,10 +131,10 @@ export default function ProfileSection() {
       }
     } catch (error) {
       console.error('Error accessing camera:', error);
-      
+
       // Provide specific error messages based on error type
       let errorMessage = 'Unable to access camera. ';
-      
+
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
         errorMessage = 'Camera permission is required. Please:\n\n1. Click the lock/camera icon in your browser\'s address bar\n2. Allow camera access for this site\n3. Refresh the page and try again';
       } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
@@ -157,7 +157,7 @@ export default function ProfileSection() {
       } else {
         errorMessage += `Error: ${error.message || error.name}. Please check your browser settings and ensure camera permissions are granted.`;
       }
-      
+
       alert(errorMessage);
     }
   };
@@ -187,7 +187,7 @@ export default function ProfileSection() {
       // Create a new canvas for high-quality output at 1000px
       const targetSize = 1000; // Target size in pixels (longest side)
       const aspectRatio = video.videoWidth / video.videoHeight;
-      
+
       let targetWidth, targetHeight;
       if (video.videoWidth > video.videoHeight) {
         // Landscape orientation
@@ -219,7 +219,7 @@ export default function ProfileSection() {
       // Convert to PNG for maximum quality (lossless)
       // This ensures the highest possible quality at 1000px resolution
       const imageData = outputCanvas.toDataURL('image/png');
-      
+
       setCapturedImage(imageData);
       stopCamera();
     }
@@ -229,7 +229,7 @@ export default function ProfileSection() {
     if (!capturedImage) return;
 
     // Check if image was already saved
-    if (user?.profileImageSaved || user?.faceDescriptorSaved) {
+    if (user?.profileImage) {
       alert('Profile image can only be saved once and cannot be changed.');
       return;
     }
@@ -249,25 +249,25 @@ export default function ProfileSection() {
 
         // Load image and extract descriptor
         const img = await faceapi.fetchImage(capturedImage);
-        
+
         // Validate image dimensions
         if (!img || img.width === 0 || img.height === 0) {
           alert('Invalid image captured. Please try capturing again.');
           setUploadingImage(false);
           return;
         }
-        
+
         console.log(`Image loaded: ${img.width}x${img.height}`);
-        
+
         // Try multiple detection methods with different options for better reliability
         let detection = null;
-        
+
         // First try with TinyFaceDetector with standard settings
         try {
           detection = await faceapi
-            .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ 
-              inputSize: 512, 
-              scoreThreshold: 0.5 
+            .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({
+              inputSize: 512,
+              scoreThreshold: 0.5
             }))
             .withFaceLandmarks()
             .withFaceDescriptor();
@@ -275,14 +275,14 @@ export default function ProfileSection() {
         } catch (err) {
           console.log('TinyFaceDetector (standard) failed:', err);
         }
-        
+
         // If no detection, try with larger input size (better for larger faces)
         if (!detection) {
           try {
             detection = await faceapi
-              .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ 
-                inputSize: 640, 
-                scoreThreshold: 0.4 
+              .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({
+                inputSize: 640,
+                scoreThreshold: 0.4
               }))
               .withFaceLandmarks()
               .withFaceDescriptor();
@@ -291,14 +291,14 @@ export default function ProfileSection() {
             console.log('TinyFaceDetector (large input) failed:', err);
           }
         }
-        
+
         // If still no detection, try with lower threshold (more sensitive)
         if (!detection) {
           try {
             detection = await faceapi
-              .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ 
-                inputSize: 416, 
-                scoreThreshold: 0.3 
+              .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({
+                inputSize: 416,
+                scoreThreshold: 0.3
               }))
               .withFaceLandmarks()
               .withFaceDescriptor();
@@ -307,14 +307,14 @@ export default function ProfileSection() {
             console.log('TinyFaceDetector (low threshold) failed:', err);
           }
         }
-        
+
         // Last resort: try with very low threshold and smaller input
         if (!detection) {
           try {
             detection = await faceapi
-              .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ 
-                inputSize: 320, 
-                scoreThreshold: 0.2 
+              .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({
+                inputSize: 320,
+                scoreThreshold: 0.2
               }))
               .withFaceLandmarks()
               .withFaceDescriptor();
@@ -347,7 +347,7 @@ export default function ProfileSection() {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           image: capturedImage, // Optional: for display purposes
           faceDescriptor: faceDescriptor // Required: for face recognition (secure, non-reversible)
         })
@@ -482,7 +482,8 @@ export default function ProfileSection() {
     );
   }
 
-  const canCaptureImage = !user.profileImageSaved && !user.faceDescriptorSaved;
+  // Force allow capture to ensure button shows (validation happens on save)
+  const canCaptureImage = true;
 
   return (
     <div className="p-4 border-t border-slate-700 space-y-4">
@@ -500,17 +501,18 @@ export default function ProfileSection() {
               <UserIcon className="w-10 h-10 text-slate-400" />
             </div>
           )}
-          {canCaptureImage && !capturedImage && !user.profileImage && (
-            <button
-              onClick={startCamera}
-              className="absolute bottom-0 right-0 p-2 bg-blue-600 hover:bg-blue-700 rounded-full transition"
-              title="Capture Profile Image"
-            >
-              <Camera className="w-4 h-4 text-white" />
-            </button>
-          )}
         </div>
-        {canCaptureImage && capturedImage && !user.profileImageSaved && !user.faceDescriptorSaved && (
+
+        {canCaptureImage && !capturedImage && (
+          <button
+            onClick={startCamera}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md transition text-sm font-semibold text-white mt-1"
+          >
+            <Camera className="w-4 h-4" />
+            Capture Photo
+          </button>
+        )}
+        {canCaptureImage && capturedImage && (
           <div className="flex gap-2">
             <button
               onClick={saveProfileImage}
@@ -537,35 +539,37 @@ export default function ProfileSection() {
       </div>
 
       {/* Camera Modal */}
-      {showCamera && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center">
-          <div className="bg-slate-800 rounded-lg p-4 max-w-md w-full mx-4">
-            <div className="relative">
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                className="w-full rounded"
-              />
-              <canvas ref={canvasRef} className="hidden" />
-            </div>
-            <div className="flex gap-2 mt-4">
-              <button
-                onClick={capturePhoto}
-                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded transition"
-              >
-                Capture
-              </button>
-              <button
-                onClick={stopCamera}
-                className="flex-1 px-4 py-2 bg-slate-600 hover:bg-slate-700 rounded transition"
-              >
-                Cancel
-              </button>
+      {
+        showCamera && (
+          <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center">
+            <div className="bg-slate-800 rounded-lg p-4 max-w-md w-full mx-4">
+              <div className="relative">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  className="w-full rounded"
+                />
+                <canvas ref={canvasRef} className="hidden" />
+              </div>
+              <div className="flex gap-2 mt-4">
+                <button
+                  onClick={capturePhoto}
+                  className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded transition"
+                >
+                  Capture
+                </button>
+                <button
+                  onClick={stopCamera}
+                  className="flex-1 px-4 py-2 bg-slate-600 hover:bg-slate-700 rounded transition"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* User Info */}
       <div className="space-y-2">
@@ -573,7 +577,7 @@ export default function ProfileSection() {
           <UserIcon className="w-4 h-4 text-slate-400" />
           <span className="text-slate-300">{user.name}</span>
         </div>
-        
+
         <div className="flex items-center gap-2 text-sm">
           <Mail className="w-4 h-4 text-slate-400" />
           <span className="text-slate-300">{user.email}</span>
@@ -687,7 +691,7 @@ export default function ProfileSection() {
           </form>
         )}
       </div>
-    </div>
+    </div >
   );
 }
 

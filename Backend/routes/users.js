@@ -36,7 +36,7 @@ router.get("/profiles", async (req, res) => {
 
     // Build query for search and filter
     let query = {};
-    
+
     // Search functionality - search in name and email
     if (searchTerm) {
       query.$or = [
@@ -120,6 +120,7 @@ router.get("/profiles", async (req, res) => {
           role: 1,
           studentCategory: 1,
           profileImageSaved: 1,
+          faceDescriptorSaved: 1,
           createdAt: 1,
           updatedAt: 1,
           _id: 1
@@ -153,18 +154,20 @@ router.get("/profiles", async (req, res) => {
 router.delete("/:id/profile-image", async (req, res) => {
   try {
     const userId = req.params.id;
-    
+
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Reset profile image and allow re-upload
+    // Reset profile image and face descriptor to ensure complete cleanup
     user.profileImage = undefined;
     user.profileImageSaved = false;
+    user.faceDescriptor = undefined;
+    user.faceDescriptorSaved = false;
     await user.save();
 
-    res.json({ 
+    res.json({
       message: "Profile image deleted successfully. User can now re-upload their image.",
       profileImage: null,
       profileImageSaved: false
@@ -179,11 +182,11 @@ router.get("/:id/full-profile", authenticateToken, requireRole("admin"), async (
   try {
     const userId = req.params.id;
     const user = await User.findById(userId).select("-password -activeSessions");
-    
+
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
-    
+
     res.json(user);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -195,13 +198,13 @@ router.post("/:id/update-face-descriptor", authenticateToken, requireRole("admin
   try {
     const userId = req.params.id;
     const { faceDescriptor } = req.body;
-    
+
     if (!faceDescriptor || !Array.isArray(faceDescriptor) || faceDescriptor.length !== 128) {
-      return res.status(400).json({ 
-        message: "Face descriptor is required and must be a 128-dimensional array" 
+      return res.status(400).json({
+        message: "Face descriptor is required and must be a 128-dimensional array"
       });
     }
-    
+
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
@@ -212,7 +215,7 @@ router.post("/:id/update-face-descriptor", authenticateToken, requireRole("admin
     user.faceDescriptorSaved = true;
     await user.save();
 
-    res.json({ 
+    res.json({
       message: "Face descriptor updated successfully",
       userId: user._id,
       name: user.name,
@@ -228,7 +231,7 @@ router.post("/:id/update-face-descriptor", authenticateToken, requireRole("admin
 router.post("/:id/reset-password", async (req, res) => {
   try {
     const userId = req.params.id;
-    
+
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
@@ -239,7 +242,7 @@ router.post("/:id/reset-password", async (req, res) => {
     user.password = "12345";
     await user.save();
 
-    res.json({ 
+    res.json({
       message: "Password reset successfully. Default password is now: 12345"
     });
   } catch (err) {

@@ -21,7 +21,7 @@ const TakeTest = () => {
   const [showSubmitConfirmModal, setShowSubmitConfirmModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const debounceTimers = useRef({});
-  
+
   // Proctoring state
   const [proctoringData, setProctoringData] = useState({
     violationCount: 0,
@@ -210,7 +210,7 @@ const TakeTest = () => {
       let response;
       let retries = 3;
       let lastError;
-      
+
       while (retries > 0) {
         try {
           response = await apiRequest("/test-submissions", {
@@ -228,7 +228,7 @@ const TakeTest = () => {
           }
         }
       }
-      
+
       if (!response && lastError) {
         throw lastError;
       }
@@ -249,12 +249,31 @@ const TakeTest = () => {
   };
 
   // Proctoring handlers (defined after submitTest)
-  const handleProctoringViolation = useCallback((violationData) => {
+  const handleProctoringViolation = useCallback(async (violationData) => {
     setProctoringData({
       violationCount: violationData.violationCount,
       violations: violationData.violations,
     });
-  }, []);
+
+    // Sync to backend immediately to ensure persistence
+    try {
+      if (assignmentId) {
+        await apiRequest("/test-submissions/sync-violations", {
+          method: "PUT",
+          body: JSON.stringify({
+            assignmentId,
+            tabViolationCount: violationData.violationCount,
+            tabViolations: violationData.violations.map(v => ({
+              ...v,
+              timestamp: v.timestamp instanceof Date ? v.timestamp.toISOString() : v.timestamp
+            }))
+          })
+        });
+      }
+    } catch (err) {
+      console.error("Failed to sync violations:", err);
+    }
+  }, [assignmentId]);
 
   const handleProctoringSubmit = useCallback((cancelledDueToViolation) => {
     submitTest(cancelledDueToViolation, false);
@@ -273,10 +292,10 @@ const TakeTest = () => {
       const serverTime = new Date(timeResponse.serverTime);
       const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-    const response = await apiRequest(`/assignments/${assignmentId}/start`, {
-      method: "POST",
-      body: JSON.stringify({}),
-    });
+      const response = await apiRequest(`/assignments/${assignmentId}/start`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
 
       if (response.alreadyStarted) {
         await loadExistingTestData();
@@ -382,7 +401,7 @@ const TakeTest = () => {
 
         if (answersData && answersData.length > 0) {
           const existingAnswers = {};
-          
+
           // Group responses by questionId to handle multiple saves
           const responsesByQuestion = {};
           answersData.forEach((response) => {
@@ -405,10 +424,10 @@ const TakeTest = () => {
               const textAnswers = responses
                 .filter(r => r.textAnswer !== undefined && r.textAnswer !== null)
                 .map(r => r.textAnswer);
-              
+
               if (textAnswers.length > 0) {
                 // Get the longest answer (most complete)
-                const longestAnswer = textAnswers.reduce((longest, current) => 
+                const longestAnswer = textAnswers.reduce((longest, current) =>
                   current.length > longest.length ? current : longest
                 );
                 existingAnswers[questionId] = longestAnswer;
@@ -435,11 +454,28 @@ const TakeTest = () => {
           answersError.message.includes("not found") ||
           answersError.message.includes("Resource not found")
         ) {
-(
+          (
             "[TakeTest] No existing answers found (404 error) - this is expected when test is in progress but no answers saved yet"
           );
         } else {
           console.error("[TakeTest] Error loading answers:", answersError);
+        }
+      }
+
+      // Fetch existing submission data including violations
+      try {
+        const submissionResponse = await apiRequest(`/test-submissions/assignment/${assignmentId}`);
+        if (submissionResponse && submissionResponse.submission) {
+          console.log("Restoring existing violations:", submissionResponse.submission.tabViolationCount);
+          setProctoringData({
+            violationCount: submissionResponse.submission.tabViolationCount || 0,
+            violations: submissionResponse.submission.tabViolations || []
+          });
+        }
+      } catch (err) {
+        // Ignore 404s (no submission yet), log others
+        if (!err.message?.includes('404')) {
+          console.warn("Error fetching submission data:", err);
         }
       }
 
@@ -518,7 +554,7 @@ const TakeTest = () => {
       // Always set textAnswer to the current value (even if empty)
       textAnswer = answerValue || "";
       hasAnswer = answerValue && answerValue.trim() !== "";
-      
+
       setAnswers((prev) => ({
         ...prev,
         [questionId]: answerValue,
@@ -584,8 +620,8 @@ const TakeTest = () => {
           selectedOption: sanitizedSelectedOption,
           textAnswer: textAnswer || "", // Ensure textAnswer is always a string
         };
-        
-        
+
+
         await apiRequest("/answers", {
           method: "POST",
           body: JSON.stringify(payload),
@@ -731,322 +767,41 @@ const TakeTest = () => {
         `}
       </style>
       <div className="min-h-screen bg-slate-900 text-white p-6">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex justify-between items-center mb-8 p-4 bg-slate-800 rounded-lg">
-          <div>
-            <h1 className="text-2xl font-bold">{test.title}</h1>
-            <p className="text-slate-400">
-              Question {currentQuestion + 1} of {test?.questions?.length || 0}
-            </p>
-          </div>
-
-
-          <div className="text-right">
-            <div className="text-2xl font-mono bg-slate-700 px-4 py-2 rounded-md text-white">
-              {formatTime(timeRemaining)}
+        <div className="max-w-6xl mx-auto">
+          <div className="flex justify-between items-center mb-8 p-4 bg-slate-800 rounded-lg">
+            <div>
+              <h1 className="text-2xl font-bold">{test.title}</h1>
+              <p className="text-slate-400">
+                Question {currentQuestion + 1} of {test?.questions?.length || 0}
+              </p>
             </div>
-            <div className="text-sm text-slate-400 mt-1">Time Remaining</div>
-          </div>
-        </div>
 
-        {test.instructions && (
-          <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4 mb-6">
-            <h3 className="font-semibold text-blue-300 mb-2">Instructions:</h3>
-            <p className="text-blue-200">{test.instructions}</p>
+
+            <div className="text-right">
+              <div className="text-2xl font-mono bg-slate-700 px-4 py-2 rounded-md text-white">
+                {formatTime(timeRemaining)}
+              </div>
+              <div className="text-sm text-slate-400 mt-1">Time Remaining</div>
+            </div>
           </div>
-        )}
+
+          {test.instructions && (
+            <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4 mb-6">
+              <h3 className="font-semibold text-blue-300 mb-2">Instructions:</h3>
+              <p className="text-blue-200">{test.instructions}</p>
+            </div>
+          )}
 
           {question.kind === "theory" ? (
             <div className="grid grid-cols-1 lg:grid-cols-[45%_45%_7%] gap-4.5" style={{ height: '70vh' }}>
               <div className="bg-slate-800 rounded-lg p-6 overflow-y-auto h-full">
-              <div className="flex items-center gap-3 mb-4 justify-between">
-                <span className="text-sm text-slate-400">
-                  Question {currentQuestion + 1}
-                </span>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => handleAnswerChange(question._id, "")}
-                    className="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded-md text-sm font-medium cursor-pointer transition-colors"
-                  >
-                    Clear Response
-                  </button>
-                  <button
-                    onClick={() => {
-                      const currentStatus = questionStatuses[question._id];
-                      let newStatus;
-
-                      if (currentStatus === "mark-for-review") {
-                        const answer = answers[question._id];
-                        const hasAnswer = answer && answer.trim() !== "";
-                        newStatus = hasAnswer ? "answered" : "not-answered";
-                      } else {
-                        newStatus = "mark-for-review";
-                      }
-
-                      setQuestionStatuses((prev) => ({
-                        ...prev,
-                        [question._id]: newStatus,
-                      }));
-                    }}
-                    className={`px-3 py-1 rounded-md text-sm font-medium cursor-pointer transition-colors ${
-                      questionStatuses[question._id] === "mark-for-review"
-                        ? "bg-orange-600 text-white hover:bg-orange-700"
-                        : "bg-slate-700 hover:bg-slate-600"
-                    }`}
-                  >
-                    {questionStatuses[question._id] === "mark-for-review"
-                      ? "Unmark Review"
-                      : "Mark for Review"}
-                  </button>
-                  <div className="bg-slate-700 px-3 py-1 rounded-md text-sm">
-                    {question.points} point{question.points !== 1 ? "s" : ""}
-                  </div>
-                </div>
-              </div>
-              <h3 className="text-xl font-semibold mb-6">{question.text}</h3>
-
-              {question.guidelines && (
-              <div className="bg-slate-700 p-4 rounded-lg mb-4 scrollbar-hide" style={{overflowY: 'auto'}}>
-                <h4 className="font-semibold text-slate-300 mb-2">
-                  Guidelines:
-                </h4>
-                <p className="text-slate-400">{question.guidelines}</p>
-              </div>
-              )}
-
-              {question.examples && question.examples.length > 0 && (
-              <div className="bg-slate-700 p-4 rounded-lg mb-4 scrollbar-hide" style={{maxHeight: '16rem', overflowY: 'auto'}}>
-                <div>
-                  {question.examples.map((example, idx) => (
-                    <div key={idx} className="mb-3 p-3 bg-slate-600 rounded">
-                      <div className="mb-1 font-semibold text-slate-300">Example {idx + 1}:</div>
-                      <div className="mb-1 font-semibold text-slate-300">Input:</div>
-                      <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
-                        {example.input}
-                      </pre>
-                      <div className="mt-2 mb-1 font-semibold text-slate-300">Output:</div>
-                      <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
-                        {example.output}
-                      </pre>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              )}
-            </div>
-
-            <div className="bg-slate-800 rounded-lg p-6 flex flex-col gap-2 max-h-[calc(100vh-160px)] overflow-y-auto scrollbar-hide order-last" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-              <div className="flex flex-col gap-2 overflow-y-auto scrollbar-hide">
-                {test?.questions?.map((q, index) => (
-                  <button
-                    key={q._id}
-                    onClick={() => handleQuestionNavigation(index)}
-                  className={`w-8 min-w-[40px] h-12 rounded-md text-sm font-semibold cursor-pointer transition-all duration-200 hover:scale-105 border-2 ${
-                      currentQuestion === index
-                        ? "bg-blue-600 text-white border-blue-400 shadow-lg"
-                        : questionStatuses[q._id] === "answered"
-                        ? "bg-green-600 text-white border-green-400 hover:border-green-300"
-                        : questionStatuses[q._id] === "mark-for-review"
-                        ? "bg-yellow-600 text-black border-yellow-400 hover:border-yellow-300"
-                        : "bg-slate-700 hover:bg-slate-600 border-slate-600 hover:border-slate-500"
-                    }`}
-                  >
-                    {index + 1}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="bg-slate-800 rounded-lg p-6 flex flex-col" style={{ height: '70vh' }}>
-              <div className="flex-1">
-                <textarea
-                  className="w-full h-full p-4 bg-slate-800 text-white rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none resize-none"
-                  value={answers[question._id] || ""}
-                  onChange={(e) => handleAnswerChange(question._id, e.target.value)}
-                  placeholder="Enter your answer here..."
-                />
-              </div>
-              <div className="flex justify-between mt-4 gap-4">
-                <button
-                  onClick={handlePreviousQuestion}
-                  disabled={currentQuestion === 0}
-                  className="flex-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
-                >
-                  Previous
-                </button>
-                <button
-                  onClick={handleNextQuestion}
-                  disabled={currentQuestion === (test?.questions?.length || 0) - 1}
-                  className="flex-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
-                >
-                  Next
-                </button>
-                <button
-                  onClick={handleSubmitClick}
-                  disabled={isSubmitting}
-                  className={`flex-1 ${isSubmitting ? 'bg-gray-600 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} text-white py-2 rounded-md font-semibold ${!isSubmitting ? 'cursor-pointer' : ''}`}
-                >
-                  {isSubmitting ? 'Submitting Test...' : 'Submit Test'}
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : question.kind === "coding" ? (
-          <div className="grid grid-cols-1 lg:grid-cols-[45%_45%_7%] gap-4.5" style={{ height: '70vh' }}>
-            <div className="bg-slate-800 rounded-lg p-6 overflow-y-auto h-full">
-              <div className="flex items-center gap-3 mb-4 justify-between">
-                <span className="text-sm text-slate-400">
-                  Question {currentQuestion + 1}
-                </span>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => handleAnswerChange(question._id, "")}
-                    className="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded-md text-sm font-medium cursor-pointer transition-colors"
-                  >
-                    Clear Response
-                  </button>
-                  <button
-                    onClick={() => {
-                      const currentStatus = questionStatuses[question._id];
-                      let newStatus;
-
-                      if (currentStatus === "mark-for-review") {
-                        const answer = answers[question._id];
-                        const hasAnswer = answer && answer.trim() !== "";
-                        newStatus = hasAnswer ? "answered" : "not-answered";
-                      } else {
-                        newStatus = "mark-for-review";
-                      }
-
-                      setQuestionStatuses((prev) => ({
-                        ...prev,
-                        [question._id]: newStatus,
-                      }));
-                    }}
-                    className={`px-3 py-1 rounded-md text-sm font-medium cursor-pointer transition-colors ${
-                      questionStatuses[question._id] === "mark-for-review"
-                        ? "bg-orange-600 text-white hover:bg-orange-700"
-                        : "bg-slate-700 hover:bg-slate-600"
-                    }`}
-                  >
-                    {questionStatuses[question._id] === "mark-for-review"
-                      ? "Unmark Review"
-                      : "Mark for Review"}
-                  </button>
-                  <div className="bg-slate-700 px-3 py-1 rounded-md text-sm">
-                    {question.points} point{question.points !== 1 ? "s" : ""}
-                  </div>
-                </div>
-              </div>
-              <h3 className="text-xl font-semibold mb-6">{question.text}</h3>
-
-              {question.guidelines && (
-                <div className="bg-slate-700 p-4 rounded-lg mb-4 scrollbar-hide" style={{overflowY: 'auto'}}>
-                  <h4 className="font-semibold text-slate-300 mb-2">
-                    Guidelines:
-                  </h4>
-                  <p className="text-slate-400">{question.guidelines}</p>
-                </div>
-              )}
-
-              {question.visibleTestCases && question.visibleTestCases.length > 0 && (
-                <div className="bg-slate-700 p-4 rounded-lg mb-4 scrollbar-hide" style={{maxHeight: '16rem', overflowY: 'auto'}}>
-                  <div className="text-slate-300 font-semibold mb-2">Normal Test Cases</div>
-                  {question.visibleTestCases.map((tc, idx) => (
-                    <div key={idx} className="mb-3 p-3 bg-slate-600 rounded">
-                      <div className="mb-1 font-semibold text-slate-300">Case {idx + 1}:</div>
-                      <div className="mb-1 font-semibold text-slate-300">Input:</div>
-                      <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
-                        {tc.input}
-                      </pre>
-                      <div className="mt-2 mb-1 font-semibold text-slate-300">Output:</div>
-                      <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
-                        {tc.output}
-                      </pre>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="bg-slate-800 rounded-lg p-6 flex flex-col" style={{ height: '70vh' }}>
-              <div className="flex-1">
-                <Judge0CodeEditor
-                  testId={test._id}
-                  questionId={question._id}
-                  assignmentId={assignmentId}
-                  initialLanguage={question.language || "python"}
-                  initialCode={answers[question._id] || ""}
-                  onRun={(res)=>{/* optional hook */}}
-                  onSubmit={(res)=>{/* optional hook */}}
-                />
-              </div>
-              <div className="flex justify-between mt-4 gap-4">
-                <button
-                  onClick={handlePreviousQuestion}
-                  disabled={currentQuestion === 0}
-                  className="flex-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
-                >
-                  Previous
-                </button>
-                <button
-                  onClick={handleNextQuestion}
-                  disabled={currentQuestion === (test?.questions?.length || 0) - 1}
-                  className="flex-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
-                >
-                  Next
-                </button>
-                <button
-                  onClick={handleSubmitClick}
-                  disabled={isSubmitting}
-                  className={`flex-1 ${isSubmitting ? 'bg-gray-600 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} text-white py-2 rounded-md font-semibold ${!isSubmitting ? 'cursor-pointer' : ''}`}
-                >
-                  {isSubmitting ? 'Submitting Test...' : 'Submit Test'}
-                </button>
-              </div>
-            </div>
-
-            <div className="bg-slate-800 rounded-lg p-6 flex flex-col gap-2 max-h-[calc(100vh-160px)] overflow-y-auto scrollbar-hide order-last" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-              <div className="flex flex-col gap-2 overflow-y-auto scrollbar-hide">
-                {test?.questions?.map((q, index) => (
-                  <button
-                    key={q._id}
-                    onClick={() => handleQuestionNavigation(index)}
-                    className={`w-8 min-w-[40px] h-12 rounded-md text-sm font-semibold cursor-pointer transition-all duration-200 hover:scale-105 border-2 ${
-                      currentQuestion === index
-                        ? "bg-blue-600 text-white border-blue-400 shadow-lg"
-                        : questionStatuses[q._id] === "answered"
-                        ? "bg-green-600 text-white border-green-400 hover:border-green-300"
-                        : questionStatuses[q._id] === "mark-for-review"
-                        ? "bg-yellow-600 text-black border-yellow-400 hover:border-yellow-300"
-                        : "bg-slate-700 hover:bg-slate-600 border-slate-600 hover:border-slate-500"
-                    }`}
-                  >
-                    {index + 1}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              <div className="bg-slate-800 rounded-lg p-6">
                 <div className="flex items-center gap-3 mb-4 justify-between">
                   <span className="text-sm text-slate-400">
                     Question {currentQuestion + 1}
                   </span>
                   <div className="flex items-center gap-3">
                     <button
-                      onClick={() => {
-                        if (question.kind === "mcq") {
-                          handleAnswerChange(question._id, undefined);
-                        } else if (false) { // MSQ removed
-                          handleAnswerChange(question._id, []);
-                        } else if (question.kind === "theory" || question.kind === "coding") {
-                          handleAnswerChange(question._id, "");
-                        }
-                      }}
+                      onClick={() => handleAnswerChange(question._id, "")}
                       className="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded-md text-sm font-medium cursor-pointer transition-colors"
                     >
                       Clear Response
@@ -1057,20 +812,10 @@ const TakeTest = () => {
                         let newStatus;
 
                         if (currentStatus === "mark-for-review") {
-                          // When unmarking, check if question has an answer
                           const answer = answers[question._id];
-                          let hasAnswer = false;
-                          if (question.kind === "mcq") {
-                            hasAnswer = answer !== undefined && answer !== null && answer !== "";
-                          } else if (false) { // MSQ removed
-                            hasAnswer = false;
-                          } else if (question.kind === "theory" || question.kind === "coding") {
-                            hasAnswer = answer && answer.trim() !== "";
-                          }
-
+                          const hasAnswer = answer && answer.trim() !== "";
                           newStatus = hasAnswer ? "answered" : "not-answered";
                         } else {
-                          // When marking for review, set to mark-for-review
                           newStatus = "mark-for-review";
                         }
 
@@ -1079,11 +824,10 @@ const TakeTest = () => {
                           [question._id]: newStatus,
                         }));
                       }}
-                      className={`px-3 py-1 rounded-md text-sm font-medium cursor-pointer transition-colors ${
-                        questionStatuses[question._id] === "mark-for-review"
-                          ? "bg-orange-600 text-white hover:bg-orange-700"
-                          : "bg-slate-700 hover:bg-slate-600"
-                      }`}
+                      className={`px-3 py-1 rounded-md text-sm font-medium cursor-pointer transition-colors ${questionStatuses[question._id] === "mark-for-review"
+                        ? "bg-orange-600 text-white hover:bg-orange-700"
+                        : "bg-slate-700 hover:bg-slate-600"
+                        }`}
                     >
                       {questionStatuses[question._id] === "mark-for-review"
                         ? "Unmark Review"
@@ -1096,165 +840,449 @@ const TakeTest = () => {
                 </div>
                 <h3 className="text-xl font-semibold mb-6">{question.text}</h3>
 
-                {question.kind === "mcq" && (
-                  <div className="space-y-3">
-                    {question.options?.map((option, index) => (
-                      <label
-                        key={index}
-                        className={`flex items-center p-4 rounded-lg cursor-pointer transition-colors ${
-                          answers[question._id] === index
-                            ? "bg-blue-600 text-white"
-                            : "bg-slate-700 hover:bg-slate-600"
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name={`question-${question._id}`}
-                          value={index}
-                          checked={answers[question._id] === index}
-                          onChange={() => handleAnswerChange(question._id, index)}
-                          className="mr-3"
-                        />
-                        <span>{option.text}</span>
-                      </label>
-                    ))}
+                {question.guidelines && (
+                  <div className="bg-slate-700 p-4 rounded-lg mb-4 scrollbar-hide" style={{ overflowY: 'auto' }}>
+                    <h4 className="font-semibold text-slate-300 mb-2">
+                      Guidelines:
+                    </h4>
+                    <p className="text-slate-400">{question.guidelines}</p>
                   </div>
                 )}
 
-
-                {question.kind === "theory" && (
-                  <>
-                    {question.guidelines && (
-                      <div className="bg-slate-700 p-4 rounded-lg mb-4">
-                        <h4 className="font-semibold text-slate-300 mb-2">
-                          Guidelines:
-                        </h4>
-                        <p className="text-slate-400">{question.guidelines}</p>
-                      </div>
-                    )}
-
-                    {question.examples && question.examples.length > 0 && (
-                <div className="bg-slate-700 p-4 rounded-lg mb-4 max-h-64 overflow-y-auto scrollbar-hide">
-                  {question.examples.map((example, idx) => (
-                    <div
-                      key={idx}
-                      className="mb-3 p-3 bg-slate-600 rounded"
-                    >
-                      <div className="mb-1 font-semibold text-slate-300">
-                        Example {idx + 1}:
-                      </div>
-                      <div className="mb-1 font-semibold text-slate-300">
-                        Input:
-                      </div>
-                      <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
-                        {example.input}
-                      </pre>
-                      <div className="mt-2 mb-1 font-semibold text-slate-300">
-                        Output:
-                      </div>
-                      <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
-                        {example.output}
-                      </pre>
+                {question.examples && question.examples.length > 0 && (
+                  <div className="bg-slate-700 p-4 rounded-lg mb-4 scrollbar-hide" style={{ maxHeight: '16rem', overflowY: 'auto' }}>
+                    <div>
+                      {question.examples.map((example, idx) => (
+                        <div key={idx} className="mb-3 p-3 bg-slate-600 rounded">
+                          <div className="mb-1 font-semibold text-slate-300">Example {idx + 1}:</div>
+                          <div className="mb-1 font-semibold text-slate-300">Input:</div>
+                          <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
+                            {example.input}
+                          </pre>
+                          <div className="mt-2 mb-1 font-semibold text-slate-300">Output:</div>
+                          <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
+                            {example.output}
+                          </pre>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-                    )}
-
-                    <textarea
-                      className="w-full p-4 bg-slate-800 text-white rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none resize-none"
-                      style={{ height: "200px" }}
-                      value={answers[question._id] || ""}
-                      onChange={(e) => handleAnswerChange(question._id, e.target.value)}
-                      placeholder="Enter your answer here..."
-                    />
-                  </>
+                  </div>
                 )}
               </div>
-            </div>
 
-            <div className="lg:col-span-1">
-              <div className="bg-slate-800 rounded-lg p-6">
-                <h3 className="font-semibold mb-4">Navigation</h3>
-
-                <div
-                  className="grid grid-cols-5 gap-2 mb-6 scrollbar-hide"
-                  style={{ maxHeight: "21vh", overflowY: "auto" }}
-                >
+              <div className="bg-slate-800 rounded-lg p-6 flex flex-col gap-2 max-h-[calc(100vh-160px)] overflow-y-auto scrollbar-hide order-last" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                <div className="flex flex-col gap-2 overflow-y-auto scrollbar-hide">
                   {test?.questions?.map((q, index) => (
                     <button
                       key={q._id}
                       onClick={() => handleQuestionNavigation(index)}
-                      className={`w-8 h-8 rounded-lg text-sm font-semibold cursor-pointer transition-all duration-200 hover:scale-105 border-2 ${
-                        currentQuestion === index
-                          ? "bg-blue-600 text-white border-blue-400 shadow-lg"
-                          : questionStatuses[q._id] === "answered"
+                      className={`w-8 min-w-[40px] h-12 rounded-md text-sm font-semibold cursor-pointer transition-all duration-200 hover:scale-105 border-2 ${currentQuestion === index
+                        ? "bg-blue-600 text-white border-blue-400 shadow-lg"
+                        : questionStatuses[q._id] === "answered"
                           ? "bg-green-600 text-white border-green-400 hover:border-green-300"
                           : questionStatuses[q._id] === "mark-for-review"
-                          ? "bg-yellow-600 text-black border-yellow-400 hover:border-yellow-300"
-                          : "bg-slate-700 hover:bg-slate-600 border-slate-600 hover:border-slate-500"
-                      }`}
+                            ? "bg-yellow-600 text-black border-yellow-400 hover:border-yellow-300"
+                            : "bg-slate-700 hover:bg-slate-600 border-slate-600 hover:border-slate-500"
+                        }`}
                     >
                       {index + 1}
                     </button>
                   ))}
                 </div>
+              </div>
 
-                <div className="space-y-3">
+              <div className="bg-slate-800 rounded-lg p-6 flex flex-col" style={{ height: '70vh' }}>
+                <div className="flex-1">
+                  <textarea
+                    className="w-full h-full p-4 bg-slate-800 text-white rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none resize-none"
+                    value={answers[question._id] || ""}
+                    onChange={(e) => handleAnswerChange(question._id, e.target.value)}
+                    placeholder="Enter your answer here..."
+                  />
+                </div>
+                <div className="flex justify-between mt-4 gap-4">
                   <button
                     onClick={handlePreviousQuestion}
                     disabled={currentQuestion === 0}
-                    className="w-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
+                    className="flex-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
                   >
                     Previous
                   </button>
-
                   <button
                     onClick={handleNextQuestion}
                     disabled={currentQuestion === (test?.questions?.length || 0) - 1}
-                    className="w-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
+                    className="flex-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
                   >
                     Next
                   </button>
-
                   <button
                     onClick={handleSubmitClick}
                     disabled={isSubmitting}
-                    className={`w-full ${isSubmitting ? 'bg-gray-600 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} text-white py-2 rounded-md font-semibold ${!isSubmitting ? 'cursor-pointer' : ''}`}
+                    className={`flex-1 ${isSubmitting ? 'bg-gray-600 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} text-white py-2 rounded-md font-semibold ${!isSubmitting ? 'cursor-pointer' : ''}`}
                   >
                     {isSubmitting ? 'Submitting Test...' : 'Submit Test'}
                   </button>
                 </div>
+              </div>
+            </div>
+          ) : question.kind === "coding" ? (
+            <div className="grid grid-cols-1 lg:grid-cols-[45%_45%_7%] gap-4.5" style={{ height: '70vh' }}>
+              <div className="bg-slate-800 rounded-lg p-6 overflow-y-auto h-full">
+                <div className="flex items-center gap-3 mb-4 justify-between">
+                  <span className="text-sm text-slate-400">
+                    Question {currentQuestion + 1}
+                  </span>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => handleAnswerChange(question._id, "")}
+                      className="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded-md text-sm font-medium cursor-pointer transition-colors"
+                    >
+                      Clear Response
+                    </button>
+                    <button
+                      onClick={() => {
+                        const currentStatus = questionStatuses[question._id];
+                        let newStatus;
 
-                <div className="mt-6 pt-4 border-t border-slate-700">
-                  <div className="flex justify-between text-sm text-slate-400 mb-2">
-                    <span>Answered</span>
-                    <span>
-                      {
-                        test.questions.filter((q) => {
-                          const answer = answers[q._id];
-                          if (q.kind === "mcq") {
-                            return (
-                              answer !== undefined &&
-                              answer !== null &&
-                              answer !== ""
-                            );
-                          } else if (false) { // MSQ removed
-                            return false;
-                          } else if (q.kind === "theory" || q.kind === "coding") {
-                            return answer && answer.trim() !== "";
-                          }
-                          return false;
-                        }).length
-                      }
-                      /{test?.questions?.length || 0}
-                    </span>
+                        if (currentStatus === "mark-for-review") {
+                          const answer = answers[question._id];
+                          const hasAnswer = answer && answer.trim() !== "";
+                          newStatus = hasAnswer ? "answered" : "not-answered";
+                        } else {
+                          newStatus = "mark-for-review";
+                        }
+
+                        setQuestionStatuses((prev) => ({
+                          ...prev,
+                          [question._id]: newStatus,
+                        }));
+                      }}
+                      className={`px-3 py-1 rounded-md text-sm font-medium cursor-pointer transition-colors ${questionStatuses[question._id] === "mark-for-review"
+                        ? "bg-orange-600 text-white hover:bg-orange-700"
+                        : "bg-slate-700 hover:bg-slate-600"
+                        }`}
+                    >
+                      {questionStatuses[question._id] === "mark-for-review"
+                        ? "Unmark Review"
+                        : "Mark for Review"}
+                    </button>
+                    <div className="bg-slate-700 px-3 py-1 rounded-md text-sm">
+                      {question.points} point{question.points !== 1 ? "s" : ""}
+                    </div>
                   </div>
-                  <div className="w-full bg-slate-700 rounded-full h-2">
-                    <div
-                      className="bg-blue-600 h-2 rounded-full transition-all"
-                      style={{
-                        width: `${
-                          (test.questions.filter((q) => {
+                </div>
+                <h3 className="text-xl font-semibold mb-6">{question.text}</h3>
+
+                {question.guidelines && (
+                  <div className="bg-slate-700 p-4 rounded-lg mb-4 scrollbar-hide" style={{ overflowY: 'auto' }}>
+                    <h4 className="font-semibold text-slate-300 mb-2">
+                      Guidelines:
+                    </h4>
+                    <p className="text-slate-400">{question.guidelines}</p>
+                  </div>
+                )}
+
+                {question.visibleTestCases && question.visibleTestCases.length > 0 && (
+                  <div className="bg-slate-700 p-4 rounded-lg mb-4 scrollbar-hide" style={{ maxHeight: '16rem', overflowY: 'auto' }}>
+                    <div className="text-slate-300 font-semibold mb-2">Normal Test Cases</div>
+                    {question.visibleTestCases.map((tc, idx) => (
+                      <div key={idx} className="mb-3 p-3 bg-slate-600 rounded">
+                        <div className="mb-1 font-semibold text-slate-300">Case {idx + 1}:</div>
+                        <div className="mb-1 font-semibold text-slate-300">Input:</div>
+                        <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
+                          {tc.input}
+                        </pre>
+                        <div className="mt-2 mb-1 font-semibold text-slate-300">Output:</div>
+                        <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
+                          {tc.output}
+                        </pre>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-slate-800 rounded-lg p-6 flex flex-col" style={{ height: '70vh' }}>
+                <div className="flex-1">
+                  <Judge0CodeEditor
+                    testId={test._id}
+                    questionId={question._id}
+                    assignmentId={assignmentId}
+                    initialLanguage={question.language || "python"}
+                    initialCode={answers[question._id] || ""}
+                    onRun={(res) => {/* optional hook */ }}
+                    onSubmit={(res) => {/* optional hook */ }}
+                  />
+                </div>
+                <div className="flex justify-between mt-4 gap-4">
+                  <button
+                    onClick={handlePreviousQuestion}
+                    disabled={currentQuestion === 0}
+                    className="flex-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    onClick={handleNextQuestion}
+                    disabled={currentQuestion === (test?.questions?.length || 0) - 1}
+                    className="flex-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
+                  >
+                    Next
+                  </button>
+                  <button
+                    onClick={handleSubmitClick}
+                    disabled={isSubmitting}
+                    className={`flex-1 ${isSubmitting ? 'bg-gray-600 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} text-white py-2 rounded-md font-semibold ${!isSubmitting ? 'cursor-pointer' : ''}`}
+                  >
+                    {isSubmitting ? 'Submitting Test...' : 'Submit Test'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-slate-800 rounded-lg p-6 flex flex-col gap-2 max-h-[calc(100vh-160px)] overflow-y-auto scrollbar-hide order-last" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                <div className="flex flex-col gap-2 overflow-y-auto scrollbar-hide">
+                  {test?.questions?.map((q, index) => (
+                    <button
+                      key={q._id}
+                      onClick={() => handleQuestionNavigation(index)}
+                      className={`w-8 min-w-[40px] h-12 rounded-md text-sm font-semibold cursor-pointer transition-all duration-200 hover:scale-105 border-2 ${currentQuestion === index
+                        ? "bg-blue-600 text-white border-blue-400 shadow-lg"
+                        : questionStatuses[q._id] === "answered"
+                          ? "bg-green-600 text-white border-green-400 hover:border-green-300"
+                          : questionStatuses[q._id] === "mark-for-review"
+                            ? "bg-yellow-600 text-black border-yellow-400 hover:border-yellow-300"
+                            : "bg-slate-700 hover:bg-slate-600 border-slate-600 hover:border-slate-500"
+                        }`}
+                    >
+                      {index + 1}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2">
+                <div className="bg-slate-800 rounded-lg p-6">
+                  <div className="flex items-center gap-3 mb-4 justify-between">
+                    <span className="text-sm text-slate-400">
+                      Question {currentQuestion + 1}
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => {
+                          if (question.kind === "mcq") {
+                            handleAnswerChange(question._id, undefined);
+                          } else if (false) { // MSQ removed
+                            handleAnswerChange(question._id, []);
+                          } else if (question.kind === "theory" || question.kind === "coding") {
+                            handleAnswerChange(question._id, "");
+                          }
+                        }}
+                        className="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded-md text-sm font-medium cursor-pointer transition-colors"
+                      >
+                        Clear Response
+                      </button>
+                      <button
+                        onClick={() => {
+                          const currentStatus = questionStatuses[question._id];
+                          let newStatus;
+
+                          if (currentStatus === "mark-for-review") {
+                            // When unmarking, check if question has an answer
+                            const answer = answers[question._id];
+                            let hasAnswer = false;
+                            if (question.kind === "mcq") {
+                              hasAnswer = answer !== undefined && answer !== null && answer !== "";
+                            } else if (false) { // MSQ removed
+                              hasAnswer = false;
+                            } else if (question.kind === "theory" || question.kind === "coding") {
+                              hasAnswer = answer && answer.trim() !== "";
+                            }
+
+                            newStatus = hasAnswer ? "answered" : "not-answered";
+                          } else {
+                            // When marking for review, set to mark-for-review
+                            newStatus = "mark-for-review";
+                          }
+
+                          setQuestionStatuses((prev) => ({
+                            ...prev,
+                            [question._id]: newStatus,
+                          }));
+                        }}
+                        className={`px-3 py-1 rounded-md text-sm font-medium cursor-pointer transition-colors ${questionStatuses[question._id] === "mark-for-review"
+                          ? "bg-orange-600 text-white hover:bg-orange-700"
+                          : "bg-slate-700 hover:bg-slate-600"
+                          }`}
+                      >
+                        {questionStatuses[question._id] === "mark-for-review"
+                          ? "Unmark Review"
+                          : "Mark for Review"}
+                      </button>
+                      <div className="bg-slate-700 px-3 py-1 rounded-md text-sm">
+                        {question.points} point{question.points !== 1 ? "s" : ""}
+                      </div>
+                    </div>
+                  </div>
+                  <h3 className="text-xl font-semibold mb-6">{question.text}</h3>
+
+                  {question.kind === "mcq" && (
+                    <div className="space-y-3">
+                      {question.options?.map((option, index) => (
+                        <label
+                          key={index}
+                          className={`flex items-center p-4 rounded-lg cursor-pointer transition-colors ${answers[question._id] === index
+                            ? "bg-blue-600 text-white"
+                            : "bg-slate-700 hover:bg-slate-600"
+                            }`}
+                        >
+                          <input
+                            type="radio"
+                            name={`question-${question._id}`}
+                            value={index}
+                            checked={answers[question._id] === index}
+                            onChange={() => handleAnswerChange(question._id, index)}
+                            className="mr-3"
+                          />
+                          <span>{option.text}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+
+
+                  {question.kind === "theory" && (
+                    <>
+                      {question.guidelines && (
+                        <div className="bg-slate-700 p-4 rounded-lg mb-4">
+                          <h4 className="font-semibold text-slate-300 mb-2">
+                            Guidelines:
+                          </h4>
+                          <p className="text-slate-400">{question.guidelines}</p>
+                        </div>
+                      )}
+
+                      {question.examples && question.examples.length > 0 && (
+                        <div className="bg-slate-700 p-4 rounded-lg mb-4 max-h-64 overflow-y-auto scrollbar-hide">
+                          {question.examples.map((example, idx) => (
+                            <div
+                              key={idx}
+                              className="mb-3 p-3 bg-slate-600 rounded"
+                            >
+                              <div className="mb-1 font-semibold text-slate-300">
+                                Example {idx + 1}:
+                              </div>
+                              <div className="mb-1 font-semibold text-slate-300">
+                                Input:
+                              </div>
+                              <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
+                                {example.input}
+                              </pre>
+                              <div className="mt-2 mb-1 font-semibold text-slate-300">
+                                Output:
+                              </div>
+                              <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
+                                {example.output}
+                              </pre>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <textarea
+                        className="w-full p-4 bg-slate-800 text-white rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none resize-none"
+                        style={{ height: "200px" }}
+                        value={answers[question._id] || ""}
+                        onChange={(e) => handleAnswerChange(question._id, e.target.value)}
+                        placeholder="Enter your answer here..."
+                      />
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="lg:col-span-1">
+                <div className="bg-slate-800 rounded-lg p-6">
+                  <h3 className="font-semibold mb-4">Navigation</h3>
+
+                  <div
+                    className="grid grid-cols-5 gap-2 mb-6 scrollbar-hide"
+                    style={{ maxHeight: "21vh", overflowY: "auto" }}
+                  >
+                    {test?.questions?.map((q, index) => (
+                      <button
+                        key={q._id}
+                        onClick={() => handleQuestionNavigation(index)}
+                        className={`w-8 h-8 rounded-lg text-sm font-semibold cursor-pointer transition-all duration-200 hover:scale-105 border-2 ${currentQuestion === index
+                          ? "bg-blue-600 text-white border-blue-400 shadow-lg"
+                          : questionStatuses[q._id] === "answered"
+                            ? "bg-green-600 text-white border-green-400 hover:border-green-300"
+                            : questionStatuses[q._id] === "mark-for-review"
+                              ? "bg-yellow-600 text-black border-yellow-400 hover:border-yellow-300"
+                              : "bg-slate-700 hover:bg-slate-600 border-slate-600 hover:border-slate-500"
+                          }`}
+                      >
+                        {index + 1}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="space-y-3">
+                    <button
+                      onClick={handlePreviousQuestion}
+                      disabled={currentQuestion === 0}
+                      className="w-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
+                    >
+                      Previous
+                    </button>
+
+                    <button
+                      onClick={handleNextQuestion}
+                      disabled={currentQuestion === (test?.questions?.length || 0) - 1}
+                      className="w-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
+                    >
+                      Next
+                    </button>
+
+                    <button
+                      onClick={handleSubmitClick}
+                      disabled={isSubmitting}
+                      className={`w-full ${isSubmitting ? 'bg-gray-600 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} text-white py-2 rounded-md font-semibold ${!isSubmitting ? 'cursor-pointer' : ''}`}
+                    >
+                      {isSubmitting ? 'Submitting Test...' : 'Submit Test'}
+                    </button>
+                  </div>
+
+                  <div className="mt-6 pt-4 border-t border-slate-700">
+                    <div className="flex justify-between text-sm text-slate-400 mb-2">
+                      <span>Answered</span>
+                      <span>
+                        {
+                          test.questions.filter((q) => {
+                            const answer = answers[q._id];
+                            if (q.kind === "mcq") {
+                              return (
+                                answer !== undefined &&
+                                answer !== null &&
+                                answer !== ""
+                              );
+                            } else if (false) { // MSQ removed
+                              return false;
+                            } else if (q.kind === "theory" || q.kind === "coding") {
+                              return answer && answer.trim() !== "";
+                            }
+                            return false;
+                          }).length
+                        }
+                        /{test?.questions?.length || 0}
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-700 rounded-full h-2">
+                      <div
+                        className="bg-blue-600 h-2 rounded-full transition-all"
+                        style={{
+                          width: `${(test.questions.filter((q) => {
                             const answer = answers[q._id];
                             if (q.kind === "mcq") {
                               return (
@@ -1270,60 +1298,61 @@ const TakeTest = () => {
                             return false;
                           }).length /
                             (test?.questions?.length || 0)) *
-                          100
-                        }%`,
-                      }}
-                    ></div>
+                            100
+                            }%`,
+                        }}
+                      ></div>
+                    </div>
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Proctoring Component */}
+        <Proctoring
+          ref={proctoringRef}
+          enabled={testStarted}
+          test={test}
+          onViolation={handleProctoringViolation}
+          onSubmit={handleProctoringSubmit}
+          onExitFullscreen={handleProctoringExitFullscreen}
+          isSubmitting={isSubmitting}
+          blockKeyboardShortcuts={true}
+          blockContextMenu={true}
+          initialViolationCount={proctoringData.violationCount}
+        />
+
+        {showSubmitConfirmModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+            <div className="bg-slate-800 rounded-lg p-8 max-w-md w-full text-center">
+              <h2 className="text-2xl font-bold mb-6 text-white">
+                Confirm Submission
+              </h2>
+              <p className="mb-8 text-white text-lg">
+                Do you want to submit the test?
+              </p>
+              <div className="flex justify-center gap-6">
+                <button
+                  onClick={handleConfirmSubmit}
+                  disabled={isSubmitting}
+                  className={`px-6 py-3 rounded-md font-semibold ${isSubmitting ? 'bg-gray-600 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} text-white`}
+                >
+                  {isSubmitting ? 'Submitting...' : 'Confirm'}
+                </button>
+                <button
+                  onClick={handleCancelSubmit}
+                  className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-md font-semibold"
+                >
+                  Cancel
+                </button>
               </div>
             </div>
           </div>
         )}
       </div>
-
-      {/* Proctoring Component */}
-      <Proctoring
-        ref={proctoringRef}
-        enabled={testStarted}
-        test={test}
-        onViolation={handleProctoringViolation}
-        onSubmit={handleProctoringSubmit}
-        onExitFullscreen={handleProctoringExitFullscreen}
-        isSubmitting={isSubmitting}
-        blockKeyboardShortcuts={true}
-        blockContextMenu={true}
-      />
-
-      {showSubmitConfirmModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-800 rounded-lg p-8 max-w-md w-full text-center">
-            <h2 className="text-2xl font-bold mb-6 text-white">
-              Confirm Submission
-            </h2>
-            <p className="mb-8 text-white text-lg">
-              Do you want to submit the test?
-            </p>
-            <div className="flex justify-center gap-6">
-              <button
-                onClick={handleConfirmSubmit}
-                disabled={isSubmitting}
-                className={`px-6 py-3 rounded-md font-semibold ${isSubmitting ? 'bg-gray-600 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} text-white`}
-              >
-                {isSubmitting ? 'Submitting...' : 'Confirm'}
-              </button>
-              <button
-                onClick={handleCancelSubmit}
-                className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-md font-semibold"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  </>);
+    </>);
 };
 
 export default TakeTest;

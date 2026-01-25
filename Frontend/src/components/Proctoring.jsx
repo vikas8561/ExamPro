@@ -172,6 +172,7 @@ const Proctoring = forwardRef(({
   onSubmit = () => { },
   onExitFullscreen = () => { },
   isSubmitting = false,
+  initialViolationCount = 0,
 }, ref) => {
   const navigate = useNavigate();
 
@@ -187,10 +188,18 @@ const Proctoring = forwardRef(({
   const [isLoadingModels, setIsLoadingModels] = useState(false);
 
   // Monitoring states
-  const [violationCount, setViolationCount] = useState(0);
+  const [violationCount, setViolationCount] = useState(initialViolationCount);
   const [violations, setViolations] = useState([]);
   const [showWarningModal, setShowWarningModal] = useState(false);
   const [currentWarning, setCurrentWarning] = useState(null);
+
+  // Sync violation count with prop when it changes (for resuming tests)
+  useEffect(() => {
+    if (initialViolationCount > 0 && violationCount === 0) {
+      setViolationCount(initialViolationCount);
+    }
+  }, [initialViolationCount, violationCount]);
+
   const [devToolsOpen, setDevToolsOpen] = useState(false);
   const [devToolsDetected, setDevToolsDetected] = useState(false); // For blocking test start
 
@@ -205,7 +214,11 @@ const Proctoring = forwardRef(({
   const initialFaceDescriptorRef = useRef(null);
   const profileImageDescriptorRef = useRef(null);
   const hasRequestedPermissionsRef = useRef(false);
-  const profileImageLoadedRef = useRef(false);
+  const [profileImageLoadedRef] = useState({ current: false }); // Using ref pattern for consistency with existing code
+
+  // Verification state for pre-exam check
+  const [verificationStatus, setVerificationStatus] = useState('pending'); // 'pending', 'verifying', 'success', 'failed'
+
   // CRITICAL: Shared cooldown timestamp across ALL detection mechanisms to prevent duplicate violations
   const lastViolationTimeRef = useRef(0);
 
@@ -650,65 +663,115 @@ const Proctoring = forwardRef(({
     }
   }, [permissions.location]);
 
-  // Start continuous face matching
-  const startFaceMatching = useCallback(() => {
-    if (faceDetectionIntervalRef.current) {
-      clearInterval(faceDetectionIntervalRef.current);
+  // Manual face capture and verification (Single Shot)
+  const captureAndVerifyFace = useCallback(async () => {
+    if (!videoRef.current || !modelsLoadedRef.current) {
+      console.warn('Camera or models not ready');
+      return;
     }
 
-    faceDetectionIntervalRef.current = setInterval(async () => {
-      if (!videoRef.current || !modelsLoadedRef.current) return;
+    setVerificationStatus('verifying');
 
-      // Use profile image descriptor if available, otherwise fall back to initial capture
-      const referenceDescriptor = profileImageDescriptorRef.current || initialFaceDescriptorRef.current;
-
-      if (!referenceDescriptor) {
-        console.warn('No reference face descriptor available');
-        return;
-      }
-
-      try {
-        const detection = await faceapi
-          .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
-          .withFaceLandmarks()
-          .withFaceDescriptor();
-
-        if (detection) {
-          const distance = faceapi.euclideanDistance(
-            referenceDescriptor,
-            detection.descriptor
-          );
-
-          // Threshold: 0.6 is a good balance (lower = stricter)
-          // Compare against profile image from database
-          if (distance > 0.6) {
-            const referenceType = profileImageDescriptorRef.current ? 'profile image' : 'initial capture';
-            handleViolation('face_mismatch', `Face does not match your ${referenceType} (distance: ${distance.toFixed(2)})`);
-          }
-        } else {
-          handleViolation('face_not_detected', 'Face not detected in frame');
-        }
-      } catch (error) {
-        console.error('Face matching error:', error);
-      }
-    }, 3000); // Check every 3 seconds
-  }, [handleViolation]);
-
-  // Initialize face detection
-  const initializeFaceDetection = useCallback(async () => {
-    if (!modelsLoadedRef.current || !videoRef.current) return;
-
-    // Check if profile image is loaded
-    if (!profileImageLoadedRef.current || !profileImageDescriptorRef.current) {
+    // Check if profile image is available
+    const referenceDescriptor = profileImageDescriptorRef.current;
+    if (!referenceDescriptor) {
+      console.warn('No reference face descriptor available');
       setPermissionErrors(prev => ({
         ...prev,
-        faceMatch: 'Profile image not loaded. Please ensure you have uploaded a profile image.'
+        faceMatch: 'Profile image not loaded. Please wait or reload.'
       }));
+      setVerificationStatus('failed');
       return;
     }
 
     try {
-      // Request webcam access
+      // Single shot detection with Robust Retry Strategy
+      let detection = null;
+
+      // Attempt 1: Standard (Balanced)
+      try {
+        detection = await faceapi
+          .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.3 }))
+          .withFaceLandmarks()
+          .withFaceDescriptor();
+      } catch (e) {
+        console.log("Attempt 1 failed", e);
+      }
+
+      // Attempt 2: High Resolution (For faces further away)
+      if (!detection) {
+        try {
+          detection = await faceapi
+            .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize: 608, scoreThreshold: 0.3 }))
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+        } catch (e) {
+          console.log("Attempt 2 failed", e);
+        }
+      }
+
+      // Attempt 3: Low Resolution / High Sensitivity (For blurry/darker frames)
+      if (!detection) {
+        try {
+          detection = await faceapi
+            .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.2 }))
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+        } catch (e) {
+          console.log("Attempt 3 failed", e);
+        }
+      }
+
+      if (detection) {
+        const distance = faceapi.euclideanDistance(
+          referenceDescriptor,
+          detection.descriptor
+        );
+
+        // Threshold: 0.6 is a good balance (lower = stricter)
+        if (distance < 0.6) {
+          // MATCH FOUND!
+          setVerificationStatus('success');
+          setPermissions(prev => ({ ...prev, faceMatch: true }));
+          setPermissionErrors(prev => ({ ...prev, faceMatch: null }));
+          console.log('✅ Face verified successfully');
+        } else {
+          // Face detected but not matching
+          setVerificationStatus('failed');
+          setPermissions(prev => ({ ...prev, faceMatch: false }));
+          setPermissionErrors(prev => ({
+            ...prev,
+            faceMatch: 'Face does not match profile picture. Please try again.'
+          }));
+        }
+      } else {
+        // No face detected
+        setVerificationStatus('failed');
+        setPermissions(prev => ({ ...prev, faceMatch: false }));
+        setPermissionErrors(prev => ({
+          ...prev,
+          faceMatch: 'No face detected. Ensure your face is clearly visible.'
+        }));
+      }
+    } catch (error) {
+      console.error('Face verification error:', error);
+      setVerificationStatus('failed');
+      setPermissionErrors(prev => ({
+        ...prev,
+        faceMatch: 'Detection error. Please try again.'
+      }));
+    }
+  }, []);
+
+  // Request camera permission and start video stream
+  const requestCamera = useCallback(async () => {
+    // Check if camera permission is already granted
+    if (permissions.camera) {
+      console.log('✅ Camera permission already granted, skipping request');
+      return true;
+    }
+
+    try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 640, height: 480 }
       });
@@ -718,35 +781,35 @@ const Proctoring = forwardRef(({
         await videoRef.current.play();
       }
 
-      // Capture initial face descriptor from video (for fallback comparison)
-      const detection = await faceapi
-        .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
-        .withFaceLandmarks()
-        .withFaceDescriptor();
+      setPermissions(prev => ({ ...prev, camera: true }));
+      setPermissionErrors(prev => ({ ...prev, camera: null }));
 
-      if (detection) {
-        initialFaceDescriptorRef.current = detection.descriptor;
-        console.log('✅ Initial face captured from video');
+      console.log('✅ Camera access granted');
 
-        // Update permission status - face detection is now active
-        setPermissions(prev => ({ ...prev, faceMatch: true }));
 
-        // Start continuous face matching against profile image
-        startFaceMatching();
-      } else {
-        setPermissionErrors(prev => ({
-          ...prev,
-          faceMatch: 'No face detected. Please ensure your face is visible.'
-        }));
-      }
+
+      return true;
     } catch (error) {
-      console.error('Face detection initialization error:', error);
+      console.error('Camera error:', error);
       setPermissionErrors(prev => ({
         ...prev,
-        faceMatch: error.message || 'Failed to access camera for face detection'
+        camera: error.message || 'Camera access denied. Please allow camera access to continue.'
       }));
+      return false;
     }
-  }, [startFaceMatching]);
+  }, [permissions.camera]);
+
+
+
+  // Initialize face detection
+  // This is now largely handled by requestCamera and runPreExamVerification
+  const initializeFaceDetection = useCallback(async () => {
+    if (!modelsLoadedRef.current) {
+      console.warn('Models not loaded yet');
+      return;
+    }
+    console.log('Face detection system ready');
+  }, []);
 
   // Request fullscreen (defined early to avoid initialization order issues)
   const requestFullscreen = useCallback(async () => {
@@ -797,45 +860,40 @@ const Proctoring = forwardRef(({
     const results = {
       screenShare: await requestScreenShare(),
       microphone: await requestMicrophone(),
+      camera: await requestCamera(),
       location: await requestLocation(),
-      faceMatch: false,
+      faceMatch: permissions.faceMatch, // Use current state (set by verification)
     };
 
-    // Face detection will be initialized separately
-    // Check if face descriptor is already loaded (from async loading)
-    if (modelsLoadedRef.current && profileImageLoadedRef.current && profileImageDescriptorRef.current) {
-      try {
-        await initializeFaceDetection();
-        results.faceMatch = true;
-      } catch (error) {
-        console.error('Face detection initialization failed:', error);
-        // If initialization fails but descriptor is loaded, still mark as ready
-        // The actual activation will happen when camera is accessed
-        results.faceMatch = profileImageLoadedRef.current;
-      }
-    } else if (profileImageLoadedRef.current && profileImageDescriptorRef.current) {
-      // Descriptor is loaded, mark as ready (will activate when camera is accessed)
-      results.faceMatch = true;
-    }
-
     return results;
-  }, [requestScreenShare, requestMicrophone, requestLocation, initializeFaceDetection]);
+  }, [requestScreenShare, requestMicrophone, requestLocation, requestCamera, permissions.faceMatch]);
 
   // Handle permission modal continue
   const handleContinue = useCallback(async () => {
     const results = await requestAllPermissions();
+    console.log('🔍 continue check:', results, 'verificationStatus:', verificationStatus);
 
     // Check if all critical permissions are granted
-    // Face matching is optional but recommended
-    if (results.screenShare && results.microphone && results.location) {
+    // Camera AND Face Match are now REQUIRED
+    // CRITICAL: Ensure verificationStatus is strictly 'success'
+    const isVerified = verificationStatus === 'success';
+
+    if (results.screenShare && results.microphone && results.location && results.camera && isVerified) {
       setShowPermissionModal(false);
       setPermissions(prev => ({
         ...prev,
         screenShare: results.screenShare,
         microphone: results.microphone,
         location: results.location,
+        camera: results.camera,
         faceMatch: results.faceMatch,
       }));
+
+      // Stop the face verification interval before starting - NO continuous monitoring during exam
+      if (faceDetectionIntervalRef.current) {
+        clearInterval(faceDetectionIntervalRef.current);
+      }
+
       // Request fullscreen after permissions
       setTimeout(() => {
         requestFullscreen();
@@ -845,9 +903,13 @@ const Proctoring = forwardRef(({
       if (!results.screenShare) missing.push('Screen Sharing');
       if (!results.microphone) missing.push('Microphone');
       if (!results.location) missing.push('Location');
+      if (!results.camera) missing.push('Camera Access');
+      if (!isVerified) missing.push('Face Verification');
       alert(`Please grant all required permissions to continue: ${missing.join(', ')}`);
     }
   }, [requestAllPermissions, requestFullscreen]);
+
+
 
   // Tab switch, window switch, and application switch detection
   // This MUST work regardless of fullscreen state - detection never stops
@@ -1270,15 +1332,48 @@ const Proctoring = forwardRef(({
               {/* Face Matching */}
               <div className="bg-slate-700 rounded-lg p-3">
                 <div className="flex items-center justify-between mb-1.5">
-                  <h3 className="text-base font-semibold text-white">Face Recognition</h3>
+                  <h3 className="text-base font-semibold text-white">Face Recognition (Pre-Check)</h3>
                   {isLoadingModels ? (
                     <span className="text-yellow-400">Loading models...</span>
-                  ) : permissions.faceMatch ? (
-                    <span className="text-green-400">✓ Active</span>
+                  ) : verificationStatus === 'success' ? (
+                    <span className="text-green-400">✓ Verified</span>
+                  ) : verificationStatus === 'failed' ? (
+                    <span className="text-red-400">❌ Failed</span>
+                  ) : !permissions.camera ? (
+                    <button
+                      onClick={requestCamera}
+                      className="bg-white/90 hover:bg-white text-black px-4 py-2 rounded-md text-sm font-semibold transition-colors"
+                    >
+                      Grant Permission
+                    </button>
                   ) : (
-                    <span className="text-slate-400">Pending</span>
+                    <span className="text-slate-400">Ready to Verify</span>
                   )}
                 </div>
+
+                <p className="text-slate-300 text-sm mb-3">
+                  {!permissions.camera
+                    ? "Camera access is required for identity verification."
+                    : "Please look at the camera and click Verify to match your profile picture."}
+                </p>
+
+                {/* Manual Verify Button */}
+                {permissions.camera && verificationStatus !== 'success' && !isLoadingModels && (
+                  <button
+                    onClick={captureAndVerifyFace}
+                    disabled={verificationStatus === 'verifying'}
+                    className={`w-full py-2 rounded-md font-semibold text-sm mb-2 ${verificationStatus === 'verifying'
+                      ? 'bg-blue-600/50 text-blue-200 cursor-wait'
+                      : 'bg-blue-600 hover:bg-blue-500 text-white'
+                      }`}
+                  >
+                    {verificationStatus === 'verifying' ? 'Verifying...' : 'Capture & Verify Face'}
+                  </button>
+                )}
+
+                {permissionErrors.faceMatch && (
+                  <p className="text-red-400 text-sm mb-2">{permissionErrors.faceMatch}</p>
+                )}
                 <p className="text-slate-300 text-sm">
                   Your face will be monitored to ensure you are the one taking the exam.
                 </p>
@@ -1366,10 +1461,10 @@ const Proctoring = forwardRef(({
 
               <button
                 onClick={handleContinue}
-                disabled={!permissions.screenShare || !permissions.microphone || !permissions.location || devToolsDetected}
-                className={`w-full py-2.5 px-6 rounded-md font-semibold ${permissions.screenShare && permissions.microphone && permissions.location && !devToolsDetected
-                    ? 'bg-green-600 hover:bg-green-700 text-white'
-                    : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                disabled={!permissions.screenShare || !permissions.microphone || !permissions.location || !permissions.camera || verificationStatus !== 'success' || devToolsDetected}
+                className={`w-full py-2.5 px-6 rounded-md font-semibold ${permissions.screenShare && permissions.microphone && permissions.location && permissions.camera && verificationStatus === 'success' && !devToolsDetected
+                  ? 'bg-green-600 hover:bg-green-700 text-white'
+                  : 'bg-gray-600 text-gray-400 cursor-not-allowed'
                   }`}
               >
                 {devToolsDetected ? 'Close Developer Tools to Continue' : 'Continue to Exam'}
