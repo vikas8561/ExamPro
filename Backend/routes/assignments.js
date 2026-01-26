@@ -168,6 +168,8 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     // Auto-start logic - batch update instead of individual updates
     const autoStartStart = Date.now();
     const now = new Date();
+
+    // Auto-start assignments
     const assignmentsToAutoStart = assignmentsWithQuestionCount.filter(assignment =>
       assignment.status === "Assigned" &&
       assignment.duration === assignment.testId.timeLimit &&
@@ -191,9 +193,58 @@ router.get("/student", authenticateToken, async (req, res, next) => {
         assignment.startedAt = now;
       });
     }
+
+    // Auto-complete assignments (expired In Progress tests)
+    const assignmentsToAutoComplete = assignmentsWithQuestionCount.filter(assignment =>
+      assignment.status === "In Progress" &&
+      now > new Date(new Date(assignment.startTime).getTime() + (assignment.duration * 60000) + 30000) // Add 30s buffer
+    );
+
+    if (assignmentsToAutoComplete.length > 0) {
+      console.log(`🔄 Found ${assignmentsToAutoComplete.length} expired assignments to auto-complete`);
+
+      const TestSubmission = require("../models/TestSubmission");
+
+      for (const assignment of assignmentsToAutoComplete) {
+        // Update assignment status
+        await Assignment.findByIdAndUpdate(assignment._id, {
+          status: "Completed",
+          completedAt: now,
+          autoScore: 0,
+          reviewStatus: "Not Submitted"
+        });
+
+        // Update local object
+        assignment.status = "Completed";
+        assignment.completedAt = now;
+
+        // Ensure TestSubmission exists
+        const existingSubmission = await TestSubmission.exists({
+          assignmentId: assignment._id,
+          userId: req.user.userId
+        });
+
+        if (!existingSubmission) {
+          console.log(`📝 Creating auto-submission for assignment ${assignment._id}`);
+          await TestSubmission.create({
+            assignmentId: assignment._id,
+            testId: assignment.testId._id,
+            userId: req.user.userId,
+            responses: [],
+            totalScore: 0,
+            maxScore: 0, // Should ideally be calculated from test
+            submittedAt: now,
+            timeSpent: assignment.duration,
+            autoSubmit: true,
+            reviewStatus: "Not Submitted"
+          });
+        }
+      }
+    }
+
     const autoStartTime = Date.now() - autoStartStart;
     if (autoStartTime > 0) {
-      console.log(`⏱️ Auto-start: ${autoStartTime}ms`);
+      console.log(`⏱️ Auto-start/complete: ${autoStartTime}ms`);
     }
 
     // Prepare response
@@ -258,11 +309,10 @@ router.get("/student/stats", authenticateToken, async (req, res, next) => {
 
     // Count assignments in parallel - ULTRA FAST
     const [assignedCount, completedCount] = await Promise.all([
-      // Assigned: status is "Assigned" or "In Progress"
+      // Assigned: Total assigned tests (active + completed + overdue)
       Assignment.countDocuments({
         userId: req.user.userId,
-        testId: { $in: validTestIds },
-        status: { $in: ["Assigned", "In Progress"] }
+        testId: { $in: validTestIds }
       }),
       // Completed: status is "Completed" AND completedAt exists (actually submitted)
       Assignment.countDocuments({

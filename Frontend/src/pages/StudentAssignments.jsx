@@ -886,8 +886,8 @@ const StudentAssignments = () => {
                         }}
                         className="action-button w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
                         style={{
-                          backgroundColor: '#22D3EE',
-                          color: '#020617',
+                          backgroundColor: '#0b0753ff',
+                          color: '#FFFFFF',
                           border: '2px solid transparent',
                           zIndex: 9999,
                           position: 'relative'
@@ -936,8 +936,8 @@ const StudentAssignments = () => {
                           }}
                           className="action-button w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
                           style={{
-                            backgroundColor: '#22D3EE',
-                            color: '#020617',
+                            backgroundColor: '#4F46E5',
+                            color: '#FFFFFF',
                             border: '2px solid transparent',
                             zIndex: 9999,
                             position: 'relative'
@@ -958,8 +958,8 @@ const StudentAssignments = () => {
                           }}
                           className="action-button w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
                           style={{
-                            backgroundColor: '#22D3EE',
-                            color: '#020617',
+                            backgroundColor: '#4F46E5',
+                            color: '#FFFFFF',
                             border: '2px solid transparent',
                             zIndex: 9999,
                             position: 'relative'
