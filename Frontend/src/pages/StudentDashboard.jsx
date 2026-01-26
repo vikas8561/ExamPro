@@ -1,20 +1,30 @@
 import React, { useEffect, useState } from "react";
 import UpcomingTests from "../components/UpcomingTests";
 import RecentActivity from "../components/RecentActivity";
+import DashboardAnalytics from "../components/DashboardAnalytics";
 import apiRequest from "../services/api";
 import { io } from "socket.io-client";
 import { BASE_URL } from "../config/api";
 import "../styles/StudentDashboard.mobile.css";
+import {
+  Trophy,
+  Target,
+  Clock,
+  Calendar,
+  TrendingUp,
+  Activity,
+  Zap,
+  BookOpen,
+  GraduationCap,
+  Wifi,
+  WifiOff
+} from "lucide-react";
 
 // Skeleton loader styles
 const skeletonStyles = `
   @keyframes shimmer {
-    0% {
-      background-position: -1000px 0;
-    }
-    100% {
-      background-position: 1000px 0;
-    }
+    0% { background-position: -1000px 0; }
+    100% { background-position: 1000px 0; }
   }
   
   .skeleton {
@@ -27,35 +37,60 @@ const skeletonStyles = `
     background-size: 1000px 100%;
     animation: shimmer 2s infinite;
   }
+
+  .glass-card {
+    background: rgba(17, 24, 39, 0.7);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+  }
+
+  .glass-card:hover {
+    background: rgba(31, 41, 55, 0.8);
+    border-color: rgba(255, 255, 255, 0.15);
+    transform: translateY(-2px);
+    transition: all 0.3s ease;
+  }
 `;
 
 const StudentDashboard = () => {
   const [assignedCount, setAssignedCount] = useState(0);
   const [completedCount, setCompletedCount] = useState(0);
-  const [assignedTests, setAssignedTests] = useState([]); // Keep for upcoming tests filtering
-  const [completedTests, setCompletedTests] = useState([]); // Keep for compatibility
+  const [assignedTests, setAssignedTests] = useState([]);
+  const [allAssignments, setAllAssignments] = useState([]); // For analytics
   const [recentActivities, setRecentActivities] = useState([]);
-  const [loading, setLoading] = useState(false); // Changed to false - don't block UI
+  const [loading, setLoading] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
   const [connectionError, setConnectionError] = useState(null);
+  const [userName, setUserName] = useState("Student");
+
+  // Calculate average score
+  const [averageScore, setAverageScore] = useState(0);
 
   useEffect(() => {
-    // Load data in background without blocking UI
+    // Get user name
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      try {
+        const user = JSON.parse(storedUser);
+        setUserName(user.name?.split(' ')[0] || "Student");
+      } catch (e) {
+        setUserName("Student");
+      }
+    }
+
     fetchStudentData();
     fetchRecentActivity();
 
-    // Setup Socket.IO client - use the same base URL as API
-    const socketUrl = BASE_URL; // Use BASE_URL from config (without /api)
-    console.log('Connecting to Socket.IO at:', socketUrl);
+    const socketUrl = BASE_URL;
     const socket = io(socketUrl, {
-      // ✅ Fixed: Add connection options for better cleanup
       autoConnect: true,
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
       timeout: 20000,
-      transports: ['websocket', 'polling'], // Explicitly set transport methods
-      forceNew: false // Reuse existing connection if available
+      transports: ['websocket', 'polling'],
+      forceNew: false
     });
 
     let pollInterval = null;
@@ -63,89 +98,73 @@ const StudentDashboard = () => {
     socket.on("connect", () => {
       setSocketConnected(true);
       setConnectionError(null);
-      // Join room with userId for targeted events
-      const userId = getCurrentUserId();
-      if (userId) {
-        socket.emit('join', userId);
-      }
+      const userId = localStorage.getItem("userId");
+      if (userId) socket.emit('join', userId);
     });
 
     socket.on("connect_error", (error) => {
       console.error("Socket connection error:", error);
       setSocketConnected(false);
-      setConnectionError("Failed to connect to real-time server. Using fallback polling.");
-      // Fallback: poll for updates every 30 seconds
+      setConnectionError("Using fallback polling");
       pollInterval = setInterval(() => {
         fetchStudentData();
         fetchRecentActivity();
       }, 30000);
     });
 
-    socket.on("disconnect", (reason) => {
+    socket.on("disconnect", () => {
       setSocketConnected(false);
-      // Clear fallback polling if it exists
-      if (pollInterval) {
-        clearInterval(pollInterval);
-        pollInterval = null;
-      }
+      if (pollInterval) clearInterval(pollInterval);
     });
 
     socket.on("assignmentCreated", (data) => {
-      console.log("📨 Dashboard: Socket event received: assignmentCreated", data);
-      const currentUserId = getCurrentUserId();
-      // Refresh if event is for current user OR if no userId specified (broadcast)
+      const currentUserId = localStorage.getItem("userId");
       if (!data.userId || data.userId === currentUserId || data.testId) {
-        console.log("🔄 Dashboard: Refreshing data due to assignment creation");
-        // Refresh student data and recent activity
         fetchStudentData();
         fetchRecentActivity();
       }
     });
 
-    // ✅ Fixed: Proper cleanup function
     return () => {
-      if (pollInterval) {
-        clearInterval(pollInterval);
-      }
+      if (pollInterval) clearInterval(pollInterval);
       socket.removeAllListeners();
       socket.disconnect();
     };
   }, []);
 
-  const getCurrentUserId = () => {
-    // Assuming userId is stored in localStorage
-    const userId = localStorage.getItem("userId");
-    return userId;
-  };
-
   const fetchStudentData = async () => {
     setLoading(true);
     try {
-      // Fetch stats (counts only) and upcoming tests in parallel
       const [stats, upcomingResponse] = await Promise.all([
         apiRequest("/assignments/student/stats"),
-        apiRequest("/assignments/student?page=1&limit=10") // Fetch first 10 for upcoming tests
+        apiRequest("/assignments/student?page=1&limit=50") // Fetch more for analytics
       ]);
 
-
-      // Store counts for display
       setAssignedCount(stats.assignedCount || 0);
       setCompletedCount(stats.completedCount || 0);
 
-      // Extract upcoming tests from response
-      let upcomingAssignments = [];
+      let assignments = [];
       if (Array.isArray(upcomingResponse)) {
-        upcomingAssignments = upcomingResponse;
-      } else if (upcomingResponse && Array.isArray(upcomingResponse.assignments)) {
-        upcomingAssignments = upcomingResponse.assignments;
-      } else if (upcomingResponse && Array.isArray(upcomingResponse.data)) {
-        upcomingAssignments = upcomingResponse.data;
+        assignments = upcomingResponse;
+      } else if (upcomingResponse?.assignments) {
+        assignments = upcomingResponse.assignments;
+      } else if (upcomingResponse?.data) {
+        assignments = upcomingResponse.data;
       }
 
-      // Filter for upcoming tests (status is "Assigned" or "In Progress")
-      const upcomingTestsData = upcomingAssignments.filter(assignment =>
-        assignment &&
-        assignment.testId &&
+      setAllAssignments(assignments);
+
+      // Calculate Average Score
+      const completedOnly = assignments.filter(a => a.status === 'Completed' && a.score !== null);
+      if (completedOnly.length > 0) {
+        const totalScore = completedOnly.reduce((sum, a) => sum + (a.score || 0), 0);
+        setAverageScore(Math.round(totalScore / completedOnly.length));
+      } else {
+        setAverageScore(0);
+      }
+
+      const upcomingTestsData = assignments.filter(assignment =>
+        assignment?.testId &&
         assignment.testId.type !== 'practice' &&
         (assignment.status === "Assigned" || assignment.status === "In Progress")
       );
@@ -153,9 +172,6 @@ const StudentDashboard = () => {
       setAssignedTests(upcomingTestsData);
     } catch (error) {
       console.error("Error fetching student data:", error);
-      setAssignedCount(0);
-      setCompletedCount(0);
-      setAssignedTests([]);
     } finally {
       setLoading(false);
     }
@@ -167,200 +183,190 @@ const StudentDashboard = () => {
       setRecentActivities(activities);
     } catch (error) {
       console.error("Error fetching recent activity:", error);
-      setRecentActivities([]);
     }
   };
 
-  // Removed blocking loading state - dashboard loads immediately
+  const upcomingTests = assignedTests.filter(test => new Date(test.startTime) >= new Date()).slice(0, 3);
 
-  const upcomingTests = assignedTests.filter(test => new Date(test.startTime) >= new Date());
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good Morning";
+    if (hour < 18) return "Good Afternoon";
+    return "Good Evening";
+  };
 
   return (
-    <div className="student-dashboard-mobile p-6 min-h-screen" style={{ backgroundColor: '#0B1220' }}>
+    <div className="student-dashboard-mobile min-h-screen bg-[#0B1220] text-slate-100 font-sans pb-12">
       <style>{skeletonStyles}</style>
-      <h2 className="text-3xl font-bold mb-6" style={{ color: '#E5E7EB' }}>Student Dashboard</h2>
 
-      {/* Connection Status Indicator */}
-      <div className="mb-6">
-        <div
-          className="connection-status inline-flex items-center px-4 py-2 rounded-lg text-sm border"
-          style={{
-            backgroundColor: socketConnected
-              ? 'rgba(255, 255, 255, 0.1)'
-              : connectionError
-                ? 'rgba(239, 68, 68, 0.1)'
-                : 'rgba(234, 179, 8, 0.1)',
-            borderColor: socketConnected
-              ? 'rgba(255, 255, 255, 0.3)'
-              : connectionError
-                ? 'rgba(239, 68, 68, 0.3)'
-                : 'rgba(234, 179, 8, 0.3)',
-            color: socketConnected ? '#FFFFFF' : connectionError ? '#FCA5A5' : '#FDE047'
-          }}
-        >
-          <div
-            className="status-dot w-2 h-2 rounded-full mr-2"
-            style={{
-              backgroundColor: socketConnected ? '#FFFFFF' : '#EF4444'
-            }}
-          ></div>
-          {socketConnected ? 'Real-time connected' : connectionError ? 'Connection error - using polling' : 'Connecting...'}
+      {/* Hero Section */}
+      <div className="relative overflow-hidden bg-gradient-to-r from-indigo-900/40 via-purple-900/40 to-slate-900/40 border-b border-white/5 py-6 px-6 sm:px-8 mb-8">
+        <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0 pointer-events-none">
+          <div className="absolute top-[-10%] right-[-5%] w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl"></div>
+          <div className="absolute bottom-[-10%] left-[-10%] w-80 h-80 bg-purple-600/20 rounded-full blur-3xl"></div>
         </div>
-      </div>
 
-      {/* Stats */}
-      <div className="stats-grid grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
-        {loading ? (
-          <>
-            {/* Skeleton for Total Assigned Tests */}
-            <div
-              className="rounded-2xl p-6 border"
-              style={{
-                backgroundColor: '#0B1220',
-                borderColor: 'rgba(255, 255, 255, 0.2)'
-              }}
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 rounded-lg skeleton" style={{ width: '36px', height: '36px' }}></div>
-                <div className="skeleton rounded-lg" style={{ height: '20px', width: '150px' }}></div>
-              </div>
-              <div className="skeleton rounded-lg mt-2" style={{ height: '48px', width: '80px' }}></div>
-            </div>
-            {/* Skeleton for Completed Tests */}
-            <div
-              className="rounded-2xl p-6 border"
-              style={{
-                backgroundColor: '#0B1220',
-                borderColor: 'rgba(255, 255, 255, 0.2)'
-              }}
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 rounded-lg skeleton" style={{ width: '36px', height: '36px' }}></div>
-                <div className="skeleton rounded-lg" style={{ height: '20px', width: '140px' }}></div>
-              </div>
-              <div className="skeleton rounded-lg mt-2" style={{ height: '48px', width: '60px' }}></div>
-            </div>
-          </>
-        ) : (
-          <>
-            <div
-              className="stat-card rounded-2xl p-6 border transition-all duration-300"
-              style={{
-                backgroundColor: '#0B1220',
-                borderColor: 'rgba(255, 255, 255, 0.2)'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.4)';
-                e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(255, 255, 255, 0.1)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-                e.currentTarget.style.boxShadow = 'none';
-              }}
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <div
-                  className="stat-icon p-2 rounded-lg"
-                  style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)' }}
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: '#FFFFFF' }}>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
+        <div className="relative z-10 max-w-7xl mx-auto">
+          <div className="flex flex-col gap-3">
+            {/* Top Row: Badges & Action */}
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 shadow-[0_0_10px_rgba(99,102,241,0.1)]">
+                  <GraduationCap className="w-3 h-3 text-indigo-400" />
+                  <span className="text-indigo-200 text-[10px] font-semibold tracking-wide uppercase">
+                    Student Portal
+                  </span>
                 </div>
-                <p className="stat-label text-slate-400">Total Assigned Tests</p>
-              </div>
-              <p className="stat-value text-4xl font-bold mt-2" style={{ color: '#E5E7EB' }}>{assignedCount}</p>
-            </div>
-            <div
-              className="stat-card rounded-2xl p-6 border transition-all duration-300"
-              style={{
-                backgroundColor: '#0B1220',
-                borderColor: 'rgba(255, 255, 255, 0.2)'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.4)';
-                e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(255, 255, 255, 0.1)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-                e.currentTarget.style.boxShadow = 'none';
-              }}
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <div
-                  className="stat-icon p-2 rounded-lg"
-                  style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)' }}
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: '#FFFFFF' }}>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <p className="stat-label text-slate-400">Completed Tests</p>
-              </div>
-              <p className="stat-value text-4xl font-bold mt-2" style={{ color: '#E5E7EB' }}>{completedCount}</p>
-            </div>
-          </>
-        )}
-      </div>
 
-      <h3 className="section-title text-xl font-semibold mb-3" style={{ color: '#E5E7EB' }}>Upcoming Tests</h3>
-      {loading ? (
-        <div
-          className="rounded-2xl overflow-hidden border"
-          style={{
-            backgroundColor: '#0B1220',
-            borderColor: 'rgba(255, 255, 255, 0.2)'
-          }}
-        >
-          <div className="p-4">
-            <div className="skeleton rounded-lg mb-4" style={{ height: '20px', width: '200px' }}></div>
-            <div className="space-y-3">
-              {[...Array(3)].map((_, i) => (
-                <div key={i} className="flex items-center gap-4 p-4 border-b" style={{ borderColor: 'rgba(255, 255, 255, 0.1)' }}>
-                  <div className="skeleton rounded-lg" style={{ height: '16px', width: '200px' }}></div>
-                  <div className="skeleton rounded-lg" style={{ height: '16px', width: '120px' }}></div>
-                  <div className="skeleton rounded-lg" style={{ height: '16px', width: '100px' }}></div>
-                  <div className="skeleton rounded-lg ml-auto" style={{ height: '32px', width: '100px' }}></div>
+                <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full border shadow-sm ${socketConnected
+                  ? 'bg-emerald-500/10 border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.1)]'
+                  : 'bg-amber-500/10 border-amber-500/20'
+                  }`}>
+                  {socketConnected ? (
+                    <Wifi className="w-3 h-3 text-emerald-400" />
+                  ) : (
+                    <WifiOff className="w-3 h-3 text-amber-400" />
+                  )}
+                  <span className={`text-[10px] font-semibold tracking-wide uppercase ${socketConnected ? 'text-emerald-200' : 'text-amber-200'
+                    }`}>
+                    {socketConnected ? 'Online' : 'Syncing'}
+                  </span>
                 </div>
-              ))}
+              </div>
+
+              <button
+                onClick={fetchStudentData}
+                className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95 backdrop-blur-md group text-xs font-medium text-slate-300 hover:text-white"
+              >
+                <Zap className="w-3.5 h-3.5 text-yellow-400/80 group-hover:text-yellow-300 transition-colors" />
+                <span>Refresh</span>
+              </button>
+            </div>
+
+            {/* Content Row */}
+            <div>
+              <h1 className="text-3xl md:text-4xl font-bold text-white mb-1.5 tracking-tight">
+                {getGreeting()}, <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">{userName}</span>
+              </h1>
+              <p className="text-slate-400 max-w-lg text-base leading-relaxed">
+                Ready to continue your learning journey? You have <span className="text-white font-semibold">{assignedTests.length}</span> active assignments.
+              </p>
             </div>
           </div>
         </div>
-      ) : (
-        <div className="upcoming-tests-container">
-          <UpcomingTests data={upcomingTests} />
-        </div>
-      )}
+      </div>
 
-      <h3 className="section-title text-xl font-semibold mb-3 mt-8" style={{ color: '#E5E7EB' }}>Recent Activity</h3>
-      {loading ? (
-        <div
-          className="recent-activity-container rounded-2xl overflow-hidden border"
-          style={{
-            backgroundColor: '#0B1220',
-            borderColor: 'rgba(255, 255, 255, 0.2)'
-          }}
-        >
-          <div className="p-4">
-            <div className="skeleton rounded-lg mb-4" style={{ height: '20px', width: '150px' }}></div>
-            <div className="space-y-3">
-              {[...Array(4)].map((_, i) => (
-                <div key={i} className="recent-activity-item flex items-start gap-3 p-3 rounded-lg border" style={{ borderColor: 'rgba(255, 255, 255, 0.1)' }}>
-                  <div className="skeleton rounded-full" style={{ width: '24px', height: '24px', flexShrink: 0 }}></div>
-                  <div className="flex-1">
-                    <div className="skeleton rounded-lg mb-2" style={{ height: '16px', width: '250px' }}></div>
-                    <div className="skeleton rounded-lg" style={{ height: '12px', width: '100px' }}></div>
-                  </div>
+      <div className="max-w-7xl mx-auto px-6 sm:px-8 space-y-8">
+
+        {/* Quick Stats Row */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Total Assigned */}
+          <div className="glass-card rounded-2xl p-6 relative overflow-hidden group">
+            <div className="absolute right-0 top-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+              <Target className="w-24 h-24 rotate-12" />
+            </div>
+            <div className="relative z-10">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-2.5 bg-blue-500/20 rounded-xl text-blue-400">
+                  <BookOpen className="w-6 h-6" />
                 </div>
-              ))}
+                <h3 className="text-slate-400 font-medium">Total Assigned</h3>
+              </div>
+              <p className="text-4xl font-bold text-white mb-1">{assignedCount}</p>
+              <p className="text-sm text-slate-500">Tests assigned to you</p>
+            </div>
+          </div>
+
+          {/* Completed Tests */}
+          <div className="glass-card rounded-2xl p-6 relative overflow-hidden group">
+            <div className="absolute right-0 top-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+              <Trophy className="w-24 h-24 rotate-12" />
+            </div>
+            <div className="relative z-10">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-2.5 bg-emerald-500/20 rounded-xl text-emerald-400">
+                  <Trophy className="w-6 h-6" />
+                </div>
+                <h3 className="text-slate-400 font-medium">Completed Tests</h3>
+              </div>
+              <p className="text-4xl font-bold text-white mb-1">{completedCount}</p>
+              <p className="text-sm text-slate-500">Succesfully submitted</p>
+            </div>
+          </div>
+
+          {/* Average Score */}
+          <div className="glass-card rounded-2xl p-6 relative overflow-hidden group">
+            <div className="absolute right-0 top-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+              <TrendingUp className="w-24 h-24 rotate-12" />
+            </div>
+            <div className="relative z-10">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-2.5 bg-purple-500/20 rounded-xl text-purple-400">
+                  <TrendingUp className="w-6 h-6" />
+                </div>
+                <h3 className="text-slate-400 font-medium">Average Score</h3>
+              </div>
+              <p className="text-4xl font-bold text-white mb-1">{averageScore}%</p>
+              <p className="text-sm text-slate-500">Based on completed tests</p>
             </div>
           </div>
         </div>
-      ) : (
-        <div className="recent-activity-container">
-          <RecentActivity data={recentActivities} />
+
+        {/* Analytics Section */}
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <Activity className="w-5 h-5 text-indigo-400" />
+            <h2 className="text-xl font-bold text-slate-100">Performance Analytics</h2>
+          </div>
+          <DashboardAnalytics assignments={allAssignments} />
         </div>
-      )}
+
+        {/* Content Grid (Upcoming & Recent) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+
+          {/* Upcoming Tests - Left Side (Larger) */}
+          <div className="lg:col-span-7 space-y-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Clock className="w-5 h-5 text-amber-400" />
+                <h2 className="text-xl font-bold text-slate-100">Upcoming Priority</h2>
+              </div>
+            </div>
+
+            {loading ? (
+              <div className="glass-card rounded-2xl p-6 min-h-[200px] flex items-center justify-center">
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-8 h-8 rounded-full border-2 border-slate-600 border-t-indigo-500 animate-spin"></div>
+                  <p className="text-slate-500 text-sm">Loading tests...</p>
+                </div>
+              </div>
+            ) : (
+              <div className="glass-card rounded-2xl border-0 overflow-hidden">
+                <UpcomingTests data={upcomingTests} />
+              </div>
+            )}
+          </div>
+
+          {/* Recent Activity - Right Side (Smaller) */}
+          <div className="lg:col-span-5 space-y-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Calendar className="w-5 h-5 text-blue-400" />
+              <h2 className="text-xl font-bold text-slate-100">Recent Activity</h2>
+            </div>
+
+            {loading ? (
+              <div className="glass-card rounded-2xl p-6 min-h-[200px] flex items-center justify-center">
+                <div className="skeleton w-full h-full rounded-xl"></div>
+              </div>
+            ) : (
+              <div className="glass-card rounded-2xl p-2 border-0 overflow-hidden">
+                <RecentActivity data={recentActivities} />
+              </div>
+            )}
+          </div>
+
+        </div>
+      </div>
     </div>
   );
 };
