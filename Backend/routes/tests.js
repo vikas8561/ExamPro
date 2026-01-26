@@ -14,14 +14,14 @@ router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) 
     const skip = (page - 1) * limit;
     const searchTerm = req.query.search || "";
     const { status } = req.query;
-    
+
     // Build query
     const query = {};
-    
+
     if (status) {
       query.status = status;
     }
-    
+
     // Search functionality - search in title, subject, type, status, and OTP
     if (searchTerm) {
       query.$or = [
@@ -36,24 +36,86 @@ router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) 
     // Get total count for pagination
     const totalTests = await Test.countDocuments(query);
 
-    // ULTRA FAST: Get tests with MINIMAL data (NO questions!)
-    const tests = await Test.find(query)
-      .select("title subject type instructions timeLimit negativeMarkingPercent allowedTabSwitches otp status createdAt createdBy")
-      .populate("createdBy", "name email")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean(); // Use lean() for 2x faster queries
+    // Get tests with aggregation to include calculated fields (participants, avgScore)
+    const pipeline = [
+      { $match: query },
+      // Lookup submissions to calculate stats
+      {
+        $lookup: {
+          from: "testsubmissions",
+          localField: "_id",
+          foreignField: "testId",
+          as: "submissions"
+        }
+      },
+      // Calculate derived fields
+      {
+        $addFields: {
+          participants: { $size: "$submissions" },
+          avgScore: {
+            $cond: {
+              if: { $gt: [{ $size: "$submissions" }, 0] },
+              then: {
+                $avg: {
+                  $map: {
+                    input: "$submissions",
+                    as: "sub",
+                    in: {
+                      $cond: [
+                        { $gt: ["$$sub.maxScore", 0] },
+                        { $multiply: [{ $divide: ["$$sub.totalScore", "$$sub.maxScore"] }, 100] },
+                        0
+                      ]
+                    }
+                  }
+                }
+              },
+              else: 0
+            }
+          }
+        }
+      },
+      // Remove heavy submissions array
+      { $project: { submissions: 0 } },
+
+      // Populate createdBy (Note: $lookup is needed for aggregation populate)
+      {
+        $lookup: {
+          from: "users",
+          localField: "createdBy",
+          foreignField: "_id",
+          as: "createdBy"
+        }
+      },
+      { $unwind: { path: "$createdBy", preserveNullAndEmptyArrays: true } },
+
+      // Keep only necessary fields from user
+      {
+        $addFields: {
+          "createdBy": {
+            name: "$createdBy.name",
+            email: "$createdBy.email",
+            _id: "$createdBy._id"
+          }
+        }
+      },
+
+      { $sort: { createdAt: -1 } },
+      { $skip: skip },
+      { $limit: limit }
+    ];
+
+    const tests = await Test.aggregate(pipeline);
 
     const totalTime = Date.now() - startTime;
     // console.log(`✅ ULTRA FAST admin tests completed in ${totalTime}ms - Found ${tests.length} tests`);
-    
+
     // Calculate pagination info
     const totalPages = Math.ceil(totalTests / limit);
     const hasNextPage = page < totalPages;
     const hasPrevPage = page > 1;
-    
-    res.json({ 
+
+    res.json({
       tests,
       pagination: {
         currentPage: page,
@@ -74,11 +136,11 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
   try {
     const test = await Test.findById(req.params.id)
       .populate("createdBy", "name email");
-    
+
     if (!test) {
       return res.status(404).json({ message: "Test not found" });
     }
-    
+
     res.json(test);
   } catch (error) {
     next(error);
@@ -177,7 +239,7 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
       createdAt: test.createdAt,
       updatedAt: test.updatedAt
     };
-    
+
     console.log('DEBUG: Test response prepared (without populate)');
 
     res.status(201).json(testResponse);
@@ -282,7 +344,7 @@ router.put("/:id", authenticateToken, requireRole("admin"), async (req, res, nex
 router.delete("/:id", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
     const test = await Test.findById(req.params.id);
-    
+
     if (!test) {
       return res.status(404).json({ message: "Test not found" });
     }
@@ -292,7 +354,7 @@ router.delete("/:id", authenticateToken, requireRole("admin"), async (req, res, 
 
     // Delete associated submissions
     await TestSubmission.deleteMany({ testId: req.params.id });
-    
+
     // Delete associated assignments
     await Assignment.deleteMany({ testId: req.params.id });
 
@@ -312,7 +374,7 @@ router.delete("/:id", authenticateToken, requireRole("admin"), async (req, res, 
 router.get("/:id/stats", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
     const test = await Test.findById(req.params.id);
-    
+
     if (!test) {
       return res.status(404).json({ message: "Test not found" });
     }
@@ -322,9 +384,9 @@ router.get("/:id/stats", authenticateToken, requireRole("admin"), async (req, re
     const TestSubmission = require("../models/TestSubmission");
 
     const assignmentCount = await Assignment.countDocuments({ testId: req.params.id });
-    const completedCount = await Assignment.countDocuments({ 
-      testId: req.params.id, 
-      status: "Completed" 
+    const completedCount = await Assignment.countDocuments({
+      testId: req.params.id,
+      status: "Completed"
     });
     const submissionCount = await TestSubmission.countDocuments({ testId: req.params.id });
 
