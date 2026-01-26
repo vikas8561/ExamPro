@@ -1,10 +1,10 @@
 import React, { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
-import { 
-  LogOut, 
-  LayoutDashboard, 
-  ClipboardList, 
-  Users, 
+import {
+  LogOut,
+  LayoutDashboard,
+  ClipboardList,
+  Users,
   X,
   ChevronRight,
   Shield,
@@ -18,10 +18,9 @@ const Item = ({ to, icon: Icon, children, onClick, end = false }) => {
       end={end}
       onClick={onClick}
       className={({ isActive }) =>
-        `group relative flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 nav-item ${
-          isActive
-            ? "text-white shadow-sm active-nav-item"
-            : "text-gray-300 hover:text-white"
+        `group relative flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 nav-item ${isActive
+          ? "text-white shadow-sm active-nav-item"
+          : "text-gray-300 hover:text-white"
         }`
       }
       style={({ isActive }) => ({
@@ -32,25 +31,25 @@ const Item = ({ to, icon: Icon, children, onClick, end = false }) => {
         <>
           {/* Active indicator */}
           {isActive && (
-            <div 
+            <div
               className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r-full"
               style={{ backgroundColor: '#FFFFFF' }}
             ></div>
           )}
-          
+
           {/* Icon with animation */}
           <div className={`
             relative z-10 transition-all duration-300
             ${isActive ? "scale-110" : "group-hover:scale-110"}
          `}>
-            <Icon 
-              className="w-5 h-5" 
+            <Icon
+              className="w-5 h-5"
               style={{ color: isActive ? '#FFFFFF' : undefined }}
             />
           </div>
-          
+
           {/* Text with animation */}
-          <span 
+          <span
             className={`
               relative z-10 font-medium transition-all duration-300
               ${isActive ? "translate-x-0" : "group-hover:translate-x-1"}
@@ -59,9 +58,9 @@ const Item = ({ to, icon: Icon, children, onClick, end = false }) => {
           >
             {children}
           </span>
-          
+
           {/* Arrow indicator */}
-          <ChevronRight 
+          <ChevronRight
             className={`
               ml-auto w-4 h-4 transition-all duration-300
               ${isActive ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0"}
@@ -94,21 +93,21 @@ export default function AdminSidebar({ isOpen, onToggle }) {
     { to: "/admin/tests", icon: ClipboardList, label: "Tests" },
     { to: "/admin/dsa-practice", icon: Code, label: "DSA Practice" },
     { to: "/admin/users", icon: Users, label: "Users" },
-    { to: "/admin/migrate-face-descriptors", icon: Shield, label: "Migrate Face Data" },
+    // { to: "/admin/migrate-face-descriptors", icon: Shield, label: "Migrate Face Data" },
   ];
 
   return (
     <>
       {/* Mobile Overlay */}
       {isOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300"
           onClick={onToggle}
         />
       )}
-      
+
       {/* Sidebar */}
-      <aside 
+      <aside
         className={`
           fixed lg:sticky inset-y-0 left-0 z-50 w-72 h-screen 
           text-slate-100 p-6 flex flex-col
@@ -116,7 +115,7 @@ export default function AdminSidebar({ isOpen, onToggle }) {
           shadow-2xl
           ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
         `}
-        style={{ 
+        style={{
           backgroundColor: '#0B1220',
           borderRight: '1px solid rgba(255, 255, 255, 0.2)'
         }}
@@ -134,12 +133,12 @@ export default function AdminSidebar({ isOpen, onToggle }) {
               <p className="text-xs text-gray-400">Exam Management</p>
             </div>
           </div>
-          
+
           {/* Mobile Close Button */}
-          <button 
+          <button
             onClick={onToggle}
             className="lg:hidden p-2 rounded-lg transition-colors"
-            style={{ 
+            style={{
               backgroundColor: 'transparent'
             }}
             onMouseEnter={(e) => {
@@ -157,10 +156,10 @@ export default function AdminSidebar({ isOpen, onToggle }) {
         {/* Navigation */}
         <nav className="space-y-2 flex-1 overflow-y-auto pr-2 custom-scrollbar">
           {menuItems.map((item) => (
-            <Item 
+            <Item
               key={item.to}
-              to={item.to} 
-              icon={item.icon} 
+              to={item.to}
+              icon={item.icon}
               onClick={handleNavClick}
               end={item.end}
             >
@@ -180,7 +179,7 @@ export default function AdminSidebar({ isOpen, onToggle }) {
                      transition-all duration-300 
                      shadow-sm hover:shadow-md
                      transform hover:scale-[1.01] active:scale-[0.99]"
-            style={{ 
+            style={{
               backgroundColor: 'rgba(255, 255, 255, 0.1)',
               color: '#FFFFFF',
               border: '1px solid rgba(255, 255, 255, 0.3)'

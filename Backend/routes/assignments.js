@@ -13,7 +13,7 @@ router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) 
     const startTime = Date.now();
     const { status, userId, testId } = req.query;
     const query = {};
-    
+
     if (status) query.status = status;
     if (userId) query.userId = userId;
     if (testId) query.testId = testId;
@@ -72,14 +72,14 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     if (testType) {
       testQuery.type = testType;
     }
-    
+
     // Step 1: Get test IDs from cache or database (CACHED for 5 minutes)
     // Allow force refresh via query parameter
     const forceRefresh = req.query.forceRefresh === 'true';
     const cacheKey = testType ? `tests_${testType}` : 'tests_all';
     const testQueryStart = Date.now();
     let validTestIds = forceRefresh ? null : getCachedTestIds(cacheKey);
-    
+
     if (!validTestIds) {
       const validTests = await Test.find(testQuery).select('_id').lean();
       validTestIds = validTests.map(t => t._id);
@@ -90,7 +90,7 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     }
     const testQueryTime = Date.now() - testQueryStart;
     console.log(`⏱️ Test query: ${testQueryTime}ms - Found ${validTestIds.length} valid tests`);
-    
+
     // Step 2 & 3: Run count and assignment queries in PARALLEL for maximum speed
     const parallelStart = Date.now();
     const [validCount, assignments] = await Promise.all([
@@ -100,7 +100,7 @@ router.get("/student", authenticateToken, async (req, res, next) => {
         testId: { $in: validTestIds }
       }),
       // Get paginated assignments (optimized - removed populate match, filter in DB)
-      Assignment.find({ 
+      Assignment.find({
         userId: req.user.userId,
         testId: { $in: validTestIds }
       })
@@ -117,14 +117,14 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     ]);
     const parallelTime = Date.now() - parallelStart;
     console.log(`⏱️ Parallel queries (count + assignments): ${parallelTime}ms - Found ${validCount} total, ${assignments.length} assignments`);
-    
+
     // Debug: Log assignment status breakdown
     const statusBreakdown = assignments.reduce((acc, a) => {
       acc[a.status] = (acc[a.status] || 0) + 1;
       return acc;
     }, {});
     console.log(`📊 Assignment status breakdown:`, statusBreakdown);
-    
+
     // Step 4: Get question counts for tests (single aggregation query)
     const questionCountStart = Date.now();
     const testIds = [...new Set(assignments.map(a => a.testId?._id).filter(Boolean))];
@@ -140,7 +140,7 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     }
     const questionCountTime = Date.now() - questionCountStart;
     console.log(`⏱️ Question count query: ${questionCountTime}ms`);
-    
+
     // Step 5: Transform assignments with question counts
     // SAFETY: Filter out null testIds (can happen if test was deleted but still in cache)
     // This is safe - stale cache data is handled gracefully
@@ -161,14 +161,14 @@ router.get("/student", authenticateToken, async (req, res, next) => {
       }));
     const transformTime = Date.now() - transformStart;
     console.log(`⏱️ Transform: ${transformTime}ms`);
-    
+
     const totalQueryTime = Date.now() - startTime;
     console.log(`📊 Query breakdown - Tests: ${testQueryTime}ms (cached), Parallel (Count+Assignments): ${parallelTime}ms, Questions: ${questionCountTime}ms, Transform: ${transformTime}ms, Total: ${totalQueryTime}ms`);
 
     // Auto-start logic - batch update instead of individual updates
     const autoStartStart = Date.now();
     const now = new Date();
-    const assignmentsToAutoStart = assignmentsWithQuestionCount.filter(assignment => 
+    const assignmentsToAutoStart = assignmentsWithQuestionCount.filter(assignment =>
       assignment.status === "Assigned" &&
       assignment.duration === assignment.testId.timeLimit &&
       now >= new Date(assignment.startTime) &&
@@ -179,12 +179,12 @@ router.get("/student", authenticateToken, async (req, res, next) => {
       const assignmentIds = assignmentsToAutoStart.map(a => a._id);
       await Assignment.updateMany(
         { _id: { $in: assignmentIds } },
-        { 
+        {
           status: "In Progress",
           startedAt: now
         }
       );
-      
+
       // Update local assignment objects
       assignmentsToAutoStart.forEach(assignment => {
         assignment.status = "In Progress";
@@ -198,14 +198,14 @@ router.get("/student", authenticateToken, async (req, res, next) => {
 
     // Prepare response
     const responseStart = Date.now();
-    
+
     // Debug: Log final assignment status breakdown after auto-start
     const finalStatusBreakdown = assignmentsWithQuestionCount.reduce((acc, a) => {
       acc[a.status] = (acc[a.status] || 0) + 1;
       return acc;
     }, {});
     console.log(`📊 Final assignment status breakdown (after auto-start):`, finalStatusBreakdown);
-    
+
     const responseData = {
       assignments: assignmentsWithQuestionCount,
       pagination: {
@@ -217,12 +217,12 @@ router.get("/student", authenticateToken, async (req, res, next) => {
         hasPrevPage: page > 1
       }
     };
-    
+
     // Send response
     res.json(responseData);
     const responseTime = Date.now() - responseStart;
     const totalTime = Date.now() - startTime;
-    
+
     console.log(`✅ Response sent - Response prep: ${responseTime}ms, Total: ${totalTime}ms`);
   } catch (error) {
     console.error('❌ Error in student assignments:', error);
@@ -249,7 +249,7 @@ router.get("/student/stats", authenticateToken, async (req, res, next) => {
     // NOTE: Don't filter by test status here - assignments can exist for any test status
     const cacheKey = 'tests_all';
     let validTestIds = getCachedTestIds(cacheKey);
-    
+
     if (!validTestIds) {
       const validTests = await Test.find({ type: { $ne: "practice" } }).select('_id').lean();
       validTestIds = validTests.map(t => t._id);
@@ -378,7 +378,7 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
         populate: {
           path: "questions",
           // Include answer only for admins, not for students
-          select: req.user.role === "admin" 
+          select: req.user.role === "admin"
             ? "kind text options answer guidelines examples points"
             : "kind text options guidelines examples points"
         }
@@ -557,13 +557,13 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
       // Calculate remaining time
       const now = new Date();
       let timeRemaining = 0;
-      
+
       if (assignment.startedAt && assignment.testId?.timeLimit) {
         const testEndTime = new Date(assignment.startedAt.getTime() + assignment.testId.timeLimit * 60000);
         const remainingMs = testEndTime.getTime() - now.getTime();
         timeRemaining = Math.max(0, Math.floor(remainingMs / 1000)); // Convert to seconds
       }
-      
+
       // Remove answers from questions before sending to student
       const testData = assignment.testId;
       if (testData && testData.questions) {
@@ -572,7 +572,7 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
           return questionWithoutAnswer;
         });
       }
-      
+
       return res.status(200).json({
         assignment,
         test: testData,
@@ -629,7 +629,7 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
 
     // Store timeLimit before saving (populated testId might be lost after save)
     let timeLimitMinutes = assignment.testId?.timeLimit;
-    
+
     console.log('🔍 Initial timeLimit check:', {
       timeLimitMinutes,
       testIdType: typeof assignment.testId,
@@ -637,7 +637,7 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
       testIdId: assignment.testId?._id,
       testIdTimeLimit: assignment.testId?.timeLimit
     });
-    
+
     // If timeLimit is missing, try to get it from the test directly
     if (!timeLimitMinutes || timeLimitMinutes <= 0 || isNaN(timeLimitMinutes)) {
       console.warn('⚠️ timeLimit missing or invalid, fetching test directly');
@@ -650,10 +650,10 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
         }
       }
     }
-    
+
     // Ensure it's a valid number
     timeLimitMinutes = Number(timeLimitMinutes);
-    
+
     if (!timeLimitMinutes || timeLimitMinutes <= 0 || isNaN(timeLimitMinutes)) {
       console.error('❌ ERROR: timeLimit is missing or invalid:', {
         timeLimitMinutes,
@@ -665,7 +665,7 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
       timeLimitMinutes = 30;
       console.warn('⚠️ Using default timeLimit of 30 minutes');
     }
-    
+
     console.log('✅ Final timeLimitMinutes:', timeLimitMinutes);
 
     // Start the test
@@ -689,7 +689,7 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
     const nowTimestamp = Date.now();
     const remainingMs = testEndTime - nowTimestamp;
     const timeRemaining = Math.max(0, Math.floor(remainingMs / 1000)); // Convert to seconds
-    
+
     console.log('⏰ Time calculation:', {
       timeLimitMinutes,
       startedAt: startedAt.toISOString(),
@@ -738,7 +738,7 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
 router.put("/:id", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
     const { mentorId, deadline, status } = req.body;
-    
+
     const updateData = {};
     if (mentorId !== undefined) updateData.mentorId = mentorId;
     if (deadline) updateData.deadline = new Date(deadline);
@@ -749,9 +749,9 @@ router.put("/:id", authenticateToken, requireRole("admin"), async (req, res, nex
       updateData,
       { new: true }
     )
-    .populate("testId", "title type instructions timeLimit")
-    .populate("userId", "name email")
-    .populate("mentorId", "name email");
+      .populate("testId", "title type instructions timeLimit")
+      .populate("userId", "name email")
+      .populate("mentorId", "name email");
 
     if (!assignment) {
       return res.status(404).json({ message: "Assignment not found" });
@@ -1082,14 +1082,14 @@ router.post("/assign-ru", authenticateToken, requireRole("admin"), async (req, r
         role: "Student",
         studentCategory: "RU"
       })
-      .select("_id name email") // Only select needed fields for performance
-      .lean() // Use lean() for better performance
-      .maxTimeMS(10000); // 10 second timeout
-      
+        .select("_id name email") // Only select needed fields for performance
+        .lean() // Use lean() for better performance
+        .maxTimeMS(10000); // 10 second timeout
+
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Query timeout: Fetching RU students took longer than 15 seconds')), 15000);
       });
-      
+
       ruStudents = await Promise.race([queryPromise, timeoutPromise]);
       console.log(`✅ Found ${ruStudents.length} RU students`);
     } catch (queryError) {
@@ -1099,7 +1099,7 @@ router.post("/assign-ru", authenticateToken, requireRole("admin"), async (req, r
         name: queryError.name,
         code: queryError.code
       });
-      
+
       // If it's a timeout or hint error, try a simpler query
       if (queryError.message && (queryError.message.includes('timeout') || queryError.message.includes('hint'))) {
         console.log('⚠️ Retrying with simpler query...');
@@ -1108,14 +1108,14 @@ router.post("/assign-ru", authenticateToken, requireRole("admin"), async (req, r
             role: "Student",
             studentCategory: "RU"
           })
-          .select("_id")
-          .lean()
-          .maxTimeMS(10000)
-          .limit(10000); // Add a safety limit
+            .select("_id")
+            .lean()
+            .maxTimeMS(10000)
+            .limit(10000); // Add a safety limit
           console.log(`✅ Found ${ruStudents.length} RU students (simplified query)`);
         } catch (retryError) {
           console.error('❌ Retry also failed:', retryError);
-          return res.status(500).json({ 
+          return res.status(500).json({
             message: "Failed to fetch RU students. Please try again or contact support.",
             error: process.env.NODE_ENV === 'development' ? retryError.message : undefined
           });
@@ -1288,14 +1288,14 @@ router.post("/assign-su", authenticateToken, requireRole("admin"), async (req, r
         role: "Student",
         studentCategory: "SU"
       })
-      .select("_id name email") // Only select needed fields for performance
-      .lean() // Use lean() for better performance
-      .maxTimeMS(10000); // 10 second timeout
-      
+        .select("_id name email") // Only select needed fields for performance
+        .lean() // Use lean() for better performance
+        .maxTimeMS(10000); // 10 second timeout
+
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Query timeout: Fetching SU students took longer than 15 seconds')), 15000);
       });
-      
+
       suStudents = await Promise.race([queryPromise, timeoutPromise]);
       console.log(`✅ Found ${suStudents.length} SU students`);
     } catch (queryError) {
@@ -1305,7 +1305,7 @@ router.post("/assign-su", authenticateToken, requireRole("admin"), async (req, r
         name: queryError.name,
         code: queryError.code
       });
-      
+
       // If it's a timeout or hint error, try a simpler query
       if (queryError.message && (queryError.message.includes('timeout') || queryError.message.includes('hint'))) {
         console.log('⚠️ Retrying with simpler query...');
@@ -1314,14 +1314,14 @@ router.post("/assign-su", authenticateToken, requireRole("admin"), async (req, r
             role: "Student",
             studentCategory: "SU"
           })
-          .select("_id")
-          .lean()
-          .maxTimeMS(10000)
-          .limit(10000); // Add a safety limit
+            .select("_id")
+            .lean()
+            .maxTimeMS(10000)
+            .limit(10000); // Add a safety limit
           console.log(`✅ Found ${suStudents.length} SU students (simplified query)`);
         } catch (retryError) {
           console.error('❌ Retry also failed:', retryError);
-          return res.status(500).json({ 
+          return res.status(500).json({
             message: "Failed to fetch SU students. Please try again or contact support.",
             error: process.env.NODE_ENV === 'development' ? retryError.message : undefined
           });
@@ -1463,7 +1463,7 @@ router.get("/mentors/available", authenticateToken, requireRole("admin"), async 
     const mentors = await User.find({ role: "Mentor" })
       .select("name email")
       .sort({ name: 1 });
-    
+
     res.json(mentors);
   } catch (error) {
     next(error);

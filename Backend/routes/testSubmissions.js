@@ -7,11 +7,6 @@ const { authenticateToken, requireRole } = require("../middleware/auth");
 
 // Gemini integration removed - mentors will grade manually
 
-// Submit test results
-router.post("/", authenticateToken, async (req, res, next) => {
-  // ... existing submit logic
-});
-
 // Sync violations (progress update)
 router.put("/sync-violations", authenticateToken, async (req, res, next) => {
   try {
@@ -22,21 +17,72 @@ router.put("/sync-violations", authenticateToken, async (req, res, next) => {
       return res.status(400).json({ message: "assignmentId is required" });
     }
 
+    console.log(`🔄 Syncing violations for assignment ${assignmentId}: count=${tabViolationCount}`);
+
+    // Get testId from assignment (required for TestSubmission schema)
+    const assignment = await Assignment.findById(assignmentId);
+    if (!assignment) {
+      return res.status(404).json({ message: "Assignment not found" });
+    }
+
+    // Get the testId - handle both populated and non-populated cases
+    const testId = assignment.testId._id || assignment.testId;
+
     // Update submission violations without completing the test
-    await TestSubmission.findOneAndUpdate(
+    // Include testId in the update to ensure it's set when upserting
+    const result = await TestSubmission.findOneAndUpdate(
       { assignmentId, userId },
       {
         $set: {
           tabViolationCount: tabViolationCount || 0,
-          tabViolations: tabViolations || []
+          tabViolations: tabViolations || [],
+          testId: testId // Required field
+        },
+        $setOnInsert: {
+          userId: userId,
+          assignmentId: assignmentId
         }
       },
-      { upsert: true, new: true }
+      { upsert: true, new: true, runValidators: false }
     );
 
-    res.json({ message: "Violations synced successfully" });
+    console.log(`✅ Violations synced successfully: ${result.tabViolationCount} violations stored`);
+
+    res.json({ message: "Violations synced successfully", violationCount: result.tabViolationCount });
   } catch (error) {
     console.error("Error syncing violations:", error);
+    next(error);
+  }
+});
+
+// Get violations for an in-progress test (simple endpoint for loading on refresh)
+router.get("/violations/:assignmentId", authenticateToken, async (req, res, next) => {
+  try {
+    const { assignmentId } = req.params;
+    const userId = req.user.userId;
+
+    console.log(`🔍 Fetching violations for assignment ${assignmentId}, user ${userId}`);
+
+    const submission = await TestSubmission.findOne({ assignmentId, userId })
+      .select('tabViolationCount tabViolations');
+
+    if (!submission) {
+      console.log(`📭 No submission found for assignment ${assignmentId}`);
+      return res.json({
+        tabViolationCount: 0,
+        tabViolations: [],
+        message: "No violations recorded yet"
+      });
+    }
+
+    console.log(`✅ Found ${submission.tabViolationCount} violations for assignment ${assignmentId}`);
+
+    res.json({
+      tabViolationCount: submission.tabViolationCount || 0,
+      tabViolations: submission.tabViolations || []
+    });
+  } catch (error) {
+    console.error("Error fetching violations:", error);
     next(error);
   }
 });

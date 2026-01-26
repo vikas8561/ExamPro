@@ -462,21 +462,41 @@ const TakeTest = () => {
         }
       }
 
-      // Fetch existing submission data including violations
+      // Fetch existing violation data using the dedicated violations endpoint
+      let existingViolationCount = 0;
       try {
-        const submissionResponse = await apiRequest(`/test-submissions/assignment/${assignmentId}`);
-        if (submissionResponse && submissionResponse.submission) {
-          console.log("Restoring existing violations:", submissionResponse.submission.tabViolationCount);
+        const violationsResponse = await apiRequest(`/test-submissions/violations/${assignmentId}`);
+        console.log("🔍 Violations response:", violationsResponse);
+        if (violationsResponse) {
+          existingViolationCount = violationsResponse.tabViolationCount || 0;
+          console.log("✅ Restoring existing violations:", existingViolationCount);
           setProctoringData({
-            violationCount: submissionResponse.submission.tabViolationCount || 0,
-            violations: submissionResponse.submission.tabViolations || []
+            violationCount: existingViolationCount,
+            violations: violationsResponse.tabViolations || []
           });
         }
       } catch (err) {
-        // Ignore 404s (no submission yet), log others
-        if (!err.message?.includes('404')) {
-          console.warn("Error fetching submission data:", err);
-        }
+        console.warn("Error fetching violation data:", err);
+      }
+
+      // Check if existing violations already exceed allowed limit - trigger auto-submit
+      // This prevents users from bypassing the violation limit by refreshing the page
+      const allowedTabSwitches = assignmentData.testId.allowedTabSwitches ?? 2;
+      const isUnlimited = allowedTabSwitches === -1;
+
+      if (!isUnlimited && existingViolationCount > allowedTabSwitches) {
+        console.log(`🚨 Existing violations (${existingViolationCount}) exceed allowed limit (${allowedTabSwitches}) - auto-submitting test`);
+        // Set loading to false and test started before submitting
+        setTest(assignmentData.testId);
+        setTimeRemaining(remainingSeconds);
+        setTestStarted(true);
+        setLoading(false);
+
+        // Delay slightly to ensure state is set, then auto-submit
+        setTimeout(() => {
+          submitTest(true, true); // cancelledDueToViolation=true, autoSubmit=true
+        }, 500);
+        return; // Exit early, don't continue with normal test flow
       }
 
       // Initialize questionStatuses based on existing answers

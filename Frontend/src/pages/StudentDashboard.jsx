@@ -126,7 +126,7 @@ const StudentDashboard = () => {
         apiRequest("/assignments/student/stats"),
         apiRequest("/assignments/student?page=1&limit=10") // Fetch first 10 for upcoming tests
       ]);
-      
+
 
       // Store counts for display
       setAssignedCount(stats.assignedCount || 0);
@@ -144,9 +144,9 @@ const StudentDashboard = () => {
 
       // Filter for upcoming tests (status is "Assigned" or "In Progress")
       const upcomingTestsData = upcomingAssignments.filter(assignment =>
-        assignment && 
-        assignment.testId && 
-        assignment.testId.type !== 'practice' && 
+        assignment &&
+        assignment.testId &&
+        assignment.testId.type !== 'practice' &&
         (assignment.status === "Assigned" || assignment.status === "In Progress")
       );
 
@@ -182,23 +182,23 @@ const StudentDashboard = () => {
 
       {/* Connection Status Indicator */}
       <div className="mb-6">
-        <div 
+        <div
           className="connection-status inline-flex items-center px-4 py-2 rounded-lg text-sm border"
           style={{
-            backgroundColor: socketConnected 
-              ? 'rgba(255, 255, 255, 0.1)' 
-              : connectionError 
-                ? 'rgba(239, 68, 68, 0.1)' 
+            backgroundColor: socketConnected
+              ? 'rgba(255, 255, 255, 0.1)'
+              : connectionError
+                ? 'rgba(239, 68, 68, 0.1)'
                 : 'rgba(234, 179, 8, 0.1)',
-            borderColor: socketConnected 
-              ? 'rgba(255, 255, 255, 0.3)' 
-              : connectionError 
-                ? 'rgba(239, 68, 68, 0.3)' 
+            borderColor: socketConnected
+              ? 'rgba(255, 255, 255, 0.3)'
+              : connectionError
+                ? 'rgba(239, 68, 68, 0.3)'
                 : 'rgba(234, 179, 8, 0.3)',
             color: socketConnected ? '#FFFFFF' : connectionError ? '#FCA5A5' : '#FDE047'
           }}
         >
-          <div 
+          <div
             className="status-dot w-2 h-2 rounded-full mr-2"
             style={{
               backgroundColor: socketConnected ? '#FFFFFF' : '#EF4444'
@@ -213,9 +213,9 @@ const StudentDashboard = () => {
         {loading ? (
           <>
             {/* Skeleton for Total Assigned Tests */}
-            <div 
+            <div
               className="rounded-2xl p-6 border"
-              style={{ 
+              style={{
                 backgroundColor: '#0B1220',
                 borderColor: 'rgba(255, 255, 255, 0.2)'
               }}
@@ -227,9 +227,9 @@ const StudentDashboard = () => {
               <div className="skeleton rounded-lg mt-2" style={{ height: '48px', width: '80px' }}></div>
             </div>
             {/* Skeleton for Completed Tests */}
-            <div 
+            <div
               className="rounded-2xl p-6 border"
-              style={{ 
+              style={{
                 backgroundColor: '#0B1220',
                 borderColor: 'rgba(255, 255, 255, 0.2)'
               }}
@@ -243,9 +243,9 @@ const StudentDashboard = () => {
           </>
         ) : (
           <>
-            <div 
+            <div
               className="stat-card rounded-2xl p-6 border transition-all duration-300"
-              style={{ 
+              style={{
                 backgroundColor: '#0B1220',
                 borderColor: 'rgba(255, 255, 255, 0.2)'
               }}
@@ -259,7 +259,7 @@ const StudentDashboard = () => {
               }}
             >
               <div className="flex items-center gap-3 mb-2">
-                <div 
+                <div
                   className="stat-icon p-2 rounded-lg"
                   style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)' }}
                 >
@@ -271,9 +271,9 @@ const StudentDashboard = () => {
               </div>
               <p className="stat-value text-4xl font-bold mt-2" style={{ color: '#E5E7EB' }}>{assignedCount}</p>
             </div>
-            <div 
+            <div
               className="stat-card rounded-2xl p-6 border transition-all duration-300"
-              style={{ 
+              style={{
                 backgroundColor: '#0B1220',
                 borderColor: 'rgba(255, 255, 255, 0.2)'
               }}
@@ -287,7 +287,7 @@ const StudentDashboard = () => {
               }}
             >
               <div className="flex items-center gap-3 mb-2">
-                <div 
+                <div
                   className="stat-icon p-2 rounded-lg"
                   style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)' }}
                 >
@@ -305,9 +305,9 @@ const StudentDashboard = () => {
 
       <h3 className="section-title text-xl font-semibold mb-3" style={{ color: '#E5E7EB' }}>Upcoming Tests</h3>
       {loading ? (
-        <div 
+        <div
           className="rounded-2xl overflow-hidden border"
-          style={{ 
+          style={{
             backgroundColor: '#0B1220',
             borderColor: 'rgba(255, 255, 255, 0.2)'
           }}
@@ -334,9 +334,9 @@ const StudentDashboard = () => {
 
       <h3 className="section-title text-xl font-semibold mb-3 mt-8" style={{ color: '#E5E7EB' }}>Recent Activity</h3>
       {loading ? (
-        <div 
+        <div
           className="recent-activity-container rounded-2xl overflow-hidden border"
-          style={{ 
+          style={{
             backgroundColor: '#0B1220',
             borderColor: 'rgba(255, 255, 255, 0.2)'
           }}

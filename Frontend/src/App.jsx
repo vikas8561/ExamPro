@@ -35,15 +35,15 @@ import MigrateFaceDescriptors from "./pages/MigrateFaceDescriptors";
 // Protected Route Component
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
-  
+
   if (!user.email) {
     return <Navigate to="/login" replace />;
   }
-  
+
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     return <Navigate to="/" replace />;
   }
-  
+
   return children;
 };
 
@@ -73,7 +73,7 @@ const AdminLayout = () => {
             </button>
           </div>
         </div>
-        
+
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/tests" element={<Tests />} />
@@ -181,27 +181,27 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      
+
       {/* Mentor Routes */}
-      <Route 
-        path="/mentor/*" 
+      <Route
+        path="/mentor/*"
         element={
           <ProtectedRoute allowedRoles={['Mentor']}>
             <MentorRoutes />
           </ProtectedRoute>
-        } 
+        }
       />
-      
+
       {/* Student Routes */}
-      <Route 
-        path="/student/*" 
+      <Route
+        path="/student/*"
         element={
           <ProtectedRoute allowedRoles={['Student']}>
             <StudentRoutes />
           </ProtectedRoute>
-        } 
+        }
       />
-      
+
       {/* Default redirect to login */}
       <Route path="/" element={<Navigate to="/login" replace />} />
     </Routes>

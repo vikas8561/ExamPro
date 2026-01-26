@@ -58,11 +58,10 @@ function CustomDropdown({ value, onChange, options, className = "" }) {
                 key={option.value}
                 type="button"
                 onClick={() => handleSelect(option.value)}
-                className={`w-full text-left px-4 py-3 text-sm font-medium transition-all duration-200 ${
-                  value === option.value
-                    ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white'
-                    : 'text-slate-200 hover:bg-gradient-to-r hover:from-slate-700 hover:to-slate-600 hover:text-white'
-                }`}
+                className={`w-full text-left px-4 py-3 text-sm font-medium transition-all duration-200 ${value === option.value
+                  ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white'
+                  : 'text-slate-200 hover:bg-gradient-to-r hover:from-slate-700 hover:to-slate-600 hover:text-white'
+                  }`}
               >
                 <div className="flex items-center justify-between">
                   <span>{option.label}</span>
@@ -84,7 +83,7 @@ function CustomDropdown({ value, onChange, options, className = "" }) {
 export default function TakeCodingTest() {
   const { assignmentId } = useParams();
   const nav = useNavigate();
-  
+
   const [test, setTest] = useState(null);
   const [assignment, setAssignment] = useState(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -96,7 +95,7 @@ export default function TakeCodingTest() {
   const [isFormatting, setIsFormatting] = useState(false);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
   const [lastSaved, setLastSaved] = useState(null);
-  
+
   // Test state
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [timeSpent, setTimeSpent] = useState(0);
@@ -107,7 +106,7 @@ export default function TakeCodingTest() {
   const [showSubmitConfirmModal, setShowSubmitConfirmModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const debounceTimers = useRef({});
-  
+
   // Proctoring state
   const [proctoringData, setProctoringData] = useState({
     violationCount: 0,
@@ -157,11 +156,11 @@ export default function TakeCodingTest() {
             setLoading(false);
             return;
           }
-          
+
           // Load assignment first
           const assignmentData = await apiRequest(`/assignments/${assignmentId}`);
           setAssignment(assignmentData);
-          
+
           // Check if assignment is already completed
           if (assignmentData.status === 'Completed') {
             setError('This test has already been completed. Redirecting to results...');
@@ -171,11 +170,11 @@ export default function TakeCodingTest() {
             setLoading(false);
             return;
           }
-          
+
           // Load test from assignment
           const t = await apiRequest(`/tests/${assignmentData.testId._id}`);
           setTest(t);
-          
+
           const initial = {};
           const langs = {};
           (t.questions || []).forEach(q => {
@@ -248,7 +247,7 @@ export default function TakeCodingTest() {
       let response;
       let retries = 3;
       let lastError;
-      
+
       while (retries > 0) {
         try {
           response = await apiRequest('/test-submissions', {
@@ -266,7 +265,7 @@ export default function TakeCodingTest() {
           }
         }
       }
-      
+
       if (!response && lastError) {
         throw lastError;
       }
@@ -329,12 +328,12 @@ export default function TakeCodingTest() {
     startRequestMade.current = true;
 
     try {
-      
+
       setLoading(true);
-      
+
       // Use assignmentId from URL, fallback to assignment._id
       const finalAssignmentId = assignmentId || assignment?._id;
-      
+
       if (!finalAssignmentId) {
         console.error('❌ No assignment ID available!');
         console.error('❌ assignmentId from URL:', assignmentId);
@@ -344,8 +343,8 @@ export default function TakeCodingTest() {
         startRequestMade.current = false;
         return;
       }
-      
-      
+
+
       // Check if assignment is already completed
       const assignmentCheck = assignment || await apiRequest(`/assignments/${finalAssignmentId}`);
       if (assignmentCheck?.status === 'Completed') {
@@ -357,11 +356,11 @@ export default function TakeCodingTest() {
         startRequestMade.current = false;
         return;
       }
-      
+
       // Fetch current server time (same as TakeTest.jsx)
       const timeResponse = await apiRequest("/time");
       const serverTime = new Date(timeResponse.serverTime);
-      
+
       const response = await apiRequest(`/assignments/${finalAssignmentId}/start`, {
         method: 'POST',
         body: JSON.stringify({}),
@@ -420,7 +419,7 @@ export default function TakeCodingTest() {
       }, 300);
     } catch (error) {
       console.error("Error starting test:", error);
-      
+
       // Handle completed test error
       if (error.message === "Test already completed") {
         setError("This test has already been completed. Redirecting to results...");
@@ -429,7 +428,7 @@ export default function TakeCodingTest() {
         }, 2000);
         return;
       }
-      
+
       setError(error.message || "Failed to start test");
       startRequestMade.current = false;
     }
@@ -438,21 +437,21 @@ export default function TakeCodingTest() {
 
   const loadExistingTestData = async () => {
     try {
-      
+
       // Use assignmentId from URL, fallback to assignment._id
       const finalAssignmentId = assignmentId || assignment?._id;
-      
+
       if (!finalAssignmentId) {
         console.error('❌ No assignment ID available for resume!');
         setError('Assignment ID not found');
         return;
       }
-      
-      
+
+
       // Fetch current server time (same as TakeTest.jsx)
       const timeResponse = await apiRequest("/time");
       const serverTime = new Date(timeResponse.serverTime);
-      
+
       // Get assignment data (same as TakeTest.jsx loadExistingTestData)
       const assignmentData = await apiRequest(`/assignments/${finalAssignmentId}`);
       setAssignment(assignmentData);
@@ -468,6 +467,42 @@ export default function TakeCodingTest() {
       const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
       const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
 
+      // Fetch existing violation data using the dedicated violations endpoint
+      let existingViolationCount = 0;
+      try {
+        const violationsResponse = await apiRequest(`/test-submissions/violations/${finalAssignmentId}`);
+        console.log("🔍 Violations response:", violationsResponse);
+        if (violationsResponse) {
+          existingViolationCount = violationsResponse.tabViolationCount || 0;
+          console.log("✅ Restoring existing violations:", existingViolationCount);
+          setProctoringData({
+            violationCount: existingViolationCount,
+            violations: violationsResponse.tabViolations || []
+          });
+        }
+      } catch (err) {
+        console.warn("Error fetching violation data:", err);
+      }
+
+      // Check if existing violations already exceed allowed limit - trigger auto-submit
+      // This prevents users from bypassing the violation limit by refreshing the page
+      const allowedTabSwitches = assignmentData.testId.allowedTabSwitches ?? 2;
+      const isUnlimited = allowedTabSwitches === -1;
+
+      if (!isUnlimited && existingViolationCount > allowedTabSwitches) {
+        console.log(`🚨 Existing violations (${existingViolationCount}) exceed allowed limit (${allowedTabSwitches}) - auto-submitting test`);
+        // Set state before submitting
+        setTest(assignmentData.testId);
+        setTimeRemaining(remainingSeconds);
+        setTestStarted(true);
+        setLoading(false);
+
+        // Delay slightly to ensure state is set, then auto-submit
+        setTimeout(() => {
+          submitTest(true, true); // cancelledDueToViolation=true, autoSubmit=true
+        }, 500);
+        return; // Exit early, don't continue with normal test flow
+      }
 
       setTimeRemaining(remainingSeconds);
       setTestStarted(true);
@@ -680,7 +715,7 @@ int main() {
       />
 
       {/* Custom Scrollbar Styles */}
-      <style dangerouslySetInnerHTML={{__html: scrollbarStyles}} />
+      <style dangerouslySetInnerHTML={{ __html: scrollbarStyles }} />
 
       {showSubmitConfirmModal && (
         <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-4">
@@ -699,9 +734,8 @@ int main() {
               <button
                 onClick={handleConfirmSubmit}
                 disabled={isSubmitting}
-                className={`flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-md font-semibold ${
-                  isSubmitting ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
+                className={`flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-md font-semibold ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
               >
                 {isSubmitting ? 'Submitting...' : 'Submit Test'}
               </button>
@@ -727,10 +761,9 @@ int main() {
                       flex items-center justify-center gap-2
                       border-2 backdrop-blur-sm
                       transition-all duration-300
-                      ${
-                        timeRemaining <= 60 
-                          ? 'bg-black text-white border-white animate-pulse shadow-white/50' 
-                          : timeRemaining <= 300
+                      ${timeRemaining <= 60
+                        ? 'bg-black text-white border-white animate-pulse shadow-white/50'
+                        : timeRemaining <= 300
                           ? 'bg-gray-900 text-white border-gray-300 shadow-gray-400/50'
                           : 'bg-white text-black border-black shadow-black/30'
                       }
@@ -750,8 +783,8 @@ int main() {
                   </div>
                   <div className="flex gap-2">
                     <button
-                      disabled={activeIndex===0}
-                      onClick={()=>setActiveIndex(i=>Math.max(0,i-1))}
+                      disabled={activeIndex === 0}
+                      onClick={() => setActiveIndex(i => Math.max(0, i - 1))}
                       className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-purple-500/30 flex items-center gap-2"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -760,8 +793,8 @@ int main() {
                       Prev
                     </button>
                     <button
-                      disabled={activeIndex===codingQuestions.length-1}
-                      onClick={()=>setActiveIndex(i=>Math.min(codingQuestions.length-1,i+1))}
+                      disabled={activeIndex === codingQuestions.length - 1}
+                      onClick={() => setActiveIndex(i => Math.min(codingQuestions.length - 1, i + 1))}
                       className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-indigo-500/30 flex items-center gap-2"
                     >
                       Next
@@ -773,9 +806,8 @@ int main() {
                   <button
                     onClick={handleSubmitClick}
                     disabled={isSubmitting}
-                    className={`px-4 py-2 bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 text-white rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg shadow-red-500/30 flex items-center gap-2 ${
-                      isSubmitting ? 'opacity-50 cursor-not-allowed transform-none' : ''
-                    }`}
+                    className={`px-4 py-2 bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 text-white rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg shadow-red-500/30 flex items-center gap-2 ${isSubmitting ? 'opacity-50 cursor-not-allowed transform-none' : ''
+                      }`}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -910,12 +942,12 @@ int main() {
                   <CustomDropdown
                     value={languageByQ[activeQ?._id] || 'python'}
                     onChange={(newLang) => {
-                      setLanguageByQ(prev=>({ ...prev, [activeQ._id]: newLang }));
+                      setLanguageByQ(prev => ({ ...prev, [activeQ._id]: newLang }));
                       // Update code with new language template if code is empty or matches old template
                       const currentCode = codeByQ[activeQ._id] || '';
                       const oldTemplate = getLanguageTemplate(languageByQ[activeQ._id] || 'python');
                       if (currentCode === '' || currentCode === oldTemplate) {
-                        setCodeByQ(prev=>({ ...prev, [activeQ._id]: getLanguageTemplate(newLang) }));
+                        setCodeByQ(prev => ({ ...prev, [activeQ._id]: getLanguageTemplate(newLang) }));
                       }
                     }}
                     options={[
@@ -955,64 +987,64 @@ int main() {
             <div className="flex-1 flex flex-col min-h-0">
               <LazyMonacoEditor
                 height="100%"
-            language={(languageByQ[activeQ?._id] || 'python') === 'javascript' ? 'javascript' : (languageByQ[activeQ?._id] || 'python')}
-            theme={editorTheme}
-            value={codeByQ[activeQ?._id] || ''}
-            onChange={(val)=>setCodeByQ(prev=>({ ...prev, [activeQ._id]: val }))}
-            options={{
-              fontSize: fontSizeMap[fontSize],
-              minimap: { enabled: true },
-              lineNumbers: 'on',
-              roundedSelection: false,
-              scrollBeyondLastLine: false,
-              automaticLayout: true,
-              tabSize: 4,
-              insertSpaces: true,
-              wordWrap: 'on',
-              folding: true,
-              foldingHighlight: true,
-              showFoldingControls: 'mouseover',
-              matchBrackets: 'always',
-              autoClosingBrackets: 'always',
-              autoClosingQuotes: 'always',
-              suggestOnTriggerCharacters: true,
-              acceptSuggestionOnEnter: 'on',
-              quickSuggestions: { other: true, comments: true, strings: true },
-              parameterHints: { enabled: true },
-              hover: { enabled: true },
-              contextmenu: true,
-              mouseWheelZoom: true,
-              smoothScrolling: true,
-              cursorBlinking: 'blink',
-              renderWhitespace: 'selection',
-              renderControlCharacters: true,
-              fontLigatures: true,
-              fontFamily: "'Fira Code', 'Monaco', 'Consolas', 'Courier New', monospace",
-              fontWeight: '400',
-              letterSpacing: 0.5,
-              lineHeight: 1.5,
-              padding: { top: 16, bottom: 16 },
-              // Enhanced syntax highlighting features
-              semanticHighlighting: { enabled: true },
-              colorDecorators: true,
-              bracketPairColorization: { enabled: true },
-              inlayHints: { enabled: 'on' },
-              codeLens: true,
-              semanticTokens: true,
-              colorPicker: true,
-              lightbulb: { enabled: 'on' },
-              occurrencesHighlight: 'singleFile',
-              selectionHighlight: true,
-              definitionLinkOpensInPeek: true,
-              showUnused: true,
-              showDeprecated: true,
-              guides: {
-                bracketPairs: true,
-                indentation: true
-              }
-            }}
-          />
-        </div>
+                language={(languageByQ[activeQ?._id] || 'python') === 'javascript' ? 'javascript' : (languageByQ[activeQ?._id] || 'python')}
+                theme={editorTheme}
+                value={codeByQ[activeQ?._id] || ''}
+                onChange={(val) => setCodeByQ(prev => ({ ...prev, [activeQ._id]: val }))}
+                options={{
+                  fontSize: fontSizeMap[fontSize],
+                  minimap: { enabled: true },
+                  lineNumbers: 'on',
+                  roundedSelection: false,
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  tabSize: 4,
+                  insertSpaces: true,
+                  wordWrap: 'on',
+                  folding: true,
+                  foldingHighlight: true,
+                  showFoldingControls: 'mouseover',
+                  matchBrackets: 'always',
+                  autoClosingBrackets: 'always',
+                  autoClosingQuotes: 'always',
+                  suggestOnTriggerCharacters: true,
+                  acceptSuggestionOnEnter: 'on',
+                  quickSuggestions: { other: true, comments: true, strings: true },
+                  parameterHints: { enabled: true },
+                  hover: { enabled: true },
+                  contextmenu: true,
+                  mouseWheelZoom: true,
+                  smoothScrolling: true,
+                  cursorBlinking: 'blink',
+                  renderWhitespace: 'selection',
+                  renderControlCharacters: true,
+                  fontLigatures: true,
+                  fontFamily: "'Fira Code', 'Monaco', 'Consolas', 'Courier New', monospace",
+                  fontWeight: '400',
+                  letterSpacing: 0.5,
+                  lineHeight: 1.5,
+                  padding: { top: 16, bottom: 16 },
+                  // Enhanced syntax highlighting features
+                  semanticHighlighting: { enabled: true },
+                  colorDecorators: true,
+                  bracketPairColorization: { enabled: true },
+                  inlayHints: { enabled: 'on' },
+                  codeLens: true,
+                  semanticTokens: true,
+                  colorPicker: true,
+                  lightbulb: { enabled: 'on' },
+                  occurrencesHighlight: 'singleFile',
+                  selectionHighlight: true,
+                  definitionLinkOpensInPeek: true,
+                  showUnused: true,
+                  showDeprecated: true,
+                  guides: {
+                    bracketPairs: true,
+                    indentation: true
+                  }
+                }}
+              />
+            </div>
           </div>
 
           {/* Keyboard Shortcuts Modal */}
@@ -1066,6 +1098,6 @@ int main() {
           )}
         </div>
       )}
-        </>
-      );
-    }
+    </>
+  );
+}
