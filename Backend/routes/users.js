@@ -254,6 +254,27 @@ router.post("/:id/update-face-descriptor", authenticateToken, requireRole("admin
   }
 });
 
+// Reset ALL users passwords (admin only)
+router.post("/reset-passwords/all", authenticateToken, requireRole("admin"), async (req, res) => {
+  try {
+    // Hash the default password "12345"
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash("12345", salt);
+
+    // Update all users with the hashed password
+    const result = await User.updateMany(
+      {}, // Target ALL users
+      { password: hashedPassword }
+    );
+
+    res.json({
+      message: `Successfully reset passwords for ${result.modifiedCount} users. Default password is now: 12345`,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Reset user password to default (admin only)
 router.post("/:id/reset-password", async (req, res) => {
   try {

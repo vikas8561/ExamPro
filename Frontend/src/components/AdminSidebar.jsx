@@ -180,17 +180,17 @@ export default function AdminSidebar({ isOpen, onToggle }) {
                      shadow-sm hover:shadow-md
                      transform hover:scale-[1.01] active:scale-[0.99]"
             style={{
-              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+              backgroundColor: '#DC2626', // Matte Red
               color: '#FFFFFF',
-              border: '1px solid rgba(255, 255, 255, 0.3)'
+              border: '1px solid #DC2626'
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
-              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)';
+              e.currentTarget.style.backgroundColor = '#B91C1C'; // Darker red on hover
+              e.currentTarget.style.borderColor = '#B91C1C';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
-              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+              e.currentTarget.style.backgroundColor = '#DC2626';
+              e.currentTarget.style.borderColor = '#DC2626';
             }}
           >
             <LogOut className="w-5 h-5" />
