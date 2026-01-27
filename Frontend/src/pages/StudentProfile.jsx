@@ -20,7 +20,7 @@ export default function StudentProfile() {
 
   const [user, setUser] = useState(getInitialUser());
   const [loading, setLoading] = useState(true);
-  
+
   // Profile Image States
   const [showCamera, setShowCamera] = useState(false);
   const [stream, setStream] = useState(null);
@@ -28,13 +28,13 @@ export default function StudentProfile() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [uploadingImage, setUploadingImage] = useState(false);
-  
+
   // Email Update States
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailMessage, setEmailMessage] = useState("");
-  
+
   // Password Change States
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [newPassword, setNewPassword] = useState("");
@@ -93,11 +93,11 @@ export default function StudentProfile() {
       }
 
       // Camera access requires HTTPS (except localhost)
-      const isSecureContext = window.isSecureContext || 
-        window.location.protocol === 'https:' || 
-        window.location.hostname === 'localhost' || 
+      const isSecureContext = window.isSecureContext ||
+        window.location.protocol === 'https:' ||
+        window.location.hostname === 'localhost' ||
         window.location.hostname === '127.0.0.1';
-      
+
       if (!isSecureContext) {
         alert('Camera access requires a secure connection (HTTPS). Please access this site over HTTPS.');
         return;
@@ -117,18 +117,18 @@ export default function StudentProfile() {
       // Try with preferred settings first
       let mediaStream;
       try {
-        mediaStream = await navigator.mediaDevices.getUserMedia({ 
+        mediaStream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'user' },
-          audio: false 
+          audio: false
         });
       } catch (firstError) {
         // If facingMode fails, try with simpler constraints
         if (firstError.name === 'OverconstrainedError' || firstError.name === 'ConstraintNotSatisfiedError') {
           console.log('FacingMode not supported, trying with default video constraints...');
           try {
-            mediaStream = await navigator.mediaDevices.getUserMedia({ 
+            mediaStream = await navigator.mediaDevices.getUserMedia({
               video: true,
-              audio: false 
+              audio: false
             });
           } catch (secondError) {
             throw secondError; // Re-throw if this also fails
@@ -137,10 +137,10 @@ export default function StudentProfile() {
           throw firstError; // Re-throw other errors
         }
       }
-      
+
       setStream(mediaStream);
       setShowCamera(true);
-      
+
       // Use setTimeout to ensure modal is rendered before setting stream
       setTimeout(() => {
         if (videoRef.current) {
@@ -163,10 +163,10 @@ export default function StudentProfile() {
       }, 200);
     } catch (error) {
       console.error('Error accessing camera:', error);
-      
+
       // Provide specific error messages based on error type
       let errorMessage = 'Unable to access camera. ';
-      
+
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
         errorMessage = 'Camera permission is required. Please:\n\n1. Click the lock/camera icon in your browser\'s address bar\n2. Allow camera access for this site\n3. Refresh the page and try again\n\nOr check your browser settings and enable camera permissions for this website.';
       } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
@@ -189,7 +189,7 @@ export default function StudentProfile() {
       } else {
         errorMessage += `Error: ${error.message || error.name}. Please check your browser settings and ensure camera permissions are granted.`;
       }
-      
+
       alert(errorMessage);
     }
   };
@@ -208,15 +208,15 @@ export default function StudentProfile() {
   const capturePhoto = async () => {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
-      
+
       // Ensure video is ready and has valid dimensions
       if (video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) {
         alert('Camera is not ready. Please wait a moment and try again.');
         return;
       }
-      
+
       console.log(`Video metadata loaded, dimensions: ${video.videoWidth} x ${video.videoHeight}`);
-      
+
       const sourceCanvas = canvasRef.current;
       const sourceContext = sourceCanvas.getContext('2d');
 
@@ -228,7 +228,7 @@ export default function StudentProfile() {
       // Create a new canvas for high-quality output at 1000px
       const targetSize = 1000; // Target size in pixels (longest side)
       const aspectRatio = video.videoWidth / video.videoHeight;
-      
+
       let targetWidth, targetHeight;
       if (video.videoWidth > video.videoHeight) {
         // Landscape orientation
@@ -260,7 +260,7 @@ export default function StudentProfile() {
       // Convert to PNG for maximum quality (lossless)
       // This ensures the highest possible quality at 1000px resolution
       const imageData = outputCanvas.toDataURL('image/png');
-      
+
       setCapturedImage(imageData);
       // Don't close camera modal yet - show captured image in modal for review
       // Keep the stream running so user can retake if needed
@@ -301,25 +301,25 @@ export default function StudentProfile() {
 
         // Load image and extract descriptor
         const img = await faceapi.fetchImage(capturedImage);
-        
+
         // Validate image dimensions
         if (!img || img.width === 0 || img.height === 0) {
           alert('Invalid image captured. Please try capturing again.');
           setUploadingImage(false);
           return;
         }
-        
+
         console.log(`Image loaded: ${img.width}x${img.height}`);
-        
+
         // Try multiple detection methods with different options for better reliability
         let detection = null;
-        
+
         // First try with TinyFaceDetector with standard settings
         try {
           detection = await faceapi
-            .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ 
-              inputSize: 512, 
-              scoreThreshold: 0.5 
+            .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({
+              inputSize: 512,
+              scoreThreshold: 0.5
             }))
             .withFaceLandmarks()
             .withFaceDescriptor();
@@ -327,14 +327,14 @@ export default function StudentProfile() {
         } catch (err) {
           console.log('TinyFaceDetector (standard) failed:', err);
         }
-        
+
         // If no detection, try with larger input size (better for larger faces)
         if (!detection) {
           try {
             detection = await faceapi
-              .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ 
-                inputSize: 640, 
-                scoreThreshold: 0.4 
+              .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({
+                inputSize: 640,
+                scoreThreshold: 0.4
               }))
               .withFaceLandmarks()
               .withFaceDescriptor();
@@ -343,14 +343,14 @@ export default function StudentProfile() {
             console.log('TinyFaceDetector (large input) failed:', err);
           }
         }
-        
+
         // If still no detection, try with lower threshold (more sensitive)
         if (!detection) {
           try {
             detection = await faceapi
-              .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ 
-                inputSize: 416, 
-                scoreThreshold: 0.3 
+              .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({
+                inputSize: 416,
+                scoreThreshold: 0.3
               }))
               .withFaceLandmarks()
               .withFaceDescriptor();
@@ -359,14 +359,14 @@ export default function StudentProfile() {
             console.log('TinyFaceDetector (low threshold) failed:', err);
           }
         }
-        
+
         // Last resort: try with very low threshold and smaller input
         if (!detection) {
           try {
             detection = await faceapi
-              .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ 
-                inputSize: 320, 
-                scoreThreshold: 0.2 
+              .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({
+                inputSize: 320,
+                scoreThreshold: 0.2
               }))
               .withFaceLandmarks()
               .withFaceDescriptor();
@@ -399,7 +399,7 @@ export default function StudentProfile() {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           image: capturedImage, // Optional: for display purposes
           faceDescriptor: faceDescriptor // Required: for face recognition (secure, non-reversible)
         })
@@ -425,12 +425,12 @@ export default function StudentProfile() {
   useEffect(() => {
     if (showCamera && stream && videoRef.current && !capturedImage) {
       const video = videoRef.current;
-      
+
       // Set stream source if not already set
       if (!video.srcObject || video.srcObject !== stream) {
         video.srcObject = stream;
       }
-      
+
       // Function to ensure video plays
       const ensurePlay = async () => {
         try {
@@ -441,20 +441,20 @@ export default function StudentProfile() {
           console.error('Error playing video:', error);
         }
       };
-      
+
       // Event handlers
       const handleLoadedMetadata = () => {
         ensurePlay();
       };
-      
+
       const handleCanPlay = () => {
         ensurePlay();
       };
-      
+
       // Add event listeners
       video.addEventListener('loadedmetadata', handleLoadedMetadata);
       video.addEventListener('canplay', handleCanPlay);
-      
+
       // Try playing immediately if video is ready
       if (video.readyState >= 2) {
         ensurePlay();
@@ -462,7 +462,7 @@ export default function StudentProfile() {
         // If not ready, wait a bit and try again
         setTimeout(ensurePlay, 200);
       }
-      
+
       return () => {
         video.removeEventListener('loadedmetadata', handleLoadedMetadata);
         video.removeEventListener('canplay', handleCanPlay);
@@ -551,10 +551,11 @@ export default function StudentProfile() {
 
       const data = await response.json();
       if (response.ok) {
-        setPasswordMessage("Verification email sent! Please check your email and click the verification link to complete the password change.");
+        alert("Password changed successfully!");
         setShowPasswordForm(false);
         setNewPassword("");
         setConfirmPassword("");
+        setPasswordMessage("");
       } else {
         setPasswordMessage(data.message || "Failed to change password");
       }
@@ -599,393 +600,393 @@ export default function StudentProfile() {
     <div className="min-h-screen p-6" style={{ backgroundColor: '#0B1220' }}>
       <div className="w-full">
         <h2 className="text-2xl font-bold mb-6" style={{ color: '#E5E7EB' }}>Profile</h2>
-        
-        <div 
+
+        <div
           className="rounded-2xl p-6 w-full border"
-          style={{ 
+          style={{
             backgroundColor: '#0B1220',
             borderColor: 'rgba(255, 255, 255, 0.2)'
           }}
         >
-        {/* Profile Image */}
-        <div className="flex flex-col items-center space-y-4 mb-6">
-          <div className="relative">
-            {capturedImage || user.profileImage ? (
-              <img
-                src={capturedImage || user.profileImage}
-                alt="Profile"
-                className="w-32 h-32 rounded-full object-cover border-4"
-                style={{ borderColor: '#E5E7EB' }}
-              />
-            ) : (
-              <div 
-                className="w-32 h-32 rounded-full flex items-center justify-center border-4"
-                style={{ 
-                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                  borderColor: '#E5E7EB'
-                }}
-              >
-                <UserIcon className="w-16 h-16" style={{ color: '#FFFFFF' }} />
+          {/* Profile Image */}
+          <div className="flex flex-col items-center space-y-4 mb-6">
+            <div className="relative">
+              {capturedImage || user.profileImage ? (
+                <img
+                  src={capturedImage || user.profileImage}
+                  alt="Profile"
+                  className="w-32 h-32 rounded-full object-cover border-4"
+                  style={{ borderColor: '#E5E7EB' }}
+                />
+              ) : (
+                <div
+                  className="w-32 h-32 rounded-full flex items-center justify-center border-4"
+                  style={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                    borderColor: '#E5E7EB'
+                  }}
+                >
+                  <UserIcon className="w-16 h-16" style={{ color: '#FFFFFF' }} />
+                </div>
+              )}
+              {canCaptureImage && !capturedImage && !user.profileImage && (
+                <button
+                  onClick={startCamera}
+                  className="absolute bottom-0 right-0 p-3 rounded-full transition shadow-lg"
+                  style={{
+                    backgroundColor: '#FFFFFF',
+                    color: '#020617'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.opacity = '0.9';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.opacity = '1';
+                  }}
+                  title="Capture Profile Image"
+                >
+                  <Camera className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+            {canCaptureImage && capturedImage && !user.profileImageSaved && !user.faceDescriptorSaved && (
+              <div className="flex gap-3">
+                <button
+                  onClick={saveProfileImage}
+                  disabled={uploadingImage}
+                  className="px-4 py-2 rounded-lg transition disabled:opacity-50"
+                  style={{
+                    backgroundColor: '#FFFFFF',
+                    color: '#020617'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!uploadingImage) e.currentTarget.style.opacity = '0.9';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.opacity = '1';
+                  }}
+                >
+                  {uploadingImage ? "Saving..." : "Save Image"}
+                </button>
+                <button
+                  onClick={() => {
+                    setCapturedImage(null);
+                    startCamera();
+                  }}
+                  disabled={uploadingImage}
+                  className="px-4 py-2 rounded-lg transition disabled:opacity-50 border"
+                  style={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                    color: '#FFFFFF',
+                    borderColor: 'rgba(255, 255, 255, 0.3)'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!uploadingImage) e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                  }}
+                >
+                  Retake
+                </button>
               </div>
             )}
-            {canCaptureImage && !capturedImage && !user.profileImage && (
-              <button
-                onClick={startCamera}
-                className="absolute bottom-0 right-0 p-3 rounded-full transition shadow-lg"
-                style={{ 
-                  backgroundColor: '#FFFFFF',
-                  color: '#020617'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.opacity = '0.9';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.opacity = '1';
-                }}
-                title="Capture Profile Image"
-              >
-                <Camera className="w-5 h-5" />
-              </button>
-            )}
           </div>
-          {canCaptureImage && capturedImage && !user.profileImageSaved && !user.faceDescriptorSaved && (
-            <div className="flex gap-3">
-              <button
-                onClick={saveProfileImage}
-                disabled={uploadingImage}
-                className="px-4 py-2 rounded-lg transition disabled:opacity-50"
-                style={{ 
-                  backgroundColor: '#FFFFFF',
-                  color: '#020617'
-                }}
-                onMouseEnter={(e) => {
-                  if (!uploadingImage) e.currentTarget.style.opacity = '0.9';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.opacity = '1';
-                }}
-              >
-                {uploadingImage ? "Saving..." : "Save Image"}
-              </button>
-              <button
-                onClick={() => {
-                  setCapturedImage(null);
-                  startCamera();
-                }}
-                disabled={uploadingImage}
-                className="px-4 py-2 rounded-lg transition disabled:opacity-50 border"
-                style={{ 
-                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                  color: '#FFFFFF',
+
+          {/* Camera Modal */}
+          {showCamera && (
+            <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center">
+              <div
+                className="rounded-2xl p-6 max-w-md w-full mx-4 border"
+                style={{
+                  backgroundColor: '#0B1220',
                   borderColor: 'rgba(255, 255, 255, 0.3)'
                 }}
-                onMouseEnter={(e) => {
-                  if (!uploadingImage) e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
-                }}
               >
-                Retake
-              </button>
+                <h3 className="text-xl font-bold mb-4 text-center" style={{ color: '#E5E7EB' }}>
+                  {capturedImage ? 'Review Your Photo' : 'Capture Profile Image'}
+                </h3>
+                <div className="relative bg-black rounded overflow-hidden" style={{ minHeight: '400px', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {capturedImage ? (
+                    // Show captured image for review
+                    <img
+                      src={capturedImage}
+                      alt="Captured"
+                      className="w-full h-auto object-contain"
+                      style={{ maxHeight: '400px', maxWidth: '100%', display: 'block' }}
+                    />
+                  ) : (
+                    // Show live video feed
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="w-full"
+                      style={{
+                        height: '400px',
+                        maxWidth: '100%',
+                        display: 'block',
+                        objectFit: 'contain',
+                        backgroundColor: '#000'
+                      }}
+                      onError={(e) => {
+                        console.error('Video error:', e);
+                      }}
+                      onLoadedMetadata={() => {
+                        console.log('Video metadata loaded, dimensions:', videoRef.current?.videoWidth, 'x', videoRef.current?.videoHeight);
+                        if (videoRef.current) {
+                          videoRef.current.play().catch(err => console.error('Play error:', err));
+                        }
+                      }}
+                    />
+                  )}
+                  <canvas ref={canvasRef} className="hidden" />
+                </div>
+                <div className="flex gap-2 mt-4">
+                  {capturedImage ? (
+                    // After capture - show review options
+                    <>
+                      <button
+                        onClick={confirmCapture}
+                        className="flex-1 px-4 py-2 rounded-lg transition"
+                        style={{
+                          backgroundColor: '#22D3EE',
+                          color: '#020617'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.opacity = '0.9';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.opacity = '1';
+                        }}
+                      >
+                        Use This Photo
+                      </button>
+                      <button
+                        onClick={retakeFromModal}
+                        className="flex-1 px-4 py-2 rounded-lg transition border"
+                        style={{
+                          backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                          color: '#FFFFFF',
+                          borderColor: 'rgba(255, 255, 255, 0.3)'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                        }}
+                      >
+                        Retake
+                      </button>
+                      <button
+                        onClick={stopCamera}
+                        className="flex-1 px-4 py-2 rounded-lg transition border"
+                        style={{
+                          backgroundColor: 'rgba(148, 163, 184, 0.1)',
+                          color: '#94A3B8',
+                          borderColor: 'rgba(148, 163, 184, 0.3)'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.15)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.1)';
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    // Before capture - show capture options
+                    <>
+                      <button
+                        onClick={capturePhoto}
+                        className="flex-1 px-4 py-2 rounded-lg transition"
+                        style={{
+                          backgroundColor: '#22D3EE',
+                          color: '#020617'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.opacity = '0.9';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.opacity = '1';
+                        }}
+                      >
+                        Capture
+                      </button>
+                      <button
+                        onClick={stopCamera}
+                        className="flex-1 px-4 py-2 rounded-lg transition border"
+                        style={{
+                          backgroundColor: 'rgba(148, 163, 184, 0.1)',
+                          color: '#94A3B8',
+                          borderColor: 'rgba(148, 163, 184, 0.3)'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.15)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.1)';
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
             </div>
           )}
-        </div>
 
-        {/* Camera Modal */}
-        {showCamera && (
-          <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center">
-            <div 
-              className="rounded-2xl p-6 max-w-md w-full mx-4 border"
-              style={{ 
-                backgroundColor: '#0B1220',
-                borderColor: 'rgba(255, 255, 255, 0.3)'
-              }}
-            >
-              <h3 className="text-xl font-bold mb-4 text-center" style={{ color: '#E5E7EB' }}>
-                {capturedImage ? 'Review Your Photo' : 'Capture Profile Image'}
-              </h3>
-              <div className="relative bg-black rounded overflow-hidden" style={{ minHeight: '400px', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {capturedImage ? (
-                  // Show captured image for review
-                  <img
-                    src={capturedImage}
-                    alt="Captured"
-                    className="w-full h-auto object-contain"
-                    style={{ maxHeight: '400px', maxWidth: '100%', display: 'block' }}
-                  />
-                ) : (
-                  // Show live video feed
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="w-full"
-                    style={{ 
-                      height: '400px',
-                      maxWidth: '100%',
-                      display: 'block',
-                      objectFit: 'contain',
-                      backgroundColor: '#000'
-                    }}
-                    onError={(e) => {
-                      console.error('Video error:', e);
-                    }}
-                    onLoadedMetadata={() => {
-                      console.log('Video metadata loaded, dimensions:', videoRef.current?.videoWidth, 'x', videoRef.current?.videoHeight);
-                      if (videoRef.current) {
-                        videoRef.current.play().catch(err => console.error('Play error:', err));
-                      }
-                    }}
-                  />
-                )}
-                <canvas ref={canvasRef} className="hidden" />
-              </div>
-              <div className="flex gap-2 mt-4">
-                {capturedImage ? (
-                  // After capture - show review options
-                  <>
-                    <button
-                      onClick={confirmCapture}
-                      className="flex-1 px-4 py-2 rounded-lg transition"
-                      style={{ 
-                        backgroundColor: '#22D3EE',
-                        color: '#020617'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.opacity = '0.9';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.opacity = '1';
-                      }}
-                    >
-                      Use This Photo
-                    </button>
-                    <button
-                      onClick={retakeFromModal}
-                      className="flex-1 px-4 py-2 rounded-lg transition border"
-                      style={{ 
-                        backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                        color: '#FFFFFF',
-                        borderColor: 'rgba(255, 255, 255, 0.3)'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
-                      }}
-                    >
-                      Retake
-                    </button>
-                    <button
-                      onClick={stopCamera}
-                      className="flex-1 px-4 py-2 rounded-lg transition border"
-                      style={{ 
-                        backgroundColor: 'rgba(148, 163, 184, 0.1)',
-                        color: '#94A3B8',
-                        borderColor: 'rgba(148, 163, 184, 0.3)'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.15)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.1)';
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  </>
-                ) : (
-                  // Before capture - show capture options
-                  <>
-                    <button
-                      onClick={capturePhoto}
-                      className="flex-1 px-4 py-2 rounded-lg transition"
-                      style={{ 
-                        backgroundColor: '#22D3EE',
-                        color: '#020617'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.opacity = '0.9';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.opacity = '1';
-                      }}
-                    >
-                      Capture
-                    </button>
-                    <button
-                      onClick={stopCamera}
-                      className="flex-1 px-4 py-2 rounded-lg transition border"
-                      style={{ 
-                        backgroundColor: 'rgba(148, 163, 184, 0.1)',
-                        color: '#94A3B8',
-                        borderColor: 'rgba(148, 163, 184, 0.3)'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.15)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.1)';
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* User Info */}
-        <div className="space-y-4">
-          <div 
-            className="flex items-center gap-3 p-4 rounded-lg border"
-            style={{ 
-              backgroundColor: 'rgba(255, 255, 255, 0.05)',
-              borderColor: 'rgba(255, 255, 255, 0.2)'
-            }}
-          >
-            <UserIcon className="w-5 h-5" style={{ color: '#FFFFFF' }} />
-            <div className="flex-1">
-              <p className="text-sm" style={{ color: '#9CA3AF' }}>Name</p>
-              <p className="text-lg font-semibold" style={{ color: '#E5E7EB' }}>{user.name}</p>
-            </div>
-          </div>
-          
-          <div 
-            className="flex items-center gap-3 p-4 rounded-lg border"
-            style={{ 
-              backgroundColor: 'rgba(255, 255, 255, 0.05)',
-              borderColor: 'rgba(255, 255, 255, 0.2)'
-            }}
-          >
-            <Mail className="w-5 h-5" style={{ color: '#FFFFFF' }} />
-            <div className="flex-1">
-              <p className="text-sm" style={{ color: '#9CA3AF' }}>Email</p>
-              <p className="text-lg font-semibold" style={{ color: '#E5E7EB' }}>{user.email}</p>
-            </div>
-            {!showEmailForm && (
-              <button
-                onClick={() => setShowEmailForm(true)}
-                className="px-4 py-2 text-sm rounded-lg transition border"
-                style={{ 
-                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                  color: '#FFFFFF',
-                  borderColor: 'rgba(255, 255, 255, 0.3)'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
-                }}
-              >
-                Update
-              </button>
-            )}
-          </div>
-
-          {showEmailForm && (
-            <div 
-              className="p-4 rounded-lg space-y-3 border"
-              style={{ 
+          {/* User Info */}
+          <div className="space-y-4">
+            <div
+              className="flex items-center gap-3 p-4 rounded-lg border"
+              style={{
                 backgroundColor: 'rgba(255, 255, 255, 0.05)',
                 borderColor: 'rgba(255, 255, 255, 0.2)'
               }}
             >
-              <form onSubmit={handleEmailUpdate} className="space-y-3">
-                <input
-                  type="email"
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                  placeholder="New email address"
-                  className="w-full px-4 py-2 rounded-lg border transition focus:outline-none"
-                  style={{ 
-                    backgroundColor: '#0B1220',
-                    borderColor: 'rgba(255, 255, 255, 0.3)',
-                    color: '#E5E7EB'
-                  }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)';
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.3)';
-                  }}
-                  required
-                />
-                {emailMessage && (
-                  <p className="text-sm" style={{ color: emailMessage.includes("sent") ? "#FFFFFF" : "#FCA5A5" }}>
-                    {emailMessage}
-                  </p>
-                )}
-                <div className="flex gap-2">
-                  <button
-                    type="submit"
-                    disabled={emailLoading}
-                    className="flex-1 px-4 py-2 rounded-lg transition disabled:opacity-50"
-                    style={{ 
-                      backgroundColor: '#22D3EE',
-                      color: '#020617'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!emailLoading) e.currentTarget.style.opacity = '0.9';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.opacity = '1';
-                    }}
-                  >
-                    {emailLoading ? "Sending..." : "Send Verification"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowEmailForm(false);
-                      setNewEmail("");
-                      setEmailMessage("");
-                    }}
-                    className="px-4 py-2 rounded-lg transition border"
-                    style={{ 
-                      backgroundColor: 'rgba(148, 163, 184, 0.1)',
-                      color: '#94A3B8',
-                      borderColor: 'rgba(148, 163, 184, 0.3)'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.15)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.1)';
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
+              <UserIcon className="w-5 h-5" style={{ color: '#FFFFFF' }} />
+              <div className="flex-1">
+                <p className="text-sm" style={{ color: '#9CA3AF' }}>Name</p>
+                <p className="text-lg font-semibold" style={{ color: '#E5E7EB' }}>{user.name}</p>
+              </div>
             </div>
-          )}
 
-          <div 
-            className="flex items-center gap-3 p-4 rounded-lg border"
-            style={{ 
-              backgroundColor: 'rgba(34, 211, 238, 0.05)',
-              borderColor: 'rgba(34, 211, 238, 0.2)'
-            }}
-          >
-            <Building2 className="w-5 h-5" style={{ color: '#FFFFFF' }} />
-            <div className="flex-1">
-              <p className="text-sm" style={{ color: '#9CA3AF' }}>Institute</p>
-              <p className="text-lg font-semibold" style={{ color: '#E5E7EB' }}>CodingGita</p>
+            <div
+              className="flex items-center gap-3 p-4 rounded-lg border"
+              style={{
+                backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                borderColor: 'rgba(255, 255, 255, 0.2)'
+              }}
+            >
+              <Mail className="w-5 h-5" style={{ color: '#FFFFFF' }} />
+              <div className="flex-1">
+                <p className="text-sm" style={{ color: '#9CA3AF' }}>Email</p>
+                <p className="text-lg font-semibold" style={{ color: '#E5E7EB' }}>{user.email}</p>
+              </div>
+              {!showEmailForm && (
+                <button
+                  onClick={() => setShowEmailForm(true)}
+                  className="px-4 py-2 text-sm rounded-lg transition border"
+                  style={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                    color: '#FFFFFF',
+                    borderColor: 'rgba(255, 255, 255, 0.3)'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                  }}
+                >
+                  Update
+                </button>
+              )}
             </div>
-          </div>
 
-          {!showPasswordForm && (
+            {showEmailForm && (
+              <div
+                className="p-4 rounded-lg space-y-3 border"
+                style={{
+                  backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                  borderColor: 'rgba(255, 255, 255, 0.2)'
+                }}
+              >
+                <form onSubmit={handleEmailUpdate} className="space-y-3">
+                  <input
+                    type="email"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    placeholder="New email address"
+                    className="w-full px-4 py-2 rounded-lg border transition focus:outline-none"
+                    style={{
+                      backgroundColor: '#0B1220',
+                      borderColor: 'rgba(255, 255, 255, 0.3)',
+                      color: '#E5E7EB'
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)';
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.3)';
+                    }}
+                    required
+                  />
+                  {emailMessage && (
+                    <p className="text-sm" style={{ color: emailMessage.includes("sent") ? "#FFFFFF" : "#FCA5A5" }}>
+                      {emailMessage}
+                    </p>
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      disabled={emailLoading}
+                      className="flex-1 px-4 py-2 rounded-lg transition disabled:opacity-50"
+                      style={{
+                        backgroundColor: '#22D3EE',
+                        color: '#020617'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!emailLoading) e.currentTarget.style.opacity = '0.9';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.opacity = '1';
+                      }}
+                    >
+                      {emailLoading ? "Sending..." : "Send Verification"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowEmailForm(false);
+                        setNewEmail("");
+                        setEmailMessage("");
+                      }}
+                      className="px-4 py-2 rounded-lg transition border"
+                      style={{
+                        backgroundColor: 'rgba(148, 163, 184, 0.1)',
+                        color: '#94A3B8',
+                        borderColor: 'rgba(148, 163, 184, 0.3)'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.15)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.1)';
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            <div
+              className="flex items-center gap-3 p-4 rounded-lg border"
+              style={{
+                backgroundColor: 'rgba(34, 211, 238, 0.05)',
+                borderColor: 'rgba(34, 211, 238, 0.2)'
+              }}
+            >
+              <Building2 className="w-5 h-5" style={{ color: '#FFFFFF' }} />
+              <div className="flex-1">
+                <p className="text-sm" style={{ color: '#9CA3AF' }}>Institute</p>
+                <p className="text-lg font-semibold" style={{ color: '#E5E7EB' }}>CodingGita</p>
+              </div>
+            </div>
+
+            {/* Update Password Button */}
             <button
               onClick={() => setShowPasswordForm(true)}
               className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg transition border"
-              style={{ 
+              style={{
                 backgroundColor: 'rgba(255, 255, 255, 0.1)',
                 color: '#FFFFFF',
                 borderColor: 'rgba(255, 255, 255, 0.3)'
@@ -998,108 +999,123 @@ export default function StudentProfile() {
               }}
             >
               <Lock className="w-5 h-5" />
-              Change Password
+              Update Password
             </button>
-          )}
 
-          {showPasswordForm && (
-            <div 
-              className="p-4 rounded-lg space-y-3 border"
-              style={{ 
-                backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                borderColor: 'rgba(255, 255, 255, 0.2)'
-              }}
-            >
-              <form onSubmit={handlePasswordChange} className="space-y-3">
-                <input
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="New password"
-                  className="w-full px-4 py-2 rounded-lg border transition focus:outline-none"
-                  style={{ 
+            {/* Password Update Modal */}
+            {showPasswordForm && (
+              <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center">
+                <div
+                  className="rounded-2xl p-6 max-w-md w-full mx-4 border"
+                  style={{
                     backgroundColor: '#0B1220',
-                    borderColor: 'rgba(255, 255, 255, 0.3)',
-                    color: '#E5E7EB'
+                    borderColor: 'rgba(255, 255, 255, 0.3)'
                   }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)';
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.3)';
-                  }}
-                  required
-                />
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Confirm password"
-                  className="w-full px-4 py-2 rounded-lg border transition focus:outline-none"
-                  style={{ 
-                    backgroundColor: '#0B1220',
-                    borderColor: 'rgba(255, 255, 255, 0.3)',
-                    color: '#E5E7EB'
-                  }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)';
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.3)';
-                  }}
-                  required
-                />
-                {passwordMessage && (
-                  <p className="text-sm" style={{ color: passwordMessage.includes("sent") ? "#FFFFFF" : "#FCA5A5" }}>
-                    {passwordMessage}
-                  </p>
-                )}
-                <div className="flex gap-2">
-                  <button
-                    type="submit"
-                    disabled={passwordLoading}
-                    className="flex-1 px-4 py-2 rounded-lg transition disabled:opacity-50"
-                    style={{ 
-                      backgroundColor: '#22D3EE',
-                      color: '#020617'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!passwordLoading) e.currentTarget.style.opacity = '0.9';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.opacity = '1';
-                    }}
-                  >
-                    {passwordLoading ? "Sending..." : "Send Verification"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowPasswordForm(false);
-                      setNewPassword("");
-                      setConfirmPassword("");
-                      setPasswordMessage("");
-                    }}
-                    className="px-4 py-2 rounded-lg transition border"
-                    style={{ 
-                      backgroundColor: 'rgba(148, 163, 184, 0.1)',
-                      color: '#94A3B8',
-                      borderColor: 'rgba(148, 163, 184, 0.3)'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.15)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.1)';
-                    }}
-                  >
-                    Cancel
-                  </button>
+                >
+                  <h3 className="text-xl font-bold mb-4 text-center" style={{ color: '#E5E7EB' }}>
+                    Update Password
+                  </h3>
+                  <form onSubmit={handlePasswordChange} className="space-y-4">
+                    <div>
+                      <label className="block text-sm mb-1" style={{ color: '#9CA3AF' }}>
+                        New Password
+                      </label>
+                      <input
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="Enter new password"
+                        className="w-full px-4 py-2 rounded-lg border transition focus:outline-none"
+                        style={{
+                          backgroundColor: '#0B1220',
+                          borderColor: 'rgba(255, 255, 255, 0.3)',
+                          color: '#E5E7EB'
+                        }}
+                        onFocus={(e) => {
+                          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)';
+                        }}
+                        onBlur={(e) => {
+                          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+                        }}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm mb-1" style={{ color: '#9CA3AF' }}>
+                        Confirm New Password
+                      </label>
+                      <input
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Confirm new password"
+                        className="w-full px-4 py-2 rounded-lg border transition focus:outline-none"
+                        style={{
+                          backgroundColor: '#0B1220',
+                          borderColor: 'rgba(255, 255, 255, 0.3)',
+                          color: '#E5E7EB'
+                        }}
+                        onFocus={(e) => {
+                          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)';
+                        }}
+                        onBlur={(e) => {
+                          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+                        }}
+                        required
+                      />
+                    </div>
+                    {passwordMessage && (
+                      <p className="text-sm text-center" style={{ color: passwordMessage.includes("sent") ? "#22D3EE" : "#FCA5A5" }}>
+                        {passwordMessage}
+                      </p>
+                    )}
+                    <div className="flex gap-3 mt-4">
+                      <button
+                        type="submit"
+                        disabled={passwordLoading}
+                        className="flex-1 px-4 py-2 rounded-lg transition disabled:opacity-50"
+                        style={{
+                          backgroundColor: '#22D3EE',
+                          color: '#020617'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!passwordLoading) e.currentTarget.style.opacity = '0.9';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.opacity = '1';
+                        }}
+                      >
+                        {passwordLoading ? "Sending..." : "Update Password"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowPasswordForm(false);
+                          setNewPassword("");
+                          setConfirmPassword("");
+                          setPasswordMessage("");
+                        }}
+                        className="flex-1 px-4 py-2 rounded-lg transition border"
+                        style={{
+                          backgroundColor: 'rgba(148, 163, 184, 0.1)',
+                          color: '#94A3B8',
+                          borderColor: 'rgba(148, 163, 184, 0.3)'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.15)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.1)';
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
                 </div>
-              </form>
-            </div>
-          )}
-        </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

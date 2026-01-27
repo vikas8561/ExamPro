@@ -45,7 +45,7 @@ router.post("/login", async (req, res) => {
       studentCategory: user.studentCategory
     };
 
-    res.json({ 
+    res.json({
       user: userResponse,
       token,
       message: "Login successful"
@@ -60,18 +60,18 @@ router.post("/logout", async (req, res) => {
   try {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
-    
+
     if (token) {
       // Remove token from user's active sessions
       const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
       const user = await User.findById(decoded.userId);
-      
+
       if (user) {
         user.activeSessions = user.activeSessions.filter(sessionToken => sessionToken !== token);
         await user.save();
       }
     }
-    
+
     res.json({ message: "Logout successful" });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -142,9 +142,9 @@ router.post("/forgot-password", async (req, res) => {
       await user.save();
     } catch (saveError) {
       console.error('Error saving user:', saveError);
-      return res.status(500).json({ 
+      return res.status(500).json({
         message: 'Failed to save password reset request',
-        error: saveError.message 
+        error: saveError.message
       });
     }
 
@@ -263,15 +263,15 @@ router.get("/profile/face-descriptor", authenticateToken, async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
-    
+
     if (!user.faceDescriptor || !user.faceDescriptorSaved) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: "Face descriptor not found. Please upload a profile image first.",
         faceDescriptor: null
       });
     }
-    
-    res.json({ 
+
+    res.json({
       faceDescriptor: user.faceDescriptor,
       faceDescriptorSaved: user.faceDescriptorSaved
     });
@@ -285,10 +285,10 @@ router.get("/profile/face-descriptor", authenticateToken, async (req, res) => {
 router.post("/profile/image", authenticateToken, async (req, res) => {
   try {
     const { image, faceDescriptor } = req.body; // image is optional (for display), faceDescriptor is required for face recognition
-    
+
     if (!faceDescriptor || !Array.isArray(faceDescriptor) || faceDescriptor.length !== 128) {
-      return res.status(400).json({ 
-        message: "Face descriptor is required and must be a 128-dimensional array. Please ensure face-api.js extracted the descriptor correctly." 
+      return res.status(400).json({
+        message: "Face descriptor is required and must be a 128-dimensional array. Please ensure face-api.js extracted the descriptor correctly."
       });
     }
 
@@ -310,16 +310,16 @@ router.post("/profile/image", authenticateToken, async (req, res) => {
     // Store face descriptor (secure, non-reversible biometric template)
     user.faceDescriptor = faceDescriptor;
     user.faceDescriptorSaved = true;
-    
+
     // Optionally store image for display purposes only (not used for face recognition)
     if (image) {
       user.profileImage = image;
       user.profileImageSaved = true;
     }
-    
+
     await user.save();
 
-    res.json({ 
+    res.json({
       message: "Face descriptor saved successfully",
       faceDescriptorSaved: user.faceDescriptorSaved,
       profileImage: user.profileImage || null, // Return image only if stored
@@ -334,7 +334,7 @@ router.post("/profile/image", authenticateToken, async (req, res) => {
 router.post("/verify-face", authenticateToken, async (req, res) => {
   try {
     const { image } = req.body; // Base64 encoded image from camera
-    
+
     if (!image) {
       return res.status(400).json({ message: "Image is required" });
     }
@@ -351,16 +351,16 @@ router.post("/verify-face", authenticateToken, async (req, res) => {
 
     // Check if user has a profile image
     if (!user.profileImage || !user.profileImageSaved) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: "No profile image found. Please upload a profile image first.",
-        match: false 
+        match: false
       });
     }
 
     // Check if face recognition is enabled (development mode can bypass)
     const faceRecognitionEnabled = process.env.FACE_RECOGNITION_ENABLED !== 'false';
     const faceServiceUrl = process.env.FACE_RECOGNITION_SERVICE_URL || 'http://localhost:5000';
-    
+
     // Development fallback: if service is disabled, allow test to proceed
     // BUT ONLY if explicitly disabled - default is to require verification
     if (!faceRecognitionEnabled) {
@@ -373,7 +373,7 @@ router.post("/verify-face", authenticateToken, async (req, res) => {
         warning: "Face verification is disabled - this should not be used in production"
       });
     }
-    
+
     // Call Python face recognition service
     // Use built-in fetch if available (Node 18+), otherwise use node-fetch
     let fetchFn;
@@ -383,10 +383,10 @@ router.post("/verify-face", authenticateToken, async (req, res) => {
       const nodeFetch = require('node-fetch');
       fetchFn = nodeFetch.default || nodeFetch;
     }
-    
+
     // Check if fallback is enabled BEFORE making the request
     const allowFallback = process.env.FACE_RECOGNITION_FALLBACK === 'true';
-    
+
     try {
       const controller = new AbortController();
       // Increased timeout to handle:
@@ -395,7 +395,7 @@ router.post("/verify-face", authenticateToken, async (req, res) => {
       // - Face verification processing (~5-10 seconds)
       const timeoutMs = parseInt(process.env.FACE_RECOGNITION_TIMEOUT_MS) || 90000; // 90 seconds default
       const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-      
+
       const response = await fetchFn(`${faceServiceUrl}/verify-face`, {
         method: 'POST',
         headers: {
@@ -407,7 +407,7 @@ router.post("/verify-face", authenticateToken, async (req, res) => {
         }),
         signal: controller.signal,
       });
-      
+
       clearTimeout(timeoutId);
 
       // Parse response even if status is not OK to get error details
@@ -427,11 +427,11 @@ router.post("/verify-face", authenticateToken, async (req, res) => {
         }
         throw new Error(`Invalid response from face recognition service: ${response.statusText}`);
       }
-      
+
       // If service returned an error status, check for fallback
       if (!response.ok) {
         console.error("Face recognition service returned error:", result);
-        
+
         // If fallback is enabled, allow verification to proceed
         if (allowFallback) {
           console.warn("⚠️ WARNING: Face recognition service unavailable. Allowing fallback (FACE_RECOGNITION_FALLBACK=true).");
@@ -443,7 +443,7 @@ router.post("/verify-face", authenticateToken, async (req, res) => {
             warning: "Face recognition service is unavailable. Test proceeding with fallback."
           });
         }
-        
+
         // Reject verification if fallback is not enabled
         // Use the message from the service if available (it's user-friendly)
         // Preserve the original status code from Python service (400, 500, etc.)
@@ -455,12 +455,12 @@ router.post("/verify-face", authenticateToken, async (req, res) => {
           error: result.error || `Service error: ${response.statusText}`
         });
       }
-      
+
       // Strict validation: match must be explicitly true and confidence must meet threshold
-      const isValidMatch = result.match === true && 
-                          typeof result.confidence === 'number' && 
-                          result.confidence >= 0.7;
-      
+      const isValidMatch = result.match === true &&
+        typeof result.confidence === 'number' &&
+        result.confidence >= 0.7;
+
       if (!isValidMatch) {
         console.log("Face verification failed:", {
           match: result.match,
@@ -468,7 +468,7 @@ router.post("/verify-face", authenticateToken, async (req, res) => {
           threshold: result.threshold || 0.7
         });
       }
-      
+
       res.json({
         match: isValidMatch,
         confidence: result.confidence || 0,
@@ -483,12 +483,12 @@ router.post("/verify-face", authenticateToken, async (req, res) => {
         message: serviceError.message,
         code: serviceError.code
       });
-      
+
       // Check if this is a timeout error
-      const isTimeout = serviceError.name === 'AbortError' || 
-                       serviceError.message.includes('aborted') ||
-                       serviceError.code === 20;
-      
+      const isTimeout = serviceError.name === 'AbortError' ||
+        serviceError.message.includes('aborted') ||
+        serviceError.code === 20;
+
       // Only allow fallback if explicitly enabled (for development/testing)
       if (allowFallback) {
         console.warn("⚠️ WARNING: Face recognition service unavailable. Allowing fallback (FACE_RECOGNITION_FALLBACK=true).");
@@ -500,7 +500,7 @@ router.post("/verify-face", authenticateToken, async (req, res) => {
           warning: "Face recognition service is unavailable. Test proceeding with fallback."
         });
       }
-      
+
       // Reject verification if service is unavailable (default behavior)
       let errorMessage = "Face recognition service is temporarily unavailable.";
       if (isTimeout) {
@@ -508,9 +508,9 @@ router.post("/verify-face", authenticateToken, async (req, res) => {
       } else if (serviceError.message.includes('ECONNREFUSED') || serviceError.message.includes('fetch failed')) {
         errorMessage = "Cannot connect to face recognition service. The service may be down or unreachable.";
       }
-      
+
       console.error("Face recognition service error:", serviceError.message);
-      res.status(503).json({ 
+      res.status(503).json({
         message: errorMessage,
         match: false,
         error: serviceError.message,
@@ -641,7 +641,7 @@ router.post("/profile/verify-email", async (req, res) => {
   }
 });
 
-// Change password with nodemailer verification
+// Change password directly (no email verification)
 router.post("/profile/change-password", authenticateToken, async (req, res) => {
   try {
     const { newPassword, confirmPassword } = req.body;
@@ -667,50 +667,14 @@ router.post("/profile/change-password", authenticateToken, async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-    // Store pending password
-    user.pendingPassword = hashedPassword;
+    // Update password directly using updateOne to avoid pre-save hook double-hashing
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { password: hashedPassword } }
+    );
 
-    // Generate verification token
-    const verificationToken = crypto.randomBytes(32).toString('hex');
-    user.resetPasswordToken = verificationToken;
-    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
-
-    await user.save();
-
-    // Send verification email
-    const verificationLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify-password?token=${verificationToken}`;
-    const emailSubject = 'Password Change Verification';
-    const emailHtml = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h2 style="color: #2563eb;">Password Change Request</h2>
-        <p>You requested to change your password.</p>
-        <p>Please click the link below to verify and complete the password change:</p>
-        <p style="margin: 20px 0;">
-          <a href="${verificationLink}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">Verify Password Change</a>
-        </p>
-        <p style="word-break: break-all; color: #666; font-size: 12px;">Or copy this link: ${verificationLink}</p>
-        <p style="color: #999; font-size: 12px; margin-top: 30px;">This link will expire in 1 hour.</p>
-        <p style="color: #999; font-size: 12px;">If you did not request this, please ignore this email.</p>
-      </div>
-    `;
-
-    // Send email using optimized email service
-    const emailResult = await sendEmailImmediate(user.email, emailSubject, emailHtml);
-
-    if (emailResult.success) {
-      console.log('✅ Password change verification email sent successfully to:', user.email);
-      return res.json({
-        message: "Verification email sent to your email address",
-        verificationToken: verificationToken // For testing purposes
-      });
-    } else {
-      console.error('❌ Error sending verification email:', emailResult.error);
-      return res.status(500).json({
-        message: 'Password change initiated but verification email failed to send',
-        error: emailResult.error,
-        verificationToken: verificationToken // For testing purposes
-      });
-    }
+    console.log('✅ Password changed successfully for user:', user.email);
+    res.json({ message: "Password changed successfully" });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -738,8 +702,8 @@ router.post("/profile/verify-password", async (req, res) => {
     // Update password using updateOne to avoid pre-save hook double-hashing
     await User.updateOne(
       { _id: user._id },
-      { 
-        $set: { 
+      {
+        $set: {
           password: user.pendingPassword,
           resetPasswordToken: undefined,
           resetPasswordExpires: undefined,
@@ -759,7 +723,7 @@ router.post("/test-email", authenticateToken, requireRole("admin"), async (req, 
   try {
     const { to } = req.body;
     const testEmail = to || process.env.SMTP_USER;
-    
+
     if (!testEmail) {
       return res.status(400).json({ message: "Email address required" });
     }
