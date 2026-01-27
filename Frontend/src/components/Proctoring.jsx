@@ -187,6 +187,13 @@ const Proctoring = forwardRef(({
   const [permissionErrors, setPermissionErrors] = useState({});
   const [isLoadingModels, setIsLoadingModels] = useState(false);
 
+  // OTP bypass states
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [otpValue, setOtpValue] = useState('');
+  const [otpError, setOtpError] = useState('');
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [otpBypassActive, setOtpBypassActive] = useState(false);
+
   // Monitoring states
   const [violationCount, setViolationCount] = useState(initialViolationCount);
   const [violations, setViolations] = useState([]);
@@ -907,8 +914,65 @@ const Proctoring = forwardRef(({
       if (!isVerified) missing.push('Face Verification');
       alert(`Please grant all required permissions to continue: ${missing.join(', ')}`);
     }
-  }, [requestAllPermissions, requestFullscreen]);
+  }, [requestAllPermissions, requestFullscreen, verificationStatus]);
 
+  // Verify OTP for permission bypass
+  const handleVerifyOtp = useCallback(async () => {
+    if (!otpValue.trim()) {
+      setOtpError('Please enter the OTP');
+      return;
+    }
+
+    setIsVerifyingOtp(true);
+    setOtpError('');
+
+    try {
+      const response = await apiRequest(`/tests/${test._id}/verify-otp`, {
+        method: 'POST',
+        body: JSON.stringify({ otp: otpValue.trim() }),
+      });
+
+      if (response.success) {
+        // OTP verified - set bypass active
+        setOtpBypassActive(true);
+        setShowOtpModal(false);
+        setOtpValue('');
+        console.log('✅ OTP verified - bypass mode activated');
+      }
+    } catch (error) {
+      setOtpError(error.message || 'Invalid OTP. Please try again.');
+    } finally {
+      setIsVerifyingOtp(false);
+    }
+  }, [otpValue, test._id]);
+
+  // Handle continue with OTP bypass - only requires screen share
+  const handleContinueWithOtpBypass = useCallback(async () => {
+    // Only request screen share for OTP bypass
+    const screenShareResult = await requestScreenShare();
+
+    if (screenShareResult && !devToolsDetected) {
+      setShowPermissionModal(false);
+      setPermissions(prev => ({
+        ...prev,
+        screenShare: true,
+        // Mark other permissions as bypassed (not actually granted but OK for OTP flow)
+        microphone: true,
+        location: true,
+        camera: true,
+        faceMatch: true,
+      }));
+
+      // Request fullscreen after screen share is granted
+      setTimeout(() => {
+        requestFullscreen();
+      }, 500);
+    } else if (!screenShareResult) {
+      alert('Screen sharing is required even with OTP bypass. Please share your entire screen.');
+    } else if (devToolsDetected) {
+      alert('Please close Developer Tools before continuing.');
+    }
+  }, [requestScreenShare, requestFullscreen, devToolsDetected]);
 
 
   // Tab switch, window switch, and application switch detection
@@ -1459,17 +1523,126 @@ const Proctoring = forwardRef(({
                 </div>
               )}
 
+              {/* OTP Bypass Active - Only need screen share */}
+              {otpBypassActive ? (
+                <div className="space-y-3">
+                  <div className="bg-green-900/30 border border-green-500/50 rounded-lg p-3 mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-green-400">✓</span>
+                      <span className="text-green-300 text-sm font-medium">OTP Verified - Only screen sharing required</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleContinueWithOtpBypass}
+                    disabled={!permissions.screenShare || devToolsDetected}
+                    className={`w-full py-2.5 px-6 rounded-md font-semibold ${permissions.screenShare && !devToolsDetected
+                      ? 'bg-green-600 hover:bg-green-700 text-white'
+                      : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                      }`}
+                  >
+                    {devToolsDetected ? 'Close Developer Tools to Continue' : 'Continue to Exam'}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <button
+                    onClick={handleContinue}
+                    disabled={!permissions.screenShare || !permissions.microphone || !permissions.location || !permissions.camera || verificationStatus !== 'success' || devToolsDetected}
+                    className={`w-full py-2.5 px-6 rounded-md font-semibold ${permissions.screenShare && permissions.microphone && permissions.location && permissions.camera && verificationStatus === 'success' && !devToolsDetected
+                      ? 'bg-green-600 hover:bg-green-700 text-white'
+                      : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                      }`}
+                  >
+                    {devToolsDetected ? 'Close Developer Tools to Continue' : 'Continue to Exam'}
+                  </button>
+
+                  {/* OTP Bypass Option */}
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-slate-600"></div>
+                    </div>
+                    <div className="relative flex justify-center text-sm">
+                      <span className="px-2 bg-slate-800 text-slate-400">or</span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setShowOtpModal(true);
+                      setOtpError('');
+                      setOtpValue('');
+                    }}
+                    className="w-full py-2.5 px-6 rounded-md font-semibold bg-slate-700 hover:bg-slate-600 text-white border border-slate-500"
+                  >
+                    Continue with OTP
+                  </button>
+                  <p className="text-xs text-slate-400 text-center">
+                    Have an OTP from your instructor? Click above to bypass permission requirements.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* OTP Input Modal */}
+      {showOtpModal && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[10000] p-4"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="bg-slate-800 rounded-lg w-full max-w-md p-6">
+            <h3 className="text-xl font-bold text-white mb-4 text-center">Enter OTP</h3>
+            <p className="text-slate-300 text-sm mb-4 text-center">
+              Enter the 6-digit OTP provided by your instructor to bypass permission requirements.
+            </p>
+
+            <input
+              type="text"
+              value={otpValue}
+              onChange={(e) => {
+                // Only allow numbers and limit to 6 characters
+                const value = e.target.value.replace(/\D/g, '').slice(0, 6);
+                setOtpValue(value);
+                setOtpError('');
+              }}
+              placeholder="Enter 6-digit OTP"
+              className="w-full px-4 py-3 bg-slate-700 text-white rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none text-center text-2xl font-mono tracking-widest"
+              maxLength={6}
+              autoFocus
+            />
+
+            {otpError && (
+              <p className="text-red-400 text-sm mt-2 text-center">{otpError}</p>
+            )}
+
+            <div className="flex gap-3 mt-6">
               <button
-                onClick={handleContinue}
-                disabled={!permissions.screenShare || !permissions.microphone || !permissions.location || !permissions.camera || verificationStatus !== 'success' || devToolsDetected}
-                className={`w-full py-2.5 px-6 rounded-md font-semibold ${permissions.screenShare && permissions.microphone && permissions.location && permissions.camera && verificationStatus === 'success' && !devToolsDetected
-                  ? 'bg-green-600 hover:bg-green-700 text-white'
-                  : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                onClick={() => {
+                  setShowOtpModal(false);
+                  setOtpValue('');
+                  setOtpError('');
+                }}
+                className="flex-1 py-2.5 px-4 rounded-md font-semibold bg-slate-700 hover:bg-slate-600 text-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleVerifyOtp}
+                disabled={otpValue.length !== 6 || isVerifyingOtp}
+                className={`flex-1 py-2.5 px-4 rounded-md font-semibold ${otpValue.length === 6 && !isVerifyingOtp
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                    : 'bg-gray-600 text-gray-400 cursor-not-allowed'
                   }`}
               >
-                {devToolsDetected ? 'Close Developer Tools to Continue' : 'Continue to Exam'}
+                {isVerifyingOtp ? 'Verifying...' : 'Verify OTP'}
               </button>
             </div>
+
+            <p className="text-xs text-slate-400 text-center mt-4">
+              Screen sharing will still be required for proctoring
+            </p>
           </div>
         </div>
       )}

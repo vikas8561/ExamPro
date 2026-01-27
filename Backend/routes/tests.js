@@ -147,6 +147,31 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
   }
 });
 
+// Verify OTP for permission bypass (students can use this during test)
+router.post("/:id/verify-otp", authenticateToken, async (req, res, next) => {
+  try {
+    const { otp } = req.body;
+
+    if (!otp) {
+      return res.status(400).json({ message: "OTP is required" });
+    }
+
+    const test = await Test.findById(req.params.id).select("otp");
+
+    if (!test) {
+      return res.status(404).json({ message: "Test not found" });
+    }
+
+    if (!test.otp || test.otp !== otp) {
+      return res.status(400).json({ message: "Invalid OTP" });
+    }
+
+    res.json({ success: true, message: "OTP verified successfully" });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Create new test (admin only)
 router.post("/", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
