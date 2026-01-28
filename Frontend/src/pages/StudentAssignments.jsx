@@ -83,34 +83,51 @@ const CountdownTimer = ({ startTime, onTimerComplete }) => {
 
   if (timeLeft.completed) {
     return (
-      <div className="text-green-400 font-semibold text-center">
-        Test is now available!
+      <div className="flex items-center justify-center gap-2 text-emerald-400 font-semibold text-center bg-emerald-500/10 py-3 rounded-xl border border-emerald-500/20">
+        <svg className="w-5 h-5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span>Test is now available!</span>
       </div>
     );
   }
 
+  const TimeUnit = ({ value, label }) => (
+    <div className="flex flex-col items-center">
+      <div className="relative group">
+        <div className="absolute inset-0 bg-blue-500 blur-lg opacity-20 group-hover:opacity-30 transition-opacity rounded-lg"></div>
+        <div className="relative bg-slate-800/80 backdrop-blur-md border border-slate-700/50 rounded-lg p-2 min-w-[50px] flex flex-col items-center justify-center shadow-lg transition-transform hover:-translate-y-0.5">
+          <span className="text-lg font-bold font-mono text-white tracking-widest leading-none">
+            {String(value).padStart(2, '0')}
+          </span>
+          <span className="text-[9px] uppercase tracking-wider text-slate-400 font-medium mt-0.5">
+            {label}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="text-center">
-      <div className="countdown-text text-sm text-slate-400 mb-2">Test will start in:</div>
-      <div className="countdown-timer flex justify-center space-x-2">
+    <div className="flex flex-col items-center animate-slide-in-up">
+      <div className="flex items-center gap-1.5 mb-2">
+        <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></div>
+        <span className="text-xs font-medium text-blue-200 uppercase tracking-wide">Test starts in</span>
+        <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></div>
+      </div>
+
+      <div className="flex items-center gap-2">
         {timeLeft.days > 0 && (
-          <div className="countdown-unit bg-slate-700 px-2 py-1 rounded">
-            <div className="countdown-unit-value text-lg font-bold">{timeLeft.days}</div>
-            <div className="countdown-unit-label text-xs">days</div>
-          </div>
+          <>
+            <TimeUnit value={timeLeft.days} label="Days" />
+            <span className="text-lg font-bold text-slate-600 -mt-3">:</span>
+          </>
         )}
-        <div className="countdown-unit bg-slate-700 px-2 py-1 rounded">
-          <div className="countdown-unit-value text-lg font-bold">{String(timeLeft.hours).padStart(2, '0')}</div>
-          <div className="countdown-unit-label text-xs">hours</div>
-        </div>
-        <div className="countdown-unit bg-slate-700 px-2 py-1 rounded">
-          <div className="countdown-unit-value text-lg font-bold">{String(timeLeft.minutes).padStart(2, '0')}</div>
-          <div className="countdown-unit-label text-xs">min</div>
-        </div>
-        <div className="countdown-unit bg-slate-700 px-2 py-1 rounded">
-          <div className="countdown-unit-value text-lg font-bold">{String(timeLeft.seconds).padStart(2, '0')}</div>
-          <div className="countdown-unit-label text-xs">sec</div>
-        </div>
+        <TimeUnit value={timeLeft.hours} label="Hrs" />
+        <span className="text-lg font-bold text-slate-600 -mt-3">:</span>
+        <TimeUnit value={timeLeft.minutes} label="Min" />
+        <span className="text-lg font-bold text-slate-600 -mt-3">:</span>
+        <TimeUnit value={timeLeft.seconds} label="Sec" />
       </div>
     </div>
   );
@@ -828,9 +845,9 @@ const StudentAssignments = () => {
                 </div>
 
                 {/* Action Buttons Section */}
-                <div className="action-section mt-6 pt-4" style={{ borderTop: '1px solid rgba(255, 255, 255, 0.2)' }}>
+                <div className="action-section mt-4 pt-3" style={{ borderTop: '1px solid rgba(255, 255, 255, 0.2)' }}>
                   {assignment.status === "Assigned" && isTestNotStarted(assignment.startTime) && (
-                    <div className="countdown-container mb-4">
+                    <div className="countdown-container mb-2">
                       <CountdownTimer
                         startTime={assignment.startTime}
                         onTimerComplete={() => fetchAssignments(0, currentPage)}
