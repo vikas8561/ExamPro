@@ -22,6 +22,33 @@ const TakeTest = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const debounceTimers = useRef({});
 
+  // Zoom level state (80% to 150%, default 100%)
+  const [zoomLevel, setZoomLevel] = useState(() => {
+    const saved = localStorage.getItem('testZoomLevel');
+    return saved ? parseInt(saved) : 100;
+  });
+
+  const handleZoomIn = () => {
+    setZoomLevel(prev => {
+      const next = Math.min(prev + 10, 150);
+      localStorage.setItem('testZoomLevel', next);
+      return next;
+    });
+  };
+
+  const handleZoomOut = () => {
+    setZoomLevel(prev => {
+      const next = Math.max(prev - 10, 80);
+      localStorage.setItem('testZoomLevel', next);
+      return next;
+    });
+  };
+
+  const handleZoomReset = () => {
+    setZoomLevel(100);
+    localStorage.setItem('testZoomLevel', 100);
+  };
+
   // Proctoring state
   const [proctoringData, setProctoringData] = useState({
     violationCount: 0,
@@ -729,22 +756,35 @@ const TakeTest = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center">
-        <div className="text-xl">Loading test...</div>
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="relative w-16 h-16 mx-auto mb-6">
+            <div className="absolute inset-0 rounded-full border-4 border-slate-700"></div>
+            <div className="absolute inset-0 rounded-full border-4 border-t-blue-500 animate-spin"></div>
+          </div>
+          <div className="text-xl font-semibold text-slate-200">Loading test...</div>
+          <p className="text-slate-500 text-sm mt-2">Preparing your exam environment</p>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-xl text-red-400 mb-4">Error: {error}</div>
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto px-6">
+          <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+            <svg className="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+          </div>
+          <div className="text-xl font-semibold text-red-300 mb-2">Something went wrong</div>
+          <p className="text-slate-400 mb-6 text-sm">{error}</p>
           <button
             onClick={() => navigate("/student/assignments")}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md"
+            className="px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl border border-slate-600 font-medium transition-all duration-200"
           >
-            Back to Assignments
+            ← Back to Assignments
           </button>
         </div>
       </div>
@@ -754,8 +794,15 @@ const TakeTest = () => {
 
   if (!testStarted || !test) {
     return (
-      <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center">
-        <div className="text-xl">Preparing test...</div>
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="relative w-16 h-16 mx-auto mb-6">
+            <div className="absolute inset-0 rounded-full border-4 border-slate-700"></div>
+            <div className="absolute inset-0 rounded-full border-4 border-t-blue-500 animate-spin"></div>
+          </div>
+          <div className="text-xl font-semibold text-slate-200">Preparing test...</div>
+          <p className="text-slate-500 text-sm mt-2">Setting up proctoring environment</p>
+        </div>
       </div>
     );
   }
@@ -765,13 +812,29 @@ const TakeTest = () => {
   // Don't render question content if question is not loaded yet
   if (!question) {
     return (
-      <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white flex items-center justify-center">
         <div className="text-center">
-          <div className="text-xl">Loading question...</div>
+          <div className="relative w-16 h-16 mx-auto mb-6">
+            <div className="absolute inset-0 rounded-full border-4 border-slate-700"></div>
+            <div className="absolute inset-0 rounded-full border-4 border-t-blue-500 animate-spin"></div>
+          </div>
+          <div className="text-xl font-semibold text-slate-200">Loading question...</div>
         </div>
       </div>
     );
   }
+
+  // Helper: count answered questions
+  const answeredCount = test.questions.filter((q) => {
+    const answer = answers[q._id];
+    if (q.kind === "mcq") return answer !== undefined && answer !== null && answer !== "";
+    if (q.kind === "theory" || q.kind === "coding") return answer && answer.trim() !== "";
+    return false;
+  }).length;
+  const totalQuestions = test?.questions?.length || 0;
+  const progressPercent = totalQuestions > 0 ? (answeredCount / totalQuestions) * 100 : 0;
+  const isTimeLow = timeRemaining <= 300;
+  const isTimeCritical = timeRemaining <= 60;
 
   return (
     <>
@@ -784,245 +847,208 @@ const TakeTest = () => {
           .scrollbar-hide::-webkit-scrollbar {
             display: none;
           }
+          @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 8px 0 rgba(239, 68, 68, 0.4); }
+            50% { box-shadow: 0 0 20px 4px rgba(239, 68, 68, 0.6); }
+          }
+          .timer-critical {
+            animation: pulse-glow 1s ease-in-out infinite;
+          }
         `}
       </style>
-      <div className="min-h-screen bg-slate-900 text-white p-6">
-        <div className="max-w-6xl mx-auto">
-          <div className="flex justify-between items-center mb-8 p-4 bg-slate-800 rounded-lg">
-            <div>
-              <h1 className="text-2xl font-bold">{test.title}</h1>
-              <p className="text-slate-400">
-                Question {currentQuestion + 1} of {test?.questions?.length || 0}
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white p-4 lg:p-6" style={{ fontSize: `${zoomLevel}%` }}>
+        <div className="max-w-7xl mx-auto">
+
+          {/* ═══════════ HEADER BAR ═══════════ */}
+          <div className="flex justify-between items-start mb-6 p-4 lg:p-5 bg-slate-800/60 backdrop-blur-sm rounded-2xl border border-slate-700/40 shadow-xl">
+            <div className="flex-1 min-w-0">
+              <h1 className="text-xl lg:text-2xl font-bold text-white truncate pr-4">{test.title}</h1>
+              <p className="text-slate-400 text-sm mt-1">
+                Question {currentQuestion + 1} of {totalQuestions}
               </p>
+              <div className="flex items-center gap-1.5 mt-2.5">
+                <button onClick={handleZoomOut} disabled={zoomLevel <= 80} className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-700/70 hover:bg-slate-600 text-slate-300 hover:text-white font-bold text-sm border border-slate-600/50 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed" title="Zoom Out">−</button>
+                <button onClick={handleZoomReset} className="px-2.5 h-7 flex items-center justify-center rounded-lg bg-slate-700/70 hover:bg-slate-600 text-slate-400 hover:text-white text-xs font-semibold border border-slate-600/50 transition-all duration-200 min-w-[44px]" title="Reset Zoom">{zoomLevel}%</button>
+                <button onClick={handleZoomIn} disabled={zoomLevel >= 150} className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-700/70 hover:bg-slate-600 text-slate-300 hover:text-white font-bold text-sm border border-slate-600/50 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed" title="Zoom In">+</button>
+              </div>
             </div>
-
-
-            <div className="text-right">
-              <div className="text-2xl font-mono bg-slate-700 px-4 py-2 rounded-md text-white">
+            <div className="flex-shrink-0 text-right">
+              <div className={`text-2xl lg:text-3xl font-mono px-5 py-2.5 rounded-xl font-bold tracking-wider ${isTimeCritical ? 'bg-red-500/20 text-red-300 border border-red-500/40 timer-critical' : isTimeLow ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30' : 'bg-slate-700/60 text-white border border-slate-600/40'}`}>
                 {formatTime(timeRemaining)}
               </div>
-              <div className="text-sm text-slate-400 mt-1">Time Remaining</div>
+              <div className="text-xs text-slate-500 mt-1.5 font-medium tracking-wide uppercase">Time Remaining</div>
             </div>
           </div>
 
+          {/* Instructions Banner */}
           {test.instructions && (
-            <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4 mb-6">
-              <h3 className="font-semibold text-blue-300 mb-2">Instructions:</h3>
-              <p className="text-blue-200">{test.instructions}</p>
+            <div className="bg-blue-500/5 border border-blue-500/20 rounded-2xl p-4 mb-6 backdrop-blur-sm">
+              <div className="flex items-start gap-3">
+                <div className="p-1.5 bg-blue-500/15 rounded-lg flex-shrink-0 mt-0.5">
+                  <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-blue-300 text-sm mb-1">Instructions</h3>
+                  <p className="text-blue-200/70 text-sm leading-relaxed">{test.instructions}</p>
+                </div>
+              </div>
             </div>
           )}
 
           {question.kind === "theory" ? (
-            <div className="grid grid-cols-1 lg:grid-cols-[45%_45%_7%] gap-4.5" style={{ height: '70vh' }}>
-              <div className="bg-slate-800 rounded-lg p-6 overflow-y-auto h-full">
-                <div className="flex items-center gap-3 mb-4 justify-between">
-                  <span className="text-sm text-slate-400">
-                    Question {currentQuestion + 1}
-                  </span>
+            <div className="grid grid-cols-1 lg:grid-cols-[45%_45%_7%] gap-4" style={{ height: '70vh' }}>
+              {/* Question Panel */}
+              <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-5 lg:p-6 overflow-y-auto h-full border border-slate-700/30 shadow-lg">
+                <div className="flex items-center justify-between mb-5">
                   <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => handleAnswerChange(question._id, "")}
-                      className="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded-md text-sm font-medium cursor-pointer transition-colors"
-                    >
-                      Clear Response
-                    </button>
+                    <span className="px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs font-bold tracking-wide">Q{currentQuestion + 1}</span>
+                    <span className="px-3 py-1.5 rounded-lg bg-slate-700/50 border border-slate-600/30 text-slate-300 text-xs font-semibold">{question.points} {question.points !== 1 ? "pts" : "pt"}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => handleAnswerChange(question._id, "")} className="px-3.5 py-1.5 bg-slate-700/60 hover:bg-slate-600/80 text-slate-300 hover:text-white rounded-lg text-xs font-semibold transition-all duration-200 border border-slate-600/40">Clear</button>
                     <button
                       onClick={() => {
                         const currentStatus = questionStatuses[question._id];
                         let newStatus;
-
                         if (currentStatus === "mark-for-review") {
                           const answer = answers[question._id];
                           const hasAnswer = answer && answer.trim() !== "";
                           newStatus = hasAnswer ? "answered" : "not-answered";
-                        } else {
-                          newStatus = "mark-for-review";
-                        }
-
-                        setQuestionStatuses((prev) => ({
-                          ...prev,
-                          [question._id]: newStatus,
-                        }));
+                        } else { newStatus = "mark-for-review"; }
+                        setQuestionStatuses((prev) => ({ ...prev, [question._id]: newStatus }));
                       }}
-                      className={`px-3 py-1 rounded-md text-sm font-medium cursor-pointer transition-colors ${questionStatuses[question._id] === "mark-for-review"
-                        ? "bg-orange-600 text-white hover:bg-orange-700"
-                        : "bg-slate-700 hover:bg-slate-600"
-                        }`}
-                    >
-                      {questionStatuses[question._id] === "mark-for-review"
-                        ? "Unmark Review"
-                        : "Mark for Review"}
-                    </button>
-                    <div className="bg-slate-700 px-3 py-1 rounded-md text-sm">
-                      {question.points} point{question.points !== 1 ? "s" : ""}
-                    </div>
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 border ${questionStatuses[question._id] === "mark-for-review" ? "bg-amber-500/20 text-amber-300 border-amber-500/30" : "bg-slate-700/60 text-slate-300 border-slate-600/40 hover:bg-slate-600/80"}`}
+                    >{questionStatuses[question._id] === "mark-for-review" ? "★ Marked" : "☆ Review"}</button>
                   </div>
                 </div>
-                <h3 className="text-xl font-semibold mb-6">{question.text}</h3>
+                <h3 className="text-lg lg:text-xl font-semibold mb-5 text-slate-100 leading-relaxed">{question.text}</h3>
 
                 {question.guidelines && (
-                  <div className="bg-slate-700 p-4 rounded-lg mb-4 scrollbar-hide" style={{ overflowY: 'auto' }}>
-                    <h4 className="font-semibold text-slate-300 mb-2">
-                      Guidelines:
+                  <div className="bg-slate-700/30 p-4 rounded-xl mb-4 border border-slate-600/20">
+                    <h4 className="font-semibold text-slate-300 mb-2 text-sm flex items-center gap-2">
+                      <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                      Guidelines
                     </h4>
-                    <p className="text-slate-400">{question.guidelines}</p>
+                    <p className="text-slate-400 text-sm leading-relaxed">{question.guidelines}</p>
                   </div>
                 )}
 
                 {question.examples && question.examples.length > 0 && (
-                  <div className="bg-slate-700 p-4 rounded-lg mb-4 scrollbar-hide" style={{ maxHeight: '16rem', overflowY: 'auto' }}>
-                    <div>
-                      {question.examples.map((example, idx) => (
-                        <div key={idx} className="mb-3 p-3 bg-slate-600 rounded">
-                          <div className="mb-1 font-semibold text-slate-300">Example {idx + 1}:</div>
-                          <div className="mb-1 font-semibold text-slate-300">Input:</div>
-                          <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
-                            {example.input}
-                          </pre>
-                          <div className="mt-2 mb-1 font-semibold text-slate-300">Output:</div>
-                          <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
-                            {example.output}
-                          </pre>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="bg-slate-800 rounded-lg p-6 flex flex-col gap-2 max-h-[calc(100vh-160px)] overflow-y-auto scrollbar-hide order-last" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                <div className="flex flex-col gap-2 overflow-y-auto scrollbar-hide">
-                  {test?.questions?.map((q, index) => (
-                    <button
-                      key={q._id}
-                      onClick={() => handleQuestionNavigation(index)}
-                      className={`w-8 min-w-[40px] h-12 rounded-md text-sm font-semibold cursor-pointer transition-all duration-200 hover:scale-105 border-2 ${currentQuestion === index
-                        ? "bg-blue-600 text-white border-blue-400 shadow-lg"
-                        : questionStatuses[q._id] === "answered"
-                          ? "bg-green-600 text-white border-green-400 hover:border-green-300"
-                          : questionStatuses[q._id] === "mark-for-review"
-                            ? "bg-yellow-600 text-black border-yellow-400 hover:border-yellow-300"
-                            : "bg-slate-700 hover:bg-slate-600 border-slate-600 hover:border-slate-500"
-                        }`}
-                    >
-                      {index + 1}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="bg-slate-800 rounded-lg p-6 flex flex-col" style={{ height: '70vh' }}>
-                <div className="flex-1">
-                  <textarea
-                    className="w-full h-full p-4 bg-slate-800 text-white rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none resize-none"
-                    value={answers[question._id] || ""}
-                    onChange={(e) => handleAnswerChange(question._id, e.target.value)}
-                    placeholder="Enter your answer here..."
-                  />
-                </div>
-                <div className="flex justify-between mt-4 gap-4">
-                  <button
-                    onClick={handlePreviousQuestion}
-                    disabled={currentQuestion === 0}
-                    className="flex-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
-                  >
-                    Previous
-                  </button>
-                  <button
-                    onClick={handleNextQuestion}
-                    disabled={currentQuestion === (test?.questions?.length || 0) - 1}
-                    className="flex-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
-                  >
-                    Next
-                  </button>
-                  <button
-                    onClick={handleSubmitClick}
-                    disabled={isSubmitting}
-                    className={`flex-1 ${isSubmitting ? 'bg-gray-600 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} text-white py-2 rounded-md font-semibold ${!isSubmitting ? 'cursor-pointer' : ''}`}
-                  >
-                    {isSubmitting ? 'Submitting Test...' : 'Submit Test'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : question.kind === "coding" ? (
-            <div className="grid grid-cols-1 lg:grid-cols-[45%_45%_7%] gap-4.5" style={{ height: '70vh' }}>
-              <div className="bg-slate-800 rounded-lg p-6 overflow-y-auto h-full">
-                <div className="flex items-center gap-3 mb-4 justify-between">
-                  <span className="text-sm text-slate-400">
-                    Question {currentQuestion + 1}
-                  </span>
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => handleAnswerChange(question._id, "")}
-                      className="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded-md text-sm font-medium cursor-pointer transition-colors"
-                    >
-                      Clear Response
-                    </button>
-                    <button
-                      onClick={() => {
-                        const currentStatus = questionStatuses[question._id];
-                        let newStatus;
-
-                        if (currentStatus === "mark-for-review") {
-                          const answer = answers[question._id];
-                          const hasAnswer = answer && answer.trim() !== "";
-                          newStatus = hasAnswer ? "answered" : "not-answered";
-                        } else {
-                          newStatus = "mark-for-review";
-                        }
-
-                        setQuestionStatuses((prev) => ({
-                          ...prev,
-                          [question._id]: newStatus,
-                        }));
-                      }}
-                      className={`px-3 py-1 rounded-md text-sm font-medium cursor-pointer transition-colors ${questionStatuses[question._id] === "mark-for-review"
-                        ? "bg-orange-600 text-white hover:bg-orange-700"
-                        : "bg-slate-700 hover:bg-slate-600"
-                        }`}
-                    >
-                      {questionStatuses[question._id] === "mark-for-review"
-                        ? "Unmark Review"
-                        : "Mark for Review"}
-                    </button>
-                    <div className="bg-slate-700 px-3 py-1 rounded-md text-sm">
-                      {question.points} point{question.points !== 1 ? "s" : ""}
-                    </div>
-                  </div>
-                </div>
-                <h3 className="text-xl font-semibold mb-6">{question.text}</h3>
-
-                {question.guidelines && (
-                  <div className="bg-slate-700 p-4 rounded-lg mb-4 scrollbar-hide" style={{ overflowY: 'auto' }}>
-                    <h4 className="font-semibold text-slate-300 mb-2">
-                      Guidelines:
-                    </h4>
-                    <p className="text-slate-400">{question.guidelines}</p>
-                  </div>
-                )}
-
-                {question.visibleTestCases && question.visibleTestCases.length > 0 && (
-                  <div className="bg-slate-700 p-4 rounded-lg mb-4 scrollbar-hide" style={{ maxHeight: '16rem', overflowY: 'auto' }}>
-                    <div className="text-slate-300 font-semibold mb-2">Normal Test Cases</div>
-                    {question.visibleTestCases.map((tc, idx) => (
-                      <div key={idx} className="mb-3 p-3 bg-slate-600 rounded">
-                        <div className="mb-1 font-semibold text-slate-300">Case {idx + 1}:</div>
-                        <div className="mb-1 font-semibold text-slate-300">Input:</div>
-                        <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
-                          {tc.input}
-                        </pre>
-                        <div className="mt-2 mb-1 font-semibold text-slate-300">Output:</div>
-                        <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
-                          {tc.output}
-                        </pre>
+                  <div className="bg-slate-700/30 p-4 rounded-xl mb-4 scrollbar-hide border border-slate-600/20" style={{ maxHeight: '16rem', overflowY: 'auto' }}>
+                    {question.examples.map((example, idx) => (
+                      <div key={idx} className="mb-3 last:mb-0 p-3 bg-slate-800/50 rounded-xl border border-slate-600/20">
+                        <div className="text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Example {idx + 1}</div>
+                        <div className="mb-1 text-xs font-semibold text-slate-400">Input:</div>
+                        <pre className="whitespace-pre-wrap text-slate-300 bg-slate-900/60 p-2.5 rounded-lg text-sm font-mono mb-2">{example.input}</pre>
+                        <div className="mb-1 text-xs font-semibold text-slate-400">Output:</div>
+                        <pre className="whitespace-pre-wrap text-emerald-300 bg-slate-900/60 p-2.5 rounded-lg text-sm font-mono">{example.output}</pre>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
 
-              <div className="bg-slate-800 rounded-lg p-6 flex flex-col" style={{ height: '70vh' }}>
+              {/* Question Nav Strip */}
+              <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-4 flex flex-col gap-2 max-h-[calc(100vh-160px)] overflow-y-auto scrollbar-hide order-last border border-slate-700/30 shadow-lg">
+                <div className="flex flex-col gap-2 overflow-y-auto scrollbar-hide">
+                  {test?.questions?.map((q, index) => (
+                    <button key={q._id} onClick={() => handleQuestionNavigation(index)}
+                      className={`w-10 h-10 rounded-xl text-sm font-bold transition-all duration-200 hover:scale-110 border-2 flex items-center justify-center ${currentQuestion === index
+                        ? "bg-gradient-to-br from-blue-500 to-blue-600 text-white border-blue-400 shadow-lg shadow-blue-500/25 ring-2 ring-blue-400/30"
+                        : questionStatuses[q._id] === "answered"
+                          ? "bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-emerald-400 shadow-md shadow-emerald-500/20"
+                          : questionStatuses[q._id] === "mark-for-review"
+                            ? "bg-gradient-to-br from-amber-500 to-orange-500 text-white border-amber-400 shadow-md shadow-amber-500/20"
+                            : "bg-slate-800/80 hover:bg-slate-700 border-slate-600/50 hover:border-slate-500 text-slate-300"
+                        }`}
+                    >{index + 1}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Answer Panel */}
+              <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-5 lg:p-6 flex flex-col border border-slate-700/30 shadow-lg" style={{ height: '70vh' }}>
+                <div className="flex-1">
+                  <textarea
+                    className="w-full h-full p-4 bg-slate-900/60 text-white rounded-xl border border-slate-600/30 focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 focus:outline-none resize-none transition-all duration-200 placeholder-slate-500 text-sm leading-relaxed"
+                    value={answers[question._id] || ""}
+                    onChange={(e) => handleAnswerChange(question._id, e.target.value)}
+                    placeholder="Type your answer here..."
+                  />
+                </div>
+                <div className="flex gap-3 mt-5">
+                  <button onClick={handlePreviousQuestion} disabled={currentQuestion === 0} className="flex-1 flex items-center justify-center gap-2 bg-slate-800/80 hover:bg-slate-700/90 disabled:opacity-40 disabled:cursor-not-allowed text-white py-2.5 rounded-xl font-semibold transition-all duration-200 border border-slate-600/40">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>Previous
+                  </button>
+                  <button onClick={handleNextQuestion} disabled={currentQuestion === totalQuestions - 1} className="flex-1 flex items-center justify-center gap-2 bg-slate-800/80 hover:bg-slate-700/90 disabled:opacity-40 disabled:cursor-not-allowed text-white py-2.5 rounded-xl font-semibold transition-all duration-200 border border-slate-600/40">
+                    Next<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                  </button>
+                  <button onClick={handleSubmitClick} disabled={isSubmitting} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold transition-all duration-200 border ${isSubmitting ? 'bg-slate-700 text-slate-400 cursor-not-allowed border-slate-600' : 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white border-emerald-500/50 shadow-lg shadow-emerald-500/20'}`}>
+                    {isSubmitting ? 'Submitting...' : <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>Submit</>}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : question.kind === "coding" ? (
+            /* ═══════════ CODING LAYOUT ═══════════ */
+            <div className="grid grid-cols-1 lg:grid-cols-[45%_45%_7%] gap-4" style={{ height: '70vh' }}>
+              {/* Question Panel */}
+              <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-5 lg:p-6 overflow-y-auto h-full border border-slate-700/30 shadow-lg">
+                <div className="flex items-center justify-between mb-5">
+                  <div className="flex items-center gap-3">
+                    <span className="px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs font-bold tracking-wide">Q{currentQuestion + 1}</span>
+                    <span className="px-3 py-1.5 rounded-lg bg-slate-700/50 border border-slate-600/30 text-slate-300 text-xs font-semibold">{question.points} {question.points !== 1 ? "pts" : "pt"}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => handleAnswerChange(question._id, "")} className="px-3.5 py-1.5 bg-slate-700/60 hover:bg-slate-600/80 text-slate-300 hover:text-white rounded-lg text-xs font-semibold transition-all duration-200 border border-slate-600/40">Clear</button>
+                    <button
+                      onClick={() => {
+                        const currentStatus = questionStatuses[question._id];
+                        let newStatus;
+                        if (currentStatus === "mark-for-review") {
+                          const answer = answers[question._id];
+                          const hasAnswer = answer && answer.trim() !== "";
+                          newStatus = hasAnswer ? "answered" : "not-answered";
+                        } else { newStatus = "mark-for-review"; }
+                        setQuestionStatuses((prev) => ({ ...prev, [question._id]: newStatus }));
+                      }}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 border ${questionStatuses[question._id] === "mark-for-review" ? "bg-amber-500/20 text-amber-300 border-amber-500/30" : "bg-slate-700/60 text-slate-300 border-slate-600/40 hover:bg-slate-600/80"}`}
+                    >{questionStatuses[question._id] === "mark-for-review" ? "★ Marked" : "☆ Review"}</button>
+                  </div>
+                </div>
+                <h3 className="text-lg lg:text-xl font-semibold mb-5 text-slate-100 leading-relaxed">{question.text}</h3>
+
+                {question.guidelines && (
+                  <div className="bg-slate-700/30 p-4 rounded-xl mb-4 border border-slate-600/20">
+                    <h4 className="font-semibold text-slate-300 mb-2 text-sm flex items-center gap-2">
+                      <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                      Guidelines
+                    </h4>
+                    <p className="text-slate-400 text-sm leading-relaxed">{question.guidelines}</p>
+                  </div>
+                )}
+
+                {question.visibleTestCases && question.visibleTestCases.length > 0 && (
+                  <div className="bg-slate-700/30 p-4 rounded-xl mb-4 scrollbar-hide border border-slate-600/20" style={{ maxHeight: '16rem', overflowY: 'auto' }}>
+                    <div className="text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                      Test Cases
+                    </div>
+                    {question.visibleTestCases.map((tc, idx) => (
+                      <div key={idx} className="mb-3 last:mb-0 p-3 bg-slate-800/50 rounded-xl border border-slate-600/20">
+                        <div className="text-xs font-bold text-slate-400 mb-2">Case {idx + 1}</div>
+                        <div className="mb-1 text-xs font-semibold text-slate-400">Input:</div>
+                        <pre className="whitespace-pre-wrap text-slate-300 bg-slate-900/60 p-2.5 rounded-lg text-sm font-mono mb-2">{tc.input}</pre>
+                        <div className="mb-1 text-xs font-semibold text-slate-400">Output:</div>
+                        <pre className="whitespace-pre-wrap text-emerald-300 bg-slate-900/60 p-2.5 rounded-lg text-sm font-mono">{tc.output}</pre>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Code Editor Panel */}
+              <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-5 lg:p-6 flex flex-col border border-slate-700/30 shadow-lg" style={{ height: '70vh' }}>
                 <div className="flex-1">
                   <Judge0CodeEditor
                     testId={test._id}
@@ -1034,294 +1060,183 @@ const TakeTest = () => {
                     onSubmit={(res) => {/* optional hook */ }}
                   />
                 </div>
-                <div className="flex justify-between mt-4 gap-4">
-                  <button
-                    onClick={handlePreviousQuestion}
-                    disabled={currentQuestion === 0}
-                    className="flex-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
-                  >
-                    Previous
+                <div className="flex gap-3 mt-5">
+                  <button onClick={handlePreviousQuestion} disabled={currentQuestion === 0} className="flex-1 flex items-center justify-center gap-2 bg-slate-800/80 hover:bg-slate-700/90 disabled:opacity-40 disabled:cursor-not-allowed text-white py-2.5 rounded-xl font-semibold transition-all duration-200 border border-slate-600/40">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>Previous
                   </button>
-                  <button
-                    onClick={handleNextQuestion}
-                    disabled={currentQuestion === (test?.questions?.length || 0) - 1}
-                    className="flex-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
-                  >
-                    Next
+                  <button onClick={handleNextQuestion} disabled={currentQuestion === totalQuestions - 1} className="flex-1 flex items-center justify-center gap-2 bg-slate-800/80 hover:bg-slate-700/90 disabled:opacity-40 disabled:cursor-not-allowed text-white py-2.5 rounded-xl font-semibold transition-all duration-200 border border-slate-600/40">
+                    Next<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                   </button>
-                  <button
-                    onClick={handleSubmitClick}
-                    disabled={isSubmitting}
-                    className={`flex-1 ${isSubmitting ? 'bg-gray-600 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} text-white py-2 rounded-md font-semibold ${!isSubmitting ? 'cursor-pointer' : ''}`}
-                  >
-                    {isSubmitting ? 'Submitting Test...' : 'Submit Test'}
+                  <button onClick={handleSubmitClick} disabled={isSubmitting} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold transition-all duration-200 border ${isSubmitting ? 'bg-slate-700 text-slate-400 cursor-not-allowed border-slate-600' : 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white border-emerald-500/50 shadow-lg shadow-emerald-500/20'}`}>
+                    {isSubmitting ? 'Submitting...' : <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>Submit</>}
                   </button>
                 </div>
               </div>
 
-              <div className="bg-slate-800 rounded-lg p-6 flex flex-col gap-2 max-h-[calc(100vh-160px)] overflow-y-auto scrollbar-hide order-last" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              {/* Question Nav Strip */}
+              <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-4 flex flex-col gap-2 max-h-[calc(100vh-160px)] overflow-y-auto scrollbar-hide order-last border border-slate-700/30 shadow-lg">
                 <div className="flex flex-col gap-2 overflow-y-auto scrollbar-hide">
                   {test?.questions?.map((q, index) => (
-                    <button
-                      key={q._id}
-                      onClick={() => handleQuestionNavigation(index)}
-                      className={`w-8 min-w-[40px] h-12 rounded-md text-sm font-semibold cursor-pointer transition-all duration-200 hover:scale-105 border-2 ${currentQuestion === index
-                        ? "bg-blue-600 text-white border-blue-400 shadow-lg"
+                    <button key={q._id} onClick={() => handleQuestionNavigation(index)}
+                      className={`w-10 h-10 rounded-xl text-sm font-bold transition-all duration-200 hover:scale-110 border-2 flex items-center justify-center ${currentQuestion === index
+                        ? "bg-gradient-to-br from-blue-500 to-blue-600 text-white border-blue-400 shadow-lg shadow-blue-500/25 ring-2 ring-blue-400/30"
                         : questionStatuses[q._id] === "answered"
-                          ? "bg-green-600 text-white border-green-400 hover:border-green-300"
+                          ? "bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-emerald-400 shadow-md shadow-emerald-500/20"
                           : questionStatuses[q._id] === "mark-for-review"
-                            ? "bg-yellow-600 text-black border-yellow-400 hover:border-yellow-300"
-                            : "bg-slate-700 hover:bg-slate-600 border-slate-600 hover:border-slate-500"
+                            ? "bg-gradient-to-br from-amber-500 to-orange-500 text-white border-amber-400 shadow-md shadow-amber-500/20"
+                            : "bg-slate-800/80 hover:bg-slate-700 border-slate-600/50 hover:border-slate-500 text-slate-300"
                         }`}
-                    >
-                      {index + 1}
-                    </button>
+                    >{index + 1}</button>
                   ))}
                 </div>
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            /* ═══════════ MCQ LAYOUT ═══════════ */
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+              {/* Question + Options */}
               <div className="lg:col-span-2">
-                <div className="bg-slate-800 rounded-lg p-6">
-                  <div className="flex items-center gap-3 mb-4 justify-between">
-                    <span className="text-sm text-slate-400">
-                      Question {currentQuestion + 1}
-                    </span>
+                <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-5 lg:p-6 border border-slate-700/30 shadow-lg">
+                  <div className="flex items-center justify-between mb-5">
                     <div className="flex items-center gap-3">
+                      <span className="px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs font-bold tracking-wide">Q{currentQuestion + 1}</span>
+                      <span className="px-3 py-1.5 rounded-lg bg-slate-700/50 border border-slate-600/30 text-slate-300 text-xs font-semibold">{question.points} {question.points !== 1 ? "pts" : "pt"}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
                       <button
                         onClick={() => {
-                          if (question.kind === "mcq") {
-                            handleAnswerChange(question._id, undefined);
-                          } else if (false) { // MSQ removed
-                            handleAnswerChange(question._id, []);
-                          } else if (question.kind === "theory" || question.kind === "coding") {
-                            handleAnswerChange(question._id, "");
-                          }
+                          if (question.kind === "mcq") { handleAnswerChange(question._id, undefined); }
+                          else { handleAnswerChange(question._id, ""); }
                         }}
-                        className="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white rounded-md text-sm font-medium cursor-pointer transition-colors"
-                      >
-                        Clear Response
-                      </button>
+                        className="px-3.5 py-1.5 bg-slate-700/60 hover:bg-slate-600/80 text-slate-300 hover:text-white rounded-lg text-xs font-semibold transition-all duration-200 border border-slate-600/40"
+                      >Clear</button>
                       <button
                         onClick={() => {
                           const currentStatus = questionStatuses[question._id];
                           let newStatus;
-
                           if (currentStatus === "mark-for-review") {
-                            // When unmarking, check if question has an answer
                             const answer = answers[question._id];
                             let hasAnswer = false;
-                            if (question.kind === "mcq") {
-                              hasAnswer = answer !== undefined && answer !== null && answer !== "";
-                            } else if (false) { // MSQ removed
-                              hasAnswer = false;
-                            } else if (question.kind === "theory" || question.kind === "coding") {
-                              hasAnswer = answer && answer.trim() !== "";
-                            }
-
+                            if (question.kind === "mcq") { hasAnswer = answer !== undefined && answer !== null && answer !== ""; }
+                            else if (question.kind === "theory" || question.kind === "coding") { hasAnswer = answer && answer.trim() !== ""; }
                             newStatus = hasAnswer ? "answered" : "not-answered";
-                          } else {
-                            // When marking for review, set to mark-for-review
-                            newStatus = "mark-for-review";
-                          }
-
-                          setQuestionStatuses((prev) => ({
-                            ...prev,
-                            [question._id]: newStatus,
-                          }));
+                          } else { newStatus = "mark-for-review"; }
+                          setQuestionStatuses((prev) => ({ ...prev, [question._id]: newStatus }));
                         }}
-                        className={`px-3 py-1 rounded-md text-sm font-medium cursor-pointer transition-colors ${questionStatuses[question._id] === "mark-for-review"
-                          ? "bg-orange-600 text-white hover:bg-orange-700"
-                          : "bg-slate-700 hover:bg-slate-600"
-                          }`}
-                      >
-                        {questionStatuses[question._id] === "mark-for-review"
-                          ? "Unmark Review"
-                          : "Mark for Review"}
-                      </button>
-                      <div className="bg-slate-700 px-3 py-1 rounded-md text-sm">
-                        {question.points} point{question.points !== 1 ? "s" : ""}
-                      </div>
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 border ${questionStatuses[question._id] === "mark-for-review" ? "bg-amber-500/20 text-amber-300 border-amber-500/30" : "bg-slate-700/60 text-slate-300 border-slate-600/40 hover:bg-slate-600/80"}`}
+                      >{questionStatuses[question._id] === "mark-for-review" ? "★ Marked" : "☆ Review"}</button>
                     </div>
                   </div>
-                  <h3 className="text-xl font-semibold mb-6">{question.text}</h3>
+                  <h3 className="text-lg lg:text-xl font-semibold mb-6 text-slate-100 leading-relaxed">{question.text}</h3>
 
                   {question.kind === "mcq" && (
                     <div className="space-y-3">
                       {question.options?.map((option, index) => (
                         <label
                           key={index}
-                          className={`flex items-center p-4 rounded-lg cursor-pointer transition-colors ${answers[question._id] === index
-                            ? "bg-blue-600 text-white"
-                            : "bg-slate-700 hover:bg-slate-600"
+                          className={`flex items-center p-4 rounded-xl cursor-pointer transition-all duration-200 border-2 group ${answers[question._id] === index
+                            ? "bg-blue-500/15 text-white border-blue-500/40 shadow-md shadow-blue-500/10"
+                            : "bg-slate-800/40 hover:bg-slate-700/50 border-slate-600/20 hover:border-slate-500/40"
                             }`}
                         >
-                          <input
-                            type="radio"
-                            name={`question-${question._id}`}
-                            value={index}
-                            checked={answers[question._id] === index}
-                            onChange={() => handleAnswerChange(question._id, index)}
-                            className="mr-3"
-                          />
-                          <span>{option.text}</span>
+                          <div className={`w-8 h-8 rounded-lg border-2 flex items-center justify-center mr-4 flex-shrink-0 transition-all duration-200 text-sm font-bold ${answers[question._id] === index
+                            ? "bg-blue-500 border-blue-400 text-white" : "border-slate-500/50 text-slate-400 group-hover:border-slate-400"
+                            }`}>{String.fromCharCode(65 + index)}</div>
+                          <input type="radio" name={`question-${question._id}`} value={index} checked={answers[question._id] === index} onChange={() => handleAnswerChange(question._id, index)} className="sr-only" />
+                          <span className="text-sm lg:text-base leading-relaxed">{option.text}</span>
                         </label>
                       ))}
                     </div>
                   )}
 
-
                   {question.kind === "theory" && (
                     <>
                       {question.guidelines && (
-                        <div className="bg-slate-700 p-4 rounded-lg mb-4">
-                          <h4 className="font-semibold text-slate-300 mb-2">
-                            Guidelines:
-                          </h4>
-                          <p className="text-slate-400">{question.guidelines}</p>
+                        <div className="bg-slate-700/30 p-4 rounded-xl mb-4 border border-slate-600/20">
+                          <h4 className="font-semibold text-slate-300 mb-2 text-sm">Guidelines:</h4>
+                          <p className="text-slate-400 text-sm leading-relaxed">{question.guidelines}</p>
                         </div>
                       )}
-
                       {question.examples && question.examples.length > 0 && (
-                        <div className="bg-slate-700 p-4 rounded-lg mb-4 max-h-64 overflow-y-auto scrollbar-hide">
+                        <div className="bg-slate-700/30 p-4 rounded-xl mb-4 max-h-64 overflow-y-auto scrollbar-hide border border-slate-600/20">
                           {question.examples.map((example, idx) => (
-                            <div
-                              key={idx}
-                              className="mb-3 p-3 bg-slate-600 rounded"
-                            >
-                              <div className="mb-1 font-semibold text-slate-300">
-                                Example {idx + 1}:
-                              </div>
-                              <div className="mb-1 font-semibold text-slate-300">
-                                Input:
-                              </div>
-                              <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
-                                {example.input}
-                              </pre>
-                              <div className="mt-2 mb-1 font-semibold text-slate-300">
-                                Output:
-                              </div>
-                              <pre className="whitespace-pre-wrap text-slate-400 bg-slate-800 p-2 rounded">
-                                {example.output}
-                              </pre>
+                            <div key={idx} className="mb-3 last:mb-0 p-3 bg-slate-800/50 rounded-xl border border-slate-600/20">
+                              <div className="text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Example {idx + 1}</div>
+                              <div className="mb-1 text-xs font-semibold text-slate-400">Input:</div>
+                              <pre className="whitespace-pre-wrap text-slate-300 bg-slate-900/60 p-2.5 rounded-lg text-sm font-mono mb-2">{example.input}</pre>
+                              <div className="mb-1 text-xs font-semibold text-slate-400">Output:</div>
+                              <pre className="whitespace-pre-wrap text-emerald-300 bg-slate-900/60 p-2.5 rounded-lg text-sm font-mono">{example.output}</pre>
                             </div>
                           ))}
                         </div>
                       )}
-
                       <textarea
-                        className="w-full p-4 bg-slate-800 text-white rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none resize-none"
+                        className="w-full p-4 bg-slate-900/60 text-white rounded-xl border border-slate-600/30 focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 focus:outline-none resize-none transition-all duration-200 placeholder-slate-500 text-sm leading-relaxed"
                         style={{ height: "200px" }}
                         value={answers[question._id] || ""}
                         onChange={(e) => handleAnswerChange(question._id, e.target.value)}
-                        placeholder="Enter your answer here..."
+                        placeholder="Type your answer here..."
                       />
                     </>
                   )}
                 </div>
               </div>
 
+              {/* Navigation Sidebar */}
               <div className="lg:col-span-1">
-                <div className="bg-slate-800 rounded-lg p-6">
-                  <h3 className="font-semibold mb-4">Navigation</h3>
+                <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-5 lg:p-6 border border-slate-700/30 shadow-lg">
+                  <h3 className="font-bold mb-4 text-sm uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
+                    Questions
+                  </h3>
 
-                  <div
-                    className="grid grid-cols-5 gap-2 mb-6 scrollbar-hide"
-                    style={{ maxHeight: "21vh", overflowY: "auto" }}
-                  >
+                  <div className="grid grid-cols-5 gap-2 overflow-y-auto scrollbar-hide" style={{ maxHeight: "21vh" }}>
                     {test?.questions?.map((q, index) => (
-                      <button
-                        key={q._id}
-                        onClick={() => handleQuestionNavigation(index)}
-                        className={`w-8 h-8 rounded-lg text-sm font-semibold cursor-pointer transition-all duration-200 hover:scale-105 border-2 ${currentQuestion === index
-                          ? "bg-blue-600 text-white border-blue-400 shadow-lg"
+                      <button key={q._id} onClick={() => handleQuestionNavigation(index)}
+                        className={`w-9 h-9 rounded-xl text-sm font-bold transition-all duration-200 hover:scale-110 border-2 flex items-center justify-center ${currentQuestion === index
+                          ? "bg-gradient-to-br from-blue-500 to-blue-600 text-white border-blue-400 shadow-lg shadow-blue-500/25 ring-2 ring-blue-400/30"
                           : questionStatuses[q._id] === "answered"
-                            ? "bg-green-600 text-white border-green-400 hover:border-green-300"
+                            ? "bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-emerald-400 shadow-md shadow-emerald-500/20"
                             : questionStatuses[q._id] === "mark-for-review"
-                              ? "bg-yellow-600 text-black border-yellow-400 hover:border-yellow-300"
-                              : "bg-slate-700 hover:bg-slate-600 border-slate-600 hover:border-slate-500"
+                              ? "bg-gradient-to-br from-amber-500 to-orange-500 text-white border-amber-400 shadow-md shadow-amber-500/20"
+                              : "bg-slate-800/80 hover:bg-slate-700 border-slate-600/50 hover:border-slate-500 text-slate-300"
                           }`}
-                      >
-                        {index + 1}
-                      </button>
+                      >{index + 1}</button>
                     ))}
                   </div>
 
-                  <div className="space-y-3">
-                    <button
-                      onClick={handlePreviousQuestion}
-                      disabled={currentQuestion === 0}
-                      className="w-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
-                    >
-                      Previous
-                    </button>
+                  {/* Legend */}
+                  <div className="flex flex-wrap gap-3 mt-4 pt-4 border-t border-slate-700/40">
+                    <div className="flex items-center gap-1.5 text-xs text-slate-400"><div className="w-3 h-3 rounded bg-blue-500"></div> Current</div>
+                    <div className="flex items-center gap-1.5 text-xs text-slate-400"><div className="w-3 h-3 rounded bg-emerald-500"></div> Answered</div>
+                    <div className="flex items-center gap-1.5 text-xs text-slate-400"><div className="w-3 h-3 rounded bg-amber-500"></div> Review</div>
+                    <div className="flex items-center gap-1.5 text-xs text-slate-400"><div className="w-3 h-3 rounded bg-slate-700"></div> Unanswered</div>
+                  </div>
 
-                    <button
-                      onClick={handleNextQuestion}
-                      disabled={currentQuestion === (test?.questions?.length || 0) - 1}
-                      className="w-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-md cursor-pointer"
-                    >
-                      Next
+                  {/* Action Buttons */}
+                  <div className="flex flex-col sm:flex-row gap-3 mt-5">
+                    <button onClick={handlePreviousQuestion} disabled={currentQuestion === 0} className="flex-1 flex items-center justify-center gap-2 bg-slate-800/80 hover:bg-slate-700/90 disabled:opacity-40 disabled:cursor-not-allowed text-white py-2.5 rounded-xl font-semibold transition-all duration-200 border border-slate-600/40">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>Previous
                     </button>
-
-                    <button
-                      onClick={handleSubmitClick}
-                      disabled={isSubmitting}
-                      className={`w-full ${isSubmitting ? 'bg-gray-600 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} text-white py-2 rounded-md font-semibold ${!isSubmitting ? 'cursor-pointer' : ''}`}
-                    >
-                      {isSubmitting ? 'Submitting Test...' : 'Submit Test'}
+                    <button onClick={handleNextQuestion} disabled={currentQuestion === totalQuestions - 1} className="flex-1 flex items-center justify-center gap-2 bg-slate-800/80 hover:bg-slate-700/90 disabled:opacity-40 disabled:cursor-not-allowed text-white py-2.5 rounded-xl font-semibold transition-all duration-200 border border-slate-600/40">
+                      Next<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                    </button>
+                    <button onClick={handleSubmitClick} disabled={isSubmitting} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold transition-all duration-200 border ${isSubmitting ? 'bg-slate-700 text-slate-400 cursor-not-allowed border-slate-600' : 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white border-emerald-500/50 shadow-lg shadow-emerald-500/20'}`}>
+                      {isSubmitting ? 'Submitting...' : <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>Submit</>}
                     </button>
                   </div>
 
-                  <div className="mt-6 pt-4 border-t border-slate-700">
-                    <div className="flex justify-between text-sm text-slate-400 mb-2">
-                      <span>Answered</span>
-                      <span>
-                        {
-                          test.questions.filter((q) => {
-                            const answer = answers[q._id];
-                            if (q.kind === "mcq") {
-                              return (
-                                answer !== undefined &&
-                                answer !== null &&
-                                answer !== ""
-                              );
-                            } else if (false) { // MSQ removed
-                              return false;
-                            } else if (q.kind === "theory" || q.kind === "coding") {
-                              return answer && answer.trim() !== "";
-                            }
-                            return false;
-                          }).length
-                        }
-                        /{test?.questions?.length || 0}
-                      </span>
+                  {/* Progress */}
+                  <div className="mt-5 pt-4 border-t border-slate-700/40">
+                    <div className="flex justify-between text-xs text-slate-400 mb-2 font-semibold">
+                      <span>Progress</span>
+                      <span className="text-slate-300">{answeredCount}/{totalQuestions}</span>
                     </div>
-                    <div className="w-full bg-slate-700 rounded-full h-2">
-                      <div
-                        className="bg-blue-600 h-2 rounded-full transition-all"
-                        style={{
-                          width: `${(test.questions.filter((q) => {
-                            const answer = answers[q._id];
-                            if (q.kind === "mcq") {
-                              return (
-                                answer !== undefined &&
-                                answer !== null &&
-                                answer !== ""
-                              );
-                            } else if (false) { // MSQ removed
-                              return false;
-                            } else if (q.kind === "theory" || q.kind === "coding") {
-                              return answer && answer.trim() !== "";
-                            }
-                            return false;
-                          }).length /
-                            (test?.questions?.length || 0)) *
-                            100
-                            }%`,
-                        }}
-                      ></div>
+                    <div className="w-full bg-slate-700/50 rounded-full h-2.5 overflow-hidden">
+                      <div className="h-2.5 rounded-full transition-all duration-500 ease-out" style={{
+                        width: `${progressPercent}%`,
+                        background: progressPercent === 100 ? 'linear-gradient(90deg, #10b981, #34d399)' : 'linear-gradient(90deg, #3b82f6, #60a5fa)',
+                      }}></div>
                     </div>
                   </div>
                 </div>
@@ -1344,28 +1259,33 @@ const TakeTest = () => {
           initialViolationCount={proctoringData.violationCount}
         />
 
+        {/* ═══════════ SUBMIT CONFIRMATION MODAL ═══════════ */}
         {showSubmitConfirmModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
-            <div className="bg-slate-800 rounded-lg p-8 max-w-md w-full text-center">
-              <h2 className="text-2xl font-bold mb-6 text-white">
-                Confirm Submission
-              </h2>
-              <p className="mb-8 text-white text-lg">
-                Do you want to submit the test?
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-slate-800/95 backdrop-blur-xl rounded-2xl p-8 max-w-md w-full text-center border border-slate-700/50 shadow-2xl">
+              <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+                <svg className="w-8 h-8 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+              <h2 className="text-2xl font-bold mb-3 text-white">Submit Test?</h2>
+              <p className="text-slate-400 mb-3 text-sm">
+                You have answered <span className="text-white font-semibold">{answeredCount}</span> out of <span className="text-white font-semibold">{totalQuestions}</span> questions.
               </p>
-              <div className="flex justify-center gap-6">
-                <button
-                  onClick={handleConfirmSubmit}
-                  disabled={isSubmitting}
-                  className={`px-6 py-3 rounded-md font-semibold ${isSubmitting ? 'bg-gray-600 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} text-white`}
-                >
-                  {isSubmitting ? 'Submitting...' : 'Confirm'}
+              {answeredCount < totalQuestions && (
+                <p className="text-amber-400/80 text-xs mb-6 bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20">
+                  ⚠ {totalQuestions - answeredCount} question{totalQuestions - answeredCount !== 1 ? 's' : ''} left unanswered
+                </p>
+              )}
+              {answeredCount >= totalQuestions && <div className="mb-6"></div>}
+              <div className="flex gap-3">
+                <button onClick={handleCancelSubmit} className="flex-1 px-6 py-3 rounded-xl font-semibold bg-slate-700/80 hover:bg-slate-600 text-white border border-slate-600/50 transition-all duration-200">
+                  Go Back
                 </button>
-                <button
-                  onClick={handleCancelSubmit}
-                  className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-md font-semibold"
+                <button onClick={handleConfirmSubmit} disabled={isSubmitting}
+                  className={`flex-1 px-6 py-3 rounded-xl font-bold transition-all duration-200 border ${isSubmitting ? 'bg-slate-700 text-slate-400 cursor-not-allowed border-slate-600' : 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white border-emerald-500/50 shadow-lg shadow-emerald-500/20'}`}
                 >
-                  Cancel
+                  {isSubmitting ? 'Submitting...' : 'Confirm Submit'}
                 </button>
               </div>
             </div>
@@ -1376,3 +1296,4 @@ const TakeTest = () => {
 };
 
 export default TakeTest;
+

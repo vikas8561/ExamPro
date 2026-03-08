@@ -427,4 +427,44 @@ router.get("/:id/stats", authenticateToken, requireRole("admin"), async (req, re
   }
 });
 
+// Download test results (admin only) - returns student names and scores for CSV export
+router.get("/:id/results/download", authenticateToken, requireRole("admin"), async (req, res, next) => {
+  try {
+    const test = await Test.findById(req.params.id).select("title");
+
+    if (!test) {
+      return res.status(404).json({ message: "Test not found" });
+    }
+
+    const TestSubmission = require("../models/TestSubmission");
+
+    // Get all submissions for this test with student names
+    const submissions = await TestSubmission.find({ testId: req.params.id })
+      .populate("userId", "name email")
+      .select("userId totalScore maxScore submittedAt")
+      .sort({ "userId.name": 1 })
+      .lean();
+
+    // Build results array
+    const results = submissions
+      .filter(sub => sub.userId) // Filter out submissions with deleted users
+      .map(sub => ({
+        name: sub.userId.name,
+        email: sub.userId.email,
+        totalScore: sub.totalScore || 0,
+        maxScore: sub.maxScore || 0,
+        submittedAt: sub.submittedAt
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name)); // Sort alphabetically by name
+
+    res.json({
+      testTitle: test.title,
+      totalStudents: results.length,
+      results
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 module.exports = router;

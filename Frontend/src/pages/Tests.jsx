@@ -27,6 +27,7 @@ export default function Tests() {
     hasNextPage: false,
     hasPrevPage: false
   });
+  const [downloadingResults, setDownloadingResults] = useState({});
   const searchDebounceRef = useRef(null);
   const isInitialMount = useRef(true);
   const nav = useNavigate();
@@ -310,6 +311,59 @@ export default function Tests() {
 
   // Tests are already filtered by backend, no need for client-side filtering
   const filteredTests = tests;
+
+  // Download test results as CSV
+  const downloadTestResults = async (testId, testTitle) => {
+    setDownloadingResults(prev => ({ ...prev, [testId]: true }));
+    try {
+      const data = await apiRequest(`/tests/${testId}/results/download`);
+
+      if (!data.results || data.results.length === 0) {
+        alert("No results available for this test yet.");
+        return;
+      }
+
+      // Build CSV content
+      const headers = ["S.No.", "Student Name", "Marks Obtained", "Maximum Marks", "Percentage"];
+      const rows = data.results.map((r, i) => {
+        const percentage = r.maxScore > 0
+          ? ((r.totalScore / r.maxScore) * 100).toFixed(2) + "%"
+          : "0.00%";
+        return [
+          i + 1,
+          `"${r.name.replace(/"/g, '""')}"`,  // Escape quotes in names
+          r.totalScore,
+          r.maxScore,
+          percentage
+        ];
+      });
+
+      const csvContent = [
+        headers.join(","),
+        ...rows.map(row => row.join(","))
+      ].join("\n");
+
+      // Add BOM for proper Excel encoding
+      const BOM = "\uFEFF";
+      const blob = new Blob([BOM + csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+
+      // Trigger download
+      const link = document.createElement("a");
+      const safeName = testTitle.replace(/[^a-zA-Z0-9 ]/g, "").replace(/\s+/g, "_");
+      link.href = url;
+      link.download = `${safeName}_Results.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Error downloading results:", err);
+      alert("Failed to download results. " + (err.message || ""));
+    } finally {
+      setDownloadingResults(prev => ({ ...prev, [testId]: false }));
+    }
+  };
 
   return (
     <div
@@ -605,37 +659,68 @@ export default function Tests() {
               </div>
             </div>
 
-            <div className="relative z-10 flex justify-between gap-2.5 mt-auto pt-4" style={{ borderTop: "1px solid rgba(148, 163, 184, 0.2)" }}>
+            <div className="relative z-10 flex flex-col gap-2.5 mt-auto pt-4" style={{ borderTop: "1px solid rgba(148, 163, 184, 0.2)" }}>
+              {/* Download Results Button */}
               <button
-                onClick={() => nav(`/admin/tests/create?id=${t._id}`)}
-                className="px-4 py-2 bg-gradient-to-r from-slate-700/80 to-slate-800/80 hover:from-slate-600/90 hover:to-slate-700/90 text-gray-100 rounded-lg text-xs font-semibold border border-slate-600/50 shadow-md hover:shadow-lg transition-all duration-300 hover:scale-105 flex-1 text-center flex items-center justify-center gap-1.5"
+                onClick={() => downloadTestResults(t._id, t.title)}
+                disabled={(!t.participants || t.participants === 0) || downloadingResults[t._id]}
+                className={`w-full px-4 py-2.5 rounded-lg text-xs font-semibold border shadow-md transition-all duration-300 flex items-center justify-center gap-2 ${(!t.participants || t.participants === 0)
+                    ? 'bg-slate-800/40 text-slate-500 border-slate-700/30 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-emerald-600/20 to-emerald-700/20 hover:from-emerald-600/30 hover:to-emerald-700/30 text-emerald-300 border-emerald-500/30 hover:shadow-lg hover:scale-[1.02]'
+                  }`}
+                title={(!t.participants || t.participants === 0) ? "No results available — test has no submissions yet" : `Download results for ${t.participants} student(s)`}
               >
-                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-                Edit
+                {downloadingResults[t._id] ? (
+                  <>
+                    <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Downloading...
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Download Results {t.participants > 0 ? `(${t.participants})` : ''}
+                  </>
+                )}
               </button>
-              <button
-                onClick={() => {
-                  setSelectedTest(t._id);
-                  setShowAssignModal(true);
-                }}
-                className="px-4 py-2 bg-gradient-to-r from-blue-600/20 to-blue-700/20 hover:from-blue-600/30 hover:to-blue-700/30 text-blue-300 rounded-lg text-xs font-semibold border border-blue-500/30 shadow-md hover:shadow-lg transition-all duration-300 hover:scale-105 flex-1 text-center flex items-center justify-center gap-1.5"
-              >
-                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Assign
-              </button>
-              <button
-                onClick={() => deleteTest(t._id)}
-                className="px-4 py-2 bg-gradient-to-r from-red-600/20 to-red-700/20 hover:from-red-600/30 hover:to-red-700/30 text-red-300 rounded-lg text-xs font-semibold border border-red-500/30 shadow-md hover:shadow-lg transition-all duration-300 hover:scale-105 flex-1 text-center flex items-center justify-center gap-1.5"
-              >
-                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-                Delete
-              </button>
+
+              {/* Action Buttons Row */}
+              <div className="flex justify-between gap-2.5">
+                <button
+                  onClick={() => nav(`/admin/tests/create?id=${t._id}`)}
+                  className="px-4 py-2 bg-gradient-to-r from-slate-700/80 to-slate-800/80 hover:from-slate-600/90 hover:to-slate-700/90 text-gray-100 rounded-lg text-xs font-semibold border border-slate-600/50 shadow-md hover:shadow-lg transition-all duration-300 hover:scale-105 flex-1 text-center flex items-center justify-center gap-1.5"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  Edit
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedTest(t._id);
+                    setShowAssignModal(true);
+                  }}
+                  className="px-4 py-2 bg-gradient-to-r from-blue-600/20 to-blue-700/20 hover:from-blue-600/30 hover:to-blue-700/30 text-blue-300 rounded-lg text-xs font-semibold border border-blue-500/30 shadow-md hover:shadow-lg transition-all duration-300 hover:scale-105 flex-1 text-center flex items-center justify-center gap-1.5"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Assign
+                </button>
+                <button
+                  onClick={() => deleteTest(t._id)}
+                  className="px-4 py-2 bg-gradient-to-r from-red-600/20 to-red-700/20 hover:from-red-600/30 hover:to-red-700/30 text-red-300 rounded-lg text-xs font-semibold border border-red-500/30 shadow-md hover:shadow-lg transition-all duration-300 hover:scale-105 flex-1 text-center flex items-center justify-center gap-1.5"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Delete
+                </button>
+              </div>
             </div>
           </div>
         ))}
