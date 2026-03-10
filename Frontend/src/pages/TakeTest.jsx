@@ -856,7 +856,7 @@ const TakeTest = () => {
           }
         `}
       </style>
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white p-4 lg:p-6" style={{ fontSize: `${zoomLevel}%` }}>
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white p-4 lg:p-6" style={{ zoom: zoomLevel / 100 }}>
         <div className="max-w-7xl mx-auto">
 
           {/* ═══════════ HEADER BAR ═══════════ */}
