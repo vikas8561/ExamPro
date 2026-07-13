@@ -121,6 +121,7 @@ router.get("/profiles", authenticateToken, requireRole("Admin"), async (req, res
           studentCategory: 1,
           profileImageSaved: 1,
           faceDescriptorSaved: 1,
+          isBlocked: 1,
           createdAt: 1,
           updatedAt: 1,
           _id: 1
@@ -261,10 +262,18 @@ router.post("/reset-passwords/all", authenticateToken, requireRole("admin"), asy
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash("12345", salt);
 
-    // Update all users with the hashed password
+    // Update all users with the hashed password and force password change
     const result = await User.updateMany(
       {}, // Target ALL users
-      { password: hashedPassword }
+      {
+        $set: {
+          password: hashedPassword,
+          mustChangePassword: true,
+          isBlocked: false,
+          failedLoginAttempts: 0,
+          failedLoginWindow: null
+        }
+      }
     );
 
     res.json({
@@ -288,11 +297,49 @@ router.post("/:id/reset-password", authenticateToken, requireRole("Admin"), asyn
     // Reset password to default "12345"
     // The pre-save hook will hash it automatically
     user.password = "12345";
+    user.mustChangePassword = true;
+    // Also unblock the user and reset failed attempts (admin reset implies user should be able to login)
+    user.isBlocked = false;
+    user.failedLoginAttempts = 0;
+    user.failedLoginWindow = null;
     await user.save();
 
     res.json({
       message: "Password reset successfully. Default password is now: 12345"
     });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Unblock a user (admin only)
+router.post("/:id/unblock", authenticateToken, requireRole("Admin"), async (req, res) => {
+  try {
+    const userId = req.params.id;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (!user.isBlocked) {
+      return res.status(400).json({ message: "User is not blocked" });
+    }
+
+    // Unblock user and reset failed login counters
+    await User.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          isBlocked: false,
+          failedLoginAttempts: 0,
+          failedLoginWindow: null
+        }
+      }
+    );
+
+    console.log(`✅ User unblocked by admin: ${user.email}`);
+    res.json({ message: `User ${user.name} has been unblocked successfully.` });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -332,7 +379,7 @@ router.post("/", authenticateToken, requireRole("Admin"), async (req, res) => {
     // Plain password (not hashed)
     const password = "12345";
 
-    const userData = { name, email, password, role };
+    const userData = { name, email, password, role, mustChangePassword: true };
     if (role === "Student") {
       userData.studentCategory = studentCategory;
     }
@@ -470,7 +517,8 @@ router.post("/bulk", authenticateToken, requireRole("Admin"), upload.single("fil
             name: userData.name,
             email: userData.email,
             password,
-            role
+            role,
+            mustChangePassword: true
           };
 
           if (role === "Student") {
@@ -531,7 +579,8 @@ router.post("/bulk", authenticateToken, requireRole("Admin"), upload.single("fil
                 name: userData.name,
                 email: userData.email,
                 password,
-                role
+                role,
+                mustChangePassword: true
               };
 
               if (role === "Student") {

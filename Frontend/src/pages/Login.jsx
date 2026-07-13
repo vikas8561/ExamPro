@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { API_BASE_URL } from '../config/api';
-import { Eye, EyeOff, Mail, Lock, Loader2, AlertCircle, Shield } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, Loader2, AlertCircle, Shield, KeyRound } from 'lucide-react';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -11,6 +11,14 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showForgotModal, setShowForgotModal] = useState(false);
+  // Forced password change modal state
+  const [showForcePasswordModal, setShowForcePasswordModal] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [changePasswordLoading, setChangePasswordLoading] = useState(false);
+  const [changePasswordError, setChangePasswordError] = useState('');
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -103,6 +111,13 @@ export default function Login() {
           localStorage.removeItem('rememberedPassword');
         }
 
+        // Check if user must change password before proceeding
+        if (data.mustChangePassword) {
+          setShowForcePasswordModal(true);
+          setLoading(false);
+          return;
+        }
+
         // Redirect based on role
         if (data.user.role === 'Admin') {
           navigate('/admin');
@@ -113,8 +128,9 @@ export default function Login() {
         } else {
           setError('Invalid user role');
         }
-      } else if (response.status === 403 && data.message === 'Invalid or expired session') {
-        setError('You have been logged out from another session. Please login again.');
+      } else if (response.status === 403) {
+        // Handle blocked/lockout messages from server
+        setError(data.message || 'Access denied.');
       } else {
         setError(data.message || 'Invalid email or password');
       }
@@ -122,6 +138,64 @@ export default function Login() {
       setError('Login failed. Please try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Handle forced password change
+  const handleForcePasswordChange = async (e) => {
+    e.preventDefault();
+    setChangePasswordLoading(true);
+    setChangePasswordError('');
+
+    if (newPassword !== confirmNewPassword) {
+      setChangePasswordError('Passwords do not match.');
+      setChangePasswordLoading(false);
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setChangePasswordError('Password must be at least 6 characters long.');
+      setChangePasswordLoading(false);
+      return;
+    }
+
+    if (newPassword === '12345') {
+      setChangePasswordError('You cannot use the default password. Please choose a different password.');
+      setChangePasswordLoading(false);
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE_URL}/auth/force-change-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ newPassword, confirmPassword: confirmNewPassword }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        // Password changed successfully, now redirect
+        setShowForcePasswordModal(false);
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        if (user.role === 'Admin') {
+          navigate('/admin');
+        } else if (user.role === 'Student') {
+          navigate('/student');
+        } else if (user.role === 'Mentor') {
+          navigate('/mentor');
+        }
+      } else {
+        setChangePasswordError(data.message || 'Failed to change password.');
+      }
+    } catch (err) {
+      setChangePasswordError('An error occurred. Please try again.');
+    } finally {
+      setChangePasswordLoading(false);
     }
   };
 
@@ -313,6 +387,118 @@ export default function Login() {
         </div>
       )}
 
+      {/* Forced Password Change Modal — Unclosable */}
+      {showForcePasswordModal && (
+        <div className="fixed inset-0 bg-slate-900/98 z-[200] flex items-center justify-center p-4" onKeyDown={(e) => e.key === 'Escape' && e.preventDefault()}>
+          <div className="relative w-full max-w-md bg-gradient-to-b from-slate-800 to-slate-900 backdrop-blur-xl rounded-3xl shadow-2xl border border-slate-700/50 p-8 transform transition-all duration-300 animate-slide-in overflow-hidden">
+            {/* Top accent gradient line */}
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 via-orange-500 to-red-500"></div>
+
+            {/* Modal Content */}
+            <div className="text-center">
+              {/* Icon with glow */}
+              <div className="relative mx-auto w-20 h-20 mb-6">
+                <div className="absolute inset-0 rounded-2xl bg-amber-500/20 blur-xl"></div>
+                <div className="relative w-full h-full rounded-2xl bg-gradient-to-br from-amber-500/30 to-orange-500/30 flex items-center justify-center border border-amber-400/40">
+                  <KeyRound className="w-10 h-10 text-amber-400" />
+                </div>
+              </div>
+
+              {/* Title */}
+              <h3 className="text-2xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent mb-2">
+                Change Your Password
+              </h3>
+              <p className="text-gray-400 text-sm mb-6">
+                You must set a new password before continuing. The default password cannot be used.
+              </p>
+
+              {/* Form */}
+              <form onSubmit={handleForcePasswordChange} className="space-y-4 text-left">
+                {/* New Password */}
+                <div className="group">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">New Password</label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <Lock className="h-5 w-5 text-gray-400 group-focus-within:text-amber-400 transition-colors" />
+                    </div>
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="w-full pl-10 pr-12 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all duration-200 hover:border-slate-500"
+                      style={{ backgroundColor: 'rgba(51, 65, 85, 0.5)' }}
+                      placeholder="Enter new password"
+                      required
+                      minLength={6}
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-white transition-colors"
+                    >
+                      {showNewPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Confirm Password */}
+                <div className="group">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Confirm Password</label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <Lock className="h-5 w-5 text-gray-400 group-focus-within:text-amber-400 transition-colors" />
+                    </div>
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      value={confirmNewPassword}
+                      onChange={(e) => setConfirmNewPassword(e.target.value)}
+                      className="w-full pl-10 pr-12 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all duration-200 hover:border-slate-500"
+                      style={{ backgroundColor: 'rgba(51, 65, 85, 0.5)' }}
+                      placeholder="Confirm new password"
+                      required
+                      minLength={6}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-white transition-colors"
+                    >
+                      {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Error Message */}
+                {changePasswordError && (
+                  <div className="relative overflow-hidden bg-red-500/10 border border-red-500/50 rounded-lg p-3 animate-slide-in">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 text-red-400 flex-shrink-0" />
+                      <p className="text-red-400 text-sm">{changePasswordError}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Submit Button */}
+                <button
+                  type="submit"
+                  disabled={changePasswordLoading}
+                  className="w-full mt-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 disabled:from-gray-600 disabled:to-gray-700 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98] disabled:transform-none shadow-lg shadow-amber-500/25 disabled:shadow-none flex items-center justify-center gap-2"
+                >
+                  {changePasswordLoading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span>Changing Password...</span>
+                    </>
+                  ) : (
+                    <span>Set New Password</span>
+                  )}
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Custom CSS for animations and autocomplete styling */}
       <style>{`
         @keyframes blob {

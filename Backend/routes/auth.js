@@ -8,6 +8,10 @@ const User = require("../models/User");
 const { generateToken, authenticateToken, requireRole } = require("../middleware/auth");
 const { sendEmailImmediate } = require("../services/emailService");
 
+// In-memory store for admin lockout (30-min cooldown after 3 failed attempts)
+// Key: email (lowercase), Value: Date when lockout expires
+const adminLockout = new Map();
+
 // Email service is now in Backend/services/emailService.js
 
 // Login endpoint
@@ -15,28 +19,94 @@ router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Find user by email - only select fields needed for login (exclude large fields like profileImage)
-    const user = await User.findOne({ email }).select('_id email password role name studentCategory');
+    // Find user by email - include lockout fields
+    const user = await User.findOne({ email }).select('_id email password role name studentCategory isBlocked failedLoginAttempts failedLoginWindow mustChangePassword');
     if (!user) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    // Check password
+    // --- LOCKOUT CHECKS ---
+
+    // Check if Student/Mentor is permanently blocked
+    if (user.role !== 'Admin' && user.isBlocked) {
+      return res.status(403).json({ message: "Your account has been blocked. Please contact your administrator." });
+    }
+
+    // Check if Admin is in 30-min cooldown (in-memory)
+    if (user.role === 'Admin') {
+      const lockoutExpiry = adminLockout.get(email.toLowerCase());
+      if (lockoutExpiry && lockoutExpiry > new Date()) {
+        return res.status(403).json({ message: "Access denied." });
+      }
+      // Clear expired lockout entry
+      if (lockoutExpiry) {
+        adminLockout.delete(email.toLowerCase());
+      }
+    }
+
+    // --- PASSWORD VERIFICATION ---
+
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
+      // --- HANDLE FAILED ATTEMPT ---
+      const now = new Date();
+      const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
+
+      // Check if the current failed attempt window is still valid (within 5 min)
+      let currentAttempts;
+      if (user.failedLoginWindow && user.failedLoginWindow > fiveMinutesAgo) {
+        // Within the 5-min window, increment
+        currentAttempts = (user.failedLoginAttempts || 0) + 1;
+      } else {
+        // Window expired or first attempt — start fresh
+        currentAttempts = 1;
+      }
+
+      // Update failed attempt tracking
+      const updateFields = {
+        failedLoginAttempts: currentAttempts,
+        failedLoginWindow: currentAttempts === 1 ? now : user.failedLoginWindow
+      };
+
+      // Check if threshold reached (3 attempts)
+      if (currentAttempts >= 3) {
+        if (user.role === 'Admin') {
+          // Admin: 30-min in-memory cooldown
+          adminLockout.set(email.toLowerCase(), new Date(now.getTime() + 30 * 60 * 1000));
+          // Reset counters in DB (cooldown is in-memory)
+          updateFields.failedLoginAttempts = 0;
+          updateFields.failedLoginWindow = null;
+          await User.updateOne({ _id: user._id }, { $set: updateFields });
+          return res.status(403).json({ message: "Access denied." });
+        } else {
+          // Student/Mentor: permanent block
+          updateFields.isBlocked = true;
+          await User.updateOne({ _id: user._id }, { $set: updateFields });
+          return res.status(403).json({ message: "Your account has been blocked. Please contact your administrator." });
+        }
+      }
+
+      await User.updateOne({ _id: user._id }, { $set: updateFields });
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    // Generate JWT token
+    // --- SUCCESSFUL LOGIN ---
+
+    // Reset failed login counters on successful login
     const token = generateToken(user);
 
-    // Update activeSessions using updateOne (much faster than save - doesn't load full document or run hooks)
     await User.updateOne(
       { _id: user._id },
-      { $set: { activeSessions: [token] } }
+      {
+        $set: {
+          activeSessions: [token],
+          failedLoginAttempts: 0,
+          failedLoginWindow: null
+        }
+      }
     );
 
-    // Return user without password
+    // Return user without sensitive fields
     const userResponse = {
       _id: user._id,
       email: user.email,
@@ -48,6 +118,7 @@ router.post("/login", async (req, res) => {
     res.json({
       user: userResponse,
       token,
+      mustChangePassword: user.mustChangePassword || false,
       message: "Login successful"
     });
   } catch (err) {
@@ -76,6 +147,50 @@ router.post("/logout", async (req, res) => {
     }
 
     res.json({ message: "Logout successful" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Force change password endpoint (for users who must change default password)
+router.post("/force-change-password", authenticateToken, async (req, res) => {
+  try {
+    const { newPassword, confirmPassword } = req.body;
+
+    if (!newPassword || !confirmPassword) {
+      return res.status(400).json({ message: "New password and confirm password are required" });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ message: "Passwords do not match" });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters long" });
+    }
+
+    // Prevent setting the default password again
+    if (newPassword === "12345") {
+      return res.status(400).json({ message: "You cannot use the default password. Please choose a different password." });
+    }
+
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Hash the new password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    // Update password and clear mustChangePassword flag
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { password: hashedPassword, mustChangePassword: false } }
+    );
+
+    console.log('✅ Forced password change completed for user:', user.email);
+    res.json({ message: "Password changed successfully" });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

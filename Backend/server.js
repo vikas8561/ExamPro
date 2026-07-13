@@ -312,10 +312,12 @@ app.get("/memory", authenticateToken, requireRole("Admin"), (req, res) => {
   });
 });
 
-// ✅ Rate Limiting - prevent brute-force attacks
+// ✅ Rate Limiting - safety net against automated attacks
+// Note: Per-user lockout (3 wrong attempts in 5 min → block) is handled in auth.js
+// This IP-based limiter is just a fallback for extreme brute-force attacks
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 login attempts per 15 minutes per IP
+  max: 30, // 30 login attempts per 15 minutes per IP (relaxed - per-user lockout handles security)
   message: { message: "Too many login attempts. Please try again after 15 minutes." },
   standardHeaders: true,
   legacyHeaders: false,

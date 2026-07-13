@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
-import { Search, X as CloseIcon, UserPlus, Users as UsersIcon, Trash2, Image as ImageIcon, KeyRound } from "lucide-react";
+import { Search, X as CloseIcon, UserPlus, Users as UsersIcon, Trash2, Image as ImageIcon, KeyRound, ShieldOff, ShieldAlert } from "lucide-react";
 import StatusPill from "../components/StatusPill";
 import EmailUploader from "../components/EmailUploader";
 import { API_BASE_URL } from "../config/api";
@@ -54,6 +54,7 @@ export default function Users() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [deletingImage, setDeletingImage] = useState(null);
   const [resettingPassword, setResettingPassword] = useState(null);
+  const [unblockingUser, setUnblockingUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState({
@@ -82,7 +83,11 @@ export default function Users() {
       params.append("filter", roleFilter);
     }
 
-    fetch(`${API_BASE_URL}/users/profiles?${params.toString()}`)
+    fetch(`${API_BASE_URL}/users/profiles?${params.toString()}`, {
+      headers: {
+        "Authorization": `Bearer ${localStorage.getItem("token")}`
+      }
+    })
       .then((res) => {
         if (!res.ok) {
           throw new Error(`HTTP error! status: ${res.status}`);
@@ -173,7 +178,10 @@ export default function Users() {
       // Update existing user
       fetch(`${API_BASE_URL}/users/${editing}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${localStorage.getItem("token")}`
+        },
         body: JSON.stringify(form),
       })
         .then((res) => {
@@ -198,7 +206,10 @@ export default function Users() {
       // Create new user
       fetch(`${API_BASE_URL}/users`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${localStorage.getItem("token")}`
+        },
         body: JSON.stringify(form),
       })
         .then((res) => {
@@ -233,7 +244,12 @@ export default function Users() {
     if (!window.confirm("Are you sure you want to delete this user?")) {
       return;
     }
-    fetch(`${API_BASE_URL}/users/${id}`, { method: "DELETE" })
+    fetch(`${API_BASE_URL}/users/${id}`, {
+      method: "DELETE",
+      headers: {
+        "Authorization": `Bearer ${localStorage.getItem("token")}`
+      }
+    })
       .then(() => {
         setUsers((prev) => prev.filter((u) => u._id !== id));
       })
@@ -249,6 +265,9 @@ export default function Users() {
     try {
       const response = await fetch(`${API_BASE_URL}/users/${userId}/profile-image`, {
         method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${localStorage.getItem("token")}`
+        }
       });
 
       if (response.ok) {
@@ -360,7 +379,10 @@ export default function Users() {
       action: async () => {
         const response = await fetch(`${API_BASE_URL}/users/${userId}/reset-password`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${localStorage.getItem("token")}`
+          },
         });
 
         if (response.ok) {
@@ -369,6 +391,43 @@ export default function Users() {
         } else {
           const errorData = await response.json();
           alert(errorData.message || "Failed to reset password");
+        }
+      }
+    });
+  };
+
+  // Unblock a blocked user
+  const unblockUser = async (userId, userName) => {
+    setConfirmModal({
+      isOpen: true,
+      title: "Unblock User",
+      message: `Are you sure you want to unblock ${userName}? They will be able to login again.`,
+      confirmKeyword: "",
+      isDanger: false,
+      isLoading: false,
+      action: async () => {
+        setUnblockingUser(userId);
+        try {
+          const response = await fetch(`${API_BASE_URL}/users/${userId}/unblock`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${localStorage.getItem("token")}`
+            }
+          });
+
+          const data = await response.json();
+
+          if (response.ok) {
+            alert(data.message || "User unblocked successfully.");
+            fetchUsers();
+          } else {
+            alert(data.message || "Failed to unblock user.");
+          }
+        } catch (error) {
+          alert("An error occurred while unblocking the user.");
+        } finally {
+          setUnblockingUser(null);
         }
       }
     });
@@ -844,7 +903,7 @@ export default function Users() {
                       </svg>
                     </div>
                     {/* Status indicator ring */}
-                    <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 border-2 border-slate-800 shadow-lg"></div>
+                    <div className={`absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full border-2 border-slate-800 shadow-lg ${u.isBlocked ? 'bg-gradient-to-br from-red-400 to-red-600' : 'bg-gradient-to-br from-green-400 to-emerald-500'}`}></div>
                   </div>
                   <div className="flex-1 min-w-0 pt-1">
                     <h3
@@ -854,6 +913,12 @@ export default function Users() {
                     >
                       {u.name}
                     </h3>
+                    {u.isBlocked && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/20 border border-red-500/40 text-red-300 text-xs font-semibold mb-1">
+                        <ShieldAlert className="h-3 w-3" />
+                        Blocked
+                      </span>
+                    )}
                     <p
                       className="text-sm truncate"
                       style={{ color: "#94A3B8" }}
@@ -962,6 +1027,17 @@ export default function Users() {
                   >
                     <Trash2 className="h-4 w-4" />
                     {deletingImage === u._id ? "Deleting..." : "Delete Profile Image"}
+                  </button>
+                )}
+                {/* Unblock User Button - Show only when user is blocked */}
+                {u.isBlocked && (
+                  <button
+                    onClick={() => unblockUser(u._id, u.name)}
+                    disabled={unblockingUser === u._id}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600/20 to-emerald-700/20 hover:from-emerald-600/30 hover:to-emerald-700/30 text-emerald-300 rounded-lg text-xs font-semibold border border-emerald-500/30 shadow-md hover:shadow-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 hover:scale-105"
+                  >
+                    <ShieldOff className="h-4 w-4" />
+                    {unblockingUser === u._id ? "Unblocking..." : "Unblock User"}
                   </button>
                 )}
               </div>

@@ -25,6 +25,12 @@ const userSchema = new mongoose.Schema(
     profileImageSaved: { type: Boolean, default: false }, // Flag to track if profile image was saved (one-time only)
     faceDescriptor: { type: [Number] }, // Face descriptor (128-D vector) for face-api.js matching - stored securely, not reversible
     faceDescriptorSaved: { type: Boolean, default: false }, // Flag to track if face descriptor was saved (one-time only)
+    // Account lockout fields
+    isBlocked: { type: Boolean, default: false }, // Blocked by admin after failed login attempts (permanent until admin unblocks)
+    failedLoginAttempts: { type: Number, default: 0 }, // Counter for failed login attempts
+    failedLoginWindow: { type: Date }, // Timestamp of first failed attempt in current 5-min window
+    // Forced password change
+    mustChangePassword: { type: Boolean, default: false }, // True when user must change password on next login
     // status: {
     //   type: String,
     //   enum: ["Active", "Inactive"],
