@@ -167,13 +167,15 @@ const WarningModalWithDevToolsCheck = ({ currentWarning, devToolsOpen, setDevToo
  */
 const Proctoring = forwardRef(({
   enabled = true,
-  test = {},
+  test: testProp = {},
   onViolation = () => { },
   onSubmit = () => { },
   onExitFullscreen = () => { },
   isSubmitting = false,
   initialViolationCount = 0,
 }, ref) => {
+  // Coalesce null to {} since default params only apply for undefined, not null
+  const test = testProp ?? {};
   const navigate = useNavigate();
 
   // Permission states
@@ -927,7 +929,7 @@ const Proctoring = forwardRef(({
     setOtpError('');
 
     try {
-      const response = await apiRequest(`/tests/${test._id}/verify-otp`, {
+      const response = await apiRequest(`/tests/${test?._id}/verify-otp`, {
         method: 'POST',
         body: JSON.stringify({ otp: otpValue.trim() }),
       });
@@ -944,7 +946,7 @@ const Proctoring = forwardRef(({
     } finally {
       setIsVerifyingOtp(false);
     }
-  }, [otpValue, test._id]);
+  }, [otpValue, test?._id]);
 
   // Handle continue with OTP bypass - only requires screen share
   const handleContinueWithOtpBypass = useCallback(async () => {
@@ -1662,24 +1664,14 @@ const Proctoring = forwardRef(({
         />
       )}
 
-      {/* Live Video Preview - Positioned in header area (top center) */}
-      {/* Video element always rendered for face detection, visibility controlled by wrapper */}
-      <div className={`fixed top-[1.65rem] left-1/2 transform -translate-x-1/2 z-40 ${enabled && !showPermissionModal && permissions.faceMatch ? '' : 'hidden'}`}>
-        <div className="bg-slate-700 rounded-lg p-1 shadow-lg border border-slate-600 flex items-center gap-2">
-          <video
-            ref={videoRef}
-            autoPlay
-            muted
-            playsInline
-            className="w-36 h-24 rounded object-cover bg-slate-900"
-            style={{ transform: 'scaleX(-1)' }}
-          />
-          <div className="text-xs text-green-400 flex items-center gap-1 pr-2">
-            <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
-            Live
-          </div>
-        </div>
-      </div>
+      {/* Hidden video element - kept for face detection, not displayed to user */}
+      <video
+        ref={videoRef}
+        autoPlay
+        muted
+        playsInline
+        style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none', overflow: 'hidden' }}
+      />
     </>
   );
 });
