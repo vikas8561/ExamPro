@@ -63,7 +63,10 @@ router.post("/logout", async (req, res) => {
 
     if (token) {
       // Remove token from user's active sessions
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+      if (!process.env.JWT_SECRET) {
+        return res.status(500).json({ message: 'Server configuration error' });
+      }
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
       const user = await User.findById(decoded.userId);
 
       if (user) {
@@ -176,8 +179,7 @@ router.post("/forgot-password", async (req, res) => {
       console.log('✅ Reset email sent successfully to:', verificationEmail);
       return res.json({
         message: "Password reset verification sent",
-        verificationSentTo: verificationEmail,
-        resetToken: resetToken // For testing purposes
+        verificationSentTo: verificationEmail
       });
     } else {
       // Email failed but don't fail the request - return success with token
@@ -186,14 +188,12 @@ router.post("/forgot-password", async (req, res) => {
         message: "Password reset initiated successfully",
         warning: "Email could not be sent due to network/configuration issues",
         verificationSentTo: verificationEmail,
-        resetToken: resetToken, // For testing/manual use
-        error: emailResult.error,
-        note: "You can use the reset token manually to reset your password"
+        note: "Please check your email configuration or contact the administrator"
       });
     }
   } catch (err) {
     console.error('Unexpected error in forgot-password:', err);
-    res.status(500).json({ message: err.message, stack: err.stack });
+    res.status(500).json({ message: "An error occurred while processing your request" });
   }
 });
 
@@ -587,15 +587,12 @@ router.post("/profile/update-email", authenticateToken, async (req, res) => {
     if (emailResult.success) {
       console.log('✅ Email verification sent successfully to:', newEmail);
       return res.json({
-        message: "Verification email sent to your new email address",
-        verificationToken: verificationToken // For testing purposes
+        message: "Verification email sent to your new email address"
       });
     } else {
       console.error('❌ Error sending verification email:', emailResult.error);
       return res.status(500).json({
-        message: 'Email update initiated but verification email failed to send',
-        error: emailResult.error,
-        verificationToken: verificationToken // For testing purposes
+        message: 'Email update initiated but verification email failed to send'
       });
     }
   } catch (err) {
@@ -758,7 +755,27 @@ router.post("/test-email", authenticateToken, requireRole("admin"), async (req, 
     }
   } catch (err) {
     console.error('Error in test-email endpoint:', err);
-    res.status(500).json({ message: err.message, stack: err.stack });
+    res.status(500).json({ message: "An error occurred while processing your request" });
+  }
+});
+// Force logout all users - clears all active sessions (admin only)
+router.post("/force-logout-all", authenticateToken, requireRole("Admin"), async (req, res) => {
+  try {
+    // Clear activeSessions for ALL users
+    const result = await User.updateMany(
+      {},
+      { $set: { activeSessions: [] } }
+    );
+
+    console.log(`🔒 Force logout: Cleared sessions for ${result.modifiedCount} users`);
+    
+    res.json({
+      message: `Successfully logged out all users. ${result.modifiedCount} users affected.`,
+      modifiedCount: result.modifiedCount
+    });
+  } catch (err) {
+    console.error('Error in force-logout-all:', err);
+    res.status(500).json({ message: "An error occurred while processing your request" });
   }
 });
 

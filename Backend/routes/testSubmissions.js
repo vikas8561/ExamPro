@@ -754,8 +754,8 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
   }
 });
 
-// Mentor reviews and grades submission
-router.put("/:submissionId/review", authenticateToken, async (req, res, next) => {
+// Mentor reviews and grades submission (mentor/admin only)
+router.put("/:submissionId/review", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res, next) => {
   try {
     const { submissionId } = req.params;
     const { mentorScore, mentorFeedback } = req.body;

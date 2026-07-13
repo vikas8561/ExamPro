@@ -6,8 +6,8 @@ const Assignment = require('../models/Assignment');
 const TestSubmission = require('../models/TestSubmission');
 const { runAgainstCases } = require('../services/judge0');
 
-// Health check endpoint
-router.get('/health', (req, res) => {
+// Health check endpoint (authenticated only)
+router.get('/health', authenticateToken, (req, res) => {
   res.json({ 
     status: 'healthy', 
     service: 'coding routes',
@@ -16,8 +16,8 @@ router.get('/health', (req, res) => {
   });
 });
 
-// Test endpoint without authentication
-router.post('/test', async (req, res, next) => {
+// Test endpoint (authenticated only)
+router.post('/test', authenticateToken, async (req, res, next) => {
   try {
     const { sourceCode, language } = req.body;
     console.log('Test request:', { language, sourceCodeLength: sourceCode?.length });

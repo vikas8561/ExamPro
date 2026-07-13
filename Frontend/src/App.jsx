@@ -32,16 +32,28 @@ import AdminDSAPractice from "./pages/AdminDSAPractice";
 import StudentDSAPractice from "./pages/StudentDSAPractice";
 import MigrateFaceDescriptors from "./pages/MigrateFaceDescriptors";
 
-// Protected Route Component
+// Protected Route Component - uses JWT payload for role check (defense-in-depth)
 const ProtectedRoute = ({ children, allowedRoles }) => {
+  const token = localStorage.getItem('token');
   const user = JSON.parse(localStorage.getItem('user') || '{}');
 
-  if (!user.email) {
+  // Must have a token to be authenticated
+  if (!token || !user.email) {
     return <Navigate to="/login" replace />;
   }
 
-  if (allowedRoles && !allowedRoles.includes(user.role)) {
-    return <Navigate to="/" replace />;
+  // Read role from JWT payload (can't be tampered without the secret key)
+  if (allowedRoles) {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const tokenRole = payload.role;
+      if (!allowedRoles.includes(tokenRole)) {
+        return <Navigate to="/" replace />;
+      }
+    } catch {
+      // Invalid token format — redirect to login
+      return <Navigate to="/login" replace />;
+    }
   }
 
   return children;

@@ -1,11 +1,13 @@
 // server.js
 const express = require("express");
 const cors = require("cors");
+const rateLimit = require("express-rate-limit");
 const morgan = require("morgan");
 const dotenv = require("dotenv");
 const { connectDB } = require("./configs/db.config");
 const http = require("http");
 const { Server } = require("socket.io");
+const { authenticateToken, requireRole } = require("./middleware/auth");
 
 dotenv.config();
 
@@ -105,10 +107,9 @@ app.use(cors({
       return callback(null, true);
     }
 
-    // Allow exact matches OR any Vercel subdomain OR localhost
+    // Allow exact matches OR specific Vercel deployment OR localhost
     if (allowedOrigins.includes(origin) || 
-        origin.endsWith(".vercel.app") || 
-        origin.includes("vercel.app") ||
+        origin === "https://cg-test-app.vercel.app" ||
         origin.includes("localhost") ||
         origin.includes("127.0.0.1")) {
       console.log(`✅ CORS allowing request from: ${origin}`);
@@ -133,8 +134,8 @@ app.use(cors({
   optionsSuccessStatus: 200, // For legacy browser support
 }));
 
-// Fallback CORS for development - more permissive
-if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV !== 'production') {
+// Fallback CORS for development only
+if (process.env.NODE_ENV === 'development') {
   console.log('🔧 Development mode: Using permissive CORS');
   app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
@@ -178,9 +179,7 @@ app.use((req, res, next) => {
     }
   });
   
-  // Add memory usage to response headers for monitoring
-  const memUsage = process.memoryUsage();
-  res.set('X-Memory-Usage', Math.round(memUsage.heapUsed / 1024 / 1024));
+  // Memory usage header removed for security - use /memory endpoint instead
   res.set('X-Server-Response-Time', '0'); // Will be updated on finish
   
   next();
@@ -293,8 +292,8 @@ app.get("/health", (req, res) => {
   });
 });
 
-// Memory monitoring endpoint
-app.get("/memory", (req, res) => {
+// Memory monitoring endpoint (admin only)
+app.get("/memory", authenticateToken, requireRole("Admin"), (req, res) => {
   res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
   const memUsage = process.memoryUsage();
   const formatMB = (bytes) => Math.round(bytes / 1024 / 1024 * 100) / 100;
@@ -312,6 +311,36 @@ app.get("/memory", (req, res) => {
     platform: process.platform
   });
 });
+
+// ✅ Rate Limiting - prevent brute-force attacks
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 login attempts per 15 minutes per IP
+  message: { message: "Too many login attempts. Please try again after 15 minutes." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const passwordResetLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 3, // 3 password reset attempts per hour per IP
+  message: { message: "Too many password reset attempts. Please try again after 1 hour." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const generalApiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 100, // 100 requests per minute per IP
+  message: { message: "Too many requests. Please slow down." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Apply rate limiters to specific routes
+app.use("/api/auth/login", loginLimiter);
+app.use("/api/auth/forgot-password", passwordResetLimiter);
+app.use("/api/users", generalApiLimiter);
 
 // ✅ API routes
 app.use("/api/tests", require("./routes/tests"));

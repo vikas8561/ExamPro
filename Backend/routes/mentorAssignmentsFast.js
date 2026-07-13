@@ -2,9 +2,9 @@ const express = require("express");
 const router = express.Router();
 const Assignment = require("../models/Assignment");
 const TestSubmission = require("../models/TestSubmission");
-const { authenticateToken } = require("../middleware/auth");
-// ULTRA-FAST assignments endpoint - optimized for 30+ second loading issue
-router.get("/assignments", authenticateToken, async (req, res) => {
+const { authenticateToken, requireRole } = require("../middleware/auth");
+// ULTRA-FAST assignments endpoint - optimized for 30+ second loading issue (mentor/admin only)
+router.get("/assignments", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res) => {
   try {
     const mentorId = req.user.userId;
     // console.log('🚀 Fast assignments fetch for mentor:', mentorId);
@@ -79,8 +79,8 @@ router.get("/assignments", authenticateToken, async (req, res) => {
   }
 });
 
-// Get test details on demand (when user clicks to view test)
-router.get("/assignments/:assignmentId/test-details", authenticateToken, async (req, res) => {
+// Get test details on demand (when user clicks to view test) (mentor/admin only)
+router.get("/assignments/:assignmentId/test-details", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res) => {
   try {
     const { assignmentId } = req.params;
     

@@ -4,8 +4,8 @@ const router = express.Router();
 const User = require("../models/User");
 const { authenticateToken, requireRole } = require("../middleware/auth");
 
-// Get all users - ULTRA FAST VERSION
-router.get("/", async (req, res) => {
+// Get all users - ULTRA FAST VERSION (admin only)
+router.get("/", authenticateToken, requireRole("Admin"), async (req, res) => {
   try {
     const startTime = Date.now();
     // console.log('🚀 ULTRA FAST: Fetching users for admin');
@@ -25,8 +25,8 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Get all users with profile details (for Student Profile section) - with pagination and search
-router.get("/profiles", async (req, res) => {
+// Get all users with profile details (admin only) - with pagination and search
+router.get("/profiles", authenticateToken, requireRole("Admin"), async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 9;
@@ -178,7 +178,7 @@ router.delete("/profile-images/all", authenticateToken, requireRole("admin"), as
 });
 
 // Delete user profile image (admin only)
-router.delete("/:id/profile-image", async (req, res) => {
+router.delete("/:id/profile-image", authenticateToken, requireRole("Admin"), async (req, res) => {
   try {
     const userId = req.params.id;
 
@@ -276,7 +276,7 @@ router.post("/reset-passwords/all", authenticateToken, requireRole("admin"), asy
 });
 
 // Reset user password to default (admin only)
-router.post("/:id/reset-password", async (req, res) => {
+router.post("/:id/reset-password", authenticateToken, requireRole("Admin"), async (req, res) => {
   try {
     const userId = req.params.id;
 
@@ -298,8 +298,8 @@ router.post("/:id/reset-password", async (req, res) => {
   }
 });
 
-// Create a new user
-router.post("/", async (req, res) => {
+// Create a new user (admin only)
+router.post("/", authenticateToken, requireRole("Admin"), async (req, res) => {
   try {
     const { name, email, role, studentCategory } = req.body;
 
@@ -352,8 +352,8 @@ router.post("/", async (req, res) => {
   }
 });
 
-// Update a user
-router.put("/:id", async (req, res) => {
+// Update a user (admin only)
+router.put("/:id", authenticateToken, requireRole("Admin"), async (req, res) => {
   try {
     const { name, email, role, studentCategory } = req.body;
     const userId = req.params.id;
@@ -406,8 +406,8 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-// Delete a user
-router.delete("/:id", async (req, res) => {
+// Delete a user (admin only)
+router.delete("/:id", authenticateToken, requireRole("Admin"), async (req, res) => {
   try {
     const deleted = await User.findByIdAndDelete(req.params.id);
     if (!deleted) return res.status(404).json({ message: "User not found" });
@@ -422,8 +422,8 @@ const multer = require("multer");
 const fs = require("fs");
 const upload = multer({ dest: "uploads/" }); // Temporary storage for uploaded files
 
-// Bulk upload users
-router.post("/bulk", upload.single("file"), async (req, res) => {
+// Bulk upload users (admin only)
+router.post("/bulk", authenticateToken, requireRole("Admin"), upload.single("file"), async (req, res) => {
   try {
     const { role, studentCategory } = req.body;
     const usersData = [];

@@ -21,8 +21,12 @@ const authenticateToken = async (req, res, next) => {
   }
 
   try {
-    // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    // Verify token - fail if JWT_SECRET is not configured
+    if (!process.env.JWT_SECRET) {
+      console.error('FATAL: JWT_SECRET environment variable is not set!');
+      return res.status(500).json({ message: 'Server configuration error' });
+    }
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     console.log('✅ Token verified for user:', decoded.userId);
     
     // OPTIMIZED: Only check activeSessions field, don't load full user document
@@ -81,9 +85,12 @@ const requireRole = (role) => {
 
 // Optional: Create token
 const generateToken = (user) => {
+  if (!process.env.JWT_SECRET) {
+    throw new Error('FATAL: JWT_SECRET environment variable is not set!');
+  }
   return jwt.sign(
     { userId: user._id, email: user.email, role: user.role },
-    process.env.JWT_SECRET || 'your-secret-key',
+    process.env.JWT_SECRET,
     { expiresIn: '24h' }
   );
 };

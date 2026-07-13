@@ -5,18 +5,12 @@ const Assignment = require("../models/Assignment");
 const User = require("../models/User");
 const Test = require("../models/Test");
 const TestSubmission = require("../models/TestSubmission");
-const { authenticateToken } = require("../middleware/auth");
+const { authenticateToken, requireRole } = require("../middleware/auth");
 
-// Test endpoint to verify mentor routes are working
-router.get("/test", (req, res) => {
-  res.json({ 
-    message: "Mentor routes are working!",
-    timestamp: new Date().toISOString()
-  });
-});
+// Test endpoint removed for security - was publicly accessible
 
-// Get mentor dashboard data
-router.get("/dashboard", authenticateToken, async (req, res) => {
+// Get mentor dashboard data (mentor/admin only)
+router.get("/dashboard", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res) => {
   try {
     const mentorId = req.user.userId;
     // console.log('Fetching dashboard for mentor:', mentorId);
@@ -56,8 +50,8 @@ router.get("/dashboard", authenticateToken, async (req, res) => {
   }
 });
 
-// Get assignments assigned to mentor - ULTRA FAST VERSION
-router.get("/assignments", authenticateToken, async (req, res) => {
+// Get assignments assigned to mentor - ULTRA FAST VERSION (mentor/admin only)
+router.get("/assignments", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res) => {
   try {
     const mentorId = req.user.userId;
     // console.log('🚀 ULTRA FAST: Fetching assignments for mentor:', mentorId);
@@ -173,8 +167,8 @@ router.get("/assignments", authenticateToken, async (req, res) => {
   }
 });
 
-// Get test submissions for monitoring - grouped by student
-router.get("/submissions", authenticateToken, async (req, res) => {
+// Get test submissions for monitoring - grouped by student (mentor/admin only)
+router.get("/submissions", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 50;
@@ -253,8 +247,8 @@ router.get("/submissions", authenticateToken, async (req, res) => {
   }
 });
 
-// Get submissions for a specific student - ULTRA FAST VERSION
-router.get("/student/:studentId/submissions", authenticateToken, async (req, res) => {
+// Get submissions for a specific student - ULTRA FAST VERSION (mentor/admin only)
+router.get("/student/:studentId/submissions", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res) => {
   try {
     const { studentId } = req.params;
     const startTime = Date.now();
@@ -330,8 +324,8 @@ router.get("/student/:studentId/submissions", authenticateToken, async (req, res
   }
 });
 
-// Get detailed test monitoring data
-router.get("/monitor/:assignmentId", authenticateToken, async (req, res) => {
+// Get detailed test monitoring data (mentor/admin only)
+router.get("/monitor/:assignmentId", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res) => {
   try {
     const { assignmentId } = req.params;
     
@@ -363,8 +357,8 @@ router.get("/monitor/:assignmentId", authenticateToken, async (req, res) => {
   }
 });
 
-// Update assignment review/notes
-router.put("/assignments/:id/review", authenticateToken, async (req, res) => {
+// Update assignment review/notes (mentor/admin only)
+router.put("/assignments/:id/review", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res) => {
   try {
     const { notes, status } = req.body;
     const assignment = await Assignment.findByIdAndUpdate(
@@ -379,8 +373,8 @@ router.put("/assignments/:id/review", authenticateToken, async (req, res) => {
   }
 });
 
-// Get submissions pending mentor review
-router.get("/submissions/pending", authenticateToken, async (req, res, next) => {
+// Get submissions pending mentor review (mentor/admin only)
+router.get("/submissions/pending", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res, next) => {
   try {
     const mentorId = req.user.userId;
     // console.log(`Fetching pending submissions for mentor: ${mentorId}`);
@@ -412,8 +406,8 @@ router.get("/submissions/pending", authenticateToken, async (req, res, next) => 
   }
 });
 
-// Mentor reviews and grades submission
-router.put("/submissions/:submissionId/review", authenticateToken, async (req, res, next) => {
+// Mentor reviews and grades submission (mentor/admin only)
+router.put("/submissions/:submissionId/review", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res, next) => {
   try {
     const { submissionId } = req.params;
     const { mentorScore, mentorFeedback } = req.body;
