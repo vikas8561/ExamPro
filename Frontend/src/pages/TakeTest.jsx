@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import apiRequest from "../services/api";
 import Judge0CodeEditor from "../components/Judge0CodeEditor";
 import Proctoring from "../components/Proctoring";
+import QuestionText from "../components/QuestionText";
 
 const TakeTest = () => {
   const [timeRemaining, setTimeRemaining] = useState(0);
@@ -921,7 +922,9 @@ const TakeTest = () => {
                     >{questionStatuses[question._id] === "mark-for-review" ? "★ Marked" : "☆ Review"}</button>
                   </div>
                 </div>
-                <h3 className="text-lg lg:text-xl font-semibold mb-5 text-slate-100 leading-relaxed">{question.text}</h3>
+                <div className="text-lg lg:text-xl font-semibold mb-5 text-slate-100 leading-relaxed">
+                  <QuestionText text={question.text} />
+                </div>
 
                 {question.guidelines && (
                   <div className="bg-slate-700/30 p-4 rounded-xl mb-4 border border-slate-600/20">
@@ -1016,7 +1019,9 @@ const TakeTest = () => {
                     >{questionStatuses[question._id] === "mark-for-review" ? "★ Marked" : "☆ Review"}</button>
                   </div>
                 </div>
-                <h3 className="text-lg lg:text-xl font-semibold mb-5 text-slate-100 leading-relaxed">{question.text}</h3>
+                <div className="text-lg lg:text-xl font-semibold mb-5 text-slate-100 leading-relaxed">
+                  <QuestionText text={question.text} />
+                </div>
 
                 {question.guidelines && (
                   <div className="bg-slate-700/30 p-4 rounded-xl mb-4 border border-slate-600/20">
@@ -1127,7 +1132,9 @@ const TakeTest = () => {
                       >{questionStatuses[question._id] === "mark-for-review" ? "★ Marked" : "☆ Review"}</button>
                     </div>
                   </div>
-                  <h3 className="text-lg lg:text-xl font-semibold mb-6 text-slate-100 leading-relaxed">{question.text}</h3>
+                  <div className="text-lg lg:text-xl font-semibold mb-6 text-slate-100 leading-relaxed">
+                    <QuestionText text={question.text} />
+                  </div>
 
                   {question.kind === "mcq" && (
                     <div className="space-y-3">

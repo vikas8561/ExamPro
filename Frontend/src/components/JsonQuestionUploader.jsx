@@ -232,19 +232,19 @@ const JsonQuestionUploader = ({ onQuestionsLoaded }) => {
   "questions": [
     {
       "kind": "mcq",
-      "text": "What is 2+2?",
-      "options": ["3", "4", "5", "6"],
-      "answer": "4",
+      "text": "What is the output?\\n\\n\`\`\`js\\nconst a = [1, 2, 3];\\nconsole.log(a.map(x => x * 2));\\n\`\`\`",
+      "options": ["[2, 4, 6]", "[1, 2, 3]", "[1, 4, 9]", "undefined"],
+      "answer": "[2, 4, 6]",
       "points": 2
     },
     {
       "kind": "theory",
-      "text": "Explain the concept of photosynthesis.",
+      "text": "Explain the difference between \`let\`, \`const\`, and \`var\` in JavaScript.",
       "points": 5
     },
     {
       "kind": "coding",
-      "text": "Write a function to calculate factorial.",
+      "text": "Write a function to calculate factorial.\\n\\n\`\`\`js\\nfunction factorial(n) {\\n  // your code here\\n}\\n\`\`\`",
       "examples": [
         {
           "input": "5",
@@ -261,6 +261,23 @@ const JsonQuestionUploader = ({ onQuestionsLoaded }) => {
 }`}
               </pre>
             </div>
+
+            {/* Markdown formatting tip */}
+            <div className="mt-4 bg-emerald-900/20 border border-emerald-500/30 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                <span className="font-medium text-emerald-300 text-xs">Markdown Support for Code</span>
+              </div>
+              <ul className="ml-6 space-y-1.5 text-xs text-emerald-400/80">
+                <li>• Use <code className="bg-slate-700/50 px-1 rounded text-emerald-300">{"`\\n\\n\\`\\`\\`js\\n...code...\\n\\`\\`\\``"}</code> for syntax-highlighted code blocks</li>
+                <li>• Use <code className="bg-slate-700/50 px-1 rounded text-emerald-300">{"`\\`code\\``"}</code> for inline code like variable names</li>
+                <li>• Use <code className="bg-slate-700/50 px-1 rounded text-emerald-300">{"\\n"}</code> for line breaks and <code className="bg-slate-700/50 px-1 rounded text-emerald-300">{"\\n\\n"}</code> for paragraphs</li>
+                <li>• Supported languages: <code className="bg-slate-700/50 px-1 rounded text-emerald-300">js</code>, <code className="bg-slate-700/50 px-1 rounded text-emerald-300">python</code>, <code className="bg-slate-700/50 px-1 rounded text-emerald-300">java</code>, <code className="bg-slate-700/50 px-1 rounded text-emerald-300">cpp</code>, <code className="bg-slate-700/50 px-1 rounded text-emerald-300">go</code>, <code className="bg-slate-700/50 px-1 rounded text-emerald-300">c</code></li>
+              </ul>
+            </div>
+
             <div className="mt-3 text-xs text-slate-400">
               <div className="flex items-center gap-2 mb-2">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -270,7 +287,7 @@ const JsonQuestionUploader = ({ onQuestionsLoaded }) => {
               </div>
               <ul className="ml-6 space-y-1 text-slate-500">
                 <li>• <code className="bg-slate-700/50 px-1 rounded">kind</code>: "mcq", "theory", or "coding"</li>
-                <li>• <code className="bg-slate-700/50 px-1 rounded">text</code>: The question text</li>
+                <li>• <code className="bg-slate-700/50 px-1 rounded">text</code>: The question text (supports Markdown for code formatting)</li>
                 <li>• <code className="bg-slate-700/50 px-1 rounded">points</code>: Points for the question (optional, defaults to 1)</li>
                 <li>• For MCQ: <code className="bg-slate-700/50 px-1 rounded">options</code> and <code className="bg-slate-700/50 px-1 rounded">answer</code></li>
                 <li>• For Coding: <code className="bg-slate-700/50 px-1 rounded">examples</code> (optional)</li>

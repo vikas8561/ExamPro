@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import apiRequest from "../services/api";
 import JsonQuestionUploader from "../components/JsonQuestionUploader";
+import QuestionText from "../components/QuestionText";
 import Editor from "@monaco-editor/react";
 
 const emptyQuestion = (kind) => ({
@@ -2019,8 +2020,8 @@ export default function CreateTest() {
                 </div>
 
                 {/* Question Text with formatting preserved */}
-                <div className="text-xl font-semibold mb-6 whitespace-pre-wrap text-white">
-                  {previewQuestion.text || "(No question text entered)"}
+                <div className="text-xl font-semibold mb-6 text-white">
+                  <QuestionText text={previewQuestion.text || "(No question text entered)"} />
                 </div>
 
                 {/* MCQ Options Preview */}

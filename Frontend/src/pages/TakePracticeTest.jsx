@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import apiRequest from "../services/api";
+import QuestionText from "../components/QuestionText";
 
 const TakePracticeTest = () => {
   const { testId } = useParams();
@@ -242,9 +243,9 @@ const TakePracticeTest = () => {
 
               {/* Question Text */}
               <div className="mb-6">
-                <p className="text-lg text-slate-200 leading-relaxed">
-                  {currentQ.text}
-                </p>
+                <div className="text-lg text-slate-200 leading-relaxed">
+                  <QuestionText text={currentQ.text} />
+                </div>
               </div>
 
               {/* Answer Options */}
