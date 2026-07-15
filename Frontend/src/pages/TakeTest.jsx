@@ -277,6 +277,8 @@ const TakeTest = () => {
     } catch (error) {
       console.error("Test submission failed:", error);
       setIsSubmitting(false);
+      // Show error to student so they know what happened
+      alert(error.message || "Failed to submit test. Please try again.");
       // Don't navigate away - let user try again
     }
   };

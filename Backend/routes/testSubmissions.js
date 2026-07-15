@@ -144,15 +144,30 @@ router.post("/", authenticateToken, async (req, res, next) => {
     // Check if test time has expired (skip for auto-submit)
     if (!autoSubmit) {
       const now = new Date();
-      let endTime = assignment.deadline;
-      if (!endTime) {
-        endTime = new Date(assignment.startTime);
-        endTime.setMinutes(endTime.getMinutes() + assignment.duration);
-      }
-      // Add buffer to avoid timing issues
-      const endTimeWithBuffer = new Date(endTime.getTime() + 5000);
 
-      if (now > endTimeWithBuffer) {
+      // Check 1: Assignment availability window (deadline or startTime + duration)
+      let assignmentEndTime = assignment.deadline;
+      if (!assignmentEndTime) {
+        assignmentEndTime = new Date(assignment.startTime);
+        assignmentEndTime.setMinutes(assignmentEndTime.getMinutes() + assignment.duration);
+      }
+      const assignmentEndWithBuffer = new Date(assignmentEndTime.getTime() + 5000);
+      const assignmentWindowOpen = now <= assignmentEndWithBuffer;
+
+      // Check 2: Test time limit (startedAt + test.timeLimit)
+      // This is what the student's timer is actually based on
+      let testTimeOpen = false;
+      if (assignment.startedAt) {
+        const testWithTimeLimit = await Test.findById(assignment.testId).select("timeLimit");
+        if (testWithTimeLimit?.timeLimit) {
+          const testEndTime = new Date(assignment.startedAt.getTime() + testWithTimeLimit.timeLimit * 60000);
+          const testEndWithBuffer = new Date(testEndTime.getTime() + 5000);
+          testTimeOpen = now <= testEndWithBuffer;
+        }
+      }
+
+      // Allow submission if EITHER window is still open
+      if (!assignmentWindowOpen && !testTimeOpen) {
         return res.status(400).json({ message: "Test time has expired. Please contact your instructor." });
       }
     }
