@@ -23,6 +23,11 @@ const TakeTest = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const debounceTimers = useRef({});
 
+  // Auto-submit modal state: null | 'time-up' | 'submitting' | 'success' | 'error'
+  const [autoSubmitPhase, setAutoSubmitPhase] = useState(null);
+  const [autoSubmitError, setAutoSubmitError] = useState('');
+  const autoSubmitTriggered = useRef(false);
+
   // Zoom level state (80% to 150%, default 100%)
   const [zoomLevel, setZoomLevel] = useState(() => {
     const saved = localStorage.getItem('testZoomLevel');
@@ -127,7 +132,7 @@ const TakeTest = () => {
     let timer;
     let backendCheckTimer;
 
-    if (testStarted && timeRemaining > 0 && !isSubmitting) {
+    if (testStarted && timeRemaining > 0 && !isSubmitting && !autoSubmitTriggered.current) {
       timer = setInterval(() => {
         setTimeRemaining((prev) => {
           if (prev <= 1) {
@@ -145,9 +150,10 @@ const TakeTest = () => {
         } catch (error) {
           if (
             error.message.includes("Test time has expired") &&
-            !isSubmitting
+            !isSubmitting &&
+            !autoSubmitTriggered.current
           ) {
-            await submitTest(false, true);
+            handleTimeUp();
           }
         }
       }, 30000);
@@ -270,7 +276,6 @@ const TakeTest = () => {
       navigate(`/student/assignments`);
     } catch (error) {
       console.error("Test submission failed:", error);
-      alert(error.message || "Failed to submit test. Please try again or contact support.");
       setIsSubmitting(false);
       // Don't navigate away - let user try again
     }
@@ -729,8 +734,125 @@ const TakeTest = () => {
   };
 
   const handleTimeUp = async () => {
-    await submitTest(false, true); // cancelledDueToViolation=false, autoSubmit=true
-    alert("Time is up! Your test has been submitted automatically.");
+    // Guard: prevent duplicate auto-submit calls (race condition protection)
+    if (autoSubmitTriggered.current || isSubmitting) return;
+    autoSubmitTriggered.current = true;
+
+    // Phase 1: Show "Time Completed" popup
+    setAutoSubmitPhase('time-up');
+
+    // Brief delay so the student sees the "time completed" message
+    await new Promise(resolve => setTimeout(resolve, 1200));
+
+    // Phase 2: Show "Submitting" state
+    setAutoSubmitPhase('submitting');
+    setIsSubmitting(true);
+
+    try {
+      // Build submission data inline (same as submitTest but without navigation/alerts)
+      const submissionData = {
+        assignmentId,
+        responses: test?.questions?.map((question) => {
+          const answer = answers[question._id];
+          let selectedOption = undefined;
+          let textAnswer = undefined;
+
+          if (answer !== undefined) {
+            if (question.kind === "mcq" && typeof answer === "number") {
+              selectedOption = question.options[answer].text;
+            } else if (
+              (question.kind === "theory" || question.kind === "coding") &&
+              typeof answer === "string"
+            ) {
+              textAnswer = answer;
+            }
+          }
+
+          return {
+            questionId: question._id.toString(),
+            selectedOption,
+            textAnswer,
+          };
+        }),
+        timeSpent,
+        tabViolationCount: proctoringData.violationCount,
+        tabViolations: proctoringData.violations.map((violation) => ({
+          timestamp:
+            violation.timestamp instanceof Date
+              ? violation.timestamp.toISOString()
+              : String(violation.timestamp),
+          violationType: String(violation.violationType),
+          details: String(violation.details),
+          tabCount: Number(violation.tabCount),
+        })),
+        cancelledDueToViolation: test?.allowedTabSwitches !== -1 && proctoringData.violationCount > (test?.allowedTabSwitches ?? 2),
+        autoSubmit: true,
+      };
+
+      const safeJSONStringify = (obj) => {
+        const seen = new WeakSet();
+        return JSON.stringify(obj, (key, value) => {
+          if (typeof value === "object" && value !== null) {
+            if (seen.has(value)) return "[Circular]";
+            seen.add(value);
+          }
+          if (
+            value &&
+            typeof value === "object" &&
+            (value instanceof HTMLElement ||
+              value instanceof Event ||
+              value.nodeType !== undefined)
+          ) {
+            return "[DOM Element]";
+          }
+          return value;
+        });
+      };
+
+      // Retry logic with exponential backoff
+      let response;
+      let retries = 3;
+      let lastError;
+
+      while (retries > 0) {
+        try {
+          response = await apiRequest("/test-submissions", {
+            method: "POST",
+            body: safeJSONStringify(submissionData),
+          });
+          break;
+        } catch (error) {
+          lastError = error;
+          retries--;
+          if (retries > 0) {
+            await new Promise(resolve => setTimeout(resolve, 1000 * (4 - retries)));
+          }
+        }
+      }
+
+      if (!response && lastError) {
+        throw lastError;
+      }
+
+      // Exit fullscreen
+      if (proctoringRef.current?.exitFullscreen) {
+        await proctoringRef.current.exitFullscreen();
+      }
+
+      // Phase 3: Show success briefly
+      setAutoSubmitPhase('success');
+      setIsSubmitting(false);
+
+      // Navigate after a brief success display
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      navigate(`/student/assignments`);
+
+    } catch (error) {
+      console.error("Auto-submit failed:", error);
+      setAutoSubmitPhase('error');
+      setAutoSubmitError(error.message || 'Failed to submit. Please try again.');
+      setIsSubmitting(false);
+    }
   };
 
 
@@ -854,6 +976,50 @@ const TakeTest = () => {
           }
           .timer-critical {
             animation: pulse-glow 1s ease-in-out infinite;
+          }
+          @keyframes autoSubmitFadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+          }
+          @keyframes autoSubmitScaleIn {
+            from { opacity: 0; transform: scale(0.85) translateY(20px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+          }
+          @keyframes autoSubmitSpin {
+            to { transform: rotate(360deg); }
+          }
+          @keyframes autoSubmitCheckmark {
+            0% { stroke-dashoffset: 24; }
+            100% { stroke-dashoffset: 0; }
+          }
+          @keyframes autoSubmitPulseRing {
+            0% { transform: scale(0.8); opacity: 1; }
+            100% { transform: scale(1.8); opacity: 0; }
+          }
+          @keyframes autoSubmitShake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-6px); }
+            40%, 80% { transform: translateX(6px); }
+          }
+          .auto-submit-overlay {
+            animation: autoSubmitFadeIn 0.3s ease-out forwards;
+          }
+          .auto-submit-card {
+            animation: autoSubmitScaleIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          }
+          .auto-submit-spinner {
+            animation: autoSubmitSpin 1s linear infinite;
+          }
+          .auto-submit-checkmark {
+            stroke-dasharray: 24;
+            stroke-dashoffset: 24;
+            animation: autoSubmitCheckmark 0.5s ease-out 0.2s forwards;
+          }
+          .auto-submit-pulse-ring {
+            animation: autoSubmitPulseRing 1s ease-out forwards;
+          }
+          .auto-submit-shake {
+            animation: autoSubmitShake 0.5s ease-out;
           }
         `}
       </style>
@@ -1265,6 +1431,83 @@ const TakeTest = () => {
           blockContextMenu={true}
           initialViolationCount={proctoringData.violationCount}
         />
+
+        {/* ═══════════ AUTO-SUBMIT TIME-UP MODAL ═══════════ */}
+        {autoSubmitPhase && (
+          <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-[60] p-4 auto-submit-overlay">
+            <div className="bg-slate-800/95 backdrop-blur-xl rounded-2xl p-8 max-w-sm w-full text-center border border-slate-700/50 shadow-2xl auto-submit-card">
+
+              {/* Phase: TIME-UP */}
+              {autoSubmitPhase === 'time-up' && (
+                <>
+                  <div className="relative w-20 h-20 mx-auto mb-6">
+                    <div className="absolute inset-0 rounded-full bg-red-500/15 auto-submit-pulse-ring"></div>
+                    <div className="w-20 h-20 rounded-full bg-red-500/10 border-2 border-red-500/30 flex items-center justify-center">
+                      <svg className="w-10 h-10 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                  </div>
+                  <h2 className="text-2xl font-bold text-white mb-2">Time's Up!</h2>
+                  <p className="text-slate-400 text-sm">Your exam time has been completed.</p>
+                  <p className="text-slate-500 text-xs mt-2">Preparing to submit your exam...</p>
+                </>
+              )}
+
+              {/* Phase: SUBMITTING */}
+              {autoSubmitPhase === 'submitting' && (
+                <>
+                  <div className="w-20 h-20 mx-auto mb-6 relative">
+                    <div className="absolute inset-0 rounded-full border-4 border-slate-700"></div>
+                    <div className="absolute inset-0 rounded-full border-4 border-t-blue-500 border-r-transparent border-b-transparent border-l-transparent auto-submit-spinner"></div>
+                  </div>
+                  <h2 className="text-2xl font-bold text-white mb-2">Submitting Exam...</h2>
+                  <p className="text-slate-400 text-sm">Please wait while we submit your answers.</p>
+                  <p className="text-slate-500 text-xs mt-2">Do not close this window.</p>
+                </>
+              )}
+
+              {/* Phase: SUCCESS */}
+              {autoSubmitPhase === 'success' && (
+                <>
+                  <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-emerald-500/10 border-2 border-emerald-500/30 flex items-center justify-center">
+                    <svg className="w-10 h-10 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                      <path className="auto-submit-checkmark" strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <h2 className="text-2xl font-bold text-white mb-2">Exam Submitted!</h2>
+                  <p className="text-slate-400 text-sm">Your exam has been submitted successfully.</p>
+                  <p className="text-emerald-400/70 text-xs mt-2">Redirecting to your tests...</p>
+                </>
+              )}
+
+              {/* Phase: ERROR */}
+              {autoSubmitPhase === 'error' && (
+                <>
+                  <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-red-500/10 border-2 border-red-500/30 flex items-center justify-center auto-submit-shake">
+                    <svg className="w-10 h-10 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                    </svg>
+                  </div>
+                  <h2 className="text-2xl font-bold text-white mb-2">Submission Failed</h2>
+                  <p className="text-slate-400 text-sm mb-4">{autoSubmitError}</p>
+                  <button
+                    onClick={() => {
+                      autoSubmitTriggered.current = false;
+                      setAutoSubmitPhase(null);
+                      setAutoSubmitError('');
+                      handleTimeUp();
+                    }}
+                    className="px-6 py-3 rounded-xl font-bold transition-all duration-200 border bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white border-blue-500/50 shadow-lg shadow-blue-500/20 w-full"
+                  >
+                    Retry Submission
+                  </button>
+                </>
+              )}
+
+            </div>
+          </div>
+        )}
 
         {/* ═══════════ SUBMIT CONFIRMATION MODAL ═══════════ */}
         {showSubmitConfirmModal && (
