@@ -392,20 +392,20 @@ export default function Login() {
         <div className="fixed inset-0 bg-slate-900/98 z-[200] flex items-center justify-center p-4" onKeyDown={(e) => e.key === 'Escape' && e.preventDefault()}>
           <div className="relative w-full max-w-md bg-gradient-to-b from-slate-800 to-slate-900 backdrop-blur-xl rounded-3xl shadow-2xl border border-slate-700/50 p-8 transform transition-all duration-300 animate-slide-in overflow-hidden">
             {/* Top accent gradient line */}
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 via-orange-500 to-red-500"></div>
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500"></div>
 
             {/* Modal Content */}
             <div className="text-center">
               {/* Icon with glow */}
               <div className="relative mx-auto w-20 h-20 mb-6">
-                <div className="absolute inset-0 rounded-2xl bg-amber-500/20 blur-xl"></div>
-                <div className="relative w-full h-full rounded-2xl bg-gradient-to-br from-amber-500/30 to-orange-500/30 flex items-center justify-center border border-amber-400/40">
-                  <KeyRound className="w-10 h-10 text-amber-400" />
+                <div className="absolute inset-0 rounded-2xl bg-blue-500/20 blur-xl"></div>
+                <div className="relative w-full h-full rounded-2xl bg-gradient-to-br from-blue-500/30 to-purple-500/30 flex items-center justify-center border border-blue-400/40">
+                  <KeyRound className="w-10 h-10 text-blue-400" />
                 </div>
               </div>
 
               {/* Title */}
-              <h3 className="text-2xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent mb-2">
+              <h3 className="text-2xl font-bold bg-gradient-to-r from-white to-blue-300 bg-clip-text text-transparent mb-2">
                 Change Your Password
               </h3>
               <p className="text-gray-400 text-sm mb-6">
@@ -419,13 +419,13 @@ export default function Login() {
                   <label className="block text-sm font-medium text-gray-300 mb-2">New Password</label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <Lock className="h-5 w-5 text-gray-400 group-focus-within:text-amber-400 transition-colors" />
+                      <Lock className="h-5 w-5 text-gray-400 group-focus-within:text-blue-400 transition-colors" />
                     </div>
                     <input
                       type={showNewPassword ? 'text' : 'password'}
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full pl-10 pr-12 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all duration-200 hover:border-slate-500"
+                      className="w-full pl-10 pr-12 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 hover:border-slate-500"
                       style={{ backgroundColor: 'rgba(51, 65, 85, 0.5)' }}
                       placeholder="Enter new password"
                       required
@@ -447,13 +447,13 @@ export default function Login() {
                   <label className="block text-sm font-medium text-gray-300 mb-2">Confirm Password</label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <Lock className="h-5 w-5 text-gray-400 group-focus-within:text-amber-400 transition-colors" />
+                      <Lock className="h-5 w-5 text-gray-400 group-focus-within:text-blue-400 transition-colors" />
                     </div>
                     <input
                       type={showConfirmPassword ? 'text' : 'password'}
                       value={confirmNewPassword}
                       onChange={(e) => setConfirmNewPassword(e.target.value)}
-                      className="w-full pl-10 pr-12 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all duration-200 hover:border-slate-500"
+                      className="w-full pl-10 pr-12 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 hover:border-slate-500"
                       style={{ backgroundColor: 'rgba(51, 65, 85, 0.5)' }}
                       placeholder="Confirm new password"
                       required
@@ -483,7 +483,7 @@ export default function Login() {
                 <button
                   type="submit"
                   disabled={changePasswordLoading}
-                  className="w-full mt-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 disabled:from-gray-600 disabled:to-gray-700 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98] disabled:transform-none shadow-lg shadow-amber-500/25 disabled:shadow-none flex items-center justify-center gap-2"
+                  className="w-full mt-2 bg-white/90 hover:bg-white disabled:bg-gray-500/50 text-gray-900 hover:text-gray-900 disabled:text-gray-400 font-semibold py-3 px-4 rounded-xl transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98] disabled:transform-none shadow-lg hover:shadow-white/30 disabled:shadow-none flex items-center justify-center gap-2 border border-white/20"
                 >
                   {changePasswordLoading ? (
                     <>
