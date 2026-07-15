@@ -345,6 +345,34 @@ router.post("/:id/unblock", authenticateToken, requireRole("Admin"), async (req,
   }
 });
 
+// Unblock all blocked users at once (admin only)
+router.post("/unblock-all", authenticateToken, requireRole("Admin"), async (req, res) => {
+  try {
+    const result = await User.updateMany(
+      { isBlocked: true },
+      {
+        $set: {
+          isBlocked: false,
+          failedLoginAttempts: 0,
+          failedLoginWindow: null
+        }
+      }
+    );
+
+    const unblockedCount = result.modifiedCount || 0;
+    console.log(`✅ Admin unblocked all users: ${unblockedCount} accounts unblocked`);
+    res.json({
+      message: unblockedCount > 0
+        ? `Successfully unblocked ${unblockedCount} user${unblockedCount !== 1 ? 's' : ''}.`
+        : 'No blocked users found.',
+      unblockedCount
+    });
+  } catch (err) {
+    console.error("Error unblocking all users:", err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Create a new user (admin only)
 router.post("/", authenticateToken, requireRole("Admin"), async (req, res) => {
   try {

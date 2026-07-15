@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
-import { Search, X as CloseIcon, UserPlus, Users as UsersIcon, Trash2, Image as ImageIcon, KeyRound, ShieldOff, ShieldAlert } from "lucide-react";
+import { Search, X as CloseIcon, UserPlus, Users as UsersIcon, Trash2, Image as ImageIcon, KeyRound, ShieldOff, ShieldAlert, ShieldCheck } from "lucide-react";
 import StatusPill from "../components/StatusPill";
 import EmailUploader from "../components/EmailUploader";
 import { API_BASE_URL } from "../config/api";
@@ -55,6 +55,9 @@ export default function Users() {
   const [deletingImage, setDeletingImage] = useState(null);
   const [resettingPassword, setResettingPassword] = useState(null);
   const [unblockingUser, setUnblockingUser] = useState(null);
+  const [unblockingAll, setUnblockingAll] = useState(false);
+  // Themed popup for showing results instead of browser alert
+  const [resultPopup, setResultPopup] = useState({ show: false, message: '', type: 'success' });
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState({
@@ -433,6 +436,53 @@ export default function Users() {
     });
   };
 
+  // Unblock all blocked users at once
+  const unblockAllUsers = async () => {
+    setConfirmModal({
+      isOpen: true,
+      title: "Unblock All Users",
+      message: "This will unblock all currently blocked accounts and reset their failed login attempts. They will be able to login again.",
+      confirmKeyword: "",
+      isDanger: false,
+      isLoading: false,
+      action: async () => {
+        setUnblockingAll(true);
+        try {
+          const response = await fetch(`${API_BASE_URL}/users/unblock-all`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${localStorage.getItem("token")}`
+            }
+          });
+
+          const data = await response.json();
+
+          if (response.ok) {
+            setResultPopup({ show: true, message: data.message || "All users unblocked successfully.", type: 'success' });
+            fetchUsers();
+          } else {
+            setResultPopup({ show: true, message: data.message || "Failed to unblock users.", type: 'error' });
+          }
+        } catch (error) {
+          setResultPopup({ show: true, message: "An error occurred while unblocking users.", type: 'error' });
+        } finally {
+          setUnblockingAll(false);
+        }
+      }
+    });
+  };
+
+  // Auto-dismiss result popup after 3 seconds
+  useEffect(() => {
+    if (resultPopup.show) {
+      const timer = setTimeout(() => {
+        setResultPopup({ show: false, message: '', type: 'success' });
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [resultPopup.show]);
+
   return (
     <div
       className="p-6 min-h-screen flex flex-col"
@@ -555,6 +605,16 @@ export default function Users() {
                 >
                   <KeyRound className="h-4 w-4" />
                   <span className="hidden lg:inline">Passwords</span>
+                </button>
+
+                <button
+                  onClick={unblockAllUsers}
+                  disabled={unblockingAll}
+                  className="px-4 py-3.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 transition-all hover:scale-105 active:scale-95 flex items-center gap-2 font-medium text-sm disabled:opacity-50 disabled:hover:scale-100"
+                  title="Unblock all blocked user accounts"
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  <span className="hidden lg:inline">{unblockingAll ? 'Unblocking...' : 'Unblock All'}</span>
                 </button>
 
                 {/* Add User Button - Prominent */}
@@ -1224,12 +1284,12 @@ export default function Users() {
                   disabled={confirmModal.isLoading || (confirmModal.confirmKeyword && typedConfirmation !== confirmModal.confirmKeyword)}
                   className={`flex-1 px-4 py-3 rounded-xl font-bold shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:grayscale disabled:hover:scale-100 flex items-center justify-center gap-2 ${confirmModal.isDanger
                     ? 'bg-gradient-to-r from-red-600 to-red-500 text-white shadow-red-500/20'
-                    : 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-blue-500/20'
+                    : 'bg-white/90 hover:bg-white text-gray-900 shadow-lg hover:shadow-white/30 border border-white/20'
                     }`}
                 >
                   {confirmModal.isLoading ? (
                     <>
-                      <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <svg className={`animate-spin h-5 w-5 ${confirmModal.isDanger ? 'text-white' : 'text-gray-900'}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
@@ -1238,6 +1298,51 @@ export default function Users() {
                   ) : (
                     confirmModal.isDanger ? "Confirm Delete" : "Confirm"
                   )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════ RESULT POPUP ═══════════ */}
+      {resultPopup.show && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm transition-opacity"
+            onClick={() => setResultPopup({ show: false, message: '', type: 'success' })}
+          />
+          <div className="relative bg-slate-800 border border-slate-700/50 rounded-2xl p-6 shadow-2xl max-w-md w-full animate-fade-in">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-3">
+                <div className={`p-3 rounded-xl ${resultPopup.type === 'success' ? 'bg-blue-500/10' : 'bg-red-500/10'}`}>
+                  {resultPopup.type === 'success' ? (
+                    <svg className="h-6 w-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : (
+                    <svg className="h-6 w-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  )}
+                </div>
+                <h3 className="text-xl font-bold text-white">
+                  {resultPopup.type === 'success' ? 'Success' : 'Error'}
+                </h3>
+              </div>
+
+              <p className="text-slate-300">{resultPopup.message}</p>
+
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={() => setResultPopup({ show: false, message: '', type: 'success' })}
+                  className={`flex-1 px-4 py-3 rounded-xl font-bold shadow-lg transition-all hover:scale-105 active:scale-95 ${
+                    resultPopup.type === 'success'
+                      ? 'bg-white/90 hover:bg-white text-gray-900 hover:shadow-white/30 border border-white/20'
+                      : 'bg-gradient-to-r from-red-600 to-red-500 text-white shadow-red-500/20'
+                  }`}
+                >
+                  OK
                 </button>
               </div>
             </div>
