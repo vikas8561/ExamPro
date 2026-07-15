@@ -19,6 +19,9 @@ export default function Login() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [changePasswordLoading, setChangePasswordLoading] = useState(false);
   const [changePasswordError, setChangePasswordError] = useState('');
+  // Temp credentials held in memory only — NOT in localStorage until password is changed
+  const [tempToken, setTempToken] = useState(null);
+  const [tempUser, setTempUser] = useState(null);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -94,7 +97,17 @@ export default function Login() {
       const data = await response.json();
 
       if (response.ok) {
-        // Store user data and token in localStorage
+        // Check if user must change password BEFORE storing token
+        if (data.mustChangePassword) {
+          // Hold credentials in memory only — do NOT persist to localStorage
+          setTempToken(data.token);
+          setTempUser(data.user);
+          setShowForcePasswordModal(true);
+          setLoading(false);
+          return;
+        }
+
+        // Normal login — store user data and token in localStorage
         localStorage.setItem('user', JSON.stringify(data.user));
         localStorage.setItem('token', data.token);
         localStorage.setItem('userId', data.user._id);
@@ -109,13 +122,6 @@ export default function Login() {
           localStorage.removeItem('rememberMe');
           localStorage.removeItem('rememberedEmail');
           localStorage.removeItem('rememberedPassword');
-        }
-
-        // Check if user must change password before proceeding
-        if (data.mustChangePassword) {
-          setShowForcePasswordModal(true);
-          setLoading(false);
-          return;
         }
 
         // Redirect based on role
@@ -140,6 +146,35 @@ export default function Login() {
       setLoading(false);
     }
   };
+
+  // Clear temp credentials and close modal (used on back button / navigation away)
+  const clearTempCredentials = () => {
+    setTempToken(null);
+    setTempUser(null);
+    setShowForcePasswordModal(false);
+    setNewPassword('');
+    setConfirmNewPassword('');
+    setChangePasswordError('');
+  };
+
+  // Block browser back button while password change modal is open
+  useEffect(() => {
+    if (!showForcePasswordModal) return;
+
+    // Push a dummy history state so back button triggers popstate instead of leaving
+    window.history.pushState({ passwordModal: true }, '');
+
+    const handlePopState = () => {
+      // User pressed back — clear temp credentials so they're NOT logged in
+      clearTempCredentials();
+    };
+
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [showForcePasswordModal]);
 
   // Handle forced password change
   const handleForcePasswordChange = async (e) => {
@@ -166,12 +201,12 @@ export default function Login() {
     }
 
     try {
-      const token = localStorage.getItem('token');
+      // Use temp token from memory — NOT from localStorage
       const response = await fetch(`${API_BASE_URL}/auth/force-change-password`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${tempToken}`
         },
         body: JSON.stringify({ newPassword, confirmPassword: confirmNewPassword }),
       });
@@ -179,14 +214,33 @@ export default function Login() {
       const data = await response.json();
 
       if (response.ok) {
-        // Password changed successfully, now redirect
+        // Password changed successfully — NOW persist credentials to localStorage
+        localStorage.setItem('user', JSON.stringify(tempUser));
+        localStorage.setItem('token', tempToken);
+        localStorage.setItem('userId', tempUser._id);
+
+        // Handle "Remember Me" with the new password
+        if (rememberMe) {
+          localStorage.setItem('rememberMe', 'true');
+          localStorage.setItem('rememberedEmail', email);
+          localStorage.setItem('rememberedPassword', newPassword);
+        } else {
+          localStorage.removeItem('rememberMe');
+          localStorage.removeItem('rememberedEmail');
+          localStorage.removeItem('rememberedPassword');
+        }
+
+        // Clear temp state
+        setTempToken(null);
+        setTempUser(null);
         setShowForcePasswordModal(false);
-        const user = JSON.parse(localStorage.getItem('user') || '{}');
-        if (user.role === 'Admin') {
+
+        // Redirect based on role
+        if (tempUser.role === 'Admin') {
           navigate('/admin');
-        } else if (user.role === 'Student') {
+        } else if (tempUser.role === 'Student') {
           navigate('/student');
-        } else if (user.role === 'Mentor') {
+        } else if (tempUser.role === 'Mentor') {
           navigate('/mentor');
         }
       } else {
