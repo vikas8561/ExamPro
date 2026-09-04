@@ -52,6 +52,7 @@ const JsonQuestionUploader = ({ onQuestionsLoaded }) => {
             text: q.text,
             options: q.kind === 'mcq' ? q.options : undefined,
             answer: q.kind === 'mcq' ? q.answer : undefined,
+            expectedAnswer: q.kind === 'theory' || q.kind === 'theoretical' ? q.expectedAnswer || '' : undefined,
             examples: q.kind === 'coding' ? q.examples || [] : undefined,
             points: q.points || 1
           };

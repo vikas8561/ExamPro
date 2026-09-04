@@ -19,7 +19,7 @@ const emptyQuestion = (kind) => ({
     answers: [],
   }),
   ...(kind === "theory" && {
-    // No guidelines field
+    expectedAnswer: "",
   }),
   ...(kind === "coding" && {
     examples: [],
@@ -115,7 +115,7 @@ export default function CreateTest() {
             hiddenTestCases: (q.hiddenTestCases || []).map(tc => ({ input: tc.input, output: tc.output, marks: tc.marks || 0 })),
           }),
           ...(q.kind === "theory" && {
-            // No guidelines field
+            expectedAnswer: q.expectedAnswer || "",
           }),
         })),
       });
@@ -456,7 +456,7 @@ export default function CreateTest() {
             hiddenTestCases: (q.hiddenTestCases || []).map(tc => ({ input: tc.input, output: tc.output, marks: Number(tc.marks || 0) })),
           }),
           ...(q.kind === "theory" && {
-            // No guidelines field
+            expectedAnswer: q.expectedAnswer || "",
           }),
         })),
       };
@@ -1848,15 +1848,18 @@ export default function CreateTest() {
 
                     {question.kind === "theory" && (
                       <div className="bg-slate-600/30 rounded-lg p-4 border border-slate-500/30">
-                        <div className="text-center py-8 text-slate-400">
-                          <div className="p-4 bg-slate-700/30 rounded-lg border border-slate-500/30">
-                            <svg className="w-12 h-12 mx-auto mb-3 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                            <div className="text-sm font-medium mb-1">Theory Question</div>
-                            <div className="text-xs">Students will provide written answers to this question</div>
-                          </div>
-                        </div>
+                        <label className="block text-sm font-medium mb-3 text-slate-200">
+                          Expected Answer
+                        </label>
+                        <textarea
+                          value={question.expectedAnswer}
+                          onChange={(e) =>
+                            updateQuestion(question.id, "expectedAnswer", e.target.value)
+                          }
+                          className="w-full p-4 bg-slate-700/50 border border-slate-500/50 rounded-lg focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200 resize-none"
+                          rows={5}
+                          placeholder="Enter the expected answer for admin evaluation..."
+                        />
                       </div>
                     )}
                   </div>
