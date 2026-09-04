@@ -204,6 +204,14 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
           )
         };
       }
+
+      if (q.kind === 'theory') {
+        return {
+          ...q,
+          expectedAnswer: q.expectedAnswer || ''
+        };
+      }
+
       return q;
     });
 

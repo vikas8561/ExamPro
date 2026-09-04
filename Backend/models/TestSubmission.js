@@ -7,12 +7,18 @@ const ResponseSchema = new mongoose.Schema({
   language: { type: String, default: null }, // Language used for coding questions (python, javascript, java, cpp, c, go)
   isCorrect: { type: Boolean, default: false },
   points: { type: Number, default: 0 },
+  totalMarks: { type: Number, default: 0, min: 0 }, // Max marks for this question (copied from Question.points at submission time)
   autoGraded: { type: Boolean, default: false },
   geminiFeedback: { type: String, default: null },
   correctAnswer: { type: String, default: null },
   errorAnalysis: { type: String, default: null },
   improvementSteps: { type: [String], default: [] },
-  topicRecommendations: { type: [String], default: [] }
+  topicRecommendations: { type: [String], default: [] },
+  evaluationStatus: {
+    type: String,
+    enum: ["Pending", "Evaluating", "Evaluated", "Failed"],
+    default: "Pending"
+  }
 }, { _id: false });
 
 const TabViolationSchema = new mongoose.Schema({
@@ -103,5 +109,21 @@ TestSubmissionSchema.index({ submittedAt: -1 });
 TestSubmissionSchema.index({ mentorReviewed: 1, submittedAt: -1 });
 TestSubmissionSchema.index({ reviewStatus: 1, submittedAt: -1 });
 TestSubmissionSchema.index({ mentorReviewed: 1, reviewStatus: 1 });
+
+// Validation: givenMarks (points) must not exceed totalMarks for any response
+TestSubmissionSchema.pre('save', function(next) {
+  for (const response of this.responses || []) {
+    if (response.totalMarks > 0 && response.points > response.totalMarks) {
+      return next(new Error(
+        `Given marks (${response.points}) cannot exceed total marks (${response.totalMarks}) for question ${response.questionId}`
+      ));
+    }
+    if (response.points < 0) {
+      // Allow negative points only for MCQ with negative marking (points can be negative via negativeMarkingPercent)
+      // This validator intentionally allows it since scoreCalculation.js applies negative marking
+    }
+  }
+  next();
+});
 
 module.exports = mongoose.model("TestSubmission", TestSubmissionSchema);

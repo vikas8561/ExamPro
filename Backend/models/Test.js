@@ -38,6 +38,7 @@ const QuestionSchema = new mongoose.Schema(
     options: { type: [OptionSchema], default: undefined },
     answer: { type: String, default: "" },
     answers: { type: [String], default: [] }, // Removed MSQ support
+    expectedAnswer: { type: String, default: "" }, // Mentor-provided reference answer for theory questions (used by LLM evaluation)
     guidelines: { type: String, default: "" },
     examples: { type: [ExampleSchema], default: [] },
     points: { type: Number, default: 1, min: 0 },
