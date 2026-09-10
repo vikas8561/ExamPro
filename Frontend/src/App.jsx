@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from "react";
-import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
+import React from "react";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import Tests from "./pages/Tests";
 import Users from "./pages/Users";
@@ -31,6 +31,7 @@ import AdminSidebar from "./components/AdminSidebar";
 import AdminDSAPractice from "./pages/AdminDSAPractice";
 import StudentDSAPractice from "./pages/StudentDSAPractice";
 import MigrateFaceDescriptors from "./pages/MigrateFaceDescriptors";
+import useDevToolsDetection from "./hooks/useDevToolsDetection";
 
 // Protected Route Component - uses JWT payload for role check (defense-in-depth)
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -174,7 +175,7 @@ const MentorRoutes = () => {
 };
 
 export default function App() {
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  useDevToolsDetection();
 
   return (
     <Routes>
