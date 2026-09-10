@@ -463,6 +463,23 @@ connectDB(process.env.MONGODB_URI || 'mongodb://localhost:27017/test-platform')
       console.log(`🚀 Server running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
       console.log(`📱 To access from mobile, use your computer's IP address: http://YOUR_IP:${PORT}`);
       console.log(`💡 Find your IP: Windows (ipconfig) | Mac/Linux (ifconfig or ip addr)`);
+
+      // Probe Judge0 in the background so misconfiguration shows up in the boot
+      // log rather than the first time a student presses Run. Never blocks boot.
+      require("./services/judge0")
+        .checkHealth()
+        .then((health) => {
+          if (health.ok) {
+            console.log(`⚖️  Judge0 ready at ${health.url} (v${health.version || '?'}, ${health.latencyMs}ms, auth ${health.authenticated ? 'on' : 'off'})`);
+            if (health.missingLanguages?.length) {
+              console.warn(`⚠️ Judge0 is missing languages: ${health.missingLanguages.join(', ')}`);
+            }
+          } else {
+            console.error(`❌ Judge0 unreachable at ${health.url}: ${health.error}`);
+            console.error(`   Coding tests will fail until this is fixed. Run: npm run check-judge0`);
+          }
+        })
+        .catch((error) => console.error("❌ Judge0 probe failed:", error.message));
     });
   })
   .catch((e) => {

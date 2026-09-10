@@ -7,7 +7,8 @@
     "start": "node --max-old-space-size=1024 server.js",
     "dev": "nodemon --max-old-space-size=1024 server.js",
     "create-indexes": "node scripts/createIndexes.js",
-    "performance-test": "node scripts/performanceMonitor.js"
+    "performance-test": "node scripts/performanceMonitor.js",
+    "check-judge0": "node scripts/checkJudge0.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

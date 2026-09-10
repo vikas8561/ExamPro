@@ -14,11 +14,16 @@ const ResponseSchema = new mongoose.Schema({
   errorAnalysis: { type: String, default: null },
   improvementSteps: { type: [String], default: [] },
   topicRecommendations: { type: [String], default: [] },
+  
   evaluationStatus: {
     type: String,
     enum: ["Pending", "Evaluating", "Evaluated", "Failed"],
     default: "Pending"
-  }
+  },
+  // Judge0 measurements for coding answers, used to build the runtime and
+  // memory distributions shown after a submission.
+  runtimeMs: { type: Number, default: null },
+  memoryKb: { type: Number, default: null }
 }, { _id: false });
 
 const TabViolationSchema = new mongoose.Schema({
@@ -98,6 +103,14 @@ const TestSubmissionSchema = new mongoose.Schema({
   autoSubmit: {
     type: Boolean,
     default: false
+  },
+  // False while a student is still working: /api/coding/submit records
+  // per-question Judge0 scores mid-test, and those records must not surface as
+  // finished work. The final POST /api/test-submissions sets this true.
+  // Legacy documents have no field at all, which reads as finalized.
+  isFinalized: {
+    type: Boolean,
+    default: true
   }
 }, { timestamps: true });
 

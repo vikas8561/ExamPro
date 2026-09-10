@@ -25,7 +25,7 @@ router.get("/dashboard", authenticateToken, requireRole(["Mentor", "Admin"]), as
     const completedAssignments = assignments.filter(a => a.status === "Completed");
     
     // Get test submissions for monitoring (with limit to avoid performance issues)
-    const submissions = await TestSubmission.find()
+    const submissions = await TestSubmission.find({ isFinalized: { $ne: false } })
       .populate({
         path: "assignmentId",
         populate: {
@@ -175,7 +175,7 @@ router.get("/submissions", authenticateToken, requireRole(["Mentor", "Admin"]), 
     const skip = (page - 1) * limit;
 
     // Use optimized query with pagination
-    const submissions = await TestSubmission.find()
+    const submissions = await TestSubmission.find({ isFinalized: { $ne: false } })
       .populate({
         path: "assignmentId",
         populate: {
@@ -388,7 +388,9 @@ router.get("/submissions/pending", authenticateToken, requireRole(["Mentor", "Ad
 
     const submissions = await TestSubmission.find({
       assignmentId: { $in: assignmentIds },
-      mentorReviewed: false
+      mentorReviewed: false,
+      // Skip records the judge created while the student is still working.
+      isFinalized: { $ne: false }
     })
     .populate("testId", "title")
     .populate("userId", "name email")

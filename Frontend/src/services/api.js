@@ -198,6 +198,57 @@ const apiRequest = async (endpoint, options = {}) => {
   }
 };
 
+/**
+ * POST to an endpoint that replies with Server-Sent Events, calling `onEvent`
+ * for each frame as it arrives. Used by code submission so the UI can show the
+ * judge's real progress instead of a spinner with no information.
+ *
+ * EventSource cannot send an Authorization header, so this reads the stream
+ * from fetch directly.
+ *
+ * @returns {Promise<void>} resolves when the stream ends
+ */
+export const apiStream = async (endpoint, { body, onEvent, signal } = {}) => {
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    method: 'POST',
+    headers: { ...getAuthHeaders(), Accept: 'text/event-stream' },
+    body: typeof body === 'string' ? body : JSON.stringify(body),
+    credentials: 'include',
+    signal,
+  });
+
+  if (!response.ok || !response.body) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.message || `HTTP error! status: ${response.status}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  // SSE frames are separated by a blank line.
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let split;
+    while ((split = buffer.indexOf('\n\n')) !== -1) {
+      const frame = buffer.slice(0, split);
+      buffer = buffer.slice(split + 2);
+
+      const event = frame.match(/^event: (.+)$/m)?.[1];
+      const raw = frame.match(/^data: (.+)$/m)?.[1];
+      if (!event || !raw) continue;
+      try {
+        onEvent?.(event, JSON.parse(raw));
+      } catch {
+        // Ignore malformed frames rather than aborting the stream.
+      }
+    }
+  }
+};
+
 // Specific API functions
 export const testSubmissionsAPI = {
   // Get test submission details

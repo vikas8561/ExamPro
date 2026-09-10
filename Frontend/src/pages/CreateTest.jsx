@@ -113,6 +113,8 @@ export default function CreateTest() {
             examples: q.examples || [],
             visibleTestCases: (q.visibleTestCases || []).map(tc => ({ input: tc.input, output: tc.output })),
             hiddenTestCases: (q.hiddenTestCases || []).map(tc => ({ input: tc.input, output: tc.output, marks: tc.marks || 0 })),
+            ...(q.language ? { language: q.language } : {}),
+            ...(q.guidelines ? { guidelines: q.guidelines } : {}),
           }),
           ...(q.kind === "theory" && {
             expectedAnswer: q.expectedAnswer || "",
@@ -454,6 +456,10 @@ export default function CreateTest() {
             examples: q.examples || [],
             visibleTestCases: (q.visibleTestCases || []).map(tc => ({ input: tc.input, output: tc.output })),
             hiddenTestCases: (q.hiddenTestCases || []).map(tc => ({ input: tc.input, output: tc.output, marks: Number(tc.marks || 0) })),
+            // Optional, and only set by bulk upload today: the editor's starting
+            // language and any extra instructions for the student.
+            ...(q.language ? { language: q.language } : {}),
+            ...(q.guidelines ? { guidelines: q.guidelines } : {}),
           }),
           ...(q.kind === "theory" && {
             expectedAnswer: q.expectedAnswer || "",

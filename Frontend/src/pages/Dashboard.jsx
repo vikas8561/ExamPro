@@ -265,7 +265,7 @@ export default function Dashboard() {
                   contentStyle={{ backgroundColor: '#1F2937', borderColor: '#374151', color: '#F3F4F6' }}
                   itemStyle={{ color: '#8884d8' }}
                 />
-                <Area type="monotone" dataKey="students" stroke="#8884d8" fillOpacity={1} fill="url(#colorStudents)" strokeWidth={3} />
+                <Area type="monotone" dataKey="students" stroke="#8884d8" fillOpacity={1} fill="url(#colorStudents)" strokeWidth={3} isAnimationActive={false} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -337,7 +337,7 @@ export default function Dashboard() {
                     cursor={{ fill: 'rgba(255,255,255,0.05)' }}
                     contentStyle={{ backgroundColor: '#1F2937', borderColor: '#374151' }}
                   />
-                  <Bar dataKey="score" fill="#34D399" radius={[0, 4, 4, 0]} barSize={20} />
+                  <Bar dataKey="score" fill="#34D399" radius={[0, 4, 4, 0]} barSize={20} isAnimationActive={false} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (

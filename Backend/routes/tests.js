@@ -141,7 +141,29 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
       return res.status(404).json({ message: "Test not found" });
     }
 
-    res.json(test);
+    // Students take tests through this endpoint, so everything that would give
+    // away the answer must be stripped: MCQ answers, the hidden test cases the
+    // judge grades against, and the proctoring bypass OTP. Admins and mentors
+    // need the full document to author and review.
+    const role = String(req.user?.role || "").toLowerCase();
+    if (role === "admin" || role === "mentor") {
+      return res.json(test);
+    }
+
+    const safeTest = test.toObject({ virtuals: true });
+    delete safeTest.otp;
+    safeTest.questions = (safeTest.questions || []).map((question) => {
+      const { answer, answers, hiddenTestCases, ...rest } = question;
+      return {
+        ...rest,
+        // Students still need to know how many hidden cases there are and what
+        // the question is worth, just not what they contain.
+        hiddenTestCaseCount: (hiddenTestCases || []).length,
+        totalMarks: (hiddenTestCases || []).reduce((sum, testCase) => sum + (testCase.marks || 0), 0),
+      };
+    });
+
+    res.json(safeTest);
   } catch (error) {
     next(error);
   }

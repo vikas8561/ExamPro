@@ -43,7 +43,9 @@ const QuestionSchema = new mongoose.Schema(
     examples: { type: [ExampleSchema], default: [] },
     points: { type: Number, default: 1, min: 0 },
     // Coding-only fields
-    language: { type: String, default: "python", enum: ["python", "javascript", "java", "cpp", "c", "go"] },
+    // Default language for the editor; students may switch to any supported one.
+    // Keep in sync with Backend/configs/languages.js (LANGUAGE_KEYS).
+    language: { type: String, default: "python", enum: ["c", "cpp", "java", "javascript", "typescript", "python"] },
     visibleTestCases: { type: [VisibleTestCaseSchema], default: [] },
     hiddenTestCases: { type: [HiddenTestCaseSchema], default: [] },
   },

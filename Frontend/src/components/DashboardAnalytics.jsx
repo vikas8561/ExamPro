@@ -129,6 +129,7 @@ const DashboardAnalytics = ({ assignments = [] }) => {
                             />
                             <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.2)', strokeWidth: 1 }} />
                             <Line
+                                isAnimationActive={false}
                                 type="monotone"
                                 dataKey="score"
                                 stroke="#8B5CF6"

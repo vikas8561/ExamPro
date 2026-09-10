@@ -206,6 +206,18 @@ router.post("/", authenticateToken, async (req, res, next) => {
       return res.status(400).json({ message: "Test not started or already completed" });
     }
 
+    // Coding questions may already have been graded by Judge0 via
+    // /api/coding/submit. This POST replaces the whole document, so pull those
+    // auto-graded results forward instead of zeroing them out.
+    const priorSubmission = await TestSubmission.findOne({ assignmentId, userId })
+      .select("responses")
+      .lean();
+    const priorAutoGraded = new Map(
+      (priorSubmission?.responses || [])
+        .filter((response) => response.autoGraded)
+        .map((response) => [response.questionId.toString(), response])
+    );
+
     // Calculate score
     let totalScore = 0;
     let maxScore = 0;
@@ -222,7 +234,12 @@ router.post("/", authenticateToken, async (req, res, next) => {
     }
 
     for (const question of assignmentWithTest.testId.questions) {
-      maxScore += question.points;
+      // Coding questions are scored from their hidden test cases (matching
+      // /api/coding/submit); everything else uses the question's own points.
+      const codingMarks = question.kind === "coding"
+        ? (question.hiddenTestCases || []).reduce((sum, testCase) => sum + (testCase.marks || 0), 0)
+        : 0;
+      maxScore += question.kind === "coding" && codingMarks > 0 ? codingMarks : question.points;
 
       const userResponse = responses.find(r => r.questionId === question._id.toString());
 
@@ -260,6 +277,9 @@ router.post("/", authenticateToken, async (req, res, next) => {
       let points = 0;
       let geminiFeedback = null;
       let geminiResult = null;
+      // Tracks whether the score came from a grader rather than a mentor, so a
+      // repeat submit can carry it forward again.
+      let autoGraded = question.kind === "mcq";
 
       if (question.kind === "mcq") {
         isCorrect = userResponse.selectedOption === question.answer;
@@ -272,15 +292,27 @@ router.post("/", authenticateToken, async (req, res, next) => {
           incorrectCount++;
         }
       } else if (question.kind === "theory" || question.kind === "coding") {
-        // Theoretical and coding questions will be graded manually by mentors
         console.log(`🔍 Processing ${question.kind} question:`, question._id);
         if (userResponse.textAnswer && userResponse.textAnswer.trim() !== "") {
-          console.log("📝 Text answer found - will be graded by mentor");
-          // Set points to 0 initially - mentor will grade manually
-          points = 0;
+          const judged = question.kind === "coding"
+            ? priorAutoGraded.get(question._id.toString())
+            : null;
+
+          if (judged) {
+            // Already graded by Judge0 — keep that score.
+            points = judged.points || 0;
+            isCorrect = Boolean(judged.isCorrect);
+            autoGraded = true;
+            if (isCorrect) correctCount++; else incorrectCount++;
+            console.log(`⚖️  Keeping Judge0 score for ${question._id}: ${points}`);
+          } else {
+            console.log("📝 Text answer found - will be graded by mentor");
+            // Set points to 0 initially - mentor will grade manually
+            points = 0;
+            isCorrect = false; // Not applicable for theory/coding
+          }
           geminiFeedback = null;
           geminiResult = null;
-          isCorrect = false; // Not applicable for theory/coding
         } else {
           console.log("❌ No text answer provided for theory/coding question");
           notAnsweredCount++;
@@ -299,7 +331,7 @@ router.post("/", authenticateToken, async (req, res, next) => {
         language: userResponse.language || null, // Save language for coding questions
         isCorrect,
         points,
-        autoGraded: question.kind === "mcq",
+        autoGraded,
         geminiFeedback: null, // No Gemini feedback
         correctAnswer: null, // Answers only visible to mentors
         errorAnalysis: null,
@@ -320,6 +352,7 @@ router.post("/", authenticateToken, async (req, res, next) => {
       maxScore,
       timeSpent: timeSpent || 0,
       submittedAt: new Date(),
+      isFinalized: true,
       // Mark as immediately reviewed for automatic assessment
       mentorReviewed: true,
       reviewStatus: "Reviewed",
