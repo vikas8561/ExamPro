@@ -21,10 +21,8 @@ const userSchema = new mongoose.Schema(
     resetPasswordExpires: { type: Date },
     pendingPassword: { type: String }, // Temporary storage for new password
     pendingEmail: { type: String }, // Temporary storage for new email
-    profileImage: { type: String }, // Base64 encoded profile image (for display only, not used for face recognition)
+    profileImage: { type: String }, // Base64 encoded profile image, for display
     profileImageSaved: { type: Boolean, default: false }, // Flag to track if profile image was saved (one-time only)
-    faceDescriptor: { type: [Number] }, // Face descriptor (128-D vector) for face-api.js matching - stored securely, not reversible
-    faceDescriptorSaved: { type: Boolean, default: false }, // Flag to track if face descriptor was saved (one-time only)
     // Account lockout fields
     isBlocked: { type: Boolean, default: false }, // Blocked by admin after failed login attempts (permanent until admin unblocks)
     failedLoginAttempts: { type: Number, default: 0 }, // Counter for failed login attempts

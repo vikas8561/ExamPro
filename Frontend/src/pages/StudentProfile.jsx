@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from "react";
 import { Camera, Mail, Lock, User as UserIcon, Building2 } from "lucide-react";
 import { API_BASE_URL } from '../config/api';
 import apiRequest from '../services/api';
-import * as faceapi from "face-api.js";
 
 export default function StudentProfile() {
   // Initialize user from localStorage immediately
@@ -281,117 +280,13 @@ export default function StudentProfile() {
     if (!capturedImage) return;
 
     // Check if image was already saved
-    if (user?.profileImageSaved || user?.faceDescriptorSaved) {
+    if (user?.profileImageSaved) {
       alert('Profile image can only be saved once and cannot be changed.');
       return;
     }
 
     setUploadingImage(true);
     try {
-      // Extract face descriptor using face-api.js
-      let faceDescriptor = null;
-      try {
-        // Load models if not already loaded (they should be in /public/models)
-        const MODEL_URL = '/models';
-        await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-          faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-          faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
-        ]);
-
-        // Load image and extract descriptor
-        const img = await faceapi.fetchImage(capturedImage);
-
-        // Validate image dimensions
-        if (!img || img.width === 0 || img.height === 0) {
-          alert('Invalid image captured. Please try capturing again.');
-          setUploadingImage(false);
-          return;
-        }
-
-        console.log(`Image loaded: ${img.width}x${img.height}`);
-
-        // Try multiple detection methods with different options for better reliability
-        let detection = null;
-
-        // First try with TinyFaceDetector with standard settings
-        try {
-          detection = await faceapi
-            .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({
-              inputSize: 512,
-              scoreThreshold: 0.5
-            }))
-            .withFaceLandmarks()
-            .withFaceDescriptor();
-          console.log('✅ Face detected with TinyFaceDetector (standard)');
-        } catch (err) {
-          console.log('TinyFaceDetector (standard) failed:', err);
-        }
-
-        // If no detection, try with larger input size (better for larger faces)
-        if (!detection) {
-          try {
-            detection = await faceapi
-              .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({
-                inputSize: 640,
-                scoreThreshold: 0.4
-              }))
-              .withFaceLandmarks()
-              .withFaceDescriptor();
-            console.log('✅ Face detected with TinyFaceDetector (large input)');
-          } catch (err) {
-            console.log('TinyFaceDetector (large input) failed:', err);
-          }
-        }
-
-        // If still no detection, try with lower threshold (more sensitive)
-        if (!detection) {
-          try {
-            detection = await faceapi
-              .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({
-                inputSize: 416,
-                scoreThreshold: 0.3
-              }))
-              .withFaceLandmarks()
-              .withFaceDescriptor();
-            console.log('✅ Face detected with TinyFaceDetector (low threshold)');
-          } catch (err) {
-            console.log('TinyFaceDetector (low threshold) failed:', err);
-          }
-        }
-
-        // Last resort: try with very low threshold and smaller input
-        if (!detection) {
-          try {
-            detection = await faceapi
-              .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({
-                inputSize: 320,
-                scoreThreshold: 0.2
-              }))
-              .withFaceLandmarks()
-              .withFaceDescriptor();
-            console.log('✅ Face detected with TinyFaceDetector (very low threshold)');
-          } catch (err) {
-            console.log('TinyFaceDetector (very low threshold) failed:', err);
-          }
-        }
-
-        if (detection) {
-          faceDescriptor = Array.from(detection.descriptor);
-          console.log('✅ Face descriptor extracted successfully');
-        } else {
-          alert('No face detected in the image. Please:\n\n1. Ensure your face is clearly visible\n2. Make sure there is good lighting\n3. Look directly at the camera\n4. Try capturing the image again');
-          setUploadingImage(false);
-          return;
-        }
-      } catch (faceError) {
-        console.error('Error extracting face descriptor:', faceError);
-        alert('Failed to extract face descriptor. Please ensure face-api.js models are downloaded. See README for instructions.');
-        setUploadingImage(false);
-        return;
-      }
-
-      // Send both image (for display) and faceDescriptor (for face recognition) to backend
       const token = localStorage.getItem('token');
       const response = await fetch(`${API_BASE_URL}/auth/profile/image`, {
         method: 'POST',
@@ -399,16 +294,13 @@ export default function StudentProfile() {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          image: capturedImage, // Optional: for display purposes
-          faceDescriptor: faceDescriptor // Required: for face recognition (secure, non-reversible)
-        })
+        body: JSON.stringify({ image: capturedImage })
       });
 
       const data = await response.json();
       if (response.ok) {
         await fetchProfile(); // Refresh profile data
-        alert('Profile image and face descriptor saved successfully!');
+        alert('Profile image saved successfully!');
         setCapturedImage(null);
       } else {
         alert(data.message || 'Failed to save profile image');
@@ -594,7 +486,7 @@ export default function StudentProfile() {
     );
   }
 
-  const canCaptureImage = !user.profileImageSaved && !user.faceDescriptorSaved;
+  const canCaptureImage = !user.profileImageSaved;
 
   return (
     <div className="min-h-screen p-6" style={{ backgroundColor: '#0B1220' }}>
@@ -649,7 +541,7 @@ export default function StudentProfile() {
                 </button>
               )}
             </div>
-            {canCaptureImage && capturedImage && !user.profileImageSaved && !user.faceDescriptorSaved && (
+            {canCaptureImage && capturedImage && !user.profileImageSaved && (
               <div className="flex gap-3">
                 <button
                   onClick={saveProfileImage}

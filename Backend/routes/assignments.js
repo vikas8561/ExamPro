@@ -6,6 +6,7 @@ const Test = require("../models/Test");
 const User = require("../models/User");
 const { authenticateToken, requireRole } = require("../middleware/auth");
 const { getCachedTestIds, setCachedTestIds, invalidateTestCache } = require("../utils/testCache");
+const { attachProctorStatus, mayServeQuestions } = require("../middleware/proctorSession");
 
 // Get all assignments (admin only) - ULTRA FAST VERSION
 router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) => {
@@ -419,7 +420,7 @@ router.get("/student/recent-activity", authenticateToken, async (req, res, next)
 });
 
 // Get assignment by ID
-router.get("/:id", authenticateToken, async (req, res, next) => {
+router.get("/:id", authenticateToken, attachProctorStatus(), async (req, res, next) => {
   try {
     const assignment = await Assignment.findById(req.params.id)
       .populate({
@@ -451,6 +452,22 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
         const { answer, answers, ...questionWithoutAnswer } = q.toObject ? q.toObject() : q;
         return questionWithoutAnswer;
       });
+    }
+
+    // This route is called before the exam begins, to show the title, the
+    // instructions and the timing, so it must keep working without proctoring.
+    // The question content is the part that is withheld until a proctoring
+    // session is actually running — otherwise the questions could simply be
+    // fetched with a direct API call and answered offline.
+    if (!mayServeQuestions(req) && assignment.testId) {
+      assignment.testId.questions = [];
+
+      // Converted to a plain object first: setting an arbitrary property on a
+      // Mongoose document does not survive serialisation, so the flag would
+      // silently never reach the browser.
+      const payload = assignment.toObject ? assignment.toObject() : { ...assignment };
+      payload.proctoringRequired = true;
+      return res.json(payload);
     }
 
     res.json(assignment);
@@ -574,7 +591,7 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
   }
 });
 
-router.post("/:id/start", authenticateToken, async (req, res, next) => {
+router.post("/:id/start", authenticateToken, attachProctorStatus(), async (req, res, next) => {
   try {
     const { permissions } = req.body;
 
@@ -623,12 +640,18 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
         });
       }
 
+      // Withheld until proctoring is live — see the note on GET /:id.
+      if (!mayServeQuestions(req) && testData) {
+        testData.questions = [];
+      }
+
       return res.status(200).json({
         assignment,
         test: testData,
         message: "Test already started",
         alreadyStarted: true,
-        timeRemaining
+        timeRemaining,
+        proctoringRequired: !mayServeQuestions(req)
       });
     }
 
@@ -773,11 +796,19 @@ router.post("/:id/start", authenticateToken, async (req, res, next) => {
       });
     }
 
+    // The dashboard's Start Test button calls this route before the exam page
+    // has mounted, so it must succeed without proctoring. Only the questions
+    // wait for a live proctoring session.
+    if (!mayServeQuestions(req) && testData) {
+      testData.questions = [];
+    }
+
     res.json({
       assignment: populatedAssignment,
       test: testData,
       message: "Test started successfully",
-      timeRemaining: timeRemaining
+      timeRemaining: timeRemaining,
+      proctoringRequired: !mayServeQuestions(req)
     });
   } catch (error) {
     next(error);

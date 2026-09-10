@@ -4,6 +4,8 @@ const TestSubmission = require("../models/TestSubmission");
 const Assignment = require("../models/Assignment");
 const Test = require("../models/Test");
 const { authenticateToken, requireRole } = require("../middleware/auth");
+const { requireProctorSession } = require("../middleware/proctorSession");
+const ProctorSession = require("../models/ProctorSession");
 
 // Gemini integration removed - mentors will grade manually
 
@@ -87,7 +89,10 @@ router.get("/violations/:assignmentId", authenticateToken, async (req, res, next
   }
 });
 
-router.post("/", authenticateToken, async (req, res, next) => {
+// A submission is only accepted from an attempt that actually went through
+// proctoring. `allowTerminated` is essential: when the referee cancels a test,
+// the browser's forced submit arrives on a terminated session and must land.
+router.post("/", authenticateToken, requireProctorSession({ allowTerminated: true }), async (req, res, next) => {
   try {
     const { assignmentId, responses, timeSpent, permissions, tabViolationCount, tabViolations, cancelledDueToViolation, autoSubmit } = req.body;
     const userId = req.user.userId;
@@ -357,12 +362,39 @@ router.post("/", authenticateToken, async (req, res, next) => {
       mentorReviewed: true,
       reviewStatus: "Reviewed",
       reviewedAt: new Date(),
-      // Add violation and auto-submit data
+      // Add violation and auto-submit data.
+      // For a proctored test these come from the server's own session record,
+      // set just below — the numbers the browser sends are only a fallback for
+      // unproctored practice tests, since a browser can be made to say anything.
       tabViolationCount: tabViolationCount || 0,
       tabViolations: tabViolations || [],
       cancelledDueToViolation: cancelledDueToViolation || false,
       autoSubmit: autoSubmit || false
     };
+
+    // The server's account of the attempt overrides the browser's.
+    const proctorSession = req.proctor?.session;
+    if (proctorSession) {
+      submissionData.proctorSessionId = proctorSession._id;
+      submissionData.proctorBypassUsed = proctorSession.bypass?.used === true;
+      submissionData.tabViolationCount = proctorSession.violationCount || 0;
+      submissionData.tabViolations = (proctorSession.violations || []).map((v) => ({
+        timestamp: v.timestamp,
+        violationType: v.violationType,
+        details: v.details || "",
+        tabCount: 1
+      }));
+      submissionData.cancelledDueToViolation =
+        proctorSession.status === "terminated" || cancelledDueToViolation === true;
+
+      // Close the session out so a submitted attempt cannot be reopened.
+      await ProctorSession.updateOne(
+        { _id: proctorSession._id, status: { $ne: "terminated" } },
+        { $set: { status: "ended", endedAt: new Date() } }
+      ).catch(() => {
+        // Best effort: the submission itself is what matters here.
+      });
+    }
 
     // Debug logging for submission data
     console.log("🔍 Submission data before save:", {
@@ -696,6 +728,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
             tabViolationCount: submission.tabViolationCount,
             tabViolations: submission.tabViolations,
             cancelledDueToViolation: submission.cancelledDueToViolation,
+            proctorBypassUsed: submission.proctorBypassUsed,
             autoSubmit: submission.autoSubmit
           },
           showResults: true
@@ -742,6 +775,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
             tabViolationCount: submission.tabViolationCount,
             tabViolations: submission.tabViolations,
             cancelledDueToViolation: submission.cancelledDueToViolation,
+            proctorBypassUsed: submission.proctorBypassUsed,
             autoSubmit: submission.autoSubmit
           },
           showResults: false,

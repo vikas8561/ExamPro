@@ -359,7 +359,6 @@ app.use("/api/reviews", require("./routes/reviews"));
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/test-submissions", require("./routes/testSubmissions"));
 app.use("/api/answers", require("./routes/answers"));
-app.use("/api/migration", require("./routes/migration"));
 app.use("/api/coding", require("./routes/coding"));
 app.use("/api/answers", require("./routes/answers"));
 app.use("/api/practice-tests", require("./routes/practiceTests"));
@@ -369,6 +368,7 @@ app.use("/api/mentor-fast", require("./routes/mentorAssignmentsFast"));
 app.use("/api/debug", require("./routes/debug"));
 app.use("/api/subjects", require("./routes/subjects"));
 app.use("/api/time", require("./routes/time"));
+app.use("/api/proctor", require("./routes/proctor"));
 
 // Make io available to routes
 app.set('io', io);

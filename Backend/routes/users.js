@@ -120,7 +120,6 @@ router.get("/profiles", authenticateToken, requireRole("Admin"), async (req, res
           role: 1,
           studentCategory: 1,
           profileImageSaved: 1,
-          faceDescriptorSaved: 1,
           isBlocked: 1,
           createdAt: 1,
           updatedAt: 1,
@@ -154,24 +153,16 @@ router.get("/profiles", authenticateToken, requireRole("Admin"), async (req, res
 // Delete ALL users profile images (admin only)
 router.delete("/profile-images/all", authenticateToken, requireRole("admin"), async (req, res) => {
   try {
-    // Update all users: clear profileImage and faceDescriptor
-    // Using $unset to remove fields and $set to update boolean flags
     const result = await User.updateMany(
       {}, // Target ALL users
       {
-        $unset: {
-          profileImage: "",
-          faceDescriptor: ""
-        },
-        $set: {
-          profileImageSaved: false,
-          faceDescriptorSaved: false
-        }
+        $unset: { profileImage: "" },
+        $set: { profileImageSaved: false }
       }
     );
 
     res.json({
-      message: `Successfully deleted profile images and face data for ${result.modifiedCount} users.`,
+      message: `Successfully deleted profile images for ${result.modifiedCount} users.`,
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -188,11 +179,8 @@ router.delete("/:id/profile-image", authenticateToken, requireRole("Admin"), asy
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Reset profile image and face descriptor to ensure complete cleanup
     user.profileImage = undefined;
     user.profileImageSaved = false;
-    user.faceDescriptor = undefined;
-    user.faceDescriptorSaved = false;
     await user.save();
 
     res.json({
@@ -216,40 +204,6 @@ router.get("/:id/full-profile", authenticateToken, requireRole("admin"), async (
     }
 
     res.json(user);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// Update face descriptor (admin only - for migration purposes)
-router.post("/:id/update-face-descriptor", authenticateToken, requireRole("admin"), async (req, res) => {
-  try {
-    const userId = req.params.id;
-    const { faceDescriptor } = req.body;
-
-    if (!faceDescriptor || !Array.isArray(faceDescriptor) || faceDescriptor.length !== 128) {
-      return res.status(400).json({
-        message: "Face descriptor is required and must be a 128-dimensional array"
-      });
-    }
-
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    // Update face descriptor (admin override for migration)
-    user.faceDescriptor = faceDescriptor;
-    user.faceDescriptorSaved = true;
-    await user.save();
-
-    res.json({
-      message: "Face descriptor updated successfully",
-      userId: user._id,
-      name: user.name,
-      email: user.email,
-      faceDescriptorSaved: true
-    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

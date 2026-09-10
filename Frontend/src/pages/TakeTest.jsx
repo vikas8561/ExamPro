@@ -2,10 +2,15 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import apiRequest from "../services/api";
 import Judge0CodeEditor from "../components/Judge0CodeEditor";
-import Proctoring from "../components/Proctoring";
+import ProctorProvider from "../proctoring/ProctorProvider";
+import useProctor from "../proctoring/useProctor";
 import QuestionText from "../components/QuestionText";
 
-const TakeTest = () => {
+const TakeTestInner = ({ submitRef }) => {
+  // Proctoring is centralised: this page mounts the provider (see the wrapper at
+  // the bottom of this file) and reads its state through this one hook. There is
+  // no proctoring logic in this file any more.
+  const proctor = useProctor();
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [timeSpent, setTimeSpent] = useState(0);
   const { assignmentId } = useParams();
@@ -55,11 +60,6 @@ const TakeTest = () => {
     localStorage.setItem('testZoomLevel', 100);
   };
 
-  // Proctoring state
-  const [proctoringData, setProctoringData] = useState({
-    violationCount: 0,
-    violations: [],
-  });
 
   // Cleanup debounce timers on unmount and save pending answers
   useEffect(() => {
@@ -105,6 +105,11 @@ const TakeTest = () => {
 
   useEffect(() => {
     const checkExistingTest = async () => {
+      // Wait for proctoring. The server now withholds question content until a
+      // proctoring session is actually running, so loading the paper before the
+      // student has passed the pre-exam gate would return nothing.
+      if (!proctor.ready) return;
+
       if (assignmentId && !testStarted && !startRequestMade.current) {
         try {
           const assignmentData = await apiRequest(
@@ -126,7 +131,7 @@ const TakeTest = () => {
     };
 
     checkExistingTest();
-  }, [assignmentId, testStarted]);
+  }, [assignmentId, testStarted, proctor.ready]);
 
   useEffect(() => {
     let timer;
@@ -165,8 +170,6 @@ const TakeTest = () => {
     };
   }, [testStarted, timeRemaining, isSubmitting]);
 
-  // Proctoring ref for accessing fullscreen methods
-  const proctoringRef = useRef(null);
 
   const submitTest = async (
     cancelledDueToViolation = false,
@@ -204,17 +207,13 @@ const TakeTest = () => {
           };
         }),
         timeSpent,
-        tabViolationCount: proctoringData.violationCount,
-        tabViolations: proctoringData.violations.map((violation) => ({
-          timestamp:
-            violation.timestamp instanceof Date
-              ? violation.timestamp.toISOString()
-              : String(violation.timestamp),
-          violationType: String(violation.violationType),
-          details: String(violation.details),
-          tabCount: Number(violation.tabCount),
-        })),
-        cancelledDueToViolation: cancelledDueToViolation || (test?.allowedTabSwitches !== -1 && proctoringData.violationCount > (test?.allowedTabSwitches ?? 2)),
+        // The server overwrites these from its own proctoring session record --
+        // a browser can be made to claim anything, so what it says about its own
+        // violations is not evidence. They are sent only so unproctored paths
+        // (practice tests) still populate the field.
+        tabViolationCount: proctor.violationCount || 0,
+        tabViolations: [],
+        cancelledDueToViolation,
         autoSubmit,
       };
 
@@ -267,10 +266,9 @@ const TakeTest = () => {
         throw lastError;
       }
 
-      // Exit fullscreen mode before navigating
-      if (proctoringRef.current?.exitFullscreen) {
-        await proctoringRef.current.exitFullscreen();
-      }
+      // Closes the proctoring session, releases the screen share and camera,
+      // and leaves fullscreen.
+      await proctor.endSession();
 
       setIsSubmitting(false);
       navigate(`/student/assignments`);
@@ -283,40 +281,12 @@ const TakeTest = () => {
     }
   };
 
-  // Proctoring handlers (defined after submitTest)
-  const handleProctoringViolation = useCallback(async (violationData) => {
-    setProctoringData({
-      violationCount: violationData.violationCount,
-      violations: violationData.violations,
-    });
-
-    // Sync to backend immediately to ensure persistence
-    try {
-      if (assignmentId) {
-        await apiRequest("/test-submissions/sync-violations", {
-          method: "PUT",
-          body: JSON.stringify({
-            assignmentId,
-            tabViolationCount: violationData.violationCount,
-            tabViolations: violationData.violations.map(v => ({
-              ...v,
-              timestamp: v.timestamp instanceof Date ? v.timestamp.toISOString() : v.timestamp
-            }))
-          })
-        });
-      }
-    } catch (err) {
-      console.error("Failed to sync violations:", err);
-    }
-  }, [assignmentId]);
-
-  const handleProctoringSubmit = useCallback((cancelledDueToViolation) => {
-    submitTest(cancelledDueToViolation, false);
-  }, [submitTest]);
-
-  const handleProctoringExitFullscreen = useCallback(() => {
-    // Optional: Add any cleanup logic here
-  }, []);
+  // Let the provider trigger a submit when the server cancels this attempt.
+  // The provider lives outside this component, so it reaches the submit function
+  // through this ref rather than through a prop chain.
+  useEffect(() => {
+    if (submitRef) submitRef.current = submitTest;
+  });
 
   const startTest = async () => {
     try {
@@ -370,27 +340,6 @@ const TakeTest = () => {
       setTestStarted(true);
       setLoading(false);
 
-      // Request fullscreen mode after test starts (via proctoring component)
-      // Use longer timeout and ensure it's triggered after user interaction
-      setTimeout(async () => {
-        if (proctoringRef.current?.requestFullscreen) {
-          try {
-            await proctoringRef.current.requestFullscreen();
-          } catch (error) {
-            console.warn("Fullscreen request failed (may require user interaction):", error);
-            // Try again after a short delay - sometimes browser needs more time
-            setTimeout(async () => {
-              if (proctoringRef.current?.requestFullscreen) {
-                try {
-                  await proctoringRef.current.requestFullscreen();
-                } catch (retryError) {
-                  console.warn("Fullscreen retry also failed:", retryError);
-                }
-              }
-            }, 500);
-          }
-        }
-      }, 300);
     } catch (error) {
       if (error.message === "Test already started") {
         await loadExistingTestData();
@@ -497,42 +446,10 @@ const TakeTest = () => {
         }
       }
 
-      // Fetch existing violation data using the dedicated violations endpoint
-      let existingViolationCount = 0;
-      try {
-        const violationsResponse = await apiRequest(`/test-submissions/violations/${assignmentId}`);
-        console.log("🔍 Violations response:", violationsResponse);
-        if (violationsResponse) {
-          existingViolationCount = violationsResponse.tabViolationCount || 0;
-          console.log("✅ Restoring existing violations:", existingViolationCount);
-          setProctoringData({
-            violationCount: existingViolationCount,
-            violations: violationsResponse.tabViolations || []
-          });
-        }
-      } catch (err) {
-        console.warn("Error fetching violation data:", err);
-      }
-
-      // Check if existing violations already exceed allowed limit - trigger auto-submit
-      // This prevents users from bypassing the violation limit by refreshing the page
-      const allowedTabSwitches = assignmentData.testId.allowedTabSwitches ?? 2;
-      const isUnlimited = allowedTabSwitches === -1;
-
-      if (!isUnlimited && existingViolationCount > allowedTabSwitches) {
-        console.log(`🚨 Existing violations (${existingViolationCount}) exceed allowed limit (${allowedTabSwitches}) - auto-submitting test`);
-        // Set loading to false and test started before submitting
-        setTest(assignmentData.testId);
-        setTimeRemaining(remainingSeconds);
-        setTestStarted(true);
-        setLoading(false);
-
-        // Delay slightly to ensure state is set, then auto-submit
-        setTimeout(() => {
-          submitTest(true, true); // cancelledDueToViolation=true, autoSubmit=true
-        }, 500);
-        return; // Exit early, don't continue with normal test flow
-      }
+      // Violations are no longer restored or judged here. The server carries the
+      // count forward when the proctoring session is opened, and refuses to open
+      // one at all if the limit was already exceeded -- which is what stops a
+      // student reloading the page to escape a cancellation.
 
       // Initialize questionStatuses based on existing answers
       const initialStatuses = {};
@@ -555,27 +472,6 @@ const TakeTest = () => {
       setTestStarted(true);
       setLoading(false);
 
-      // Request fullscreen mode when resuming existing test (via proctoring component)
-      // Use longer timeout and ensure it's triggered after user interaction
-      setTimeout(async () => {
-        if (proctoringRef.current?.requestFullscreen) {
-          try {
-            await proctoringRef.current.requestFullscreen();
-          } catch (error) {
-            console.warn("Fullscreen request failed (may require user interaction):", error);
-            // Try again after a short delay - sometimes browser needs more time
-            setTimeout(async () => {
-              if (proctoringRef.current?.requestFullscreen) {
-                try {
-                  await proctoringRef.current.requestFullscreen();
-                } catch (retryError) {
-                  console.warn("Fullscreen retry also failed:", retryError);
-                }
-              }
-            }, 500);
-          }
-        }
-      }, 300);
     } catch (error) {
       console.error("[TakeTest] Error loading test data:", error);
       setError(error.message || "Failed to load test data");
@@ -777,17 +673,10 @@ const TakeTest = () => {
           };
         }),
         timeSpent,
-        tabViolationCount: proctoringData.violationCount,
-        tabViolations: proctoringData.violations.map((violation) => ({
-          timestamp:
-            violation.timestamp instanceof Date
-              ? violation.timestamp.toISOString()
-              : String(violation.timestamp),
-          violationType: String(violation.violationType),
-          details: String(violation.details),
-          tabCount: Number(violation.tabCount),
-        })),
-        cancelledDueToViolation: test?.allowedTabSwitches !== -1 && proctoringData.violationCount > (test?.allowedTabSwitches ?? 2),
+        // Overwritten server-side from the proctoring session -- see submitTest.
+        tabViolationCount: proctor.violationCount || 0,
+        tabViolations: [],
+        cancelledDueToViolation: false,
         autoSubmit: true,
       };
 
@@ -836,10 +725,8 @@ const TakeTest = () => {
         throw lastError;
       }
 
-      // Exit fullscreen
-      if (proctoringRef.current?.exitFullscreen) {
-        await proctoringRef.current.exitFullscreen();
-      }
+      // Closes the proctoring session and leaves fullscreen.
+      await proctor.endSession();
 
       // Phase 3: Show success briefly
       setAutoSubmitPhase('success');
@@ -1420,20 +1307,6 @@ const TakeTest = () => {
           )}
         </div>
 
-        {/* Proctoring Component */}
-        <Proctoring
-          ref={proctoringRef}
-          enabled={testStarted}
-          test={test}
-          onViolation={handleProctoringViolation}
-          onSubmit={handleProctoringSubmit}
-          onExitFullscreen={handleProctoringExitFullscreen}
-          isSubmitting={isSubmitting}
-          blockKeyboardShortcuts={true}
-          blockContextMenu={true}
-          initialViolationCount={proctoringData.violationCount}
-        />
-
         {/* ═══════════ AUTO-SUBMIT TIME-UP MODAL ═══════════ */}
         {autoSubmitPhase && (
           <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-[60] p-4 auto-submit-overlay">
@@ -1545,6 +1418,38 @@ const TakeTest = () => {
         )}
       </div>
     </>);
+};
+
+/**
+ * Proctoring wrapper.
+ *
+ * The provider is mounted around the page rather than inside it for one
+ * reason: the server refuses to hand out question content until a proctoring
+ * session exists, so the session has to be opened before the page starts
+ * loading anything. The inner page waits on `proctor.ready`.
+ *
+ * `submitRef` is how the provider reaches the submit function when the server
+ * cancels an attempt -- it lives inside the inner component, out of reach of a
+ * normal prop.
+ */
+const TakeTest = () => {
+  const { assignmentId } = useParams();
+  const submitRef = useRef(null);
+
+  const handleTerminate = useCallback(() => {
+    submitRef.current?.(true, true);
+  }, []);
+
+  return (
+    <ProctorProvider
+      enabled
+      assignmentId={assignmentId}
+      testKind="assigned"
+      onTerminate={handleTerminate}
+    >
+      <TakeTestInner submitRef={submitRef} />
+    </ProctorProvider>
+  );
 };
 
 export default TakeTest;

@@ -5,6 +5,7 @@ import { testSubmissionsAPI } from "../services/api";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import QuestionText from "../components/QuestionText";
+import ProctoringReport from "../components/ProctoringReport";
 
 const ViewCompletedTest = () => {
   const { assignmentId } = useParams();
@@ -170,6 +171,12 @@ const ViewCompletedTest = () => {
               <div className="text-slate-400">Final Score</div>
             </div>
           </div>
+        </div>
+
+        {/* Proctoring record. Violations were stored on every submission long
+            before this rebuild and were never shown to anyone. */}
+        <div className="mb-8">
+          <ProctoringReport submission={submission} />
         </div>
 
         {/* Questions & Answers */}

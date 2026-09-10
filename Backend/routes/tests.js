@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const Test = require("../models/Test");
 const { authenticateToken, requireRole } = require("../middleware/auth");
+const { resolveProctorStatusForTest } = require("../middleware/proctorSession");
 const { recalculateScoresForTest } = require("../services/scoreCalculation");
 const { invalidateTestCache } = require("../utils/testCache");
 
@@ -22,14 +23,13 @@ router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) 
       query.status = status;
     }
 
-    // Search functionality - search in title, subject, type, status, and OTP
+    // Search functionality - search in title, subject, type and status
     if (searchTerm) {
       query.$or = [
         { title: { $regex: searchTerm, $options: "i" } },
         { subject: { $regex: searchTerm, $options: "i" } },
         { type: { $regex: searchTerm, $options: "i" } },
-        { status: { $regex: searchTerm, $options: "i" } },
-        { otp: { $regex: searchTerm, $options: "i" } }
+        { status: { $regex: searchTerm, $options: "i" } }
       ];
     }
 
@@ -142,16 +142,29 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
     }
 
     // Students take tests through this endpoint, so everything that would give
-    // away the answer must be stripped: MCQ answers, the hidden test cases the
-    // judge grades against, and the proctoring bypass OTP. Admins and mentors
-    // need the full document to author and review.
+    // away the answer must be stripped: MCQ answers and the hidden test cases
+    // the judge grades against. Admins and mentors need the full document to
+    // author and review.
     const role = String(req.user?.role || "").toLowerCase();
     if (role === "admin" || role === "mentor") {
       return res.json(test);
     }
 
     const safeTest = test.toObject({ virtuals: true });
-    delete safeTest.otp;
+
+    // The other route that hands a student real question content. Without this
+    // check a student could skip the exam page entirely and fetch the paper
+    // with a direct API call, which is exactly what the old client-side-only
+    // proctoring could not prevent.
+    const proctorStatus = await resolveProctorStatusForTest(req, req.params.id);
+    if (proctorStatus.required && !proctorStatus.ok) {
+      return res.status(403).json({
+        message: "This test must be taken with proctoring active. Please start it from your assignments page.",
+        proctoringRequired: true,
+        reason: proctorStatus.reason,
+      });
+    }
+
     safeTest.questions = (safeTest.questions || []).map((question) => {
       const { answer, answers, hiddenTestCases, ...rest } = question;
       return {
@@ -164,31 +177,6 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
     });
 
     res.json(safeTest);
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Verify OTP for permission bypass (students can use this during test)
-router.post("/:id/verify-otp", authenticateToken, async (req, res, next) => {
-  try {
-    const { otp } = req.body;
-
-    if (!otp) {
-      return res.status(400).json({ message: "OTP is required" });
-    }
-
-    const test = await Test.findById(req.params.id).select("otp");
-
-    if (!test) {
-      return res.status(404).json({ message: "Test not found" });
-    }
-
-    if (!test.otp || test.otp !== otp) {
-      return res.status(400).json({ message: "Invalid OTP" });
-    }
-
-    res.json({ success: true, message: "OTP verified successfully" });
   } catch (error) {
     next(error);
   }
@@ -209,9 +197,6 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
     if (type !== "practice" && (tabSwitchesValue < 0 || tabSwitchesValue > 100)) {
       return res.status(400).json({ message: "Allowed tab switches must be between 0 and 100" });
     }
-
-    // Generate 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
     // Process questions to ensure test cases are properly formatted
     const processedQuestions = (Array.isArray(questions) ? questions : []).map(q => {
@@ -245,7 +230,6 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
       timeLimit: Number(timeLimit || 30),
       negativeMarkingPercent: Number(negativeMarkingPercent || 0),
       allowedTabSwitches: Number(allowedTabSwitches || 0),
-      otp: otp,
       questions: processedQuestions,
       createdBy: req.user.userId
     };
@@ -283,7 +267,6 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
       timeLimit: test.timeLimit,
       negativeMarkingPercent: test.negativeMarkingPercent,
       allowedTabSwitches: test.allowedTabSwitches,
-      otp: test.otp,
       status: test.status,
       questions: test.questions,
       createdBy: {

@@ -1,0 +1,193 @@
+import React, { forwardRef, useEffect, useState } from "react";
+
+/**
+ * What the student sees while the exam runs: a small status strip, and the
+ * dialogs that appear when something goes wrong.
+ *
+ * Every number shown here comes from the server. This component never works out
+ * whether a violation counts, how many are left, or whether the test should
+ * end — it displays the verdict it was handed. That is what makes editing the
+ * page pointless: a student can change what is on screen and change nothing
+ * about what the server has recorded.
+ *
+ * The blocking dialogs will not let go until the problem is genuinely fixed.
+ * "Continue" stays disabled while developer tools are still open or the window
+ * is still out of fullscreen, rechecked every half second rather than trusted
+ * once.
+ */
+
+const ProctorOverlay = forwardRef(function ProctorOverlay(
+  {
+    phase,
+    warning,
+    blockReason,
+    offline,
+    violationCount,
+    limit,
+    isDevtoolsOpen,
+    onDismissWarning,
+    onResume,
+  },
+  ref
+) {
+  const [stillBroken, setStillBroken] = useState(false);
+  const [working, setWorking] = useState(false);
+
+  // Recheck continuously while a dialog is open, so the button unlocks the
+  // moment the student actually closes devtools or returns to fullscreen —
+  // and stays locked while they have not.
+  useEffect(() => {
+    const needsCheck =
+      blockReason === "fullscreen" ||
+      warning?.violationType === "devtools_opened" ||
+      warning?.violationType === "fullscreen_exit";
+
+    if (!needsCheck) {
+      setStillBroken(false);
+      return;
+    }
+
+    const check = () => {
+      if (blockReason === "fullscreen" || warning?.violationType === "fullscreen_exit") {
+        const fullscreen = Boolean(
+          document.fullscreenElement ||
+            document.webkitFullscreenElement ||
+            document.msFullscreenElement
+        );
+        setStillBroken(!fullscreen);
+        return;
+      }
+      if (warning?.violationType === "devtools_opened") {
+        setStillBroken(isDevtoolsOpen?.() === true);
+      }
+    };
+
+    check();
+    const timer = setInterval(check, 500);
+    return () => clearInterval(timer);
+  }, [blockReason, warning, isDevtoolsOpen]);
+
+  const handleDismiss = async () => {
+    setWorking(true);
+    const ok = await onDismissWarning?.();
+    setWorking(false);
+    if (!ok) setStillBroken(true);
+  };
+
+  const handleResume = async () => {
+    setWorking(true);
+    const ok = await onResume?.();
+    setWorking(false);
+    if (!ok) setStillBroken(true);
+  };
+
+  const remaining = limit === -1 ? null : Math.max(0, limit - violationCount);
+
+  return (
+    <div ref={ref}>
+      {/* Status strip. Always visible, so nobody can claim they did not know. */}
+      {phase !== "terminated" && (
+        <div className="pointer-events-none fixed right-4 top-4 z-[9990] flex items-center gap-3 rounded-full border border-slate-700 bg-slate-900/90 px-4 py-2 text-xs backdrop-blur">
+          <span className="flex items-center gap-1.5">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+            <span className="font-medium text-slate-200">Proctored</span>
+          </span>
+          {limit !== -1 && (
+            <span className={remaining === 0 ? "text-red-400" : "text-slate-400"}>
+              {remaining === 0
+                ? "No violations left"
+                : `${remaining} violation${remaining === 1 ? "" : "s"} left`}
+            </span>
+          )}
+          {offline && <span className="text-amber-400">Offline</span>}
+        </div>
+      )}
+
+      {/* Connection lost. Not a violation — recorded, but never charged. */}
+      {offline && phase === "active" && (
+        <div className="fixed bottom-4 left-1/2 z-[9991] -translate-x-1/2 rounded-lg border border-amber-500/40 bg-amber-950/90 px-5 py-3 text-sm text-amber-200 backdrop-blur">
+          Your internet connection was lost. Your answers are saved and will sync when it returns.
+        </div>
+      )}
+
+      {/* Something must be fixed before the exam can continue. */}
+      {phase === "blocked" && blockReason === "fullscreen" && (
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-950/95 p-4">
+          <div className="w-full max-w-md rounded-xl border border-amber-500/30 bg-slate-900 p-8 text-center">
+            <h2 className="mb-4 text-2xl font-bold text-amber-400">Return to fullscreen</h2>
+            <p className="mb-6 text-slate-300">
+              Your test must stay in fullscreen. This has been recorded. Click below to carry on.
+            </p>
+            <p className="mb-6 text-sm text-slate-500">
+              Your browser will only return to fullscreen when you click, which is why we cannot do
+              it for you.
+            </p>
+            <button
+              type="button"
+              onClick={handleResume}
+              disabled={working}
+              className="w-full rounded-md bg-white/90 py-3 font-semibold text-black hover:bg-white disabled:opacity-50"
+            >
+              {working ? "Please wait…" : "Return to fullscreen"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Warnings and the final cancellation notice. */}
+      {warning && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 p-4">
+          <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-800 p-8">
+            <h2
+              className={`mb-4 text-center text-2xl font-bold ${
+                warning.kind === "terminate"
+                  ? "text-red-400"
+                  : warning.kind === "final"
+                  ? "text-orange-400"
+                  : "text-yellow-400"
+              }`}
+            >
+              {warning.title}
+            </h2>
+
+            <p className="mb-4 text-center text-slate-300">{warning.message}</p>
+
+            <p className="mb-6 text-center text-sm text-slate-400">
+              {warning.limit === -1
+                ? `Violations recorded: ${warning.count}`
+                : `Violation ${warning.count} of ${warning.limit} allowed`}
+            </p>
+
+            {stillBroken && warning.violationType === "devtools_opened" && (
+              <p className="mb-4 text-center text-sm font-semibold text-red-400">
+                Developer tools are still open. Close them to continue.
+              </p>
+            )}
+            {stillBroken && warning.violationType === "fullscreen_exit" && (
+              <p className="mb-4 text-center text-sm font-semibold text-red-400">
+                You are not in fullscreen. Click continue to return to it.
+              </p>
+            )}
+
+            {warning.kind === "terminate" ? (
+              <p className="text-center text-sm text-slate-400">
+                Your answers are being submitted. Please wait…
+              </p>
+            ) : (
+              <button
+                type="button"
+                onClick={handleDismiss}
+                disabled={working || (stillBroken && warning.violationType === "devtools_opened")}
+                className="w-full rounded-md bg-white/90 py-3 font-semibold text-black hover:bg-white disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-400"
+              >
+                {working ? "Please wait…" : "Continue Test"}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});
+
+export default ProctorOverlay;

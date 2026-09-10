@@ -33,7 +33,13 @@ const TabViolationSchema = new mongoose.Schema({
   },
   violationType: { 
     type: String, 
-    enum: ["tab_switch", "window_open", "tab_close", "browser_switch", "fullscreen_exit"],
+    // Extended, never renamed, so submissions made before the proctoring
+    // rebuild still load and display correctly.
+    enum: ["tab_switch", "window_open", "tab_close", "browser_switch", "fullscreen_exit",
+      "window_blur", "devtools_opened", "copy_attempt", "paste_attempt", "context_menu",
+      "blocked_key", "screen_share_stopped", "screen_share_wrong_surface",
+      "second_monitor_detected", "permission_revoked", "heartbeat_lost",
+      "page_tampered", "network_lost"],
     required: true 
   },
   details: { 
@@ -97,6 +103,20 @@ const TestSubmissionSchema = new mongoose.Schema({
     default: 0
   },
   cancelledDueToViolation: {
+    type: Boolean,
+    default: false
+  },
+  // Proctoring provenance, written at submit time from the server's own session
+  // record rather than from anything the browser claims.
+  proctorSessionId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "ProctorSession",
+    default: null
+  },
+  // True when the global bypass code was used to waive the camera, microphone
+  // and location checks, so a reviewer can always tell a bypassed attempt from
+  // a clean one.
+  proctorBypassUsed: {
     type: Boolean,
     default: false
   },

@@ -1079,7 +1079,7 @@ export default function Users() {
                   {resettingPassword === u._id ? "Resetting..." : "Reset Password"}
                 </button>
                 {/* Delete Profile Image Button - Show if image OR face descriptor exists in DB */}
-                {(u.profileImageSaved || u.faceDescriptorSaved) && (
+                {u.profileImageSaved && (
                   <button
                     onClick={() => deleteProfileImage(u._id, u.name)}
                     disabled={deletingImage === u._id}

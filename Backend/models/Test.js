@@ -73,7 +73,6 @@ const TestSchema = new mongoose.Schema(
         message: 'allowedTabSwitches must be -1 (unlimited) or between 0 and 100'
       }
     },
-    otp: { type: String, default: null }, // 6-digit OTP for permission bypass
     isPracticeTest: { type: Boolean, default: false }, // Flag to identify practice tests
     practiceTestSettings: {
       allowMultipleAttempts: { type: Boolean, default: true },

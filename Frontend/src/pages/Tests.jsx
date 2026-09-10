@@ -631,31 +631,6 @@ export default function Tests() {
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-slate-800/80 via-slate-900/80 to-slate-800/80 rounded-xl border border-slate-700/50 shadow-sm group/item">
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className="p-2 bg-gradient-to-br from-indigo-500/20 to-indigo-600/20 rounded-lg shadow-md flex-shrink-0">
-                      <svg
-                        className="h-4 w-4 text-indigo-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 11c1.657 0 3-1.343 3-3S13.657 5 12 5 9 6.343 9 8s1.343 3 3 3zM5.5 20a6.5 6.5 0 0113 0"
-                        />
-                      </svg>
-                    </div>
-                    <span className="text-slate-300 text-sm font-semibold whitespace-nowrap">
-                      OTP
-                    </span>
-                  </div>
-                  <span className="px-3 py-1.5 bg-gradient-to-r from-indigo-600/30 to-indigo-700/30 text-indigo-200 rounded-lg text-xs font-bold border border-indigo-500/30 shadow-md min-w-[80px] text-center">
-                    {t.otp}
-                  </span>
-                </div>
               </div>
             </div>
 
