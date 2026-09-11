@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { requestScreenShare } from "./detectors/screen";
 import { requestMedia, requestLocation } from "./detectors/permissions";
 import { redeemBypass } from "./transport";
@@ -60,14 +60,30 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
 
   // Streams collected here are handed to the provider on Begin. If the student
   // abandons the gate instead, release them rather than leaving the camera on.
+  //
+  // Both of these are refs on purpose. This cleanup used to depend on
+  // `beginning`, which meant React ran it the moment Begin was pressed --
+  // replaying the *previous* closure, where `beginning` was still false -- and
+  // so it stopped the screen share and camera at the exact instant the exam
+  // started. The detectors then correctly reported a dead track, and the
+  // student was hit with "Screen sharing was turned off" on their first click.
+  //
+  // With an empty dependency array the cleanup runs only on a real unmount, and
+  // the ref tells it whether the streams have already been handed over.
+  const handedOverRef = useRef(false);
+  const streamsRef = useRef({ screen: null, media: null });
+
+  useEffect(() => {
+    streamsRef.current = { screen: screenStream, media: mediaStream };
+  }, [screenStream, mediaStream]);
+
   useEffect(() => {
     return () => {
-      if (!beginning) {
-        screenStream?.getTracks?.().forEach((t) => t.stop());
-        mediaStream?.getTracks?.().forEach((t) => t.stop());
-      }
+      if (handedOverRef.current) return;
+      streamsRef.current.screen?.getTracks?.().forEach((t) => t.stop());
+      streamsRef.current.media?.getTracks?.().forEach((t) => t.stop());
     };
-  }, [screenStream, mediaStream, beginning]);
+  }, []);
 
   /** A permission counts as satisfied if it was granted or waived by the OTP. */
   const isSatisfied = useCallback(
@@ -159,6 +175,10 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
 
   const handleBegin = useCallback(async () => {
     if (!allSatisfied || beginning) return;
+
+    // Claim the streams BEFORE any state change, so no cleanup can decide they
+    // are still the gate's to stop. The provider owns them from here.
+    handedOverRef.current = true;
     setBeginning(true);
 
     await onBegin({
