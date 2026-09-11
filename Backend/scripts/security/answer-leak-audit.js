@@ -5,7 +5,7 @@
  * student, mid-exam, with nothing but their own token and a browser console.
  */
 
-require("dotenv").config();
+require("dotenv").config({ path: require("path").resolve(__dirname, "../../.env") });
 const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken");
 
@@ -27,11 +27,11 @@ async function api(path, { token, method = "GET", body } = {}) {
 
 (async () => {
   await mongoose.connect(process.env.MONGODB_URI);
-  const User = require("./models/User");
-  const Test = require("./models/Test");
-  const Assignment = require("./models/Assignment");
-  const TestSubmission = require("./models/TestSubmission");
-  const ProctorSession = require("./models/ProctorSession");
+  const User = require("../../models/User");
+  const Test = require("../../models/Test");
+  const Assignment = require("../../models/Assignment");
+  const TestSubmission = require("../../models/TestSubmission");
+  const ProctorSession = require("../../models/ProctorSession");
 
   const bin = { users: [], tests: [], assignments: [] };
 
@@ -166,11 +166,11 @@ async function api(path, { token, method = "GET", body } = {}) {
     console.log("HARNESS ERROR:", err.stack);
     leaked++;
   } finally {
-    const User = require("./models/User");
-    const Test = require("./models/Test");
-    const Assignment = require("./models/Assignment");
-    const TestSubmission = require("./models/TestSubmission");
-    const ProctorSession = require("./models/ProctorSession");
+    const User = require("../../models/User");
+    const Test = require("../../models/Test");
+    const Assignment = require("../../models/Assignment");
+    const TestSubmission = require("../../models/TestSubmission");
+    const ProctorSession = require("../../models/ProctorSession");
     await TestSubmission.deleteMany({ assignmentId: { $in: bin.assignments } });
     await ProctorSession.deleteMany({ assignmentId: { $in: bin.assignments } });
     await Assignment.deleteMany({ _id: { $in: bin.assignments } });

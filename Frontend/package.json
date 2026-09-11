@@ -8,7 +8,9 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:focus": "node scripts/focus-detector-scenarios.mjs"
+    "test:focus": "node scripts/focus-detector-scenarios.mjs",
+    "test:detectors": "node scripts/detector-scenarios.mjs",
+    "test:proctoring": "npm run test:focus && npm run test:detectors"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",

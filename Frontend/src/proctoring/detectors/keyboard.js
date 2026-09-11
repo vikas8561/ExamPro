@@ -130,8 +130,26 @@ export function createKeyboardDetector({ report, isPaused, onFullscreenRequest }
       return;
     }
 
-    // Any modifier combination is out. Nothing a student needs to answer a
-    // question requires Ctrl, Cmd or Alt — but plenty of ways out of the exam do.
+    // AltGr, on every non-US keyboard layout, reports itself as Ctrl+Alt. It is
+    // how a German keyboard types @, how a French one types #, and how most of
+    // Europe types the braces and brackets that code is made of. Blocking it
+    // outright made coding tests literally impossible to complete on those
+    // layouts, and ordinary text answers unwritable.
+    //
+    // A real AltGr press still produces a printable character, so that is the
+    // test: Ctrl+Alt together, one character produced, inside an answer field.
+    // Ctrl+Alt shortcuts that are NOT character-producing still fall through to
+    // the block below.
+    const isAltGrCharacter =
+      event.ctrlKey && event.altKey && !event.metaKey && isTypingKey(event);
+
+    if (isAltGrCharacter && isAnswerField(event.target)) {
+      return; // let the student type their own language
+    }
+
+    // Any other modifier combination is out. Nothing a student needs to answer
+    // a question requires Ctrl, Cmd or Alt — but plenty of ways out of the exam
+    // do.
     if (event.ctrlKey || event.metaKey || event.altKey) {
       event.preventDefault();
       event.stopPropagation();
@@ -194,16 +212,16 @@ export function createKeyboardDetector({ report, isPaused, onFullscreenRequest }
 
     async start() {
       running = true;
-      // Capture phase, so we see the key before the page or any library does.
+      // Capture phase on window, so we see the key before the page or any
+      // library does. Bound once: window is the first target in the capture
+      // path, so also binding document made the handler run twice per keystroke.
       window.addEventListener("keydown", handleKeyDown, true);
-      document.addEventListener("keydown", handleKeyDown, true);
       await engageLock();
     },
 
     stop() {
       running = false;
       window.removeEventListener("keydown", handleKeyDown, true);
-      document.removeEventListener("keydown", handleKeyDown, true);
       releaseLock();
     },
 

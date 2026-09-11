@@ -3,7 +3,7 @@
  * legitimate flows they tightened.
  */
 
-require("dotenv").config();
+require("dotenv").config({ path: require("path").resolve(__dirname, "../../.env") });
 const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken");
 
@@ -43,11 +43,11 @@ const exposes = (payload) => {
 
 (async () => {
   await mongoose.connect(process.env.MONGODB_URI);
-  const User = require("./models/User");
-  const Test = require("./models/Test");
-  const Assignment = require("./models/Assignment");
-  const TestSubmission = require("./models/TestSubmission");
-  const ProctorSession = require("./models/ProctorSession");
+  const User = require("../../models/User");
+  const Test = require("../../models/Test");
+  const Assignment = require("../../models/Assignment");
+  const TestSubmission = require("../../models/TestSubmission");
+  const ProctorSession = require("../../models/ProctorSession");
 
   const bin = { users: [], tests: [], assignments: [] };
   const mkUser = async (name, role) => {
@@ -163,11 +163,11 @@ const exposes = (payload) => {
     fail++;
     console.log("HARNESS ERROR:", err.stack);
   } finally {
-    const User = require("./models/User");
-    const Test = require("./models/Test");
-    const Assignment = require("./models/Assignment");
-    const TestSubmission = require("./models/TestSubmission");
-    const ProctorSession = require("./models/ProctorSession");
+    const User = require("../../models/User");
+    const Test = require("../../models/Test");
+    const Assignment = require("../../models/Assignment");
+    const TestSubmission = require("../../models/TestSubmission");
+    const ProctorSession = require("../../models/ProctorSession");
     await TestSubmission.deleteMany({ assignmentId: { $in: bin.assignments } });
     await ProctorSession.deleteMany({ assignmentId: { $in: bin.assignments } });
     await Assignment.deleteMany({ _id: { $in: bin.assignments } });
