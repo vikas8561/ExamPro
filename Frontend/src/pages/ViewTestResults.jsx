@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import apiRequest from "../services/api";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import QuestionText from "../components/QuestionText";
 
 const ViewTestResults = () => {
   const { assignmentId } = useParams();
@@ -99,8 +100,9 @@ const ViewTestResults = () => {
             <div key={question._id} className="question">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
               <h3>
-                Q{index + 1}: {question.text}
+                Q{index + 1}:
               </h3>
+              <QuestionText text={question.text} />
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   <span style={{
                     padding: '4px 8px',

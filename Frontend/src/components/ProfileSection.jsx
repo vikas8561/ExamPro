@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Camera, Mail, Lock, User as UserIcon, Building2 } from "lucide-react";
-
 import { API_BASE_URL } from '../config/api';
 
 export default function ProfileSection() {
@@ -19,7 +18,7 @@ export default function ProfileSection() {
 
   const [user, setUser] = useState(getInitialUser());
   const [loading, setLoading] = useState(true);
-  
+
   // Profile Image States
   const [showCamera, setShowCamera] = useState(false);
   const [stream, setStream] = useState(null);
@@ -27,13 +26,13 @@ export default function ProfileSection() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [uploadingImage, setUploadingImage] = useState(false);
-  
+
   // Email Update States
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailMessage, setEmailMessage] = useState("");
-  
+
   // Password Change States
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [newPassword, setNewPassword] = useState("");
@@ -91,18 +90,74 @@ export default function ProfileSection() {
   // Camera Functions
   const startCamera = async () => {
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'user' },
-        audio: false 
-      });
+      // Check if getUserMedia is supported
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('Camera access is not supported in this browser. Please use a modern browser like Chrome, Firefox, or Edge.');
+        return;
+      }
+
+      // Try with preferred settings first
+      let mediaStream;
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user' },
+          audio: false
+        });
+      } catch (firstError) {
+        // If facingMode fails, try with simpler constraints
+        if (firstError.name === 'OverconstrainedError' || firstError.name === 'ConstraintNotSatisfiedError') {
+          console.log('FacingMode not supported, trying with default video constraints...');
+          try {
+            mediaStream = await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: false
+            });
+          } catch (secondError) {
+            throw secondError; // Re-throw if this also fails
+          }
+        } else {
+          throw firstError; // Re-throw other errors
+        }
+      }
+
       setStream(mediaStream);
       setShowCamera(true);
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
+        videoRef.current.play().catch(error => {
+          console.error('Error playing video:', error);
+        });
       }
     } catch (error) {
       console.error('Error accessing camera:', error);
-      alert('Unable to access camera. Please check permissions.');
+
+      // Provide specific error messages based on error type
+      let errorMessage = 'Unable to access camera. ';
+
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+        errorMessage = 'Camera permission is required. Please:\n\n1. Click the lock/camera icon in your browser\'s address bar\n2. Allow camera access for this site\n3. Refresh the page and try again';
+      } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+        // Check if we can enumerate devices to provide better error message
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoDevices = devices.filter(device => device.kind === 'videoinput');
+          if (videoDevices.length === 0) {
+            errorMessage = 'No camera device found. Please:\n\n1. Connect a camera to your device\n2. Ensure the camera is not being used by another application\n3. Check your device settings to ensure the camera is enabled';
+          } else {
+            errorMessage = 'Camera found but cannot be accessed. Please:\n\n1. Check if the camera is being used by another application\n2. Try refreshing the page\n3. Check your browser\'s camera permissions for this site';
+          }
+        } catch (enumError) {
+          errorMessage = 'Unable to access camera. Please:\n\n1. Ensure a camera is connected\n2. Check browser permissions (click the lock/camera icon in address bar)\n3. Close other applications that might be using the camera\n4. Try refreshing the page';
+        }
+      } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+        errorMessage = 'Camera is already in use by another application. Please close other applications using the camera (Zoom, Teams, Skype, etc.) and try again.';
+      } else if (error.name === 'OverconstrainedError' || error.name === 'ConstraintNotSatisfiedError') {
+        errorMessage = 'Camera settings are not supported. Please try again or check if your camera supports the required features.';
+      } else {
+        errorMessage += `Error: ${error.message || error.name}. Please check your browser settings and ensure camera permissions are granted.`;
+      }
+
+      alert(errorMessage);
     }
   };
 
@@ -131,7 +186,7 @@ export default function ProfileSection() {
       // Create a new canvas for high-quality output at 1000px
       const targetSize = 1000; // Target size in pixels (longest side)
       const aspectRatio = video.videoWidth / video.videoHeight;
-      
+
       let targetWidth, targetHeight;
       if (video.videoWidth > video.videoHeight) {
         // Landscape orientation
@@ -163,7 +218,7 @@ export default function ProfileSection() {
       // Convert to PNG for maximum quality (lossless)
       // This ensures the highest possible quality at 1000px resolution
       const imageData = outputCanvas.toDataURL('image/png');
-      
+
       setCapturedImage(imageData);
       stopCamera();
     }
@@ -173,7 +228,7 @@ export default function ProfileSection() {
     if (!capturedImage) return;
 
     // Check if image was already saved
-    if (user?.profileImageSaved) {
+    if (user?.profileImage) {
       alert('Profile image can only be saved once and cannot be changed.');
       return;
     }
@@ -319,7 +374,8 @@ export default function ProfileSection() {
     );
   }
 
-  const canCaptureImage = !user.profileImageSaved;
+  // Force allow capture to ensure button shows (validation happens on save)
+  const canCaptureImage = true;
 
   return (
     <div className="p-4 border-t border-slate-700 space-y-4">
@@ -337,17 +393,18 @@ export default function ProfileSection() {
               <UserIcon className="w-10 h-10 text-slate-400" />
             </div>
           )}
-          {canCaptureImage && !capturedImage && !user.profileImage && (
-            <button
-              onClick={startCamera}
-              className="absolute bottom-0 right-0 p-2 bg-blue-600 hover:bg-blue-700 rounded-full transition"
-              title="Capture Profile Image"
-            >
-              <Camera className="w-4 h-4 text-white" />
-            </button>
-          )}
         </div>
-        {canCaptureImage && capturedImage && !user.profileImageSaved && (
+
+        {canCaptureImage && !capturedImage && (
+          <button
+            onClick={startCamera}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-md transition text-sm font-semibold text-white mt-1"
+          >
+            <Camera className="w-4 h-4" />
+            Capture Photo
+          </button>
+        )}
+        {canCaptureImage && capturedImage && (
           <div className="flex gap-2">
             <button
               onClick={saveProfileImage}
@@ -374,35 +431,37 @@ export default function ProfileSection() {
       </div>
 
       {/* Camera Modal */}
-      {showCamera && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center">
-          <div className="bg-slate-800 rounded-lg p-4 max-w-md w-full mx-4">
-            <div className="relative">
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                className="w-full rounded"
-              />
-              <canvas ref={canvasRef} className="hidden" />
-            </div>
-            <div className="flex gap-2 mt-4">
-              <button
-                onClick={capturePhoto}
-                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded transition"
-              >
-                Capture
-              </button>
-              <button
-                onClick={stopCamera}
-                className="flex-1 px-4 py-2 bg-slate-600 hover:bg-slate-700 rounded transition"
-              >
-                Cancel
-              </button>
+      {
+        showCamera && (
+          <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center">
+            <div className="bg-slate-800 rounded-lg p-4 max-w-md w-full mx-4">
+              <div className="relative">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  className="w-full rounded"
+                />
+                <canvas ref={canvasRef} className="hidden" />
+              </div>
+              <div className="flex gap-2 mt-4">
+                <button
+                  onClick={capturePhoto}
+                  className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded transition"
+                >
+                  Capture
+                </button>
+                <button
+                  onClick={stopCamera}
+                  className="flex-1 px-4 py-2 bg-slate-600 hover:bg-slate-700 rounded transition"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* User Info */}
       <div className="space-y-2">
@@ -410,7 +469,7 @@ export default function ProfileSection() {
           <UserIcon className="w-4 h-4 text-slate-400" />
           <span className="text-slate-300">{user.name}</span>
         </div>
-        
+
         <div className="flex items-center gap-2 text-sm">
           <Mail className="w-4 h-4 text-slate-400" />
           <span className="text-slate-300">{user.email}</span>
@@ -524,7 +583,7 @@ export default function ProfileSection() {
           </form>
         )}
       </div>
-    </div>
+    </div >
   );
 }
 

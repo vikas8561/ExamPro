@@ -4,6 +4,8 @@ import { ChevronLeftIcon } from "@heroicons/react/24/outline";
 import { testSubmissionsAPI } from "../services/api";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import QuestionText from "../components/QuestionText";
+import ProctoringReport from "../components/ProctoringReport";
 
 const ViewCompletedTest = () => {
   const { assignmentId } = useParams();
@@ -171,6 +173,12 @@ const ViewCompletedTest = () => {
           </div>
         </div>
 
+        {/* Proctoring record. Violations were stored on every submission long
+            before this rebuild and were never shown to anyone. */}
+        <div className="mb-8">
+          <ProctoringReport submission={submission} />
+        </div>
+
         {/* Questions & Answers */}
         <div>
           <h3 className="text-2xl font-semibold text-white mb-6">Question Analysis</h3>
@@ -197,9 +205,10 @@ const ViewCompletedTest = () => {
               return (
                 <div key={q._id} className="bg-slate-800 shadow-md rounded-lg p-6 border border-slate-700">
                   <div className="flex justify-between items-start mb-3">
-                    <h4 className="text-lg font-semibold text-white">
-                      Q{index + 1}: {q.text}
-                    </h4>
+                    <div className="text-lg font-semibold text-white">
+                      <span>Q{index + 1}: </span>
+                      <QuestionText text={q.text} />
+                    </div>
                     <div className="flex items-center gap-2">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                         q.kind === "mcq" ? "bg-blue-900/50 text-blue-300" :

@@ -7,7 +7,12 @@ const TabViolationSchema = new mongoose.Schema({
   },
   violationType: {
     type: String,
-    enum: ["tab_switch", "window_open", "tab_close", "browser_switch"],
+    // Extended, never renamed, so historical assignments still load.
+    enum: ["tab_switch", "window_open", "tab_close", "browser_switch", "fullscreen_exit",
+      "window_blur", "devtools_opened", "copy_attempt", "paste_attempt", "context_menu",
+      "blocked_key", "screen_share_stopped", "screen_share_wrong_surface",
+      "second_monitor_detected", "permission_revoked", "heartbeat_lost",
+      "page_tampered", "network_lost"],
     required: true
   },
   details: {
@@ -33,25 +38,25 @@ const PermissionSchema = new mongoose.Schema({
 }, { _id: false });
 
 const AssignmentSchema = new mongoose.Schema({
-  testId: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: 'Test', 
-    required: true 
+  testId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Test',
+    required: true
   },
-  userId: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: 'User', 
-    required: true 
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
   },
   mentorId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     default: null
   },
-  status: { 
-    type: String, 
+  status: {
+    type: String,
     enum: ["Assigned", "In Progress", "Completed", "Overdue", "Cancelled"],
-    default: "Assigned" 
+    default: "Assigned"
   },
   startTime: {
     type: Date,
@@ -63,7 +68,7 @@ const AssignmentSchema = new mongoose.Schema({
   },
   deadline: {
     type: Date,
-    default: function() {
+    default: function () {
       // Calculate deadline based on startTime + duration
       if (this.startTime && this.duration) {
         const endTime = new Date(this.startTime);
@@ -75,13 +80,13 @@ const AssignmentSchema = new mongoose.Schema({
   },
   startedAt: Date,
   completedAt: Date,
-  score: { 
-    type: Number, 
-    default: null 
+  score: {
+    type: Number,
+    default: null
   },
-  autoScore: { 
-    type: Number, 
-    default: null 
+  autoScore: {
+    type: Number,
+    default: null
   },
   mentorScore: {
     type: Number,
@@ -114,6 +119,13 @@ const AssignmentSchema = new mongoose.Schema({
     default: false
   },
   lastViolationAt: Date,
+  // The order this student's questions were served in, when the test has
+  // shuffling enabled. Stored so a refresh mid-exam returns the same paper
+  // rather than reshuffling under the student. Empty means "not shuffled yet".
+  questionOrder: {
+    type: [mongoose.Schema.Types.ObjectId],
+    default: []
+  },
   // Permission fields
   permissions: {
     type: PermissionSchema,

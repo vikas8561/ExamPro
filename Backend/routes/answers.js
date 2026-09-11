@@ -4,6 +4,7 @@ const router = express.Router();
 const TestSubmission = require("../models/TestSubmission");
 const Assignment = require("../models/Assignment");
 const { authenticateToken } = require("../middleware/auth");
+const { requireProctorSession } = require("../middleware/proctorSession");
 
 // Health check endpoint
 router.get("/health", (req, res) => {
@@ -14,8 +15,9 @@ router.get("/health", (req, res) => {
   });
 });
 
-// Save individual answer
-router.post("/", authenticateToken, async (req, res, next) => {
+// Save individual answer. Answers are only accepted while a proctoring session
+// is live, so answers cannot be posted from outside the exam page.
+router.post("/", authenticateToken, requireProctorSession(), async (req, res, next) => {
   try {
     const { assignmentId, questionId, selectedOption, textAnswer } = req.body;
     const userId = req.user.userId;

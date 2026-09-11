@@ -271,16 +271,22 @@ const MentorSubmissions = () => {
               {/* Student Answers */}
               <div className="mb-6">
                 <h3 className="text-lg font-semibold mb-3">Student Answers</h3>
-                {studentSubmissions.length > 0 && studentSubmissions[0].responses && studentSubmissions[0].responses.length > 0 ? (
+                {studentSubmissions.length > 0 && studentSubmissions[0].assignmentId?.testId?.questions?.length > 0 ? (
                   <div className="space-y-4">
-                    {studentSubmissions[0].responses.map((response, index) => {
-                      const question = studentSubmissions[0].assignmentId?.testId?.questions?.find(
-                        q => q._id.toString() === response.questionId.toString()
-                      );
-                      if (!question) {
-                        console.warn("Question not found for response:", response);
-                        return null;
-                      }
+                    {/*
+                      Walk the test's own question list and pull each student
+                      response in by id, rather than walking the responses.
+                      The number shown is then the question's position in the
+                      paper, so "Question 3" means the same question for every
+                      student -- including students who sat a shuffled paper,
+                      and regardless of what order their responses were stored
+                      in. Walking the responses made the number a position in
+                      that array, which is not the same thing.
+                    */}
+                    {studentSubmissions[0].assignmentId.testId.questions.map((question, index) => {
+                      const response = (studentSubmissions[0].responses || []).find(
+                        r => r.questionId?.toString() === question._id.toString()
+                      ) || {};
 
                       const isCorrect = response.isCorrect;
                       const isMCQ = question.kind === "mcq";
@@ -296,7 +302,7 @@ const MentorSubmissions = () => {
                       const answerLanguage = response.language || (isCoding ? question.language : null) || 'python';
 
                       return (
-                        <div key={index} className="bg-slate-700 rounded-lg p-4">
+                        <div key={question._id} className="bg-slate-700 rounded-lg p-4">
                           <div className="mb-2">
                             <span className="text-sm font-medium text-slate-300">Question {index + 1}:</span>
                             <p className="text-white mt-1">{question.text}</p>

@@ -38,11 +38,14 @@ const QuestionSchema = new mongoose.Schema(
     options: { type: [OptionSchema], default: undefined },
     answer: { type: String, default: "" },
     answers: { type: [String], default: [] }, // Removed MSQ support
+    expectedAnswer: { type: String, default: "" }, // Mentor-provided reference answer for theory questions (used by LLM evaluation)
     guidelines: { type: String, default: "" },
     examples: { type: [ExampleSchema], default: [] },
     points: { type: Number, default: 1, min: 0 },
     // Coding-only fields
-    language: { type: String, default: "python", enum: ["python", "javascript", "java", "cpp", "c", "go"] },
+    // Default language for the editor; students may switch to any supported one.
+    // Keep in sync with Backend/configs/languages.js (LANGUAGE_KEYS).
+    language: { type: String, default: "python", enum: ["c", "cpp", "java", "javascript", "typescript", "python"] },
     visibleTestCases: { type: [VisibleTestCaseSchema], default: [] },
     hiddenTestCases: { type: [HiddenTestCaseSchema], default: [] },
   },
@@ -70,7 +73,10 @@ const TestSchema = new mongoose.Schema(
         message: 'allowedTabSwitches must be -1 (unlimited) or between 0 and 100'
       }
     },
-    otp: { type: String, default: null }, // 6-digit OTP for permission bypass
+    // When on, each student is served the questions in their own random order.
+    // Nothing about marking changes: every response is matched to its question
+    // by _id, never by position, so the order is purely a display concern.
+    shuffleQuestions: { type: Boolean, default: false },
     isPracticeTest: { type: Boolean, default: false }, // Flag to identify practice tests
     practiceTestSettings: {
       allowMultipleAttempts: { type: Boolean, default: true },

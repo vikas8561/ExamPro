@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-
 import Dashboard from "./pages/Dashboard";
 import Tests from "./pages/Tests";
 import Users from "./pages/Users";
+import AdminProctoring from "./pages/AdminProctoring";
 import "./styles/StudentSidebar.mobile.css";
 
 import CreateTest from "./pages/CreateTest";
@@ -31,18 +32,30 @@ import AdminSidebar from "./components/AdminSidebar";
 import AdminDSAPractice from "./pages/AdminDSAPractice";
 import StudentDSAPractice from "./pages/StudentDSAPractice";
 
-// Protected Route Component
+// Protected Route Component - uses JWT payload for role check (defense-in-depth)
 const ProtectedRoute = ({ children, allowedRoles }) => {
+  const token = localStorage.getItem('token');
   const user = JSON.parse(localStorage.getItem('user') || '{}');
-  
-  if (!user.email) {
+
+  // Must have a token to be authenticated
+  if (!token || !user.email) {
     return <Navigate to="/login" replace />;
   }
-  
-  if (allowedRoles && !allowedRoles.includes(user.role)) {
-    return <Navigate to="/" replace />;
+
+  // Read role from JWT payload (can't be tampered without the secret key)
+  if (allowedRoles) {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const tokenRole = payload.role;
+      if (!allowedRoles.includes(tokenRole)) {
+        return <Navigate to="/" replace />;
+      }
+    } catch {
+      // Invalid token format — redirect to login
+      return <Navigate to="/login" replace />;
+    }
   }
-  
+
   return children;
 };
 
@@ -72,13 +85,14 @@ const AdminLayout = () => {
             </button>
           </div>
         </div>
-        
+
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/tests" element={<Tests />} />
           <Route path="/tests/create" element={<CreateTest />} />
           <Route path="/dsa-practice" element={<AdminDSAPractice />} />
           <Route path="/users" element={<Users />} />
+          <Route path="/proctoring" element={<AdminProctoring />} />
           <Route path="*" element={<div className="p-6">Not Found</div>} />
         </Routes>
       </main>
@@ -179,27 +193,27 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      
+
       {/* Mentor Routes */}
-      <Route 
-        path="/mentor/*" 
+      <Route
+        path="/mentor/*"
         element={
           <ProtectedRoute allowedRoles={['Mentor']}>
             <MentorRoutes />
           </ProtectedRoute>
-        } 
+        }
       />
-      
+
       {/* Student Routes */}
-      <Route 
-        path="/student/*" 
+      <Route
+        path="/student/*"
         element={
           <ProtectedRoute allowedRoles={['Student']}>
             <StudentRoutes />
           </ProtectedRoute>
-        } 
+        }
       />
-      
+
       {/* Default redirect to login */}
       <Route path="/" element={<Navigate to="/login" replace />} />
     </Routes>

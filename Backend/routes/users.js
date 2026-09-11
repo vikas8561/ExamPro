@@ -2,9 +2,10 @@ const express = require("express");
 const bcrypt = require("bcrypt");
 const router = express.Router();
 const User = require("../models/User");
+const { authenticateToken, requireRole } = require("../middleware/auth");
 
-// Get all users - ULTRA FAST VERSION
-router.get("/", async (req, res) => {
+// Get all users - ULTRA FAST VERSION (admin only)
+router.get("/", authenticateToken, requireRole("Admin"), async (req, res) => {
   try {
     const startTime = Date.now();
     // console.log('🚀 ULTRA FAST: Fetching users for admin');
@@ -24,8 +25,8 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Get all users with profile details (for Student Profile section) - with pagination and search
-router.get("/profiles", async (req, res) => {
+// Get all users with profile details (admin only) - with pagination and search
+router.get("/profiles", authenticateToken, requireRole("Admin"), async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 9;
@@ -35,7 +36,7 @@ router.get("/profiles", async (req, res) => {
 
     // Build query for search and filter
     let query = {};
-    
+
     // Search functionality - search in name and email
     if (searchTerm) {
       query.$or = [
@@ -119,6 +120,7 @@ router.get("/profiles", async (req, res) => {
           role: 1,
           studentCategory: 1,
           profileImageSaved: 1,
+          isBlocked: 1,
           createdAt: 1,
           updatedAt: 1,
           _id: 1
@@ -148,22 +150,40 @@ router.get("/profiles", async (req, res) => {
   }
 });
 
+// Delete ALL users profile images (admin only)
+router.delete("/profile-images/all", authenticateToken, requireRole("admin"), async (req, res) => {
+  try {
+    const result = await User.updateMany(
+      {}, // Target ALL users
+      {
+        $unset: { profileImage: "" },
+        $set: { profileImageSaved: false }
+      }
+    );
+
+    res.json({
+      message: `Successfully deleted profile images for ${result.modifiedCount} users.`,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Delete user profile image (admin only)
-router.delete("/:id/profile-image", async (req, res) => {
+router.delete("/:id/profile-image", authenticateToken, requireRole("Admin"), async (req, res) => {
   try {
     const userId = req.params.id;
-    
+
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Reset profile image and allow re-upload
     user.profileImage = undefined;
     user.profileImageSaved = false;
     await user.save();
 
-    res.json({ 
+    res.json({
       message: "Profile image deleted successfully. User can now re-upload their image.",
       profileImage: null,
       profileImageSaved: false
@@ -173,11 +193,56 @@ router.delete("/:id/profile-image", async (req, res) => {
   }
 });
 
-// Reset user password to default (admin only)
-router.post("/:id/reset-password", async (req, res) => {
+// Get full user profile including profileImage (admin only - for migration)
+router.get("/:id/full-profile", authenticateToken, requireRole("admin"), async (req, res) => {
   try {
     const userId = req.params.id;
-    
+    const user = await User.findById(userId).select("-password -activeSessions");
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Reset ALL users passwords (admin only)
+router.post("/reset-passwords/all", authenticateToken, requireRole("admin"), async (req, res) => {
+  try {
+    // Hash the default password "12345"
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash("12345", salt);
+
+    // Update all users with the hashed password and force password change
+    const result = await User.updateMany(
+      {}, // Target ALL users
+      {
+        $set: {
+          password: hashedPassword,
+          mustChangePassword: true,
+          isBlocked: false,
+          failedLoginAttempts: 0,
+          failedLoginWindow: null
+        }
+      }
+    );
+
+    res.json({
+      message: `Successfully reset passwords for ${result.modifiedCount} users. Default password is now: 12345`,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Reset user password to default (admin only)
+router.post("/:id/reset-password", authenticateToken, requireRole("Admin"), async (req, res) => {
+  try {
+    const userId = req.params.id;
+
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
@@ -186,9 +251,14 @@ router.post("/:id/reset-password", async (req, res) => {
     // Reset password to default "12345"
     // The pre-save hook will hash it automatically
     user.password = "12345";
+    user.mustChangePassword = true;
+    // Also unblock the user and reset failed attempts (admin reset implies user should be able to login)
+    user.isBlocked = false;
+    user.failedLoginAttempts = 0;
+    user.failedLoginWindow = null;
     await user.save();
 
-    res.json({ 
+    res.json({
       message: "Password reset successfully. Default password is now: 12345"
     });
   } catch (err) {
@@ -196,8 +266,69 @@ router.post("/:id/reset-password", async (req, res) => {
   }
 });
 
-// Create a new user
-router.post("/", async (req, res) => {
+// Unblock a user (admin only)
+router.post("/:id/unblock", authenticateToken, requireRole("Admin"), async (req, res) => {
+  try {
+    const userId = req.params.id;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (!user.isBlocked) {
+      return res.status(400).json({ message: "User is not blocked" });
+    }
+
+    // Unblock user and reset failed login counters
+    await User.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          isBlocked: false,
+          failedLoginAttempts: 0,
+          failedLoginWindow: null
+        }
+      }
+    );
+
+    console.log(`✅ User unblocked by admin: ${user.email}`);
+    res.json({ message: `User ${user.name} has been unblocked successfully.` });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Unblock all blocked users at once (admin only)
+router.post("/unblock-all", authenticateToken, requireRole("Admin"), async (req, res) => {
+  try {
+    const result = await User.updateMany(
+      { isBlocked: true },
+      {
+        $set: {
+          isBlocked: false,
+          failedLoginAttempts: 0,
+          failedLoginWindow: null
+        }
+      }
+    );
+
+    const unblockedCount = result.modifiedCount || 0;
+    console.log(`✅ Admin unblocked all users: ${unblockedCount} accounts unblocked`);
+    res.json({
+      message: unblockedCount > 0
+        ? `Successfully unblocked ${unblockedCount} user${unblockedCount !== 1 ? 's' : ''}.`
+        : 'No blocked users found.',
+      unblockedCount
+    });
+  } catch (err) {
+    console.error("Error unblocking all users:", err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Create a new user (admin only)
+router.post("/", authenticateToken, requireRole("Admin"), async (req, res) => {
   try {
     const { name, email, role, studentCategory } = req.body;
 
@@ -230,7 +361,7 @@ router.post("/", async (req, res) => {
     // Plain password (not hashed)
     const password = "12345";
 
-    const userData = { name, email, password, role };
+    const userData = { name, email, password, role, mustChangePassword: true };
     if (role === "Student") {
       userData.studentCategory = studentCategory;
     }
@@ -250,8 +381,8 @@ router.post("/", async (req, res) => {
   }
 });
 
-// Update a user
-router.put("/:id", async (req, res) => {
+// Update a user (admin only)
+router.put("/:id", authenticateToken, requireRole("Admin"), async (req, res) => {
   try {
     const { name, email, role, studentCategory } = req.body;
     const userId = req.params.id;
@@ -304,8 +435,8 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-// Delete a user
-router.delete("/:id", async (req, res) => {
+// Delete a user (admin only)
+router.delete("/:id", authenticateToken, requireRole("Admin"), async (req, res) => {
   try {
     const deleted = await User.findByIdAndDelete(req.params.id);
     if (!deleted) return res.status(404).json({ message: "User not found" });
@@ -320,8 +451,8 @@ const multer = require("multer");
 const fs = require("fs");
 const upload = multer({ dest: "uploads/" }); // Temporary storage for uploaded files
 
-// Bulk upload users
-router.post("/bulk", upload.single("file"), async (req, res) => {
+// Bulk upload users (admin only)
+router.post("/bulk", authenticateToken, requireRole("Admin"), upload.single("file"), async (req, res) => {
   try {
     const { role, studentCategory } = req.body;
     const usersData = [];
@@ -368,7 +499,8 @@ router.post("/bulk", upload.single("file"), async (req, res) => {
             name: userData.name,
             email: userData.email,
             password,
-            role
+            role,
+            mustChangePassword: true
           };
 
           if (role === "Student") {
@@ -429,7 +561,8 @@ router.post("/bulk", upload.single("file"), async (req, res) => {
                 name: userData.name,
                 email: userData.email,
                 password,
-                role
+                role,
+                mustChangePassword: true
               };
 
               if (role === "Student") {

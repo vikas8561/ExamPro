@@ -1,11 +1,13 @@
 // server.js
 const express = require("express");
 const cors = require("cors");
+const rateLimit = require("express-rate-limit");
 const morgan = require("morgan");
 const dotenv = require("dotenv");
 const { connectDB } = require("./configs/db.config");
 const http = require("http");
 const { Server } = require("socket.io");
+const { authenticateToken, requireRole } = require("./middleware/auth");
 
 dotenv.config();
 
@@ -83,6 +85,10 @@ setInterval(cleanupMemory, 5 * 60 * 1000);
 
 const app = express();
 
+// ✅ Trust first proxy (Render/Railway/Vercel/load balancer) so req.ip returns the real client IP
+// Without this, express-rate-limit sees all users as the SAME IP (the proxy's IP)
+app.set('trust proxy', 1);
+
 //  Allowed origins (add more if needed)
 const allowedOrigins = [
   process.env.FRONTEND_URL,
@@ -105,10 +111,9 @@ app.use(cors({
       return callback(null, true);
     }
 
-    // Allow exact matches OR any Vercel subdomain OR localhost
+    // Allow exact matches OR specific Vercel deployment OR localhost
     if (allowedOrigins.includes(origin) || 
-        origin.endsWith(".vercel.app") || 
-        origin.includes("vercel.app") ||
+        origin === "https://cg-test-app.vercel.app" ||
         origin.includes("localhost") ||
         origin.includes("127.0.0.1")) {
       console.log(`✅ CORS allowing request from: ${origin}`);
@@ -133,8 +138,8 @@ app.use(cors({
   optionsSuccessStatus: 200, // For legacy browser support
 }));
 
-// Fallback CORS for development - more permissive
-if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV !== 'production') {
+// Fallback CORS for development only
+if (process.env.NODE_ENV === 'development') {
   console.log('🔧 Development mode: Using permissive CORS');
   app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
@@ -178,9 +183,7 @@ app.use((req, res, next) => {
     }
   });
   
-  // Add memory usage to response headers for monitoring
-  const memUsage = process.memoryUsage();
-  res.set('X-Memory-Usage', Math.round(memUsage.heapUsed / 1024 / 1024));
+  // Memory usage header removed for security - use /memory endpoint instead
   res.set('X-Server-Response-Time', '0'); // Will be updated on finish
   
   next();
@@ -293,8 +296,8 @@ app.get("/health", (req, res) => {
   });
 });
 
-// Memory monitoring endpoint
-app.get("/memory", (req, res) => {
+// Memory monitoring endpoint (admin only)
+app.get("/memory", authenticateToken, requireRole("Admin"), (req, res) => {
   res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
   const memUsage = process.memoryUsage();
   const formatMB = (bytes) => Math.round(bytes / 1024 / 1024 * 100) / 100;
@@ -313,6 +316,41 @@ app.get("/memory", (req, res) => {
   });
 });
 
+// ✅ Rate Limiting - safety net against automated attacks
+// Note: Per-user lockout (3 wrong attempts in 5 min → block) is already handled in auth.js
+// These IP-based limiters are just a fallback for extreme brute-force / DDoS attacks
+// IMPORTANT: 500+ students may share the same public IP on college WiFi (NAT),
+// so all limits are set high enough to avoid blocking legitimate users.
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 500, // max 500 FAILED login attempts per IP per 15 min (successful ones don't count)
+  skipSuccessfulRequests: true, // ✅ KEY FIX: successful logins (status < 400) are FREE — only failed attempts count
+  message: { message: "Too many login attempts. Please try again after 15 minutes." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const passwordResetLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 50, // 50 password reset attempts per hour per IP (500 students may share IP)
+  message: { message: "Too many password reset attempts. Please try again after 1 hour." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const generalApiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 2000, // 2000 requests per minute per IP (500 students × ~4 API calls each)
+  message: { message: "Too many requests. Please slow down." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Apply rate limiters to specific routes
+app.use("/api/auth/login", loginLimiter);
+app.use("/api/auth/forgot-password", passwordResetLimiter);
+app.use("/api/users", generalApiLimiter);
+
 // ✅ API routes
 app.use("/api/tests", require("./routes/tests"));
 app.use("/api/assignments", require("./routes/assignments"));
@@ -320,6 +358,7 @@ app.use("/api/users", require("./routes/users"));
 app.use("/api/reviews", require("./routes/reviews"));
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/test-submissions", require("./routes/testSubmissions"));
+app.use("/api/answers", require("./routes/answers"));
 app.use("/api/coding", require("./routes/coding"));
 app.use("/api/answers", require("./routes/answers"));
 app.use("/api/practice-tests", require("./routes/practiceTests"));
@@ -329,6 +368,7 @@ app.use("/api/mentor-fast", require("./routes/mentorAssignmentsFast"));
 app.use("/api/debug", require("./routes/debug"));
 app.use("/api/subjects", require("./routes/subjects"));
 app.use("/api/time", require("./routes/time"));
+app.use("/api/proctor", require("./routes/proctor"));
 
 // Make io available to routes
 app.set('io', io);
@@ -423,6 +463,23 @@ connectDB(process.env.MONGODB_URI || 'mongodb://localhost:27017/test-platform')
       console.log(`🚀 Server running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
       console.log(`📱 To access from mobile, use your computer's IP address: http://YOUR_IP:${PORT}`);
       console.log(`💡 Find your IP: Windows (ipconfig) | Mac/Linux (ifconfig or ip addr)`);
+
+      // Probe Judge0 in the background so misconfiguration shows up in the boot
+      // log rather than the first time a student presses Run. Never blocks boot.
+      require("./services/judge0")
+        .checkHealth()
+        .then((health) => {
+          if (health.ok) {
+            console.log(`⚖️  Judge0 ready at ${health.url} (v${health.version || '?'}, ${health.latencyMs}ms, auth ${health.authenticated ? 'on' : 'off'})`);
+            if (health.missingLanguages?.length) {
+              console.warn(`⚠️ Judge0 is missing languages: ${health.missingLanguages.join(', ')}`);
+            }
+          } else {
+            console.error(`❌ Judge0 unreachable at ${health.url}: ${health.error}`);
+            console.error(`   Coding tests will fail until this is fixed. Run: npm run check-judge0`);
+          }
+        })
+        .catch((error) => console.error("❌ Judge0 probe failed:", error.message));
     });
   })
   .catch((e) => {

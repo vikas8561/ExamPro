@@ -70,15 +70,33 @@ const apiRequest = async (endpoint, options = {}) => {
     const fetchStart = Date.now();
     
     // Add keep-alive and other performance optimizations
+    // Increase timeout for assignment operations (60 seconds)
+    const isAssignmentOperation = endpoint.includes('/assignments/assign-');
+    const timeout = isAssignmentOperation ? 60000 : 30000; // 60s for assignments, 30s for others
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
     const optimizedConfig = {
       ...config,
+      signal: controller.signal,
       keepalive: true, // Keep connection alive for faster subsequent requests
       cache: 'no-cache', // Don't cache to avoid stale data
       credentials: 'include', // Include credentials for CORS
     };
     
     console.log(`🌐 Starting fetch to ${endpoint} at ${new Date().toISOString()}`);
-    const response = await fetch(url, optimizedConfig);
+    let response;
+    try {
+      response = await fetch(url, optimizedConfig);
+      clearTimeout(timeoutId);
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        throw new Error(`Request timeout: Operation took longer than ${timeout/1000} seconds. Please try again.`);
+      }
+      throw error;
+    }
     const fetchTime = Date.now() - fetchStart;
     
     console.log(`📥 Fetch completed in ${fetchTime}ms - Status: ${response.status}, Headers:`, {
@@ -127,6 +145,12 @@ const apiRequest = async (endpoint, options = {}) => {
         return null;
       }
       
+      // For answers endpoint, 404 is expected when no answers exist yet
+      if (endpoint.startsWith('/answers/assignment/')) {
+        // Return empty array instead of throwing error for expected 404s
+        return [];
+      }
+      
       // Try to get error message from response body
       try {
         const errorData = await response.json();
@@ -171,6 +195,57 @@ const apiRequest = async (endpoint, options = {}) => {
     }
     
     throw error;
+  }
+};
+
+/**
+ * POST to an endpoint that replies with Server-Sent Events, calling `onEvent`
+ * for each frame as it arrives. Used by code submission so the UI can show the
+ * judge's real progress instead of a spinner with no information.
+ *
+ * EventSource cannot send an Authorization header, so this reads the stream
+ * from fetch directly.
+ *
+ * @returns {Promise<void>} resolves when the stream ends
+ */
+export const apiStream = async (endpoint, { body, onEvent, signal } = {}) => {
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    method: 'POST',
+    headers: { ...getAuthHeaders(), Accept: 'text/event-stream' },
+    body: typeof body === 'string' ? body : JSON.stringify(body),
+    credentials: 'include',
+    signal,
+  });
+
+  if (!response.ok || !response.body) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.message || `HTTP error! status: ${response.status}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  // SSE frames are separated by a blank line.
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let split;
+    while ((split = buffer.indexOf('\n\n')) !== -1) {
+      const frame = buffer.slice(0, split);
+      buffer = buffer.slice(split + 2);
+
+      const event = frame.match(/^event: (.+)$/m)?.[1];
+      const raw = frame.match(/^data: (.+)$/m)?.[1];
+      if (!event || !raw) continue;
+      try {
+        onEvent?.(event, JSON.parse(raw));
+      } catch {
+        // Ignore malformed frames rather than aborting the stream.
+      }
+    }
   }
 };
 

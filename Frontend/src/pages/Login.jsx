@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { API_BASE_URL } from '../config/api';
-import { Eye, EyeOff, Mail, Lock, Loader2, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, Loader2, AlertCircle, Shield, KeyRound } from 'lucide-react';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -10,6 +10,18 @@ export default function Login() {
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  // Forced password change modal state
+  const [showForcePasswordModal, setShowForcePasswordModal] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [changePasswordLoading, setChangePasswordLoading] = useState(false);
+  const [changePasswordError, setChangePasswordError] = useState('');
+  // Temp credentials held in memory only — NOT in localStorage until password is changed
+  const [tempToken, setTempToken] = useState(null);
+  const [tempUser, setTempUser] = useState(null);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -20,25 +32,29 @@ export default function Login() {
       setError('Your session has expired due to a new login from another device or browser.');
     }
 
-    // Check if "Remember Me" was previously set and restore email only
+    // Check if "Remember Me" was previously set and restore email and password
     const rememberedEmail = localStorage.getItem('rememberedEmail');
+    const rememberedPassword = localStorage.getItem('rememberedPassword');
     const rememberMeFlag = localStorage.getItem('rememberMe') === 'true';
-    
+
     if (rememberMeFlag && rememberedEmail) {
       setEmail(rememberedEmail);
+      if (rememberedPassword) {
+        setPassword(rememberedPassword);
+      }
       setRememberMe(true);
     }
 
     // Auto-redirect if user is already authenticated and has valid token
     const token = localStorage.getItem('token');
     const user = localStorage.getItem('user');
-    
+
     if (token && user) {
       try {
         // Check if token is expired
         const payload = JSON.parse(atob(token.split('.')[1]));
         const currentTime = Date.now() / 1000;
-        
+
         if (payload.exp && payload.exp > currentTime) {
           // Token is valid, redirect based on role
           const userData = JSON.parse(user);
@@ -81,21 +97,33 @@ export default function Login() {
       const data = await response.json();
 
       if (response.ok) {
-        // Store user data and token in localStorage
+        // Check if user must change password BEFORE storing token
+        if (data.mustChangePassword) {
+          // Hold credentials in memory only — do NOT persist to localStorage
+          setTempToken(data.token);
+          setTempUser(data.user);
+          setShowForcePasswordModal(true);
+          setLoading(false);
+          return;
+        }
+
+        // Normal login — store user data and token in localStorage
         localStorage.setItem('user', JSON.stringify(data.user));
         localStorage.setItem('token', data.token);
         localStorage.setItem('userId', data.user._id);
-        
-        // Handle "Remember Me" functionality - only store email
+
+        // Handle "Remember Me" functionality - store email and password
         if (rememberMe) {
           localStorage.setItem('rememberMe', 'true');
           localStorage.setItem('rememberedEmail', email);
+          localStorage.setItem('rememberedPassword', password);
         } else {
           // Clear remember me data if unchecked
           localStorage.removeItem('rememberMe');
           localStorage.removeItem('rememberedEmail');
+          localStorage.removeItem('rememberedPassword');
         }
-        
+
         // Redirect based on role
         if (data.user.role === 'Admin') {
           navigate('/admin');
@@ -106,8 +134,9 @@ export default function Login() {
         } else {
           setError('Invalid user role');
         }
-      } else if (response.status === 403 && data.message === 'Invalid or expired session') {
-        setError('You have been logged out from another session. Please login again.');
+      } else if (response.status === 403) {
+        // Handle blocked/lockout messages from server
+        setError(data.message || 'Access denied.');
       } else {
         setError(data.message || 'Invalid email or password');
       }
@@ -115,6 +144,112 @@ export default function Login() {
       setError('Login failed. Please try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Clear temp credentials and close modal (used on back button / navigation away)
+  const clearTempCredentials = () => {
+    setTempToken(null);
+    setTempUser(null);
+    setShowForcePasswordModal(false);
+    setNewPassword('');
+    setConfirmNewPassword('');
+    setChangePasswordError('');
+  };
+
+  // Block browser back button while password change modal is open
+  useEffect(() => {
+    if (!showForcePasswordModal) return;
+
+    // Push a dummy history state so back button triggers popstate instead of leaving
+    window.history.pushState({ passwordModal: true }, '');
+
+    const handlePopState = () => {
+      // User pressed back — clear temp credentials so they're NOT logged in
+      clearTempCredentials();
+    };
+
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [showForcePasswordModal]);
+
+  // Handle forced password change
+  const handleForcePasswordChange = async (e) => {
+    e.preventDefault();
+    setChangePasswordLoading(true);
+    setChangePasswordError('');
+
+    if (newPassword !== confirmNewPassword) {
+      setChangePasswordError('Passwords do not match.');
+      setChangePasswordLoading(false);
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setChangePasswordError('Password must be at least 6 characters long.');
+      setChangePasswordLoading(false);
+      return;
+    }
+
+    if (newPassword === '12345') {
+      setChangePasswordError('You cannot use the default password. Please choose a different password.');
+      setChangePasswordLoading(false);
+      return;
+    }
+
+    try {
+      // Use temp token from memory — NOT from localStorage
+      const response = await fetch(`${API_BASE_URL}/auth/force-change-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${tempToken}`
+        },
+        body: JSON.stringify({ newPassword, confirmPassword: confirmNewPassword }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        // Password changed successfully — NOW persist credentials to localStorage
+        localStorage.setItem('user', JSON.stringify(tempUser));
+        localStorage.setItem('token', tempToken);
+        localStorage.setItem('userId', tempUser._id);
+
+        // Handle "Remember Me" with the new password
+        if (rememberMe) {
+          localStorage.setItem('rememberMe', 'true');
+          localStorage.setItem('rememberedEmail', email);
+          localStorage.setItem('rememberedPassword', newPassword);
+        } else {
+          localStorage.removeItem('rememberMe');
+          localStorage.removeItem('rememberedEmail');
+          localStorage.removeItem('rememberedPassword');
+        }
+
+        // Clear temp state
+        setTempToken(null);
+        setTempUser(null);
+        setShowForcePasswordModal(false);
+
+        // Redirect based on role
+        if (tempUser.role === 'Admin') {
+          navigate('/admin');
+        } else if (tempUser.role === 'Student') {
+          navigate('/student');
+        } else if (tempUser.role === 'Mentor') {
+          navigate('/mentor');
+        }
+      } else {
+        setChangePasswordError(data.message || 'Failed to change password.');
+      }
+    } catch (err) {
+      setChangePasswordError('An error occurred. Please try again.');
+    } finally {
+      setChangePasswordLoading(false);
     }
   };
 
@@ -127,8 +262,8 @@ export default function Login() {
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-pink-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-4000"></div>
       </div>
 
-      {/* Login Card */}
-      <div className="relative z-10 bg-slate-800/90 backdrop-blur-xl p-8 md:p-10 rounded-2xl shadow-2xl w-full max-w-md border border-slate-700/50 transform transition-all duration-300 hover:shadow-blue-500/20">
+      {/* Login Card - Hidden when forgot modal is open */}
+      <div className={`relative z-10 bg-slate-800/90 backdrop-blur-xl p-8 md:p-10 rounded-2xl shadow-2xl w-full max-w-md border border-slate-700/50 transform transition-all duration-300 hover:shadow-blue-500/20 ${showForgotModal ? 'hidden' : ''}`}>
         {/* Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-white/10 backdrop-blur-sm rounded-2xl mb-4 shadow-lg transform transition-transform duration-300 hover:scale-110 border border-white/20">
@@ -139,7 +274,7 @@ export default function Login() {
           </h2>
           <p className="text-gray-400 text-sm">Login to access your dashboard and Exam.</p>
         </div>
-        
+
         <form onSubmit={handleLogin} className="space-y-5">
           {/* Email Input */}
           <div className="group">
@@ -162,7 +297,7 @@ export default function Login() {
               />
             </div>
           </div>
-          
+
           {/* Password Input */}
           <div className="group">
             <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -190,7 +325,7 @@ export default function Login() {
               </button>
             </div>
           </div>
-          
+
           {/* Remember Me Checkbox */}
           <div className="flex items-center justify-between">
             <label className="flex items-center cursor-pointer group">
@@ -205,7 +340,7 @@ export default function Login() {
               </span>
             </label>
           </div>
-          
+
           {/* Error Message */}
           {error && (
             <div className="relative overflow-hidden bg-red-500/10 border border-red-500/50 rounded-lg p-4 animate-slide-in">
@@ -215,7 +350,7 @@ export default function Login() {
               </div>
             </div>
           )}
-          
+
           {/* Login Button */}
           <button
             type="submit"
@@ -235,15 +370,189 @@ export default function Login() {
 
         {/* Forgot Password Link */}
         <div className="mt-6 text-center">
-          <Link
-            to="/forgot-password"
+          <button
+            type="button"
+            onClick={() => setShowForgotModal(true)}
             className="text-sm text-blue-400 hover:text-blue-300 transition-colors duration-200 hover:underline inline-flex items-center gap-1"
           >
             Forgot your password?
-          </Link>
+          </button>
         </div>
       </div>
 
+      {/* Forgot Password Modal - Beautiful Design */}
+      {showForgotModal && (
+        <div className="fixed inset-0 bg-slate-900/95 z-[100] flex items-center justify-center p-4">
+          <div className="relative w-full max-w-md bg-gradient-to-b from-slate-800 to-slate-900 backdrop-blur-xl rounded-3xl shadow-2xl border border-slate-700/50 p-8 transform transition-all duration-300 animate-slide-in overflow-hidden">
+            {/* Top accent gradient line */}
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500"></div>
+
+            {/* Close button */}
+            <button
+              onClick={() => setShowForgotModal(false)}
+              className="absolute top-5 right-5 w-8 h-8 flex items-center justify-center rounded-full bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 transition-all"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {/* Modal Content */}
+            <div className="text-center">
+              {/* Icon with glow */}
+              <div className="relative mx-auto w-20 h-20 mb-6">
+                <div className="absolute inset-0 rounded-2xl bg-blue-500/20 blur-xl"></div>
+                <div className="relative w-full h-full rounded-2xl bg-gradient-to-br from-blue-500/30 to-purple-500/30 flex items-center justify-center border border-blue-400/40">
+                  <Shield className="w-10 h-10 text-blue-400" />
+                </div>
+              </div>
+
+              {/* Title */}
+              <h3 className="text-2xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent mb-4">
+                Account Access Notice
+              </h3>
+
+              {/* Message */}
+              <p className="text-gray-300 leading-relaxed mb-2">
+                Password management is handled by<br />
+                <span className="text-white font-semibold">system administrators</span>.
+              </p>
+              <p className="text-gray-500 text-sm mb-6">
+                Please contact your administrator to regain access.
+              </p>
+
+              {/* Info badge */}
+              <div className="inline-flex items-center gap-2 bg-blue-500/10 text-blue-400 text-sm px-4 py-2 rounded-full border border-blue-500/20 mb-6">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+                <span>Your security is our priority</span>
+              </div>
+
+              {/* Button */}
+              <button
+                onClick={() => setShowForgotModal(false)}
+                className="w-full py-3 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold rounded-xl transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-blue-500/25"
+              >
+                I Understand
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Forced Password Change Modal — Unclosable */}
+      {showForcePasswordModal && (
+        <div className="fixed inset-0 bg-slate-900/98 z-[200] flex items-center justify-center p-4" onKeyDown={(e) => e.key === 'Escape' && e.preventDefault()}>
+          <div className="relative w-full max-w-md bg-gradient-to-b from-slate-800 to-slate-900 backdrop-blur-xl rounded-3xl shadow-2xl border border-slate-700/50 p-8 transform transition-all duration-300 animate-slide-in overflow-hidden">
+            {/* Top accent gradient line */}
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500"></div>
+
+            {/* Modal Content */}
+            <div className="text-center">
+              {/* Icon with glow */}
+              <div className="relative mx-auto w-20 h-20 mb-6">
+                <div className="absolute inset-0 rounded-2xl bg-blue-500/20 blur-xl"></div>
+                <div className="relative w-full h-full rounded-2xl bg-gradient-to-br from-blue-500/30 to-purple-500/30 flex items-center justify-center border border-blue-400/40">
+                  <KeyRound className="w-10 h-10 text-blue-400" />
+                </div>
+              </div>
+
+              {/* Title */}
+              <h3 className="text-2xl font-bold bg-gradient-to-r from-white to-blue-300 bg-clip-text text-transparent mb-2">
+                Change Your Password
+              </h3>
+              <p className="text-gray-400 text-sm mb-6">
+                You must set a new password before continuing. The default password cannot be used.
+              </p>
+
+              {/* Form */}
+              <form onSubmit={handleForcePasswordChange} className="space-y-4 text-left">
+                {/* New Password */}
+                <div className="group">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">New Password</label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <Lock className="h-5 w-5 text-gray-400 group-focus-within:text-blue-400 transition-colors" />
+                    </div>
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="w-full pl-10 pr-12 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 hover:border-slate-500"
+                      style={{ backgroundColor: 'rgba(51, 65, 85, 0.5)' }}
+                      placeholder="Enter new password"
+                      required
+                      minLength={6}
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-white transition-colors"
+                    >
+                      {showNewPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Confirm Password */}
+                <div className="group">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Confirm Password</label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <Lock className="h-5 w-5 text-gray-400 group-focus-within:text-blue-400 transition-colors" />
+                    </div>
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      value={confirmNewPassword}
+                      onChange={(e) => setConfirmNewPassword(e.target.value)}
+                      className="w-full pl-10 pr-12 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 hover:border-slate-500"
+                      style={{ backgroundColor: 'rgba(51, 65, 85, 0.5)' }}
+                      placeholder="Confirm new password"
+                      required
+                      minLength={6}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-white transition-colors"
+                    >
+                      {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Error Message */}
+                {changePasswordError && (
+                  <div className="relative overflow-hidden bg-red-500/10 border border-red-500/50 rounded-lg p-3 animate-slide-in">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 text-red-400 flex-shrink-0" />
+                      <p className="text-red-400 text-sm">{changePasswordError}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Submit Button */}
+                <button
+                  type="submit"
+                  disabled={changePasswordLoading}
+                  className="w-full mt-2 bg-white/90 hover:bg-white disabled:bg-gray-500/50 text-gray-900 hover:text-gray-900 disabled:text-gray-400 font-semibold py-3 px-4 rounded-xl transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98] disabled:transform-none shadow-lg hover:shadow-white/30 disabled:shadow-none flex items-center justify-center gap-2 border border-white/20"
+                >
+                  {changePasswordLoading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span>Changing Password...</span>
+                    </>
+                  ) : (
+                    <span>Set New Password</span>
+                  )}
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Custom CSS for animations and autocomplete styling */}
       <style>{`
         @keyframes blob {

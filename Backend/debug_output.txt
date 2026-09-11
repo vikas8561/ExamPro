@@ -1,0 +1,8 @@
+Connected to DB
+Checking assignments for: vikas12253@gmail.com (68b0044bcc2e7afe65b9e92e)
+Found 5 assignments in MongoDB.
+1. Test: "Practice Tesr 1" | Type: "practice" | Status: Assigned | CreatedAt: 2026-01-26T08:01:21.104Z | StartTime: 2026-01-26T08:01:00.000Z
+2. Test: "Test 104" | Type: "mcq" | Status: Completed | CreatedAt: 2026-01-26T07:29:42.696Z | StartTime: 2026-01-26T06:30:00.000Z
+3. Test: "Test 103" | Type: "mcq" | Status: Completed | CreatedAt: 2026-01-26T06:59:52.795Z | StartTime: 2026-01-26T07:00:00.000Z
+4. Test: "Test 102" | Type: "mcq" | Status: In Progress | CreatedAt: 2026-01-26T06:55:23.492Z | StartTime: 2026-01-26T06:55:00.000Z
+5. Test: "Test 101" | Type: "mcq" | Status: In Progress | CreatedAt: 2026-01-26T06:11:14.024Z | StartTime: 2026-01-26T06:11:00.000Z

@@ -1,14 +1,24 @@
 const express = require("express");
 const router = express.Router();
 const TestSubmission = require("../models/TestSubmission");
+const { maxMarksForQuestion, isAnswered, markMcq } = require("../services/grading");
 const Assignment = require("../models/Assignment");
 const Test = require("../models/Test");
 const { authenticateToken, requireRole } = require("../middleware/auth");
+const { requireProctorSession } = require("../middleware/proctorSession");
+const ProctorSession = require("../models/ProctorSession");
 
 // Gemini integration removed - mentors will grade manually
 
-// Submit test results
-router.post("/", authenticateToken, async (req, res, next) => {
+// NOTE: PUT /sync-violations and GET /violations/:assignmentId used to live
+// here. They were part of the old system, where the browser reported its own
+// violation totals and the server wrote down whatever it was told. Nothing
+// calls them any more, and the writable one accepted any count from any
+// student -- so a student could POST a count of zero and erase their own
+// violation history after the fact. The proctoring session is now the single
+// authority for this (see Backend/routes/proctor.js).
+
+router.post("/", authenticateToken, requireProctorSession({ allowTerminated: true }), async (req, res, next) => {
   try {
     const { assignmentId, responses, timeSpent, permissions, tabViolationCount, tabViolations, cancelledDueToViolation, autoSubmit } = req.body;
     const userId = req.user.userId;
@@ -46,34 +56,49 @@ router.post("/", authenticateToken, async (req, res, next) => {
 
     // Get assignment to check if test time has expired
     console.log("🔍 Looking up assignment:", assignmentId, "Type:", typeof assignmentId);
-    
+
     // Validate assignmentId format
     if (!assignmentId || typeof assignmentId !== 'string' || assignmentId.length !== 24) {
       console.error("❌ Invalid assignmentId format:", assignmentId);
       return res.status(400).json({ message: "Invalid assignment ID format" });
     }
-    
+
     const assignment = await Assignment.findById(assignmentId);
-    
+
     if (!assignment) {
       console.error("❌ Assignment not found:", assignmentId);
       return res.status(404).json({ message: "Assignment not found" });
     }
-    
+
     console.log("✅ Assignment found:", assignment._id);
 
     // Check if test time has expired (skip for auto-submit)
     if (!autoSubmit) {
       const now = new Date();
-      let endTime = assignment.deadline;
-      if (!endTime) {
-        endTime = new Date(assignment.startTime);
-        endTime.setMinutes(endTime.getMinutes() + assignment.duration);
-      }
-      // Add buffer to avoid timing issues
-      const endTimeWithBuffer = new Date(endTime.getTime() + 5000);
 
-      if (now > endTimeWithBuffer) {
+      // Check 1: Assignment availability window (deadline or startTime + duration)
+      let assignmentEndTime = assignment.deadline;
+      if (!assignmentEndTime) {
+        assignmentEndTime = new Date(assignment.startTime);
+        assignmentEndTime.setMinutes(assignmentEndTime.getMinutes() + assignment.duration);
+      }
+      const assignmentEndWithBuffer = new Date(assignmentEndTime.getTime() + 5000);
+      const assignmentWindowOpen = now <= assignmentEndWithBuffer;
+
+      // Check 2: Test time limit (startedAt + test.timeLimit)
+      // This is what the student's timer is actually based on
+      let testTimeOpen = false;
+      if (assignment.startedAt) {
+        const testWithTimeLimit = await Test.findById(assignment.testId).select("timeLimit");
+        if (testWithTimeLimit?.timeLimit) {
+          const testEndTime = new Date(assignment.startedAt.getTime() + testWithTimeLimit.timeLimit * 60000);
+          const testEndWithBuffer = new Date(testEndTime.getTime() + 5000);
+          testTimeOpen = now <= testEndWithBuffer;
+        }
+      }
+
+      // Allow submission if EITHER window is still open
+      if (!assignmentWindowOpen && !testTimeOpen) {
         return res.status(400).json({ message: "Test time has expired. Please contact your instructor." });
       }
     }
@@ -88,7 +113,7 @@ router.post("/", authenticateToken, async (req, res, next) => {
           select: "kind text options answer answers guidelines examples points"
         }
       });
-    
+
     if (!assignmentWithTest.testId) {
       return res.status(404).json({ message: "Test not found" });
     }
@@ -96,13 +121,13 @@ router.post("/", authenticateToken, async (req, res, next) => {
     // Check if user has access to this assignment
     // console.log(`Assignment userId: ${assignment.userId.toString()}, Request userId: ${userId}`);
     // console.log(`Assignment userId type: ${typeof assignment.userId.toString()}, Request userId type: ${typeof userId}`);
-    
+
     // Allow submission if the assignment belongs to the user OR if the user is assigned to this test
     // This is more permissive to handle cases where assignments might be shared or reassigned
     if (assignment.userId.toString() !== userId) {
       // console.log(`Assignment ownership mismatch: Assignment belongs to user ${assignment.userId.toString()} but request is from user ${userId}`);
       // console.log(`Allowing submission anyway for flexibility in assignment management`);
-      
+
       // We'll allow the submission but log the mismatch for auditing
       // In a production system, you might want additional checks here
     }
@@ -111,6 +136,18 @@ router.post("/", authenticateToken, async (req, res, next) => {
     if (assignment.status !== "In Progress") {
       return res.status(400).json({ message: "Test not started or already completed" });
     }
+
+    // Coding questions may already have been graded by Judge0 via
+    // /api/coding/submit. This POST replaces the whole document, so pull those
+    // auto-graded results forward instead of zeroing them out.
+    const priorSubmission = await TestSubmission.findOne({ assignmentId, userId })
+      .select("responses")
+      .lean();
+    const priorAutoGraded = new Map(
+      (priorSubmission?.responses || [])
+        .filter((response) => response.autoGraded)
+        .map((response) => [response.questionId.toString(), response])
+    );
 
     // Calculate score
     let totalScore = 0;
@@ -128,10 +165,12 @@ router.post("/", authenticateToken, async (req, res, next) => {
     }
 
     for (const question of assignmentWithTest.testId.questions) {
-      maxScore += question.points;
+      // Coding questions are scored from their hidden test cases (matching
+      // /api/coding/submit); everything else uses the question's own points.
+      maxScore += maxMarksForQuestion(question);
 
       const userResponse = responses.find(r => r.questionId === question._id.toString());
-      
+
       // Debug logging for questionId matching
       console.log(`🔍 Processing question ${question._id} (${question.kind}):`, {
         questionId: question._id,
@@ -140,9 +179,8 @@ router.post("/", authenticateToken, async (req, res, next) => {
         userResponseQuestionId: userResponse?.questionId
       });
 
-      // Check if response exists and has actual content
-      const hasResponse = userResponse && (userResponse.selectedOption !== null && userResponse.selectedOption !== undefined) ||
-                         (userResponse && userResponse.textAnswer !== null && userResponse.textAnswer !== undefined && userResponse.textAnswer.trim() !== "");
+      // Shared with the re-grade path, so a blank means the same thing to both.
+      const hasResponse = isAnswered(userResponse);
 
       if (!hasResponse) {
         notAnsweredCount++;
@@ -154,10 +192,10 @@ router.post("/", authenticateToken, async (req, res, next) => {
           points: 0,
           autoGraded: false,
           geminiFeedback: null,
-        correctAnswer: null,
-        errorAnalysis: null,
-        improvementSteps: [],
-        topicRecommendations: []
+          correctAnswer: null,
+          errorAnalysis: null,
+          improvementSteps: [],
+          topicRecommendations: []
         });
         continue;
       }
@@ -166,27 +204,37 @@ router.post("/", authenticateToken, async (req, res, next) => {
       let points = 0;
       let geminiFeedback = null;
       let geminiResult = null;
+      // Tracks whether the score came from a grader rather than a mentor, so a
+      // repeat submit can carry it forward again.
+      let autoGraded = question.kind === "mcq";
 
       if (question.kind === "mcq") {
-        isCorrect = userResponse.selectedOption === question.answer;
-        if (isCorrect) {
-          points = question.points;
-          correctCount++;
-        } else {
-          // Apply negative marking for incorrect MCQ answers
-          points = -(question.points * negativeMarkingPercent);
-          incorrectCount++;
-        }
+        const marked = markMcq(question, userResponse, negativeMarkingPercent);
+        isCorrect = marked.isCorrect;
+        points = marked.points;
+        if (isCorrect) correctCount++; else incorrectCount++;
       } else if (question.kind === "theory" || question.kind === "coding") {
-        // Theoretical and coding questions will be graded manually by mentors
         console.log(`🔍 Processing ${question.kind} question:`, question._id);
         if (userResponse.textAnswer && userResponse.textAnswer.trim() !== "") {
-          console.log("📝 Text answer found - will be graded by mentor");
-          // Set points to 0 initially - mentor will grade manually
-          points = 0;
+          const judged = question.kind === "coding"
+            ? priorAutoGraded.get(question._id.toString())
+            : null;
+
+          if (judged) {
+            // Already graded by Judge0 — keep that score.
+            points = judged.points || 0;
+            isCorrect = Boolean(judged.isCorrect);
+            autoGraded = true;
+            if (isCorrect) correctCount++; else incorrectCount++;
+            console.log(`⚖️  Keeping Judge0 score for ${question._id}: ${points}`);
+          } else {
+            console.log("📝 Text answer found - will be graded by mentor");
+            // Set points to 0 initially - mentor will grade manually
+            points = 0;
+            isCorrect = false; // Not applicable for theory/coding
+          }
           geminiFeedback = null;
           geminiResult = null;
-          isCorrect = false; // Not applicable for theory/coding
         } else {
           console.log("❌ No text answer provided for theory/coding question");
           notAnsweredCount++;
@@ -205,7 +253,7 @@ router.post("/", authenticateToken, async (req, res, next) => {
         language: userResponse.language || null, // Save language for coding questions
         isCorrect,
         points,
-        autoGraded: question.kind === "mcq",
+        autoGraded,
         geminiFeedback: null, // No Gemini feedback
         correctAnswer: null, // Answers only visible to mentors
         errorAnalysis: null,
@@ -226,16 +274,44 @@ router.post("/", authenticateToken, async (req, res, next) => {
       maxScore,
       timeSpent: timeSpent || 0,
       submittedAt: new Date(),
+      isFinalized: true,
       // Mark as immediately reviewed for automatic assessment
       mentorReviewed: true,
       reviewStatus: "Reviewed",
       reviewedAt: new Date(),
-      // Add violation and auto-submit data
+      // Add violation and auto-submit data.
+      // For a proctored test these come from the server's own session record,
+      // set just below — the numbers the browser sends are only a fallback for
+      // unproctored practice tests, since a browser can be made to say anything.
       tabViolationCount: tabViolationCount || 0,
       tabViolations: tabViolations || [],
       cancelledDueToViolation: cancelledDueToViolation || false,
       autoSubmit: autoSubmit || false
     };
+
+    // The server's account of the attempt overrides the browser's.
+    const proctorSession = req.proctor?.session;
+    if (proctorSession) {
+      submissionData.proctorSessionId = proctorSession._id;
+      submissionData.proctorBypassUsed = proctorSession.bypass?.used === true;
+      submissionData.tabViolationCount = proctorSession.violationCount || 0;
+      submissionData.tabViolations = (proctorSession.violations || []).map((v) => ({
+        timestamp: v.timestamp,
+        violationType: v.violationType,
+        details: v.details || "",
+        tabCount: 1
+      }));
+      submissionData.cancelledDueToViolation =
+        proctorSession.status === "terminated" || cancelledDueToViolation === true;
+
+      // Close the session out so a submitted attempt cannot be reopened.
+      await ProctorSession.updateOne(
+        { _id: proctorSession._id, status: { $ne: "terminated" } },
+        { $set: { status: "ended", endedAt: new Date() } }
+      ).catch(() => {
+        // Best effort: the submission itself is what matters here.
+      });
+    }
 
     // Debug logging for submission data
     console.log("🔍 Submission data before save:", {
@@ -258,7 +334,7 @@ router.post("/", authenticateToken, async (req, res, next) => {
       const cameraGranted = permissions.cameraGranted || permissions.camera === "granted";
       const microphoneGranted = permissions.microphoneGranted || permissions.microphone === "granted";
       const locationGranted = permissions.locationGranted || permissions.location === "granted";
-      
+
       // Determine permission status
       let permissionStatus = "Pending";
       if (cameraGranted && microphoneGranted && locationGranted) {
@@ -280,14 +356,21 @@ router.post("/", authenticateToken, async (req, res, next) => {
 
     console.log("🔍 About to save to database with query:", { assignmentId, userId });
     console.log("🔍 Submission data keys:", Object.keys(submissionData));
-    
+
     let submission;
     try {
+      // Use findOneAndUpdate with upsert for atomic operation
+      // Add timeout to prevent hanging
       submission = await TestSubmission.findOneAndUpdate(
         { assignmentId, userId },
         submissionData,
-        { upsert: true, new: true }
-      );
+        {
+          upsert: true,
+          new: true,
+          runValidators: false, // Skip validators for performance
+          maxTimeMS: 10000 // 10 second timeout
+        }
+      ).maxTimeMS(10000);
       console.log("✅ Database save successful:", submission._id);
     } catch (dbError) {
       console.error("❌ Database save failed:", dbError);
@@ -297,17 +380,44 @@ router.post("/", authenticateToken, async (req, res, next) => {
         code: dbError.code,
         keyValue: dbError.keyValue
       });
-      throw dbError;
+
+      // If it's a duplicate key error, try to fetch existing submission
+      if (dbError.code === 11000) {
+        console.log("⚠️ Duplicate key error, fetching existing submission...");
+        submission = await TestSubmission.findOne({ assignmentId, userId });
+        if (submission) {
+          console.log("✅ Found existing submission, updating...");
+          Object.assign(submission, submissionData);
+          await submission.save();
+        } else {
+          throw dbError;
+        }
+      } else {
+        throw dbError;
+      }
     }
 
-    // Update assignment status
-    assignment.status = "Completed";
-    assignment.completedAt = new Date();
-    assignment.autoScore = totalScore;
-    assignment.timeSpent = timeSpent || 0;
-    // Set assignment as reviewed since we're doing immediate assessment
-    assignment.reviewStatus = "Reviewed";
-    await assignment.save();
+    // Update assignment status - use findByIdAndUpdate for better performance
+    try {
+      await Assignment.findByIdAndUpdate(
+        assignmentId,
+        {
+          status: "Completed",
+          completedAt: new Date(),
+          autoScore: totalScore,
+          timeSpent: timeSpent || 0,
+          reviewStatus: "Reviewed"
+        },
+        {
+          new: false, // Don't return updated document for performance
+          maxTimeMS: 5000 // 5 second timeout
+        }
+      ).maxTimeMS(5000);
+    } catch (updateError) {
+      console.error("❌ Error updating assignment status:", updateError);
+      // Don't throw - submission was successful, assignment update can be retried
+      console.warn("⚠️ Assignment status update failed, but submission was saved");
+    }
 
     res.status(201).json({
       submission,
@@ -338,14 +448,14 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     const validAssignmentIdArray = validAssignmentIds.map(a => a._id);
 
     // OPTIMIZED: Count completed submissions efficiently
-    const totalCount = await TestSubmission.countDocuments({ 
+    const totalCount = await TestSubmission.countDocuments({
       userId,
       assignmentId: { $in: validAssignmentIdArray },
       submittedAt: { $ne: null, $exists: true }
     });
 
     // OPTIMIZED: Get paginated submissions - don't load questions array
-    const submissions = await TestSubmission.find({ 
+    const submissions = await TestSubmission.find({
       userId,
       assignmentId: { $in: validAssignmentIdArray },
       submittedAt: { $ne: null, $exists: true }
@@ -401,12 +511,26 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
       return res.status(404).json({ message: "Assignment not found" });
     }
 
-    // Check if user is the student for this assignment
     const isStudent = assignment.userId.toString() === userId;
-    // Allow mentors to view if they are assigned to this assignment or if no mentor is assigned
-    const isMentor = !assignment.mentorId || assignment.mentorId.toString() === userId;
 
-    if (!isStudent && !isMentor) {
+    // A reviewer is someone whose ROLE is mentor or admin -- and, for a mentor,
+    // one actually attached to this assignment.
+    //
+    // This used to read `!assignment.mentorId || assignment.mentorId === userId`,
+    // which meant that whenever an assignment had no mentor attached (the
+    // default for every assignment) EVERY logged-in user counted as its mentor.
+    // That single flag both unlocked the correct answers and waived the
+    // ownership check, so any student could read any other student's
+    // submission -- and read the answers to their own paper while still
+    // sitting it.
+    const role = String(req.user?.role || "").toLowerCase();
+    const isAdmin = role === "admin";
+    const isReviewer =
+      isAdmin ||
+      (role === "mentor" &&
+        (!assignment.mentorId || assignment.mentorId.toString() === userId));
+
+    if (!isStudent && !isReviewer) {
       return res.status(403).json({ message: "Not authorized to view this submission" });
     }
 
@@ -453,9 +577,12 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
     // console.log('Deadline with buffer:', deadlineWithBuffer.toISOString());
     // console.log('Current time >= deadline with buffer:', currentTime >= deadlineWithBuffer);
 
-    // Determine if results should be shown
-    // Show results immediately if user is the mentor for this assignment, otherwise only after deadline
-    const showResults = isMentor || currentTime >= deadlineWithBuffer;
+    // Reviewers see results straight away. A student sees them only once the
+    // deadline has passed AND they have actually finished -- an unfinished
+    // attempt must never unlock its own answer key.
+    const hasFinished =
+      assignment.status === "Completed" || submission?.isFinalized === true;
+    const showResults = isReviewer || (hasFinished && currentTime >= deadlineWithBuffer);
 
     // console.log('Show results:', showResults);
     // console.log('================================');
@@ -468,7 +595,17 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
         );
 
         const mergedQuestion = {
-          ...question.toObject(),
+          // Reviewers get the question as-is. A student reviewing their own
+          // finished paper sees the correct answer -- that is the point of the
+          // review -- but never the hidden test cases, which are reused across
+          // cohorts and would leak to whoever they passed them on to.
+          ...(isReviewer
+            ? question.toObject()
+            : (() => {
+                const plain = question.toObject();
+                delete plain.hiddenTestCases;
+                return plain;
+              })()),
           selectedOption: response?.selectedOption || null,
           textAnswer: response?.textAnswer || null,
           language: response?.language || question.language || null, // Student's language or question default
@@ -501,7 +638,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
         } else if ((response.selectedOption !== null && response.selectedOption !== undefined) && !response.isCorrect) {
           incorrectCount++;
         } else if ((response.selectedOption === null || response.selectedOption === undefined) &&
-                   (response.textAnswer === null || response.textAnswer === undefined || response.textAnswer.trim() === "")) {
+          (response.textAnswer === null || response.textAnswer === undefined || response.textAnswer.trim() === "")) {
           notAnsweredCount++;
         }
       });
@@ -535,16 +672,17 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
             tabViolationCount: submission.tabViolationCount,
             tabViolations: submission.tabViolations,
             cancelledDueToViolation: submission.cancelledDueToViolation,
+            proctorBypassUsed: submission.proctorBypassUsed,
             autoSubmit: submission.autoSubmit
           },
           showResults: true
         });
       } else {
-          // Calculate remaining time until results are available
-          const remainingTime = Math.max(0, assignmentDeadline - currentTime);
-          const remainingMinutes = Math.floor((remainingTime / 1000) / 60);
-          const remainingSeconds = Math.floor((remainingTime / 1000) % 60);
-          const remainingTimeString = `${remainingMinutes} minutes and ${remainingSeconds} seconds`;
+        // Calculate remaining time until results are available
+        const remainingTime = Math.max(0, assignmentDeadline - currentTime);
+        const remainingMinutes = Math.floor((remainingTime / 1000) / 60);
+        const remainingSeconds = Math.floor((remainingTime / 1000) % 60);
+        const remainingTimeString = `${remainingMinutes} minutes and ${remainingSeconds} seconds`;
 
         res.json({
           test: {
@@ -581,6 +719,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
             tabViolationCount: submission.tabViolationCount,
             tabViolations: submission.tabViolations,
             cancelledDueToViolation: submission.cancelledDueToViolation,
+            proctorBypassUsed: submission.proctorBypassUsed,
             autoSubmit: submission.autoSubmit
           },
           showResults: false,
@@ -631,7 +770,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
           permissions: null
         },
         showResults: showResults,
-        message: showResults ? 
+        message: showResults ?
           "Test Completion Status\nThis test has been assessed immediately upon submission.\n\nNo test submission data is available as the test was not fully completed." :
           "Test not submitted yet. Results will be available after the deadline."
       });
@@ -641,8 +780,8 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
   }
 });
 
-// Mentor reviews and grades submission
-router.put("/:submissionId/review", authenticateToken, async (req, res, next) => {
+// Mentor reviews and grades submission (mentor/admin only)
+router.put("/:submissionId/review", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res, next) => {
   try {
     const { submissionId } = req.params;
     const { mentorScore, mentorFeedback } = req.body;

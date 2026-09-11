@@ -1,9 +1,10 @@
 const express = require("express");
 const router = express.Router();
 const Review = require("../models/Review");
+const { authenticateToken, requireRole } = require("../middleware/auth");
 
-// Get all reviews
-router.get("/", async (req, res) => {
+// Get all reviews (admin only)
+router.get("/", authenticateToken, requireRole("Admin"), async (req, res) => {
   try {
     const reviews = await Review.find();
     res.json(reviews);
@@ -12,8 +13,8 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Create review
-router.post("/", async (req, res) => {
+// Create review (admin only)
+router.post("/", authenticateToken, requireRole("Admin"), async (req, res) => {
   try {
     const { testId, userId, type, status } = req.body;
     const newReview = new Review({ testId, userId, type, status });
@@ -24,8 +25,8 @@ router.post("/", async (req, res) => {
   }
 });
 
-// Update review
-router.put("/:id", async (req, res) => {
+// Update review (admin only)
+router.put("/:id", authenticateToken, requireRole("Admin"), async (req, res) => {
   try {
     const updated = await Review.findByIdAndUpdate(req.params.id, req.body, { new: true });
     res.json(updated);
@@ -34,8 +35,8 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-// Delete review
-router.delete("/:id", async (req, res) => {
+// Delete review (admin only)
+router.delete("/:id", authenticateToken, requireRole("Admin"), async (req, res) => {
   try {
     await Review.findByIdAndDelete(req.params.id);
     res.json({ message: "Review deleted" });

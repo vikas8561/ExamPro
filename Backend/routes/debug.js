@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const Assignment = require('../models/Assignment');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireRole } = require('../middleware/auth');
 
-// Debug endpoint to check current user role
-router.get('/check-role', authenticateToken, (req, res) => {
+// Debug endpoint to check current user role (admin only)
+router.get('/check-role', authenticateToken, requireRole("Admin"), (req, res) => {
   res.json({
     userId: req.user.userId,
     email: req.user.email,
@@ -13,8 +13,8 @@ router.get('/check-role', authenticateToken, (req, res) => {
   });
 });
 
-// Debug endpoint to check assignment status
-router.get('/assignment/:id/status', authenticateToken, async (req, res) => {
+// Debug endpoint to check assignment status (admin only)
+router.get('/assignment/:id/status', authenticateToken, requireRole("Admin"), async (req, res) => {
   try {
     const assignment = await Assignment.findById(req.params.id)
       .populate('testId', 'title')
@@ -65,8 +65,8 @@ router.get('/assignment/:id/status', authenticateToken, async (req, res) => {
   }
 });
 
-// Debug endpoint to list all assignments for current user
-router.get('/my-assignments', authenticateToken, async (req, res) => {
+// Debug endpoint to list all assignments for current user (admin only)
+router.get('/my-assignments', authenticateToken, requireRole("Admin"), async (req, res) => {
   try {
     const assignments = await Assignment.find({ userId: req.user.userId })
       .populate('testId', 'title')

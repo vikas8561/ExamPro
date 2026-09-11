@@ -1,8 +1,9 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
-import { Search, X as CloseIcon, UserPlus, Users as UsersIcon, Trash2, Image as ImageIcon, KeyRound } from "lucide-react";
+import { Search, X as CloseIcon, UserPlus, Users as UsersIcon, Trash2, Image as ImageIcon, KeyRound, ShieldOff, ShieldAlert, ShieldCheck } from "lucide-react";
 import StatusPill from "../components/StatusPill";
 import EmailUploader from "../components/EmailUploader";
 import { API_BASE_URL } from "../config/api";
+import apiRequest from "../services/api";
 
 // Card animation styles
 const cardAnimationStyles = `
@@ -53,6 +54,10 @@ export default function Users() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [deletingImage, setDeletingImage] = useState(null);
   const [resettingPassword, setResettingPassword] = useState(null);
+  const [unblockingUser, setUnblockingUser] = useState(null);
+  const [unblockingAll, setUnblockingAll] = useState(false);
+  // Themed popup for showing results instead of browser alert
+  const [resultPopup, setResultPopup] = useState({ show: false, message: '', type: 'success' });
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState({
@@ -72,16 +77,20 @@ export default function Users() {
       page: page.toString(),
       limit: "9"
     });
-    
+
     if (search) {
       params.append("search", search);
     }
-    
+
     if (roleFilter && roleFilter !== "All Users") {
       params.append("filter", roleFilter);
     }
 
-    fetch(`${API_BASE_URL}/users/profiles?${params.toString()}`)
+    fetch(`${API_BASE_URL}/users/profiles?${params.toString()}`, {
+      headers: {
+        "Authorization": `Bearer ${localStorage.getItem("token")}`
+      }
+    })
       .then((res) => {
         if (!res.ok) {
           throw new Error(`HTTP error! status: ${res.status}`);
@@ -150,9 +159,9 @@ export default function Users() {
         setIsFilterOpen(false);
       }
     };
-    
+
     document.addEventListener('mousedown', handleClickOutside);
-    
+
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
@@ -172,7 +181,10 @@ export default function Users() {
       // Update existing user
       fetch(`${API_BASE_URL}/users/${editing}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${localStorage.getItem("token")}`
+        },
         body: JSON.stringify(form),
       })
         .then((res) => {
@@ -197,7 +209,10 @@ export default function Users() {
       // Create new user
       fetch(`${API_BASE_URL}/users`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${localStorage.getItem("token")}`
+        },
         body: JSON.stringify(form),
       })
         .then((res) => {
@@ -232,7 +247,12 @@ export default function Users() {
     if (!window.confirm("Are you sure you want to delete this user?")) {
       return;
     }
-    fetch(`${API_BASE_URL}/users/${id}`, { method: "DELETE" })
+    fetch(`${API_BASE_URL}/users/${id}`, {
+      method: "DELETE",
+      headers: {
+        "Authorization": `Bearer ${localStorage.getItem("token")}`
+      }
+    })
       .then(() => {
         setUsers((prev) => prev.filter((u) => u._id !== id));
       })
@@ -248,6 +268,9 @@ export default function Users() {
     try {
       const response = await fetch(`${API_BASE_URL}/users/${userId}/profile-image`, {
         method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${localStorage.getItem("token")}`
+        }
       });
 
       if (response.ok) {
@@ -266,32 +289,199 @@ export default function Users() {
     }
   };
 
-  const resetPassword = async (userId, userName) => {
-    if (!window.confirm(`Are you sure you want to reset the password for ${userName}? The password will be changed to the default: 12345`)) {
-      return;
+  // Confirmation Modal State
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    title: "",
+    message: "",
+    confirmText: "", // precise text user must type
+    confirmKeyword: "", // the keyword to type (same as confirmText usually, but separated for logic)
+    action: null, // async function to execute
+    isDanger: true,
+    isLoading: false
+  });
+  const [typedConfirmation, setTypedConfirmation] = useState("");
+
+  const closeConfirmModal = () => {
+    setConfirmModal({ ...confirmModal, isOpen: false });
+    setTypedConfirmation("");
+  };
+
+  const executeConfirmAction = async () => {
+    if (confirmModal.confirmKeyword && typedConfirmation !== confirmModal.confirmKeyword) {
+      return; // Should be handled by UI disabled state, but safety check
     }
 
-    setResettingPassword(userId);
     try {
-      const response = await fetch(`${API_BASE_URL}/users/${userId}/reset-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        alert(data.message || "Password reset successfully. Default password is now: 12345");
-      } else {
-        const errorData = await response.json();
-        alert(errorData.message || "Failed to reset password");
-      }
-    } catch (err) {
-      console.error("Error resetting password:", err);
-      alert("Error resetting password. Please try again.");
-    } finally {
-      setResettingPassword(null);
+      setConfirmModal(prev => ({ ...prev, isLoading: true }));
+      await confirmModal.action();
+      closeConfirmModal();
+    } catch (error) {
+      console.error("Action failed:", error);
+      // Optional: Show error in modal or toast
+      alert("Action failed: " + (error.message || "Unknown error"));
+      setConfirmModal(prev => ({ ...prev, isLoading: false }));
     }
   };
+
+  const deleteAllProfileImages = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: "Reset All Profile Images",
+      message: "Are you sure you want to delete profile images and face descriptors for ALL users? This action cannot be undone.",
+      confirmKeyword: "RESET ALL",
+      isDanger: true,
+      isLoading: false,
+      action: async () => {
+        const data = await apiRequest("/users/profile-images/all", {
+          method: "DELETE"
+        });
+        alert(data.message); // Keep final success alert or replace with toast later
+        fetchUsers();
+      }
+    });
+  };
+
+  const resetAllPasswords = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: "Reset All Passwords",
+      message: "Are you sure you want to reset passwords for ALL users to '12345'? This action cannot be undone.",
+      confirmKeyword: "RESET PASSWORDS",
+      isDanger: true,
+      isLoading: false,
+      action: async () => {
+        const response = await fetch(`${API_BASE_URL}/users/reset-passwords/all`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${localStorage.getItem("token")}`
+          }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          alert(data.message);
+        } else {
+          throw new Error(data.message || "Failed to reset passwords");
+        }
+      }
+    });
+  };
+
+  const resetPassword = async (userId, userName) => {
+    // For single user reset, we can allow a simpler confirmation or use the modal without typing
+    setConfirmModal({
+      isOpen: true,
+      title: "Reset User Password",
+      message: `Are you sure you want to reset the password for ${userName}? The password will be changed to the default: 12345`,
+      confirmKeyword: "", // No typing required for single user
+      isDanger: false, // Less dangerous than executing for ALL
+      isLoading: false,
+      action: async () => {
+        const response = await fetch(`${API_BASE_URL}/users/${userId}/reset-password`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${localStorage.getItem("token")}`
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          alert(data.message || "Password reset successfully. Default password is now: 12345");
+        } else {
+          const errorData = await response.json();
+          alert(errorData.message || "Failed to reset password");
+        }
+      }
+    });
+  };
+
+  // Unblock a blocked user
+  const unblockUser = async (userId, userName) => {
+    setConfirmModal({
+      isOpen: true,
+      title: "Unblock User",
+      message: `Are you sure you want to unblock ${userName}? They will be able to login again.`,
+      confirmKeyword: "",
+      isDanger: false,
+      isLoading: false,
+      action: async () => {
+        setUnblockingUser(userId);
+        try {
+          const response = await fetch(`${API_BASE_URL}/users/${userId}/unblock`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${localStorage.getItem("token")}`
+            }
+          });
+
+          const data = await response.json();
+
+          if (response.ok) {
+            alert(data.message || "User unblocked successfully.");
+            fetchUsers();
+          } else {
+            alert(data.message || "Failed to unblock user.");
+          }
+        } catch (error) {
+          alert("An error occurred while unblocking the user.");
+        } finally {
+          setUnblockingUser(null);
+        }
+      }
+    });
+  };
+
+  // Unblock all blocked users at once
+  const unblockAllUsers = async () => {
+    setConfirmModal({
+      isOpen: true,
+      title: "Unblock All Users",
+      message: "This will unblock all currently blocked accounts and reset their failed login attempts. They will be able to login again.",
+      confirmKeyword: "",
+      isDanger: false,
+      isLoading: false,
+      action: async () => {
+        setUnblockingAll(true);
+        try {
+          const response = await fetch(`${API_BASE_URL}/users/unblock-all`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${localStorage.getItem("token")}`
+            }
+          });
+
+          const data = await response.json();
+
+          if (response.ok) {
+            setResultPopup({ show: true, message: data.message || "All users unblocked successfully.", type: 'success' });
+            fetchUsers();
+          } else {
+            setResultPopup({ show: true, message: data.message || "Failed to unblock users.", type: 'error' });
+          }
+        } catch (error) {
+          setResultPopup({ show: true, message: "An error occurred while unblocking users.", type: 'error' });
+        } finally {
+          setUnblockingAll(false);
+        }
+      }
+    });
+  };
+
+  // Auto-dismiss result popup after 3 seconds
+  useEffect(() => {
+    if (resultPopup.show) {
+      const timer = setTimeout(() => {
+        setResultPopup({ show: false, message: '', type: 'success' });
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [resultPopup.show]);
 
   return (
     <div
@@ -302,167 +492,157 @@ export default function Users() {
 
       {/* Navbar with Heading, Search Bar, and Add User Button */}
       <div className="sticky top-0 z-50 relative mb-8">
-        <div className="relative bg-slate-800/95 backdrop-blur-md border border-slate-700/50 rounded-2xl p-6 shadow-lg">
-          {/* Title and Actions Row */}
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-            {/* Section Heading */}
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-slate-700/60 rounded-xl">
-                <UsersIcon className="h-8 w-8 text-gray-200" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold text-white">
-                  Users
-                </h1>
-                <p className="text-slate-400 text-sm mt-1">
-                  {pagination.totalUsers} total users • Page {pagination.currentPage || currentPage} of {pagination.totalPages || 1}
-                </p>
+        <div className="relative bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-6 shadow-2xl">
+          {/* Decorative background elements */}
+          <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+          <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-500/10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2 pointer-events-none"></div>
+
+          <div className="relative z-10 flex flex-col gap-6">
+            {/* Top Row: Title and Stats */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 rounded-xl border border-indigo-500/30 shadow-inner">
+                  <UsersIcon className="h-8 w-8 text-indigo-200" />
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-400">
+                    Users
+                  </h1>
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <span className="px-2.5 py-0.5 rounded-full bg-slate-800/50 border border-slate-700/50 text-xs font-medium text-slate-300">
+                      {pagination.totalUsers} total
+                    </span>
+                    <span className="text-slate-600 text-xs">•</span>
+                    <span className="text-slate-400 text-xs">
+                      Page {pagination.currentPage || currentPage} of {pagination.totalPages || 1}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Search Bar and Add User Button */}
-            <div className="flex items-center gap-3">
-              <div className="relative max-w-md w-full lg:w-80 group">
+            {/* Bottom Row: Controls */}
+            <div className="flex flex-col xl:flex-row gap-4">
+              {/* Search Bar - Expanded */}
+              <div className="relative flex-grow group z-20">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Search className="h-5 w-5 transition-colors duration-200" style={{ color: "#FFFFFF" }} />
+                  <Search className="h-5 w-5 text-slate-400 group-focus-within:text-indigo-400 transition-colors" />
                 </div>
                 <input
                   type="text"
                   placeholder="Search users..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-12 pr-12 py-3 rounded-xl focus:outline-none transition-all duration-300"
-                  style={{
-                    backgroundColor: "#1E293B",
-                    border: "1px solid rgba(255, 255, 255, 0.3)",
-                    color: "#FFFFFF",
-                    boxShadow: "none",
-                  }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.5)";
-                    e.currentTarget.style.boxShadow = "0 0 0 2px rgba(255, 255, 255, 0.1)";
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
-                    e.currentTarget.style.boxShadow = "none";
-                  }}
-                  onMouseEnter={(e) => {
-                    if (document.activeElement !== e.currentTarget) {
-                      e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.4)";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (document.activeElement !== e.currentTarget) {
-                      e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
-                    }
-                  }}
+                  className="w-full pl-12 pr-12 py-3.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:bg-slate-800 focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all duration-300"
                 />
-                <style>{`
-                  input::placeholder {
-                    color: #9CA3AF !important;
-                    opacity: 1;
-                  }
-                `}</style>
-                {/* Always render clear button to prevent layout shift, but make it invisible when no text */}
                 <button
                   onClick={() => setSearchTerm("")}
                   className="absolute inset-y-0 right-0 pr-4 flex items-center transition-all duration-200"
-                  style={{ 
-                    color: searchTerm ? "#FFFFFF" : "transparent",
+                  style={{
+                    color: searchTerm ? "#94a3b8" : "transparent",
                     pointerEvents: searchTerm ? "auto" : "none",
                     cursor: searchTerm ? "pointer" : "default"
                   }}
-                  onMouseEnter={(e) => {
-                    if (searchTerm) {
-                      e.currentTarget.style.color = "#E5E7EB";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (searchTerm) {
-                      e.currentTarget.style.color = "#FFFFFF";
-                    }
-                  }}
-                  aria-label="Clear search"
-                  tabIndex={searchTerm ? 0 : -1}
                 >
-                  <CloseIcon className="h-5 w-5" />
+                  <CloseIcon className="h-5 w-5 hover:text-white" />
                 </button>
               </div>
 
-              {/* Filter Dropdown */}
-              <div className="relative filter-dropdown">
+              {/* Filters & Actions Group */}
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Filter Dropdown */}
+                <div className="relative filter-dropdown z-30">
+                  <button
+                    onClick={() => setIsFilterOpen(!isFilterOpen)}
+                    className="flex items-center gap-2 bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700/50 text-slate-200 px-5 py-3.5 rounded-xl font-medium transition-all duration-200 min-w-[160px] justify-between shadow-sm"
+                  >
+                    <span className="flex items-center gap-2">
+                      <svg className="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                      </svg>
+                      {filter}
+                    </span>
+                    <svg className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${isFilterOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {isFilterOpen && (
+                    <div className="absolute top-full right-0 mt-2 w-56 bg-slate-900 border border-slate-700 rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                      {['All Users', 'RU Students', 'SU Students', 'Mentor', 'Admin'].map(option => (
+                        <div
+                          key={option}
+                          onClick={() => {
+                            setFilter(option);
+                            setIsFilterOpen(false);
+                          }}
+                          className={`px-4 py-3 hover:bg-slate-800 cursor-pointer text-sm font-medium transition-colors flex items-center justify-between ${filter === option ? 'text-indigo-400 bg-slate-800/50' : 'text-slate-300'
+                            }`}
+                        >
+                          {option}
+                          {filter === option && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="w-px h-10 bg-slate-700/50 mx-1 hidden xl:block"></div>
+
+                {/* Reset Buttons */}
                 <button
-                  onClick={() => setIsFilterOpen(!isFilterOpen)}
-                  className="flex items-center gap-2 bg-slate-700/60 hover:bg-slate-700/80 text-white px-4 py-3 rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md"
+                  onClick={deleteAllProfileImages}
+                  className="px-4 py-3.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all hover:scale-105 active:scale-95 flex items-center gap-2 font-medium text-sm"
+                  title="Delete all user profile images"
                 >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-                  </svg>
-                  {filter}
-                  <svg className={`h-4 w-4 transition-transform duration-200 ${isFilterOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
+                  <Trash2 className="h-4 w-4" />
+                  <span className="hidden lg:inline">Images</span>
                 </button>
-                {isFilterOpen && (
-                  <div className="absolute top-full mt-1 w-full bg-slate-800 border border-slate-700/50 rounded-xl shadow-lg z-50 overflow-hidden">
-                    {['All Users', 'RU Students', 'SU Students', 'Mentor', 'Admin'].map(option => (
-                      <div
-                        key={option}
-                        onClick={() => {
-                          setFilter(option);
-                          setIsFilterOpen(false);
-                        }}
-                        className={`p-3 hover:bg-slate-700/50 cursor-pointer text-white transition-colors ${
-                          filter === option ? 'bg-slate-700/50' : ''
-                        }`}
-                      >
-                        {option}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
 
-              {/* Add User Button */}
-        <button
-                onClick={() => {
-                  if (showAddForm) {
-                    // Close form
-                    setShowAddForm(false);
-                    setAddMode(null);
-                    if (editing) {
-                      setEditing(null);
-                      setForm({
-                        name: "",
-                        email: "",
-                        role: "Student",
-                        studentCategory: "SU",
-                      });
+                <button
+                  onClick={resetAllPasswords}
+                  className="px-4 py-3.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 transition-all hover:scale-105 active:scale-95 flex items-center gap-2 font-medium text-sm"
+                  title="Reset all user passwords"
+                >
+                  <KeyRound className="h-4 w-4" />
+                  <span className="hidden lg:inline">Passwords</span>
+                </button>
+
+                <button
+                  onClick={unblockAllUsers}
+                  disabled={unblockingAll}
+                  className="px-4 py-3.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 transition-all hover:scale-105 active:scale-95 flex items-center gap-2 font-medium text-sm disabled:opacity-50 disabled:hover:scale-100"
+                  title="Unblock all blocked user accounts"
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  <span className="hidden lg:inline">{unblockingAll ? 'Unblocking...' : 'Unblock All'}</span>
+                </button>
+
+                {/* Add User Button - Prominent */}
+                <button
+                  onClick={() => {
+                    if (showAddForm) {
+                      setShowAddForm(false);
+                      setAddMode(null);
+                      if (editing) {
+                        setEditing(null);
+                        setForm({
+                          name: "",
+                          email: "",
+                          role: "Student",
+                          studentCategory: "SU",
+                        });
+                      }
+                    } else {
+                      setShowAddForm(true);
+                      setAddMode(null);
                     }
-                  } else {
-                    // Open form with mode selection
-                    setShowAddForm(true);
-                    setAddMode(null); // Show choice first
-                  }
-                }}
-                className="group inline-flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-300 shadow-sm hover:shadow-md"
-                style={{
-                  backgroundColor: "rgba(255, 255, 255, 0.1)",
-                  color: "#FFFFFF",
-                  border: "1px solid rgba(255, 255, 255, 0.3)",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.2)";
-                  e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.5)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
-                  e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
-                }}
-              >
-                <UserPlus className="h-5 w-5" />
-                <span>{editing ? "Cancel Edit" : showAddForm ? "Cancel" : "Add User"}</span>
-        </button>
+                  }}
+                  className="flex items-center gap-2 px-6 py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/25 transition-all hover:scale-105 active:scale-95 border border-white/10"
+                >
+                  <UserPlus className="h-5 w-5" />
+                  <span>{editing ? "Cancel Edit" : showAddForm ? "Cancel" : "Add User"}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -600,10 +780,10 @@ export default function Users() {
                   </button>
                 </div>
                 <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <input
-          value={form.name}
+                  <input
+                    value={form.name}
                     onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-          placeholder="Full name"
+                    placeholder="Full name"
                     className="px-4 py-3 rounded-xl focus:outline-none transition-all duration-300"
                     style={{
                       backgroundColor: "#1E293B",
@@ -616,11 +796,11 @@ export default function Users() {
                     onBlur={(e) => {
                       e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
                     }}
-        />
-        <input
-          value={form.email}
+                  />
+                  <input
+                    value={form.email}
                     onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-          placeholder="Email"
+                    placeholder="Email"
                     className="px-4 py-3 rounded-xl focus:outline-none transition-all duration-300"
                     style={{
                       backgroundColor: "#1E293B",
@@ -633,10 +813,10 @@ export default function Users() {
                     onBlur={(e) => {
                       e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
                     }}
-        />
-        <select
-          value={form.role}
-          onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
+                  />
+                  <select
+                    value={form.role}
+                    onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
                     className="px-4 py-3 rounded-xl focus:outline-none transition-all duration-300"
                     style={{
                       backgroundColor: "#1E293B",
@@ -649,15 +829,15 @@ export default function Users() {
                     onBlur={(e) => {
                       e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
                     }}
-        >
+                  >
                     <option value="Student" style={{ backgroundColor: "#1E293B" }}>Student</option>
                     <option value="Mentor" style={{ backgroundColor: "#1E293B" }}>Mentor</option>
                     <option value="Admin" style={{ backgroundColor: "#1E293B" }}>Admin</option>
-        </select>
-        {form.role === "Student" && (
-          <select
-            value={form.studentCategory}
-            onChange={(e) => setForm((f) => ({ ...f, studentCategory: e.target.value }))}
+                  </select>
+                  {form.role === "Student" && (
+                    <select
+                      value={form.studentCategory}
+                      onChange={(e) => setForm((f) => ({ ...f, studentCategory: e.target.value }))}
                       className="px-4 py-3 rounded-xl focus:outline-none transition-all duration-300"
                       style={{
                         backgroundColor: "#1E293B",
@@ -670,11 +850,11 @@ export default function Users() {
                       onBlur={(e) => {
                         e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
                       }}
-          >
+                    >
                       <option value="RU" style={{ backgroundColor: "#1E293B" }}>RU</option>
                       <option value="SU" style={{ backgroundColor: "#1E293B" }}>SU</option>
-          </select>
-        )}
+                    </select>
+                  )}
                 </div>
                 <div className="flex gap-3 mt-4">
                   <button
@@ -749,21 +929,20 @@ export default function Users() {
                 }} />
               </>
             )}
-      </div>
+          </div>
         </div>
       )}
 
       {/* Users Grid - cards styled like Tests page */}
-      <div 
+      <div
         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto flex-grow transition-opacity duration-300"
         style={{ opacity: loading ? 0.5 : 1 }}
       >
         {users.map((u, index) => (
           <div
             key={u._id}
-            className={`relative backdrop-blur-sm rounded-2xl p-5 border overflow-hidden flex flex-col min-h-[300px] ${
-              isInitialLoad ? 'animate-slide-in-up' : 'animate-fade-in'
-            }`}
+            className={`relative backdrop-blur-sm rounded-2xl p-5 border overflow-hidden flex flex-col min-h-[300px] ${isInitialLoad ? 'animate-slide-in-up' : 'animate-fade-in'
+              }`}
             style={{
               backgroundColor: "rgba(15, 23, 42, 0.9)",
               borderColor: "rgba(148, 163, 184, 0.2)",
@@ -784,7 +963,7 @@ export default function Users() {
                       </svg>
                     </div>
                     {/* Status indicator ring */}
-                    <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 border-2 border-slate-800 shadow-lg"></div>
+                    <div className={`absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full border-2 border-slate-800 shadow-lg ${u.isBlocked ? 'bg-gradient-to-br from-red-400 to-red-600' : 'bg-gradient-to-br from-green-400 to-emerald-500'}`}></div>
                   </div>
                   <div className="flex-1 min-w-0 pt-1">
                     <h3
@@ -794,6 +973,12 @@ export default function Users() {
                     >
                       {u.name}
                     </h3>
+                    {u.isBlocked && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/20 border border-red-500/40 text-red-300 text-xs font-semibold mb-1">
+                        <ShieldAlert className="h-3 w-3" />
+                        Blocked
+                      </span>
+                    )}
                     <p
                       className="text-sm truncate"
                       style={{ color: "#94A3B8" }}
@@ -845,11 +1030,10 @@ export default function Users() {
                     </div>
                     <span className="text-slate-300 text-sm font-semibold whitespace-nowrap">Profile Image</span>
                   </div>
-                  <span className={`px-3 py-1.5 rounded-lg text-xs font-bold border shadow-md min-w-[80px] text-center ${
-                    u.profileImageSaved 
-                      ? 'bg-gradient-to-r from-emerald-600/30 to-emerald-700/30 text-emerald-200 border-emerald-500/30' 
-                      : 'bg-gradient-to-r from-slate-700/50 to-slate-800/50 text-slate-300 border-slate-600/30'
-                  }`}>
+                  <span className={`px-3 py-1.5 rounded-lg text-xs font-bold border shadow-md min-w-[80px] text-center ${u.profileImageSaved
+                    ? 'bg-gradient-to-r from-emerald-600/30 to-emerald-700/30 text-emerald-200 border-emerald-500/30'
+                    : 'bg-gradient-to-r from-slate-700/50 to-slate-800/50 text-slate-300 border-slate-600/30'
+                    }`}>
                     {u.profileImageSaved ? "Uploaded" : "Not Set"}
                   </span>
                 </div>
@@ -894,7 +1078,7 @@ export default function Users() {
                   <KeyRound className="h-4 w-4" />
                   {resettingPassword === u._id ? "Resetting..." : "Reset Password"}
                 </button>
-                {/* Delete Profile Image Button - Only show if image exists in DB */}
+                {/* Delete Profile Image Button - Show if image OR face descriptor exists in DB */}
                 {u.profileImageSaved && (
                   <button
                     onClick={() => deleteProfileImage(u._id, u.name)}
@@ -903,6 +1087,17 @@ export default function Users() {
                   >
                     <Trash2 className="h-4 w-4" />
                     {deletingImage === u._id ? "Deleting..." : "Delete Profile Image"}
+                  </button>
+                )}
+                {/* Unblock User Button - Show only when user is blocked */}
+                {u.isBlocked && (
+                  <button
+                    onClick={() => unblockUser(u._id, u.name)}
+                    disabled={unblockingUser === u._id}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600/20 to-emerald-700/20 hover:from-emerald-600/30 hover:to-emerald-700/30 text-emerald-300 rounded-lg text-xs font-semibold border border-emerald-500/30 shadow-md hover:shadow-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 hover:scale-105"
+                  >
+                    <ShieldOff className="h-4 w-4" />
+                    {unblockingUser === u._id ? "Unblocking..." : "Unblock User"}
                   </button>
                 )}
               </div>
@@ -933,8 +1128,8 @@ export default function Users() {
               disabled={!pagination.hasPrevPage || currentPage === 1}
               className="px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100"
               style={{
-                backgroundColor: !pagination.hasPrevPage || currentPage === 1 
-                  ? 'rgba(255, 255, 255, 0.05)' 
+                backgroundColor: !pagination.hasPrevPage || currentPage === 1
+                  ? 'rgba(255, 255, 255, 0.05)'
                   : '#FFFFFF',
                 color: !pagination.hasPrevPage || currentPage === 1 ? '#FFFFFF' : '#000000',
                 border: '2px solid rgba(255, 255, 255, 0.2)'
@@ -959,7 +1154,7 @@ export default function Users() {
               </svg>
               Previous
             </button>
-            
+
             <div className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)' }}>
               {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
                 let pageNum;
@@ -972,23 +1167,22 @@ export default function Users() {
                 } else {
                   pageNum = currentPage - 2 + i;
                 }
-                
+
                 return (
                   <button
                     key={pageNum}
                     onClick={() => setCurrentPage(pageNum)}
-                    className={`px-4 py-2 rounded-lg font-semibold transition-all duration-300 ${
-                      currentPage === pageNum
-                        ? 'bg-white text-black shadow-lg transform scale-105'
-                        : 'text-white hover:bg-white/20 hover:scale-105'
-                    }`}
+                    className={`px-4 py-2 rounded-lg font-semibold transition-all duration-300 ${currentPage === pageNum
+                      ? 'bg-white text-black shadow-lg transform scale-105'
+                      : 'text-white hover:bg-white/20 hover:scale-105'
+                      }`}
                   >
                     {pageNum}
                   </button>
                 );
               })}
             </div>
-            
+
             <button
               onClick={() => {
                 if (currentPage < pagination.totalPages) {
@@ -999,7 +1193,7 @@ export default function Users() {
               className="px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100"
               style={{
                 backgroundColor: !pagination.hasNextPage || currentPage >= pagination.totalPages
-                  ? 'rgba(255, 255, 255, 0.05)' 
+                  ? 'rgba(255, 255, 255, 0.05)'
                   : '#FFFFFF',
                 color: !pagination.hasNextPage || currentPage >= pagination.totalPages ? '#FFFFFF' : '#000000',
                 border: '2px solid rgba(255, 255, 255, 0.2)'
@@ -1024,6 +1218,134 @@ export default function Users() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm transition-opacity"
+            onClick={closeConfirmModal}
+          />
+          <div className="relative bg-slate-800 border border-slate-700/50 rounded-2xl p-6 shadow-2xl max-w-md w-full animate-fade-in">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-3">
+                <div className={`p-3 rounded-xl ${confirmModal.isDanger ? 'bg-red-500/10' : 'bg-blue-500/10'}`}>
+                  {confirmModal.isDanger ? (
+                    <svg className="h-6 w-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  ) : (
+                    <svg className="h-6 w-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  )}
+                </div>
+                <h3 className="text-xl font-bold text-white">
+                  {confirmModal.title}
+                </h3>
+              </div>
+
+              <p className="text-slate-300">
+                {confirmModal.message}
+              </p>
+
+              {confirmModal.confirmKeyword && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-400">
+                    Type <span className="text-white font-mono font-bold">{confirmModal.confirmKeyword}</span> to confirm:
+                  </label>
+                  <input
+                    type="text"
+                    value={typedConfirmation}
+                    onChange={(e) => setTypedConfirmation(e.target.value)}
+                    placeholder={confirmModal.confirmKeyword}
+                    className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all"
+                  />
+                </div>
+              )}
+
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={closeConfirmModal}
+                  disabled={confirmModal.isLoading}
+                  className="flex-1 px-4 py-3 rounded-xl bg-slate-700/50 hover:bg-slate-700 text-white font-medium transition-colors disabled:opacity-50"
+                  style={{
+                    backgroundColor: "rgba(255, 255, 255, 0.05)",
+                    border: "1px solid rgba(255, 255, 255, 0.1)"
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={executeConfirmAction}
+                  disabled={confirmModal.isLoading || (confirmModal.confirmKeyword && typedConfirmation !== confirmModal.confirmKeyword)}
+                  className={`flex-1 px-4 py-3 rounded-xl font-bold shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:grayscale disabled:hover:scale-100 flex items-center justify-center gap-2 ${confirmModal.isDanger
+                    ? 'bg-gradient-to-r from-red-600 to-red-500 text-white shadow-red-500/20'
+                    : 'bg-white/90 hover:bg-white text-gray-900 shadow-lg hover:shadow-white/30 border border-white/20'
+                    }`}
+                >
+                  {confirmModal.isLoading ? (
+                    <>
+                      <svg className={`animate-spin h-5 w-5 ${confirmModal.isDanger ? 'text-white' : 'text-gray-900'}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Processing...
+                    </>
+                  ) : (
+                    confirmModal.isDanger ? "Confirm Delete" : "Confirm"
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════ RESULT POPUP ═══════════ */}
+      {resultPopup.show && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm transition-opacity"
+            onClick={() => setResultPopup({ show: false, message: '', type: 'success' })}
+          />
+          <div className="relative bg-slate-800 border border-slate-700/50 rounded-2xl p-6 shadow-2xl max-w-md w-full animate-fade-in">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-3">
+                <div className={`p-3 rounded-xl ${resultPopup.type === 'success' ? 'bg-blue-500/10' : 'bg-red-500/10'}`}>
+                  {resultPopup.type === 'success' ? (
+                    <svg className="h-6 w-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : (
+                    <svg className="h-6 w-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  )}
+                </div>
+                <h3 className="text-xl font-bold text-white">
+                  {resultPopup.type === 'success' ? 'Success' : 'Error'}
+                </h3>
+              </div>
+
+              <p className="text-slate-300">{resultPopup.message}</p>
+
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={() => setResultPopup({ show: false, message: '', type: 'success' })}
+                  className={`flex-1 px-4 py-3 rounded-xl font-bold shadow-lg transition-all hover:scale-105 active:scale-95 ${
+                    resultPopup.type === 'success'
+                      ? 'bg-white/90 hover:bg-white text-gray-900 hover:shadow-white/30 border border-white/20'
+                      : 'bg-gradient-to-r from-red-600 to-red-500 text-white shadow-red-500/20'
+                  }`}
+                >
+                  OK
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -21,8 +21,14 @@ const userSchema = new mongoose.Schema(
     resetPasswordExpires: { type: Date },
     pendingPassword: { type: String }, // Temporary storage for new password
     pendingEmail: { type: String }, // Temporary storage for new email
-    profileImage: { type: String }, // Base64 encoded profile image
+    profileImage: { type: String }, // Base64 encoded profile image, for display
     profileImageSaved: { type: Boolean, default: false }, // Flag to track if profile image was saved (one-time only)
+    // Account lockout fields
+    isBlocked: { type: Boolean, default: false }, // Blocked by admin after failed login attempts (permanent until admin unblocks)
+    failedLoginAttempts: { type: Number, default: 0 }, // Counter for failed login attempts
+    failedLoginWindow: { type: Date }, // Timestamp of first failed attempt in current 5-min window
+    // Forced password change
+    mustChangePassword: { type: Boolean, default: false }, // True when user must change password on next login
     // status: {
     //   type: String,
     //   enum: ["Active", "Inactive"],

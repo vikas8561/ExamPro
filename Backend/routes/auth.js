@@ -8,6 +8,10 @@ const User = require("../models/User");
 const { generateToken, authenticateToken, requireRole } = require("../middleware/auth");
 const { sendEmailImmediate } = require("../services/emailService");
 
+// In-memory store for admin lockout (30-min cooldown after 3 failed attempts)
+// Key: email (lowercase), Value: Date when lockout expires
+const adminLockout = new Map();
+
 // Email service is now in Backend/services/emailService.js
 
 // Login endpoint
@@ -15,28 +19,94 @@ router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Find user by email - only select fields needed for login (exclude large fields like profileImage)
-    const user = await User.findOne({ email }).select('_id email password role name studentCategory');
+    // Find user by email - include lockout fields
+    const user = await User.findOne({ email }).select('_id email password role name studentCategory isBlocked failedLoginAttempts failedLoginWindow mustChangePassword');
     if (!user) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    // Check password
+    // --- LOCKOUT CHECKS ---
+
+    // Check if Student/Mentor is permanently blocked
+    if (user.role !== 'Admin' && user.isBlocked) {
+      return res.status(403).json({ message: "Your account has been blocked. Please contact your administrator." });
+    }
+
+    // Check if Admin is in 30-min cooldown (in-memory)
+    if (user.role === 'Admin') {
+      const lockoutExpiry = adminLockout.get(email.toLowerCase());
+      if (lockoutExpiry && lockoutExpiry > new Date()) {
+        return res.status(403).json({ message: "Access denied." });
+      }
+      // Clear expired lockout entry
+      if (lockoutExpiry) {
+        adminLockout.delete(email.toLowerCase());
+      }
+    }
+
+    // --- PASSWORD VERIFICATION ---
+
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
+      // --- HANDLE FAILED ATTEMPT ---
+      const now = new Date();
+      const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
+
+      // Check if the current failed attempt window is still valid (within 5 min)
+      let currentAttempts;
+      if (user.failedLoginWindow && user.failedLoginWindow > fiveMinutesAgo) {
+        // Within the 5-min window, increment
+        currentAttempts = (user.failedLoginAttempts || 0) + 1;
+      } else {
+        // Window expired or first attempt — start fresh
+        currentAttempts = 1;
+      }
+
+      // Update failed attempt tracking
+      const updateFields = {
+        failedLoginAttempts: currentAttempts,
+        failedLoginWindow: currentAttempts === 1 ? now : user.failedLoginWindow
+      };
+
+      // Check if threshold reached (3 attempts)
+      if (currentAttempts >= 3) {
+        if (user.role === 'Admin') {
+          // Admin: 30-min in-memory cooldown
+          adminLockout.set(email.toLowerCase(), new Date(now.getTime() + 30 * 60 * 1000));
+          // Reset counters in DB (cooldown is in-memory)
+          updateFields.failedLoginAttempts = 0;
+          updateFields.failedLoginWindow = null;
+          await User.updateOne({ _id: user._id }, { $set: updateFields });
+          return res.status(403).json({ message: "Access denied." });
+        } else {
+          // Student/Mentor: permanent block
+          updateFields.isBlocked = true;
+          await User.updateOne({ _id: user._id }, { $set: updateFields });
+          return res.status(403).json({ message: "Your account has been blocked. Please contact your administrator." });
+        }
+      }
+
+      await User.updateOne({ _id: user._id }, { $set: updateFields });
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    // Generate JWT token
+    // --- SUCCESSFUL LOGIN ---
+
+    // Reset failed login counters on successful login
     const token = generateToken(user);
 
-    // Update activeSessions using updateOne (much faster than save - doesn't load full document or run hooks)
     await User.updateOne(
       { _id: user._id },
-      { $set: { activeSessions: [token] } }
+      {
+        $set: {
+          activeSessions: [token],
+          failedLoginAttempts: 0,
+          failedLoginWindow: null
+        }
+      }
     );
 
-    // Return user without password
+    // Return user without sensitive fields
     const userResponse = {
       _id: user._id,
       email: user.email,
@@ -45,9 +115,10 @@ router.post("/login", async (req, res) => {
       studentCategory: user.studentCategory
     };
 
-    res.json({ 
+    res.json({
       user: userResponse,
       token,
+      mustChangePassword: user.mustChangePassword || false,
       message: "Login successful"
     });
   } catch (err) {
@@ -60,19 +131,66 @@ router.post("/logout", async (req, res) => {
   try {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
-    
+
     if (token) {
       // Remove token from user's active sessions
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+      if (!process.env.JWT_SECRET) {
+        return res.status(500).json({ message: 'Server configuration error' });
+      }
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
       const user = await User.findById(decoded.userId);
-      
+
       if (user) {
         user.activeSessions = user.activeSessions.filter(sessionToken => sessionToken !== token);
         await user.save();
       }
     }
-    
+
     res.json({ message: "Logout successful" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Force change password endpoint (for users who must change default password)
+router.post("/force-change-password", authenticateToken, async (req, res) => {
+  try {
+    const { newPassword, confirmPassword } = req.body;
+
+    if (!newPassword || !confirmPassword) {
+      return res.status(400).json({ message: "New password and confirm password are required" });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ message: "Passwords do not match" });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters long" });
+    }
+
+    // Prevent setting the default password again
+    if (newPassword === "12345") {
+      return res.status(400).json({ message: "You cannot use the default password. Please choose a different password." });
+    }
+
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Hash the new password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    // Update password and clear mustChangePassword flag
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { password: hashedPassword, mustChangePassword: false } }
+    );
+
+    console.log('✅ Forced password change completed for user:', user.email);
+    res.json({ message: "Password changed successfully" });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -142,9 +260,9 @@ router.post("/forgot-password", async (req, res) => {
       await user.save();
     } catch (saveError) {
       console.error('Error saving user:', saveError);
-      return res.status(500).json({ 
+      return res.status(500).json({
         message: 'Failed to save password reset request',
-        error: saveError.message 
+        error: saveError.message
       });
     }
 
@@ -176,8 +294,7 @@ router.post("/forgot-password", async (req, res) => {
       console.log('✅ Reset email sent successfully to:', verificationEmail);
       return res.json({
         message: "Password reset verification sent",
-        verificationSentTo: verificationEmail,
-        resetToken: resetToken // For testing purposes
+        verificationSentTo: verificationEmail
       });
     } else {
       // Email failed but don't fail the request - return success with token
@@ -186,14 +303,12 @@ router.post("/forgot-password", async (req, res) => {
         message: "Password reset initiated successfully",
         warning: "Email could not be sent due to network/configuration issues",
         verificationSentTo: verificationEmail,
-        resetToken: resetToken, // For testing/manual use
-        error: emailResult.error,
-        note: "You can use the reset token manually to reset your password"
+        note: "Please check your email configuration or contact the administrator"
       });
     }
   } catch (err) {
     console.error('Unexpected error in forgot-password:', err);
-    res.status(500).json({ message: err.message, stack: err.stack });
+    res.status(500).json({ message: "An error occurred while processing your request" });
   }
 });
 
@@ -259,13 +374,12 @@ router.get("/profile", authenticateToken, async (req, res) => {
 // Upload profile image (camera only, one-time)
 router.post("/profile/image", authenticateToken, async (req, res) => {
   try {
-    const { image } = req.body; // Base64 encoded image
-    
+    const { image } = req.body;
+
     if (!image) {
-      return res.status(400).json({ message: "Image is required" });
+      return res.status(400).json({ message: "An image is required." });
     }
 
-    // Validate base64 image format
     if (!image.startsWith('data:image/')) {
       return res.status(400).json({ message: "Invalid image format. Only images from camera are allowed." });
     }
@@ -275,218 +389,23 @@ router.post("/profile/image", authenticateToken, async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Check if profile image was already saved (one-time only)
+    // Still one-time only, matching the previous behaviour.
     if (user.profileImageSaved) {
       return res.status(400).json({ message: "Profile image can only be saved once and cannot be changed" });
     }
 
-    // Save the image
     user.profileImage = image;
     user.profileImageSaved = true;
+
     await user.save();
 
-    res.json({ 
+    res.json({
       message: "Profile image saved successfully",
       profileImage: user.profileImage,
       profileImageSaved: user.profileImageSaved
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
-  }
-});
-
-// Verify face match for test authentication
-router.post("/verify-face", authenticateToken, async (req, res) => {
-  try {
-    const { image } = req.body; // Base64 encoded image from camera
-    
-    if (!image) {
-      return res.status(400).json({ message: "Image is required" });
-    }
-
-    // Validate base64 image format
-    if (!image.startsWith('data:image/')) {
-      return res.status(400).json({ message: "Invalid image format" });
-    }
-
-    const user = await User.findById(req.user.userId);
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    // Check if user has a profile image
-    if (!user.profileImage || !user.profileImageSaved) {
-      return res.status(400).json({ 
-        message: "No profile image found. Please upload a profile image first.",
-        match: false 
-      });
-    }
-
-    // Check if face recognition is enabled (development mode can bypass)
-    const faceRecognitionEnabled = process.env.FACE_RECOGNITION_ENABLED !== 'false';
-    const faceServiceUrl = process.env.FACE_RECOGNITION_SERVICE_URL || 'http://localhost:5000';
-    
-    // Development fallback: if service is disabled, allow test to proceed
-    // BUT ONLY if explicitly disabled - default is to require verification
-    if (!faceRecognitionEnabled) {
-      console.warn("⚠️ WARNING: Face recognition is DISABLED. Allowing test to proceed without verification.");
-      console.warn("⚠️ This should only be used for development/testing. In production, face verification must be enabled.");
-      return res.json({
-        match: true,
-        confidence: 1.0,
-        message: "Face verification bypassed (FACE_RECOGNITION_ENABLED=false)",
-        warning: "Face verification is disabled - this should not be used in production"
-      });
-    }
-    
-    // Call Python face recognition service
-    // Use built-in fetch if available (Node 18+), otherwise use node-fetch
-    let fetchFn;
-    if (typeof fetch !== 'undefined') {
-      fetchFn = fetch;
-    } else {
-      const nodeFetch = require('node-fetch');
-      fetchFn = nodeFetch.default || nodeFetch;
-    }
-    
-    // Check if fallback is enabled BEFORE making the request
-    const allowFallback = process.env.FACE_RECOGNITION_FALLBACK === 'true';
-    
-    try {
-      const controller = new AbortController();
-      // Increased timeout to handle:
-      // - Model download on first request (~10-15 seconds)
-      // - Cold starts on Render free tier (~30-60 seconds)
-      // - Face verification processing (~5-10 seconds)
-      const timeoutMs = parseInt(process.env.FACE_RECOGNITION_TIMEOUT_MS) || 90000; // 90 seconds default
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-      
-      const response = await fetchFn(`${faceServiceUrl}/verify-face`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          profileImage: user.profileImage,
-          capturedImage: image,
-        }),
-        signal: controller.signal,
-      });
-      
-      clearTimeout(timeoutId);
-
-      // Parse response even if status is not OK to get error details
-      let result;
-      try {
-        result = await response.json();
-      } catch (parseError) {
-        // If response is not JSON, treat as error
-        if (allowFallback) {
-          console.warn("⚠️ WARNING: Face recognition service returned non-JSON response. Allowing fallback.");
-          return res.json({
-            match: true,
-            confidence: 0.5,
-            message: "Face verification bypassed (service error, fallback enabled)",
-            warning: "Face recognition service returned invalid response. Test proceeding with fallback."
-          });
-        }
-        throw new Error(`Invalid response from face recognition service: ${response.statusText}`);
-      }
-      
-      // If service returned an error status, check for fallback
-      if (!response.ok) {
-        console.error("Face recognition service returned error:", result);
-        
-        // If fallback is enabled, allow verification to proceed
-        if (allowFallback) {
-          console.warn("⚠️ WARNING: Face recognition service unavailable. Allowing fallback (FACE_RECOGNITION_FALLBACK=true).");
-          console.warn("⚠️ This should only be used for development/testing. In production, face verification must work.");
-          return res.json({
-            match: true,
-            confidence: 0.5,
-            message: "Face verification bypassed (service unavailable, fallback enabled)",
-            warning: "Face recognition service is unavailable. Test proceeding with fallback."
-          });
-        }
-        
-        // Reject verification if fallback is not enabled
-        // Use the message from the service if available (it's user-friendly)
-        // Preserve the original status code from Python service (400, 500, etc.)
-        const statusCode = response.status >= 400 && response.status < 600 ? response.status : 400;
-        return res.status(statusCode).json({
-          match: false,
-          confidence: 0,
-          message: result.message || result.error || "Face verification failed. Please try again.",
-          error: result.error || `Service error: ${response.statusText}`
-        });
-      }
-      
-      // Strict validation: match must be explicitly true and confidence must meet threshold
-      const isValidMatch = result.match === true && 
-                          typeof result.confidence === 'number' && 
-                          result.confidence >= 0.7;
-      
-      if (!isValidMatch) {
-        console.log("Face verification failed:", {
-          match: result.match,
-          confidence: result.confidence,
-          threshold: result.threshold || 0.7
-        });
-      }
-      
-      res.json({
-        match: isValidMatch,
-        confidence: result.confidence || 0,
-        message: isValidMatch ? "Face verified successfully" : (result.message || "Face verification failed - faces do not match"),
-        threshold: result.threshold || 0.7
-      });
-    } catch (serviceError) {
-      console.error("Face recognition service error:", serviceError);
-      console.error("Service URL:", faceServiceUrl);
-      console.error("Error details:", {
-        name: serviceError.name,
-        message: serviceError.message,
-        code: serviceError.code
-      });
-      
-      // Check if this is a timeout error
-      const isTimeout = serviceError.name === 'AbortError' || 
-                       serviceError.message.includes('aborted') ||
-                       serviceError.code === 20;
-      
-      // Only allow fallback if explicitly enabled (for development/testing)
-      if (allowFallback) {
-        console.warn("⚠️ WARNING: Face recognition service unavailable. Allowing fallback (FACE_RECOGNITION_FALLBACK=true).");
-        console.warn("⚠️ This should only be used for development/testing. In production, face verification must work.");
-        return res.json({
-          match: true,
-          confidence: 0.5,
-          message: "Face verification bypassed (service unavailable, fallback enabled)",
-          warning: "Face recognition service is unavailable. Test proceeding with fallback."
-        });
-      }
-      
-      // Reject verification if service is unavailable (default behavior)
-      let errorMessage = "Face recognition service is temporarily unavailable.";
-      if (isTimeout) {
-        errorMessage = "Face recognition service request timed out. This may happen if the service is starting up (downloading models) or waking from sleep. Please try again in a few moments.";
-      } else if (serviceError.message.includes('ECONNREFUSED') || serviceError.message.includes('fetch failed')) {
-        errorMessage = "Cannot connect to face recognition service. The service may be down or unreachable.";
-      }
-      
-      console.error("Face recognition service error:", serviceError.message);
-      res.status(503).json({ 
-        message: errorMessage,
-        match: false,
-        error: serviceError.message,
-        serviceUrl: faceServiceUrl,
-        isTimeout: isTimeout,
-        help: isTimeout ? "The service may be downloading models (first request) or waking from sleep. Wait 30-60 seconds and try again." : "Please ensure the Python service is running and accessible."
-      });
-    }
-  } catch (err) {
-    console.error("Face verification error:", err);
-    res.status(500).json({ message: err.message, match: false });
   }
 });
 
@@ -552,15 +471,12 @@ router.post("/profile/update-email", authenticateToken, async (req, res) => {
     if (emailResult.success) {
       console.log('✅ Email verification sent successfully to:', newEmail);
       return res.json({
-        message: "Verification email sent to your new email address",
-        verificationToken: verificationToken // For testing purposes
+        message: "Verification email sent to your new email address"
       });
     } else {
       console.error('❌ Error sending verification email:', emailResult.error);
       return res.status(500).json({
-        message: 'Email update initiated but verification email failed to send',
-        error: emailResult.error,
-        verificationToken: verificationToken // For testing purposes
+        message: 'Email update initiated but verification email failed to send'
       });
     }
   } catch (err) {
@@ -606,7 +522,7 @@ router.post("/profile/verify-email", async (req, res) => {
   }
 });
 
-// Change password with nodemailer verification
+// Change password directly (no email verification)
 router.post("/profile/change-password", authenticateToken, async (req, res) => {
   try {
     const { newPassword, confirmPassword } = req.body;
@@ -632,50 +548,14 @@ router.post("/profile/change-password", authenticateToken, async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-    // Store pending password
-    user.pendingPassword = hashedPassword;
+    // Update password directly using updateOne to avoid pre-save hook double-hashing
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { password: hashedPassword } }
+    );
 
-    // Generate verification token
-    const verificationToken = crypto.randomBytes(32).toString('hex');
-    user.resetPasswordToken = verificationToken;
-    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
-
-    await user.save();
-
-    // Send verification email
-    const verificationLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify-password?token=${verificationToken}`;
-    const emailSubject = 'Password Change Verification';
-    const emailHtml = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h2 style="color: #2563eb;">Password Change Request</h2>
-        <p>You requested to change your password.</p>
-        <p>Please click the link below to verify and complete the password change:</p>
-        <p style="margin: 20px 0;">
-          <a href="${verificationLink}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">Verify Password Change</a>
-        </p>
-        <p style="word-break: break-all; color: #666; font-size: 12px;">Or copy this link: ${verificationLink}</p>
-        <p style="color: #999; font-size: 12px; margin-top: 30px;">This link will expire in 1 hour.</p>
-        <p style="color: #999; font-size: 12px;">If you did not request this, please ignore this email.</p>
-      </div>
-    `;
-
-    // Send email using optimized email service
-    const emailResult = await sendEmailImmediate(user.email, emailSubject, emailHtml);
-
-    if (emailResult.success) {
-      console.log('✅ Password change verification email sent successfully to:', user.email);
-      return res.json({
-        message: "Verification email sent to your email address",
-        verificationToken: verificationToken // For testing purposes
-      });
-    } else {
-      console.error('❌ Error sending verification email:', emailResult.error);
-      return res.status(500).json({
-        message: 'Password change initiated but verification email failed to send',
-        error: emailResult.error,
-        verificationToken: verificationToken // For testing purposes
-      });
-    }
+    console.log('✅ Password changed successfully for user:', user.email);
+    res.json({ message: "Password changed successfully" });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -703,8 +583,8 @@ router.post("/profile/verify-password", async (req, res) => {
     // Update password using updateOne to avoid pre-save hook double-hashing
     await User.updateOne(
       { _id: user._id },
-      { 
-        $set: { 
+      {
+        $set: {
           password: user.pendingPassword,
           resetPasswordToken: undefined,
           resetPasswordExpires: undefined,
@@ -724,7 +604,7 @@ router.post("/test-email", authenticateToken, requireRole("admin"), async (req, 
   try {
     const { to } = req.body;
     const testEmail = to || process.env.SMTP_USER;
-    
+
     if (!testEmail) {
       return res.status(400).json({ message: "Email address required" });
     }
@@ -759,7 +639,27 @@ router.post("/test-email", authenticateToken, requireRole("admin"), async (req, 
     }
   } catch (err) {
     console.error('Error in test-email endpoint:', err);
-    res.status(500).json({ message: err.message, stack: err.stack });
+    res.status(500).json({ message: "An error occurred while processing your request" });
+  }
+});
+// Force logout all users - clears all active sessions (admin only)
+router.post("/force-logout-all", authenticateToken, requireRole("Admin"), async (req, res) => {
+  try {
+    // Clear activeSessions for ALL users
+    const result = await User.updateMany(
+      {},
+      { $set: { activeSessions: [] } }
+    );
+
+    console.log(`🔒 Force logout: Cleared sessions for ${result.modifiedCount} users`);
+    
+    res.json({
+      message: `Successfully logged out all users. ${result.modifiedCount} users affected.`,
+      modifiedCount: result.modifiedCount
+    });
+  } catch (err) {
+    console.error('Error in force-logout-all:', err);
+    res.status(500).json({ message: "An error occurred while processing your request" });
   }
 });
 

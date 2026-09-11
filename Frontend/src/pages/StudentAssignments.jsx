@@ -53,7 +53,7 @@ const CountdownTimer = ({ startTime, onTimerComplete }) => {
     const now = new Date();
     const start = new Date(startTime);
     const difference = start - now;
-    
+
     if (difference <= 0) {
       return { completed: true };
     }
@@ -71,7 +71,7 @@ const CountdownTimer = ({ startTime, onTimerComplete }) => {
     const timer = setInterval(() => {
       const newTimeLeft = calculateTimeLeft();
       setTimeLeft(newTimeLeft);
-      
+
       if (newTimeLeft.completed) {
         clearInterval(timer);
         onTimerComplete();
@@ -83,34 +83,51 @@ const CountdownTimer = ({ startTime, onTimerComplete }) => {
 
   if (timeLeft.completed) {
     return (
-      <div className="text-green-400 font-semibold text-center">
-        Test is now available!
+      <div className="flex items-center justify-center gap-2 text-emerald-400 font-semibold text-center bg-emerald-500/10 py-3 rounded-xl border border-emerald-500/20">
+        <svg className="w-5 h-5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span>Test is now available!</span>
       </div>
     );
   }
 
+  const TimeUnit = ({ value, label }) => (
+    <div className="flex flex-col items-center">
+      <div className="relative group">
+        <div className="absolute inset-0 bg-blue-500 blur-lg opacity-20 group-hover:opacity-30 transition-opacity rounded-lg"></div>
+        <div className="relative bg-slate-800/80 backdrop-blur-md border border-slate-700/50 rounded-lg p-2 min-w-[50px] flex flex-col items-center justify-center shadow-lg transition-transform hover:-translate-y-0.5">
+          <span className="text-lg font-bold font-mono text-white tracking-widest leading-none">
+            {String(value).padStart(2, '0')}
+          </span>
+          <span className="text-[9px] uppercase tracking-wider text-slate-400 font-medium mt-0.5">
+            {label}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="text-center">
-      <div className="countdown-text text-sm text-slate-400 mb-2">Test will start in:</div>
-      <div className="countdown-timer flex justify-center space-x-2">
+    <div className="flex flex-col items-center animate-slide-in-up">
+      <div className="flex items-center gap-1.5 mb-2">
+        <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></div>
+        <span className="text-xs font-medium text-blue-200 uppercase tracking-wide">Test starts in</span>
+        <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></div>
+      </div>
+
+      <div className="flex items-center gap-2">
         {timeLeft.days > 0 && (
-          <div className="countdown-unit bg-slate-700 px-2 py-1 rounded">
-            <div className="countdown-unit-value text-lg font-bold">{timeLeft.days}</div>
-            <div className="countdown-unit-label text-xs">days</div>
-          </div>
+          <>
+            <TimeUnit value={timeLeft.days} label="Days" />
+            <span className="text-lg font-bold text-slate-600 -mt-3">:</span>
+          </>
         )}
-        <div className="countdown-unit bg-slate-700 px-2 py-1 rounded">
-          <div className="countdown-unit-value text-lg font-bold">{String(timeLeft.hours).padStart(2, '0')}</div>
-          <div className="countdown-unit-label text-xs">hours</div>
-        </div>
-        <div className="countdown-unit bg-slate-700 px-2 py-1 rounded">
-          <div className="countdown-unit-value text-lg font-bold">{String(timeLeft.minutes).padStart(2, '0')}</div>
-          <div className="countdown-unit-label text-xs">min</div>
-        </div>
-        <div className="countdown-unit bg-slate-700 px-2 py-1 rounded">
-          <div className="countdown-unit-value text-lg font-bold">{String(timeLeft.seconds).padStart(2, '0')}</div>
-          <div className="countdown-unit-label text-xs">sec</div>
-        </div>
+        <TimeUnit value={timeLeft.hours} label="Hrs" />
+        <span className="text-lg font-bold text-slate-600 -mt-3">:</span>
+        <TimeUnit value={timeLeft.minutes} label="Min" />
+        <span className="text-lg font-bold text-slate-600 -mt-3">:</span>
+        <TimeUnit value={timeLeft.seconds} label="Sec" />
       </div>
     </div>
   );
@@ -134,12 +151,12 @@ const StudentAssignments = () => {
 
   useEffect(() => {
     // ✅ Fixed: Always fetch fresh data on component mount to show new assignments
-    // Reduced cache time to 5 seconds for better responsiveness
+    // Reduced cache time to 2 seconds for better responsiveness
     const now = Date.now();
-    const shouldFetch = now - lastFetchTime > 5000; // 5 seconds cache instead of 30
-    
+    const shouldFetch = now - lastFetchTime > 2000; // 2 seconds cache for faster updates
+
     console.log(`🔄 useEffect triggered - shouldFetch: ${shouldFetch}, lastFetchTime: ${lastFetchTime}, now: ${now}`);
-    
+
     if (shouldFetch) {
       // Fetch data in parallel for better performance
       console.log('📡 Starting parallel data fetch...');
@@ -153,7 +170,7 @@ const StudentAssignments = () => {
       console.log('⏭️ Skipping fetch - within cache window');
       setLoading(false);
     }
-    
+
     // Prevent multiple simultaneous requests
     let isMounted = true;
 
@@ -187,16 +204,27 @@ const StudentAssignments = () => {
     });
 
     socket.on("disconnect", (reason) => {
+      console.log("Socket disconnected:", reason);
       // Clear fallback polling if it exists
       if (pollInterval) {
         clearInterval(pollInterval);
         pollInterval = null;
       }
+      // Start fallback polling when disconnected
+      pollInterval = setInterval(() => {
+        console.log("🔄 Fallback polling: Refreshing assignments");
+        fetchAssignments(0, currentPage);
+      }, 30000); // Poll every 30 seconds as fallback
     });
 
     socket.on("assignmentCreated", (data) => {
-      // Refresh assignments data on current page
-      fetchAssignments(0, currentPage);
+      console.log("📨 Socket event received: assignmentCreated", data);
+      // Force immediate refresh by resetting lastFetchTime and bypassing cache
+      setLastFetchTime(0);
+      // Force refresh by clearing fetchInProgress flag
+      fetchInProgressRef.current = false;
+      // Immediately fetch fresh data with forceRefresh flag
+      fetchAssignments(0, currentPage, true);
     });
 
     // ✅ Fixed: Proper cleanup function
@@ -220,37 +248,39 @@ const StudentAssignments = () => {
     }
   };
 
-  const fetchAssignments = async (retryCount = 0, page = currentPage) => {
-    // Prevent multiple simultaneous requests
-    if (fetchInProgressRef.current && retryCount === 0) {
+  const fetchAssignments = async (retryCount = 0, page = currentPage, forceRefresh = false) => {
+    // Prevent multiple simultaneous requests (unless force refresh)
+    if (fetchInProgressRef.current && retryCount === 0 && !forceRefresh) {
       console.log('⏸️ Request already in progress, skipping duplicate request');
       return;
     }
-    
+
     fetchInProgressRef.current = true;
     setLoading(true); // Set loading when starting fetch
     const controller = new AbortController();
     let timeoutId = null;
-    
+
     try {
       const startTime = Date.now();
-      
+
       // Add timeout to prevent hanging requests (increased to 30 seconds to match backend response time)
       timeoutId = setTimeout(() => {
         controller.abort();
         console.warn('⏱️ Request timeout after 30 seconds');
       }, 30000); // 30 second timeout
-      
-      const data = await apiRequest(`/assignments/student?page=${page}&limit=9${typeFilter !== 'all' ? `&type=${typeFilter}` : ''}`, {
+
+      // Add forceRefresh parameter to bypass cache
+      const forceRefreshParam = forceRefresh ? '&forceRefresh=true' : '';
+      const data = await apiRequest(`/assignments/student?page=${page}&limit=9${typeFilter !== 'all' ? `&type=${typeFilter}` : ''}${forceRefreshParam}`, {
         signal: controller.signal
       });
-      
+
       if (timeoutId) clearTimeout(timeoutId);
       const endTime = Date.now();
       const requestTime = endTime - startTime;
-      
+
       console.log(`✅ Assignment fetch completed in ${requestTime}ms`);
-      
+
       // Handle paginated response
       if (data && data.assignments && data.pagination) {
         // Debug: Log what we received
@@ -264,7 +294,7 @@ const StudentAssignments = () => {
           return acc;
         }, {});
         console.log(`📋 Received ${data.assignments.length} assignments - Status:`, statusCounts, 'Types:', typeCounts);
-        
+
         setAssignments(data.assignments);
         setCurrentPage(data.pagination.currentPage);
         setTotalPages(data.pagination.totalPages);
@@ -278,12 +308,12 @@ const StudentAssignments = () => {
     } catch (error) {
       if (timeoutId) clearTimeout(timeoutId);
       fetchInProgressRef.current = false;
-      
+
       // Don't log AbortError as it's expected when timeout occurs
       if (error.name !== 'AbortError') {
         console.error("Error fetching assignments:", error);
       }
-      
+
       // Handle timeout errors - don't retry immediately, wait longer
       if (error.name === 'AbortError') {
         if (retryCount === 0) {
@@ -294,13 +324,13 @@ const StudentAssignments = () => {
           console.error('❌ Request failed after retry');
         }
       }
-      
+
       // Retry once if it's a network error and we haven't retried yet
       if (retryCount === 0 && (error.message?.includes('fetch') || error.message?.includes('network'))) {
         setTimeout(() => fetchAssignments(1, page), 2000);
         return;
       }
-      
+
       // Don't show alert - just log the error and set empty array
       if (retryCount > 0) {
         setAssignments([]);
@@ -316,9 +346,9 @@ const StudentAssignments = () => {
   const formatDate = (dateString) => {
     if (!dateString) return "Not scheduled";
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'short', 
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit'
@@ -627,10 +657,10 @@ const StudentAssignments = () => {
         {loading ? (
           <div className="cards-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[...Array(9)].map((_, index) => (
-              <div 
+              <div
                 key={`skeleton-${index}`}
                 className="skeleton-card relative backdrop-blur-sm rounded-2xl p-6 border overflow-hidden"
-                style={{ 
+                style={{
                   backgroundColor: '#0B1220',
                   borderColor: 'rgba(255, 255, 255, 0.2)',
                 }}
@@ -683,10 +713,10 @@ const StudentAssignments = () => {
         ) : (
           <div className="cards-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredAssignments.map((assignment, index) => (
-              <div 
-                key={assignment._id} 
+              <div
+                key={assignment._id}
                 className="assignment-card group relative backdrop-blur-sm rounded-2xl p-6 border transition-all duration-300 cursor-pointer animate-slide-in-up overflow-hidden"
-                style={{ 
+                style={{
                   animationDelay: `${index * 100}ms`,
                   backgroundColor: '#0B1220',
                   borderColor: 'rgba(255, 255, 255, 0.2)',
@@ -707,7 +737,7 @@ const StudentAssignments = () => {
               >
                 {/* Subtle gradient overlay on hover */}
                 <div className="absolute inset-0 rounded-2xl transition-all duration-300 pointer-events-none opacity-0 group-hover:opacity-100" style={{ background: 'linear-gradient(to bottom right, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.05))' }}></div>
-                
+
                 <div className="relative z-10">
                   {/* Header Section */}
                   <div className="card-header mb-3" style={{ height: '85px' }}>
@@ -718,10 +748,10 @@ const StudentAssignments = () => {
                         </svg>
                       </div>
                       <div className="card-title-container flex-1 min-w-0 pr-3">
-                        <div 
-                          className="card-title text-xl font-bold transition-colors duration-200" 
+                        <div
+                          className="card-title text-xl font-bold transition-colors duration-200"
                           title={assignment.testId?.title || "Test"}
-                          style={{ 
+                          style={{
                             color: '#E5E7EB',
                             lineHeight: '1.5',
                             minHeight: '3.75rem',
@@ -738,7 +768,7 @@ const StudentAssignments = () => {
                           {assignment.testId?.title || "Test"}
                         </div>
                       </div>
-                      <span 
+                      <span
                         className="card-status-badge px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm border flex-shrink-0 self-start"
                         style={getStatusStyle(assignment.status)}
                       >
@@ -747,46 +777,49 @@ const StudentAssignments = () => {
                     </div>
                   </div>
 
-                  {/* Test Details - Improved Design with Fixed Widths */}
+                  {/* Test Details - Improved Design with Colors matching Tests.jsx */}
                   <div className="card-details space-y-2.5 mb-6">
-                    <div className="detail-item flex items-center justify-between p-3.5 bg-slate-900/70 rounded-xl border border-slate-800/50 hover:bg-slate-900/80 transition-all duration-200 group/item">
+                    {/* Type - Emerald (matches Tests.jsx) */}
+                    <div className="detail-item flex items-center justify-between p-3.5 bg-gradient-to-r from-slate-900/90 via-slate-800/90 to-slate-900/90 rounded-xl border border-slate-700/50 hover:border-emerald-500/30 transition-all duration-200 group/item">
                       <div className="detail-item-row flex items-center gap-3 flex-1 min-w-0">
-                        <div className="detail-icon-container p-2 bg-slate-800/70 rounded-lg shadow-sm flex-shrink-0">
-                          <svg className="h-4 w-4 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div className="detail-icon-container p-2 bg-gradient-to-br from-emerald-500/20 to-emerald-600/20 rounded-lg shadow-md flex-shrink-0">
+                          <svg className="h-4 w-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
                           </svg>
                         </div>
                         <span className="detail-label text-slate-300 text-sm font-medium whitespace-nowrap">Type</span>
                       </div>
-                      <span className="detail-value px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm min-w-[80px] text-center">
+                      <span className="detail-value px-3 py-1.5 bg-gradient-to-r from-emerald-600/30 to-emerald-700/30 text-emerald-200 rounded-lg text-sm font-semibold border border-emerald-500/30 shadow-sm min-w-[80px] text-center capitalize">
                         {assignment.testId?.type || "Test"}
                       </span>
                     </div>
-                    
-                    <div className="detail-item flex items-center justify-between p-3.5 bg-slate-900/70 rounded-xl border border-slate-800/50 hover:bg-slate-900/80 transition-all duration-200 group/item">
+
+                    {/* Time Limit - Blue (matches Tests.jsx) */}
+                    <div className="detail-item flex items-center justify-between p-3.5 bg-gradient-to-r from-slate-900/90 via-slate-800/90 to-slate-900/90 rounded-xl border border-slate-700/50 hover:border-blue-500/30 transition-all duration-200 group/item">
                       <div className="detail-item-row flex items-center gap-3 flex-1 min-w-0">
-                        <div className="detail-icon-container p-2 bg-slate-800/70 rounded-lg shadow-sm flex-shrink-0">
-                          <svg className="h-4 w-4 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div className="detail-icon-container p-2 bg-gradient-to-br from-blue-500/20 to-blue-600/20 rounded-lg shadow-md flex-shrink-0">
+                          <svg className="h-4 w-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
                         </div>
                         <span className="detail-label text-slate-300 text-sm font-medium whitespace-nowrap">Time Limit</span>
                       </div>
-                      <span className="detail-value px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm min-w-[80px] text-center">
+                      <span className="detail-value px-3 py-1.5 bg-gradient-to-r from-blue-600/30 to-blue-700/30 text-blue-200 rounded-lg text-sm font-semibold border border-blue-500/30 shadow-sm min-w-[80px] text-center">
                         {assignment.testId?.timeLimit} min
                       </span>
                     </div>
 
-                    <div className="detail-item flex items-center justify-between p-3.5 bg-slate-900/70 rounded-xl border border-slate-800/50 hover:bg-slate-900/80 transition-all duration-200 group/item">
+                    {/* Questions - Purple (matches Subject in Tests.jsx for consistency) */}
+                    <div className="detail-item flex items-center justify-between p-3.5 bg-gradient-to-r from-slate-900/90 via-slate-800/90 to-slate-900/90 rounded-xl border border-slate-700/50 hover:border-purple-500/30 transition-all duration-200 group/item">
                       <div className="detail-item-row flex items-center gap-3 flex-1 min-w-0">
-                        <div className="detail-icon-container p-2 bg-slate-800/70 rounded-lg shadow-sm flex-shrink-0">
-                          <svg className="h-4 w-4 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div className="detail-icon-container p-2 bg-gradient-to-br from-purple-500/20 to-purple-600/20 rounded-lg shadow-md flex-shrink-0">
+                          <svg className="h-4 w-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
                         </div>
                         <span className="detail-label text-slate-300 text-sm font-medium whitespace-nowrap">Questions</span>
                       </div>
-                      <span className="detail-value px-3 py-1.5 bg-slate-800/60 text-gray-100 rounded-lg text-sm font-semibold border border-slate-700/50 shadow-sm min-w-[80px] text-center">
+                      <span className="detail-value px-3 py-1.5 bg-gradient-to-r from-purple-600/30 to-purple-700/30 text-purple-200 rounded-lg text-sm font-semibold border border-purple-500/30 shadow-sm min-w-[80px] text-center">
                         {assignment.testId?.questionCount || 0}
                       </span>
                     </div>
@@ -812,23 +845,23 @@ const StudentAssignments = () => {
                 </div>
 
                 {/* Action Buttons Section */}
-                <div className="action-section mt-6 pt-4" style={{ borderTop: '1px solid rgba(255, 255, 255, 0.2)' }}>
+                <div className="action-section mt-4 pt-3" style={{ borderTop: '1px solid rgba(255, 255, 255, 0.2)' }}>
                   {assignment.status === "Assigned" && isTestNotStarted(assignment.startTime) && (
-                    <div className="countdown-container mb-4">
-                      <CountdownTimer 
-                        startTime={assignment.startTime} 
-                        onTimerComplete={() => fetchAssignments(0, currentPage)} 
+                    <div className="countdown-container mb-2">
+                      <CountdownTimer
+                        startTime={assignment.startTime}
+                        onTimerComplete={() => fetchAssignments(0, currentPage)}
                       />
                     </div>
                   )}
-                  
+
                   {assignment.status === "Assigned" && isTestAvailable(assignment.startTime, assignment.duration) && (
                     <button
                       onClick={() => {
                         handleStartTest(assignment._id);
                       }}
                       className="action-button w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
-                      style={{ 
+                      style={{
                         backgroundColor: '#FFFFFF',
                         color: '#020617',
                         border: '2px solid transparent',
@@ -845,8 +878,8 @@ const StudentAssignments = () => {
                       Start Test
                     </button>
                   )}
-                  
-                  
+
+
 
                   {assignment.status === "Assigned" && isDeadlinePassed(assignment.startTime, assignment.duration) && (
                     <button
@@ -869,9 +902,9 @@ const StudentAssignments = () => {
                           navigate(`/student/view-test/${assignment._id}`);
                         }}
                         className="action-button w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
-                        style={{ 
-                          backgroundColor: '#22D3EE',
-                          color: '#020617',
+                        style={{
+                          backgroundColor: '#0b0753ff',
+                          color: '#FFFFFF',
                           border: '2px solid transparent',
                           zIndex: 9999,
                           position: 'relative'
@@ -891,7 +924,7 @@ const StudentAssignments = () => {
                           navigate(`/student/take-test/${assignment._id}`);
                         }}
                         className="action-button w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
-                        style={{ 
+                        style={{
                           backgroundColor: '#22D3EE',
                           color: '#020617',
                           border: '2px solid transparent',
@@ -909,7 +942,7 @@ const StudentAssignments = () => {
                       </button>
                     )
                   )}
-                  
+
 
                   {assignment.status === "Completed" && (
                     isDeadlinePassed(assignment.startTime, assignment.duration) ? (
@@ -919,9 +952,9 @@ const StudentAssignments = () => {
                             navigate(`/student/view-test/${assignment._id}`);
                           }}
                           className="action-button w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
-                          style={{ 
-                            backgroundColor: '#22D3EE',
-                            color: '#020617',
+                          style={{
+                            backgroundColor: '#4F46E5',
+                            color: '#FFFFFF',
                             border: '2px solid transparent',
                             zIndex: 9999,
                             position: 'relative'
@@ -941,9 +974,9 @@ const StudentAssignments = () => {
                             navigate(`/student/view-test/${assignment._id}`);
                           }}
                           className="action-button w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
-                          style={{ 
-                            backgroundColor: '#22D3EE',
-                            color: '#020617',
+                          style={{
+                            backgroundColor: '#4F46E5',
+                            color: '#FFFFFF',
                             border: '2px solid transparent',
                             zIndex: 9999,
                             position: 'relative'
@@ -972,7 +1005,7 @@ const StudentAssignments = () => {
                       </button>
                     )
                   )}
-                  
+
 
                   {assignment.status === "Overdue" && (
                     <button
@@ -994,8 +1027,8 @@ const StudentAssignments = () => {
           </div>
         )}
 
-        {/* Pagination Controls */}
-        {totalPages > 1 && (
+        {/* Pagination Controls - Always show if there are items */}
+        {totalItems > 0 && (
           <div className="pagination-container mt-10 flex flex-col items-center gap-4">
             <div className="pagination-buttons pagination-row flex items-center justify-center gap-2">
               <button
@@ -1009,11 +1042,11 @@ const StudentAssignments = () => {
                 disabled={currentPage === 1}
                 className="pagination-button px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100"
                 style={{
-                  backgroundColor: currentPage === 1 
-                    ? 'rgba(255, 255, 255, 0.05)' 
+                  backgroundColor: currentPage === 1
+                    ? 'rgba(255, 255, 255, 0.05)'
                     : '#FFFFFF',
-                  background: currentPage === 1 
-                    ? 'rgba(255, 255, 255, 0.05)' 
+                  background: currentPage === 1
+                    ? 'rgba(255, 255, 255, 0.05)'
                     : '#FFFFFF',
                   color: currentPage === 1 ? '#FFFFFF' : '#000000',
                   border: '2px solid rgba(255, 255, 255, 0.2)'
@@ -1038,7 +1071,7 @@ const StudentAssignments = () => {
                 </svg>
                 Previous
               </button>
-              
+
               <div className="pagination-numbers flex items-center gap-2 px-4 py-2 rounded-xl" style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)' }}>
                 {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                   let pageNum;
@@ -1051,7 +1084,7 @@ const StudentAssignments = () => {
                   } else {
                     pageNum = currentPage - 2 + i;
                   }
-                  
+
                   return (
                     <button
                       key={pageNum}
@@ -1063,15 +1096,15 @@ const StudentAssignments = () => {
                       }}
                       className="pagination-number w-11 h-11 rounded-xl font-bold transition-all duration-300 transform hover:scale-110 shadow-md hover:shadow-lg"
                       style={{
-                        background: pageNum === currentPage 
+                        background: pageNum === currentPage
                           ? '#FFFFFF'
                           : 'rgba(255, 255, 255, 0.1)',
                         color: pageNum === currentPage ? '#000000' : '#FFFFFF',
-                        border: pageNum === currentPage 
-                          ? '2px solid rgba(255, 255, 255, 0.8)' 
+                        border: pageNum === currentPage
+                          ? '2px solid rgba(255, 255, 255, 0.8)'
                           : '2px solid rgba(255, 255, 255, 0.2)',
-                        boxShadow: pageNum === currentPage 
-                          ? '0 4px 15px rgba(255, 255, 255, 0.4)' 
+                        boxShadow: pageNum === currentPage
+                          ? '0 4px 15px rgba(255, 255, 255, 0.4)'
                           : '0 2px 8px rgba(0, 0, 0, 0.2)'
                       }}
                       onMouseEnter={(e) => {
@@ -1106,11 +1139,11 @@ const StudentAssignments = () => {
                 disabled={currentPage === totalPages}
                 className="pagination-button px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100"
                 style={{
-                  backgroundColor: currentPage === totalPages 
-                    ? 'rgba(255, 255, 255, 0.05)' 
+                  backgroundColor: currentPage === totalPages
+                    ? 'rgba(255, 255, 255, 0.05)'
                     : '#FFFFFF',
-                  background: currentPage === totalPages 
-                    ? 'rgba(255, 255, 255, 0.05)' 
+                  background: currentPage === totalPages
+                    ? 'rgba(255, 255, 255, 0.05)'
                     : '#FFFFFF',
                   color: currentPage === totalPages ? '#FFFFFF' : '#000000',
                   border: '2px solid rgba(255, 255, 255, 0.2)'

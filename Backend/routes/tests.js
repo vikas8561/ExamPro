@@ -2,7 +2,11 @@ const express = require("express");
 const router = express.Router();
 const Test = require("../models/Test");
 const { authenticateToken, requireRole } = require("../middleware/auth");
+const { resolveProctorStatusForTest } = require("../middleware/proctorSession");
+const { sanitizeQuestions, canSeeAnswers } = require("../services/questionSanitizer");
 const { recalculateScoresForTest } = require("../services/scoreCalculation");
+const { resolveOrderedQuestions } = require("../services/questionOrder");
+const Assignment = require("../models/Assignment");
 const { invalidateTestCache } = require("../utils/testCache");
 
 // Get all tests (admin only) - ULTRA FAST VERSION with pagination
@@ -14,46 +18,107 @@ router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) 
     const skip = (page - 1) * limit;
     const searchTerm = req.query.search || "";
     const { status } = req.query;
-    
+
     // Build query
     const query = {};
-    
+
     if (status) {
       query.status = status;
     }
-    
-    // Search functionality - search in title, subject, type, status, and OTP
+
+    // Search functionality - search in title, subject, type and status
     if (searchTerm) {
       query.$or = [
         { title: { $regex: searchTerm, $options: "i" } },
         { subject: { $regex: searchTerm, $options: "i" } },
         { type: { $regex: searchTerm, $options: "i" } },
-        { status: { $regex: searchTerm, $options: "i" } },
-        { otp: { $regex: searchTerm, $options: "i" } }
+        { status: { $regex: searchTerm, $options: "i" } }
       ];
     }
 
     // Get total count for pagination
     const totalTests = await Test.countDocuments(query);
 
-    // ULTRA FAST: Get tests with MINIMAL data (NO questions!)
-    const tests = await Test.find(query)
-      .select("title subject type instructions timeLimit negativeMarkingPercent allowedTabSwitches otp status createdAt createdBy")
-      .populate("createdBy", "name email")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean(); // Use lean() for 2x faster queries
+    // Get tests with aggregation to include calculated fields (participants, avgScore)
+    const pipeline = [
+      { $match: query },
+      // Lookup submissions to calculate stats
+      {
+        $lookup: {
+          from: "testsubmissions",
+          localField: "_id",
+          foreignField: "testId",
+          as: "submissions"
+        }
+      },
+      // Calculate derived fields
+      {
+        $addFields: {
+          participants: { $size: "$submissions" },
+          avgScore: {
+            $cond: {
+              if: { $gt: [{ $size: "$submissions" }, 0] },
+              then: {
+                $avg: {
+                  $map: {
+                    input: "$submissions",
+                    as: "sub",
+                    in: {
+                      $cond: [
+                        { $gt: ["$$sub.maxScore", 0] },
+                        { $multiply: [{ $divide: ["$$sub.totalScore", "$$sub.maxScore"] }, 100] },
+                        0
+                      ]
+                    }
+                  }
+                }
+              },
+              else: 0
+            }
+          }
+        }
+      },
+      // Remove heavy submissions array
+      { $project: { submissions: 0 } },
+
+      // Populate createdBy (Note: $lookup is needed for aggregation populate)
+      {
+        $lookup: {
+          from: "users",
+          localField: "createdBy",
+          foreignField: "_id",
+          as: "createdBy"
+        }
+      },
+      { $unwind: { path: "$createdBy", preserveNullAndEmptyArrays: true } },
+
+      // Keep only necessary fields from user
+      {
+        $addFields: {
+          "createdBy": {
+            name: "$createdBy.name",
+            email: "$createdBy.email",
+            _id: "$createdBy._id"
+          }
+        }
+      },
+
+      { $sort: { createdAt: -1 } },
+      { $skip: skip },
+      { $limit: limit }
+    ];
+
+    const tests = await Test.aggregate(pipeline);
 
     const totalTime = Date.now() - startTime;
     // console.log(`✅ ULTRA FAST admin tests completed in ${totalTime}ms - Found ${tests.length} tests`);
-    
+
     // Calculate pagination info
     const totalPages = Math.ceil(totalTests / limit);
     const hasNextPage = page < totalPages;
     const hasPrevPage = page > 1;
-    
-    res.json({ 
+
+    res.json({
       tests,
       pagination: {
         currentPage: page,
@@ -74,12 +139,61 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
   try {
     const test = await Test.findById(req.params.id)
       .populate("createdBy", "name email");
-    
+
     if (!test) {
       return res.status(404).json({ message: "Test not found" });
     }
-    
-    res.json(test);
+
+    // Students take tests through this endpoint, so everything that would give
+    // away the answer must be stripped. Admins and mentors need the full
+    // document to author and review.
+    if (canSeeAnswers(req.user)) {
+      return res.json(test);
+    }
+
+    const safeTest = test.toObject({ virtuals: true });
+
+    // The other route that hands a student real question content. Without this
+    // check a student could skip the exam page entirely and fetch the paper
+    // with a direct API call, which is exactly what the old client-side-only
+    // proctoring could not prevent.
+    const proctorStatus = await resolveProctorStatusForTest(req, req.params.id);
+    if (proctorStatus.required && !proctorStatus.ok) {
+      return res.status(403).json({
+        message: "This test must be taken with proctoring active. Please start it from your assignments page.",
+        proctoringRequired: true,
+        reason: proctorStatus.reason,
+      });
+    }
+
+    // Shared sanitizer. The hand-written version this replaces stripped
+    // answer/answers/hiddenTestCases but forgot expectedAnswer, so students
+    // could read the model answer for every theory question.
+    safeTest.questions = sanitizeQuestions(safeTest.questions);
+
+    // This is how TakeCodingTest loads the paper, so it has to honour the same
+    // per-student order as the assignment routes -- otherwise a coding exam
+    // would come back in a different order than the one the student started.
+    // No assignment travels with this request, so look it up: Assignment is
+    // unique per {testId, userId}, so this is a single indexed lookup.
+    const assignment = await Assignment.findOne({
+      testId: req.params.id,
+      userId: req.user.userId,
+    }).select("_id questionOrder");
+
+    if (assignment) {
+      const { questions, order, changed } = resolveOrderedQuestions({
+        test: safeTest,
+        assignment,
+        questions: safeTest.questions,
+      });
+      safeTest.questions = questions;
+      if (changed) {
+        await Assignment.updateOne({ _id: assignment._id }, { $set: { questionOrder: order } });
+      }
+    }
+
+    res.json(safeTest);
   } catch (error) {
     next(error);
   }
@@ -88,7 +202,7 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
 // Create new test (admin only)
 router.post("/", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
-    const { title, subject, type, instructions, timeLimit, negativeMarkingPercent, allowedTabSwitches, questions } = req.body;
+    const { title, subject, type, instructions, timeLimit, negativeMarkingPercent, allowedTabSwitches, shuffleQuestions, questions } = req.body;
     console.log('DEBUG: Creating test with allowedTabSwitches:', allowedTabSwitches);
 
     if (!title) {
@@ -101,11 +215,11 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
       return res.status(400).json({ message: "Allowed tab switches must be between 0 and 100" });
     }
 
-    // Generate 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
     // Process questions to ensure test cases are properly formatted
-    const processedQuestions = (Array.isArray(questions) ? questions : []).map(q => {
+    const processedQuestions = (Array.isArray(questions) ? questions : []).map(rawQuestion => {
+      // A new test has no existing questions, so there is no id worth keeping
+      // and a client-supplied one could only collide. Mongoose mints them.
+      const { _id, ...q } = rawQuestion;
       if (q.kind === 'coding') {
         return {
           ...q,
@@ -117,6 +231,14 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
           )
         };
       }
+
+      if (q.kind === 'theory') {
+        return {
+          ...q,
+          expectedAnswer: q.expectedAnswer || ''
+        };
+      }
+
       return q;
     });
 
@@ -128,7 +250,7 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
       timeLimit: Number(timeLimit || 30),
       negativeMarkingPercent: Number(negativeMarkingPercent || 0),
       allowedTabSwitches: Number(allowedTabSwitches || 0),
-      otp: otp,
+      shuffleQuestions: Boolean(shuffleQuestions),
       questions: processedQuestions,
       createdBy: req.user.userId
     };
@@ -155,11 +277,32 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
     // Invalidate test cache when new test is created
     invalidateTestCache();
 
-    const populatedTest = await Test.findById(test._id)
-      .populate("createdBy", "name email");
-    console.log('DEBUG: Populated test returned to frontend:', populatedTest);
+    // Return test without populate for faster response - frontend can fetch details if needed
+    // This significantly speeds up test creation, especially for tests with many questions
+    const testResponse = {
+      _id: test._id,
+      title: test.title,
+      subject: test.subject,
+      type: test.type,
+      instructions: test.instructions,
+      timeLimit: test.timeLimit,
+      negativeMarkingPercent: test.negativeMarkingPercent,
+      allowedTabSwitches: test.allowedTabSwitches,
+      shuffleQuestions: test.shuffleQuestions,
+      status: test.status,
+      questions: test.questions,
+      createdBy: {
+        _id: req.user.userId,
+        name: req.user.name || '',
+        email: req.user.email || ''
+      },
+      createdAt: test.createdAt,
+      updatedAt: test.updatedAt
+    };
 
-    res.status(201).json(populatedTest);
+    console.log('DEBUG: Test response prepared (without populate)');
+
+    res.status(201).json(testResponse);
   } catch (error) {
     next(error);
   }
@@ -168,7 +311,7 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
 // Update test (admin only)
 router.put("/:id", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
-    const { title, subject, type, instructions, timeLimit, negativeMarkingPercent, allowedTabSwitches, questions, status } = req.body;
+    const { title, subject, type, instructions, timeLimit, negativeMarkingPercent, allowedTabSwitches, shuffleQuestions, questions, status } = req.body;
 
     // Validate allowedTabSwitches if provided (0-100 for regular tests, -1 for practice tests)
     if (allowedTabSwitches !== undefined) {
@@ -192,22 +335,48 @@ router.put("/:id", authenticateToken, requireRole("admin"), async (req, res, nex
     if (timeLimit) updateData.timeLimit = Number(timeLimit);
     if (negativeMarkingPercent !== undefined) updateData.negativeMarkingPercent = Number(negativeMarkingPercent);
     if (allowedTabSwitches !== undefined) updateData.allowedTabSwitches = Number(allowedTabSwitches);
+    if (shuffleQuestions !== undefined) updateData.shuffleQuestions = Boolean(shuffleQuestions);
 
     // Process questions to ensure test cases are properly formatted
     if (questions) {
+      // Keep the question ids this test already has.
+      //
+      // The edit form used to drop `_id`, so findByIdAndUpdate minted a brand
+      // new subdocument id for every question on every save. Student responses
+      // are matched to questions by id and nothing else, so one edit orphaned
+      // every answer ever given: finished papers rendered as "Not answered"
+      // throughout, and the re-grade below matched nothing and silently left
+      // stale marks in place.
+      //
+      // Only ids that genuinely belong to THIS test are honoured, and each at
+      // most once. Everything else -- a newly added question, a duplicated one,
+      // a stale id from another test, anything forged -- falls through to a
+      // fresh id from Mongoose. That is the safe default: two subdocuments
+      // sharing an id would make `test.questions.id(...)` ambiguous, and every
+      // grading lookup in the codebase goes through exactly that call.
+      const existingTest = await Test.findById(req.params.id).select("questions").lean();
+      const idsOnThisTest = new Set((existingTest?.questions || []).map(q => String(q._id)));
+      const alreadyClaimed = new Set();
+
       updateData.questions = questions.map(q => {
-        if (q.kind === 'coding') {
-          return {
-            ...q,
-            visibleTestCases: (q.visibleTestCases || []).filter(tc =>
+        const { _id, ...question } = q;
+        const candidate = _id === null || _id === undefined ? null : String(_id);
+        const keepId = Boolean(candidate) && idsOnThisTest.has(candidate) && !alreadyClaimed.has(candidate);
+        if (keepId) alreadyClaimed.add(candidate);
+
+        const processed = question.kind === 'coding'
+          ? {
+            ...question,
+            visibleTestCases: (question.visibleTestCases || []).filter(tc =>
               tc && tc.input && tc.input.trim() && tc.output && tc.output.trim()
             ),
-            hiddenTestCases: (q.hiddenTestCases || []).filter(tc =>
+            hiddenTestCases: (question.hiddenTestCases || []).filter(tc =>
               tc && tc.input && tc.input.trim() && tc.output && tc.output.trim()
             )
-          };
-        }
-        return q;
+          }
+          : question;
+
+        return keepId ? { ...processed, _id: candidate } : processed;
       });
     }
 
@@ -261,7 +430,7 @@ router.put("/:id", authenticateToken, requireRole("admin"), async (req, res, nex
 router.delete("/:id", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
     const test = await Test.findById(req.params.id);
-    
+
     if (!test) {
       return res.status(404).json({ message: "Test not found" });
     }
@@ -271,7 +440,7 @@ router.delete("/:id", authenticateToken, requireRole("admin"), async (req, res, 
 
     // Delete associated submissions
     await TestSubmission.deleteMany({ testId: req.params.id });
-    
+
     // Delete associated assignments
     await Assignment.deleteMany({ testId: req.params.id });
 
@@ -291,7 +460,7 @@ router.delete("/:id", authenticateToken, requireRole("admin"), async (req, res, 
 router.get("/:id/stats", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
     const test = await Test.findById(req.params.id);
-    
+
     if (!test) {
       return res.status(404).json({ message: "Test not found" });
     }
@@ -301,9 +470,9 @@ router.get("/:id/stats", authenticateToken, requireRole("admin"), async (req, re
     const TestSubmission = require("../models/TestSubmission");
 
     const assignmentCount = await Assignment.countDocuments({ testId: req.params.id });
-    const completedCount = await Assignment.countDocuments({ 
-      testId: req.params.id, 
-      status: "Completed" 
+    const completedCount = await Assignment.countDocuments({
+      testId: req.params.id,
+      status: "Completed"
     });
     const submissionCount = await TestSubmission.countDocuments({ testId: req.params.id });
 
@@ -313,6 +482,46 @@ router.get("/:id/stats", authenticateToken, requireRole("admin"), async (req, re
       completedAssignments: completedCount,
       totalSubmissions: submissionCount,
       completionRate: assignmentCount > 0 ? (completedCount / assignmentCount * 100).toFixed(1) : 0
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Download test results (admin only) - returns student names and scores for CSV export
+router.get("/:id/results/download", authenticateToken, requireRole("admin"), async (req, res, next) => {
+  try {
+    const test = await Test.findById(req.params.id).select("title");
+
+    if (!test) {
+      return res.status(404).json({ message: "Test not found" });
+    }
+
+    const TestSubmission = require("../models/TestSubmission");
+
+    // Get all submissions for this test with student names
+    const submissions = await TestSubmission.find({ testId: req.params.id })
+      .populate("userId", "name email")
+      .select("userId totalScore maxScore submittedAt")
+      .sort({ "userId.name": 1 })
+      .lean();
+
+    // Build results array
+    const results = submissions
+      .filter(sub => sub.userId) // Filter out submissions with deleted users
+      .map(sub => ({
+        name: sub.userId.name,
+        email: sub.userId.email,
+        totalScore: sub.totalScore || 0,
+        maxScore: sub.maxScore || 0,
+        submittedAt: sub.submittedAt
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name)); // Sort alphabetically by name
+
+    res.json({
+      testTitle: test.title,
+      totalStudents: results.length,
+      results
     });
   } catch (error) {
     next(error);
