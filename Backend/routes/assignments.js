@@ -8,6 +8,69 @@ const { authenticateToken, requireRole } = require("../middleware/auth");
 const { getCachedTestIds, setCachedTestIds, invalidateTestCache } = require("../utils/testCache");
 const { attachProctorStatus, mayServeQuestions } = require("../middleware/proctorSession");
 const { sanitizeQuestions, canSeeAnswers } = require("../services/questionSanitizer");
+const { resolveOrderedQuestions } = require("../services/questionOrder");
+
+/** Mongoose document -> plain object, so stripping actually sticks. */
+function toPlain(value) {
+  if (!value) return value;
+  return typeof value.toObject === "function" ? value.toObject() : value;
+}
+
+/**
+ * The assignment as a student may see it.
+ *
+ * Two things have to be taken off it.
+ *
+ * `questionOrder` is the student's own permutation. It tells them nothing they
+ * cannot already see from the order of the questions themselves, but when
+ * proctoring withholds the question list it would still hand over the ids and
+ * the count -- so it does not go out to anyone who is not a reviewer.
+ *
+ * `testId` is the populated test, complete with every answer. Sanitising is
+ * done on a detached plain copy (it has to be -- stripping in place on a
+ * Mongoose document silently re-casts the answers back), which leaves this
+ * second reference to the unsanitised original still hanging off the
+ * assignment. Point it at the sanitised copy the caller already built, so the
+ * two cannot disagree. The client reads its questions from `test` regardless.
+ */
+function forStudent(assignment, user, sanitizedTest) {
+  const plain = toPlain(assignment);
+  if (!plain || canSeeAnswers(user)) return plain;
+  delete plain.questionOrder;
+  if (plain.testId && sanitizedTest) plain.testId = sanitizedTest;
+  return plain;
+}
+
+/**
+ * Put a student's questions into their own order, and remember it.
+ *
+ * Call this on a PLAIN object, after sanitizeQuestions(), and only for a
+ * student -- admins and mentors always get the canonical order. `testData` is
+ * mutated in place; the chosen order is persisted on the assignment so a
+ * refresh returns the same paper.
+ *
+ * The write is a targeted $set rather than assignment.save(): the proctoring
+ * routes write to the same document throughout the exam, and a full save here
+ * would race them and could roll back a violation record.
+ */
+async function applyStudentQuestionOrder(testData, assignment) {
+  if (!testData || !Array.isArray(testData.questions) || !assignment) return;
+
+  const { questions, order, changed } = resolveOrderedQuestions({
+    test: testData,
+    assignment,
+    questions: testData.questions,
+  });
+
+  testData.questions = questions;
+
+  if (changed) {
+    await Assignment.updateOne({ _id: assignment._id }, { $set: { questionOrder: order } });
+    // Keep the in-memory copy consistent, so a second call within the same
+    // request (the /start route reads the assignment twice) does not reshuffle.
+    assignment.questionOrder = order;
+  }
+}
 
 // Get all assignments (admin only) - ULTRA FAST VERSION
 router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) => {
@@ -431,7 +494,7 @@ router.get("/:id", authenticateToken, attachProctorStatus(), async (req, res, ne
     const assignment = await Assignment.findById(req.params.id)
       .populate({
         path: "testId",
-        select: "title type instructions timeLimit allowedTabSwitches questions",
+        select: "title type instructions timeLimit allowedTabSwitches shuffleQuestions questions",
       })
       .populate("userId", "name email")
       .populate("mentorId", "name email");
@@ -453,7 +516,15 @@ router.get("/:id", authenticateToken, attachProctorStatus(), async (req, res, ne
 
     if (payload.testId && Array.isArray(payload.testId.questions) && !canSeeAnswers(req.user)) {
       payload.testId.questions = sanitizeQuestions(payload.testId.questions);
+      // This is the reload/resume path, so it has to return the order this
+      // student already had -- reshuffling a paper under someone mid-exam would
+      // scramble which question they thought they were on.
+      await applyStudentQuestionOrder(payload.testId, assignment);
     }
+
+    // The student's own permutation never goes out with the payload — see
+    // forStudent() for why.
+    if (!canSeeAnswers(req.user)) delete payload.questionOrder;
 
     // This route is called before the exam begins, to show the title, the
     // instructions and the timing, so it must keep working without proctoring.
@@ -594,11 +665,7 @@ router.post("/:id/start", authenticateToken, attachProctorStatus(), async (req, 
     const assignment = await Assignment.findById(req.params.id)
       .populate({
         path: "testId",
-        select: "title type instructions timeLimit allowedTabSwitches questions",
-        populate: {
-          path: "questions",
-          select: "kind text options guidelines examples points" // REMOVED 'answer' - students should not see answers!
-        }
+        select: "title type instructions timeLimit allowedTabSwitches shuffleQuestions questions",
       });
 
     if (!assignment) {
@@ -627,13 +694,18 @@ router.post("/:id/start", authenticateToken, attachProctorStatus(), async (req, 
         timeRemaining = Math.max(0, Math.floor(remainingMs / 1000)); // Convert to seconds
       }
 
-      // Remove answers from questions before sending to student
-      const testData = assignment.testId;
-      if (testData && testData.questions) {
-        testData.questions = testData.questions.map(q => {
-          const { answer, answers, ...questionWithoutAnswer } = q.toObject ? q.toObject() : q;
-          return questionWithoutAnswer;
-        });
+      // Strip answers before sending to the student.
+      //
+      // This used to hand-strip `answer`/`answers` by assigning plain objects
+      // back onto the populated Mongoose document -- which re-casts them into
+      // full subdocuments, so nothing was stripped at all -- and never targeted
+      // `expectedAnswer` or `hiddenTestCases` in the first place. Both are the
+      // bugs commit 6d76e1c fixed on the other routes and missed on this one.
+      // Work on a plain object and use the shared sanitizer, like everywhere else.
+      const testData = toPlain(assignment.testId);
+      if (testData && Array.isArray(testData.questions) && !canSeeAnswers(req.user)) {
+        testData.questions = sanitizeQuestions(testData.questions);
+        await applyStudentQuestionOrder(testData, assignment);
       }
 
       // Withheld until proctoring is live — see the note on GET /:id.
@@ -642,7 +714,7 @@ router.post("/:id/start", authenticateToken, attachProctorStatus(), async (req, 
       }
 
       return res.status(200).json({
-        assignment,
+        assignment: forStudent(assignment, req.user, testData),
         test: testData,
         message: "Test already started",
         alreadyStarted: true,
@@ -776,20 +848,16 @@ router.post("/:id/start", authenticateToken, attachProctorStatus(), async (req, 
     const populatedAssignment = await Assignment.findById(assignment._id)
       .populate({
         path: "testId",
-        select: "title type instructions timeLimit allowedTabSwitches questions",
-        populate: {
-          path: "questions",
-          select: "kind text options guidelines examples points" // REMOVED 'answer' - students should not see answers!
-        }
+        select: "title type instructions timeLimit allowedTabSwitches shuffleQuestions questions",
       });
 
-    // Remove answers from questions before sending to student
-    const testData = populatedAssignment.testId || assignment.testId;
-    if (testData && testData.questions) {
-      testData.questions = testData.questions.map(q => {
-        const { answer, answers, ...questionWithoutAnswer } = q.toObject ? q.toObject() : q;
-        return questionWithoutAnswer;
-      });
+    // Strip answers before sending to the student -- see the note in the
+    // already-in-progress branch above for what was wrong with the version
+    // this replaces.
+    const testData = toPlain(populatedAssignment.testId || assignment.testId);
+    if (testData && Array.isArray(testData.questions) && !canSeeAnswers(req.user)) {
+      testData.questions = sanitizeQuestions(testData.questions);
+      await applyStudentQuestionOrder(testData, populatedAssignment);
     }
 
     // The dashboard's Start Test button calls this route before the exam page
@@ -800,7 +868,7 @@ router.post("/:id/start", authenticateToken, attachProctorStatus(), async (req, 
     }
 
     res.json({
-      assignment: populatedAssignment,
+      assignment: forStudent(populatedAssignment, req.user, testData),
       test: testData,
       message: "Test started successfully",
       timeRemaining: timeRemaining,

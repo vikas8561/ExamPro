@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const TestSubmission = require("../models/TestSubmission");
+const { maxMarksForQuestion, isAnswered, markMcq } = require("../services/grading");
 const Assignment = require("../models/Assignment");
 const Test = require("../models/Test");
 const { authenticateToken, requireRole } = require("../middleware/auth");
@@ -166,10 +167,7 @@ router.post("/", authenticateToken, requireProctorSession({ allowTerminated: tru
     for (const question of assignmentWithTest.testId.questions) {
       // Coding questions are scored from their hidden test cases (matching
       // /api/coding/submit); everything else uses the question's own points.
-      const codingMarks = question.kind === "coding"
-        ? (question.hiddenTestCases || []).reduce((sum, testCase) => sum + (testCase.marks || 0), 0)
-        : 0;
-      maxScore += question.kind === "coding" && codingMarks > 0 ? codingMarks : question.points;
+      maxScore += maxMarksForQuestion(question);
 
       const userResponse = responses.find(r => r.questionId === question._id.toString());
 
@@ -181,9 +179,8 @@ router.post("/", authenticateToken, requireProctorSession({ allowTerminated: tru
         userResponseQuestionId: userResponse?.questionId
       });
 
-      // Check if response exists and has actual content
-      const hasResponse = userResponse && (userResponse.selectedOption !== null && userResponse.selectedOption !== undefined) ||
-        (userResponse && userResponse.textAnswer !== null && userResponse.textAnswer !== undefined && userResponse.textAnswer.trim() !== "");
+      // Shared with the re-grade path, so a blank means the same thing to both.
+      const hasResponse = isAnswered(userResponse);
 
       if (!hasResponse) {
         notAnsweredCount++;
@@ -212,15 +209,10 @@ router.post("/", authenticateToken, requireProctorSession({ allowTerminated: tru
       let autoGraded = question.kind === "mcq";
 
       if (question.kind === "mcq") {
-        isCorrect = userResponse.selectedOption === question.answer;
-        if (isCorrect) {
-          points = question.points;
-          correctCount++;
-        } else {
-          // Apply negative marking for incorrect MCQ answers
-          points = -(question.points * negativeMarkingPercent);
-          incorrectCount++;
-        }
+        const marked = markMcq(question, userResponse, negativeMarkingPercent);
+        isCorrect = marked.isCorrect;
+        points = marked.points;
+        if (isCorrect) correctCount++; else incorrectCount++;
       } else if (question.kind === "theory" || question.kind === "coding") {
         console.log(`🔍 Processing ${question.kind} question:`, question._id);
         if (userResponse.textAnswer && userResponse.textAnswer.trim() !== "") {

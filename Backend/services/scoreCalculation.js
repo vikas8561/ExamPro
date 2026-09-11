@@ -1,5 +1,6 @@
 const TestSubmission = require("../models/TestSubmission");
 const Test = require("../models/Test");
+const { maxScoreForTest, isAnswered, markMcq } = require("./grading");
 
 /**
  * Recalculates scores for all submissions of a given test
@@ -34,42 +35,35 @@ async function recalculateScoresForTest(testId) {
  */
 async function recalculateSubmissionScore(submission, test) {
   let totalScore = 0;
-  let maxScore = 0;
 
-  // Calculate max score
-  for (const question of test.questions) {
-    maxScore += question.points || 1;
-  }
+  // The paper's worth, by the same rule the submit path uses -- coding
+  // questions count their hidden test case marks, not their `points`.
+  const maxScore = maxScoreForTest(test.questions);
 
   // Recalculate each response
   for (const response of submission.responses) {
     const question = test.questions.find(q => q._id.toString() === response.questionId.toString());
     if (!question) continue;
 
-    let isCorrect = false;
-    let points = 0;
-
     if (question.kind === "mcq") {
-      // For MCQ, check if selected option matches the correct answer
-      isCorrect = response.selectedOption === question.answer;
-      points = isCorrect ? (question.points || 1) : 0;
-
-      // Apply negative marking if applicable
-      if (!isCorrect && test.negativeMarkingPercent > 0) {
-        points = -(question.points || 1) * test.negativeMarkingPercent;
+      // A blank is not a wrong answer. Grading it as one handed every student a
+      // negative marking penalty for questions they never touched.
+      if (isAnswered(response)) {
+        const marked = markMcq(question, response, test.negativeMarkingPercent);
+        response.isCorrect = marked.isCorrect;
+        response.points = marked.points;
+      } else {
+        response.isCorrect = false;
+        response.points = 0;
       }
-    } else if (question.kind === "theory" || question.kind === "coding") {
-      // For theory/coding, keep existing manual grading
-      isCorrect = response.isCorrect;
-      points = response.points;
+      response.autoGraded = true;
     }
+    // Theory and coding keep whatever they were awarded -- a mentor's manual
+    // mark, or a Judge0 result. `autoGraded` is left alone too: overwriting it
+    // discarded the fact that Judge0 had scored the answer, which stopped that
+    // score being carried forward if the student submitted again.
 
-    // Update response
-    response.isCorrect = isCorrect;
-    response.points = points;
-    response.autoGraded = question.kind !== "theory" && question.kind !== "coding";
-
-    totalScore += points;
+    totalScore += response.points || 0;
   }
 
   // Update submission

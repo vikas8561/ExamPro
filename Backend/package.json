@@ -9,7 +9,10 @@
     "create-indexes": "node scripts/createIndexes.js",
     "performance-test": "node scripts/performanceMonitor.js",
     "check-judge0": "node scripts/checkJudge0.js",
-    "test:security": "node scripts/security/answer-leak-audit.js && node scripts/security/answer-access-regression.js"
+    "test:security": "node scripts/security/answer-leak-audit.js && node scripts/security/answer-access-regression.js",
+    "test:shuffle": "node scripts/exam/shuffle-order-check.js",
+    "test:edit": "node scripts/exam/edit-preserves-answers-check.js",
+    "test:exam": "npm run test:shuffle && npm run test:edit"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

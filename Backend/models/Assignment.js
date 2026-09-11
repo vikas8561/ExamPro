@@ -119,6 +119,13 @@ const AssignmentSchema = new mongoose.Schema({
     default: false
   },
   lastViolationAt: Date,
+  // The order this student's questions were served in, when the test has
+  // shuffling enabled. Stored so a refresh mid-exam returns the same paper
+  // rather than reshuffling under the student. Empty means "not shuffled yet".
+  questionOrder: {
+    type: [mongoose.Schema.Types.ObjectId],
+    default: []
+  },
   // Permission fields
   permissions: {
     type: PermissionSchema,

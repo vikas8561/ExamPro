@@ -73,6 +73,10 @@ const TestSchema = new mongoose.Schema(
         message: 'allowedTabSwitches must be -1 (unlimited) or between 0 and 100'
       }
     },
+    // When on, each student is served the questions in their own random order.
+    // Nothing about marking changes: every response is matched to its question
+    // by _id, never by position, so the order is purely a display concern.
+    shuffleQuestions: { type: Boolean, default: false },
     isPracticeTest: { type: Boolean, default: false }, // Flag to identify practice tests
     practiceTestSettings: {
       allowMultipleAttempts: { type: Boolean, default: true },

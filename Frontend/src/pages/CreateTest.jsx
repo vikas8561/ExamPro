@@ -48,6 +48,7 @@ export default function CreateTest() {
     timeLimit: 30,
     negativeMarkingPercent: 0,
     allowedTabSwitches: "",
+    shuffleQuestions: false,
     questions: [],
   });
   const [assignmentOptions, setAssignmentOptions] = useState({
@@ -93,8 +94,14 @@ export default function CreateTest() {
         timeLimit: test.timeLimit,
         negativeMarkingPercent: test.negativeMarkingPercent || 0,
         allowedTabSwitches: test.allowedTabSwitches ?? "",
+        shuffleQuestions: Boolean(test.shuffleQuestions),
         questions: test.questions.map((q) => ({
           id: crypto.randomUUID(),
+          // The question's identity in the database. `id` above is only a React
+          // key for this form; `_id` is what every stored student response is
+          // matched against, so it has to survive the edit round-trip or every
+          // answer to this question is orphaned. New questions have none.
+          _id: q._id,
           kind: q.kind === "theoretical" ? "theory" : q.kind,
           text: q.text,
           points: q.points,
@@ -313,8 +320,12 @@ export default function CreateTest() {
   const duplicateQuestion = (id) => {
     const questionToDuplicate = form.questions.find(q => q.id === id);
     if (questionToDuplicate) {
+      const { _id, ...withoutDatabaseId } = questionToDuplicate;
       const duplicatedQuestion = {
-        ...questionToDuplicate,
+        ...withoutDatabaseId,
+        // Deliberately no `_id`: a copy is a new question and must get its own
+        // id from the server. Sharing the original's id would point two
+        // questions at one set of student responses.
         id: crypto.randomUUID(),
         text: questionToDuplicate.text + " (Copy)",
       };
@@ -437,7 +448,11 @@ export default function CreateTest() {
         timeLimit: Number(form.timeLimit),
         negativeMarkingPercent: Number(form.negativeMarkingPercent),
         allowedTabSwitches: Number(form.allowedTabSwitches) || 0,
+        shuffleQuestions: Boolean(form.shuffleQuestions),
         questions: form.questions.map((q) => ({
+          // Only present for questions that came from the database; the server
+          // ignores anything that is not already one of this test's own ids.
+          ...(q._id ? { _id: q._id } : {}),
           kind: q.kind,
           text: q.text,
           points: Number(q.points),
@@ -898,6 +913,32 @@ export default function CreateTest() {
                         `Students can switch tabs ${form.allowedTabSwitches} time${form.allowedTabSwitches != 1 ? 's' : ''}`}
                     </div>
                   )}
+                </div>
+              )}
+
+              {form.type !== "practice" && (
+                <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-500/30">
+                  <label className="block text-sm font-medium mb-3 text-slate-200">
+                    Shuffle Questions
+                  </label>
+                  <label className="flex items-center gap-3 cursor-pointer p-4 bg-slate-600/50 border border-slate-500/50 rounded-lg hover:border-purple-500/50 transition-all duration-200">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(form.shuffleQuestions)}
+                      onChange={(e) =>
+                        setForm((prev) => ({ ...prev, shuffleQuestions: e.target.checked }))
+                      }
+                      className="w-5 h-5 rounded bg-slate-700 border-slate-500 text-purple-500 focus:ring-2 focus:ring-purple-500/50"
+                    />
+                    <span className="text-sm text-slate-200">
+                      Randomise question order per student
+                    </span>
+                  </label>
+                  <div className="mt-2 text-xs text-slate-400">
+                    {form.shuffleQuestions
+                      ? "Each student sees these questions in their own random order"
+                      : "Every student sees the questions in the order below"}
+                  </div>
                 </div>
               )}
             </div>

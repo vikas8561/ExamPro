@@ -5,6 +5,8 @@ const { authenticateToken, requireRole } = require("../middleware/auth");
 const { resolveProctorStatusForTest } = require("../middleware/proctorSession");
 const { sanitizeQuestions, canSeeAnswers } = require("../services/questionSanitizer");
 const { recalculateScoresForTest } = require("../services/scoreCalculation");
+const { resolveOrderedQuestions } = require("../services/questionOrder");
+const Assignment = require("../models/Assignment");
 const { invalidateTestCache } = require("../utils/testCache");
 
 // Get all tests (admin only) - ULTRA FAST VERSION with pagination
@@ -169,6 +171,28 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
     // could read the model answer for every theory question.
     safeTest.questions = sanitizeQuestions(safeTest.questions);
 
+    // This is how TakeCodingTest loads the paper, so it has to honour the same
+    // per-student order as the assignment routes -- otherwise a coding exam
+    // would come back in a different order than the one the student started.
+    // No assignment travels with this request, so look it up: Assignment is
+    // unique per {testId, userId}, so this is a single indexed lookup.
+    const assignment = await Assignment.findOne({
+      testId: req.params.id,
+      userId: req.user.userId,
+    }).select("_id questionOrder");
+
+    if (assignment) {
+      const { questions, order, changed } = resolveOrderedQuestions({
+        test: safeTest,
+        assignment,
+        questions: safeTest.questions,
+      });
+      safeTest.questions = questions;
+      if (changed) {
+        await Assignment.updateOne({ _id: assignment._id }, { $set: { questionOrder: order } });
+      }
+    }
+
     res.json(safeTest);
   } catch (error) {
     next(error);
@@ -178,7 +202,7 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
 // Create new test (admin only)
 router.post("/", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
-    const { title, subject, type, instructions, timeLimit, negativeMarkingPercent, allowedTabSwitches, questions } = req.body;
+    const { title, subject, type, instructions, timeLimit, negativeMarkingPercent, allowedTabSwitches, shuffleQuestions, questions } = req.body;
     console.log('DEBUG: Creating test with allowedTabSwitches:', allowedTabSwitches);
 
     if (!title) {
@@ -192,7 +216,10 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
     }
 
     // Process questions to ensure test cases are properly formatted
-    const processedQuestions = (Array.isArray(questions) ? questions : []).map(q => {
+    const processedQuestions = (Array.isArray(questions) ? questions : []).map(rawQuestion => {
+      // A new test has no existing questions, so there is no id worth keeping
+      // and a client-supplied one could only collide. Mongoose mints them.
+      const { _id, ...q } = rawQuestion;
       if (q.kind === 'coding') {
         return {
           ...q,
@@ -223,6 +250,7 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
       timeLimit: Number(timeLimit || 30),
       negativeMarkingPercent: Number(negativeMarkingPercent || 0),
       allowedTabSwitches: Number(allowedTabSwitches || 0),
+      shuffleQuestions: Boolean(shuffleQuestions),
       questions: processedQuestions,
       createdBy: req.user.userId
     };
@@ -260,6 +288,7 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
       timeLimit: test.timeLimit,
       negativeMarkingPercent: test.negativeMarkingPercent,
       allowedTabSwitches: test.allowedTabSwitches,
+      shuffleQuestions: test.shuffleQuestions,
       status: test.status,
       questions: test.questions,
       createdBy: {
@@ -282,7 +311,7 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
 // Update test (admin only)
 router.put("/:id", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
-    const { title, subject, type, instructions, timeLimit, negativeMarkingPercent, allowedTabSwitches, questions, status } = req.body;
+    const { title, subject, type, instructions, timeLimit, negativeMarkingPercent, allowedTabSwitches, shuffleQuestions, questions, status } = req.body;
 
     // Validate allowedTabSwitches if provided (0-100 for regular tests, -1 for practice tests)
     if (allowedTabSwitches !== undefined) {
@@ -306,22 +335,48 @@ router.put("/:id", authenticateToken, requireRole("admin"), async (req, res, nex
     if (timeLimit) updateData.timeLimit = Number(timeLimit);
     if (negativeMarkingPercent !== undefined) updateData.negativeMarkingPercent = Number(negativeMarkingPercent);
     if (allowedTabSwitches !== undefined) updateData.allowedTabSwitches = Number(allowedTabSwitches);
+    if (shuffleQuestions !== undefined) updateData.shuffleQuestions = Boolean(shuffleQuestions);
 
     // Process questions to ensure test cases are properly formatted
     if (questions) {
+      // Keep the question ids this test already has.
+      //
+      // The edit form used to drop `_id`, so findByIdAndUpdate minted a brand
+      // new subdocument id for every question on every save. Student responses
+      // are matched to questions by id and nothing else, so one edit orphaned
+      // every answer ever given: finished papers rendered as "Not answered"
+      // throughout, and the re-grade below matched nothing and silently left
+      // stale marks in place.
+      //
+      // Only ids that genuinely belong to THIS test are honoured, and each at
+      // most once. Everything else -- a newly added question, a duplicated one,
+      // a stale id from another test, anything forged -- falls through to a
+      // fresh id from Mongoose. That is the safe default: two subdocuments
+      // sharing an id would make `test.questions.id(...)` ambiguous, and every
+      // grading lookup in the codebase goes through exactly that call.
+      const existingTest = await Test.findById(req.params.id).select("questions").lean();
+      const idsOnThisTest = new Set((existingTest?.questions || []).map(q => String(q._id)));
+      const alreadyClaimed = new Set();
+
       updateData.questions = questions.map(q => {
-        if (q.kind === 'coding') {
-          return {
-            ...q,
-            visibleTestCases: (q.visibleTestCases || []).filter(tc =>
+        const { _id, ...question } = q;
+        const candidate = _id === null || _id === undefined ? null : String(_id);
+        const keepId = Boolean(candidate) && idsOnThisTest.has(candidate) && !alreadyClaimed.has(candidate);
+        if (keepId) alreadyClaimed.add(candidate);
+
+        const processed = question.kind === 'coding'
+          ? {
+            ...question,
+            visibleTestCases: (question.visibleTestCases || []).filter(tc =>
               tc && tc.input && tc.input.trim() && tc.output && tc.output.trim()
             ),
-            hiddenTestCases: (q.hiddenTestCases || []).filter(tc =>
+            hiddenTestCases: (question.hiddenTestCases || []).filter(tc =>
               tc && tc.input && tc.input.trim() && tc.output && tc.output.trim()
             )
-          };
-        }
-        return q;
+          }
+          : question;
+
+        return keepId ? { ...processed, _id: candidate } : processed;
       });
     }
 

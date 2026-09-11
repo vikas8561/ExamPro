@@ -109,12 +109,48 @@ async function api(path, { token, method = "GET", body } = {}) {
 
     console.log("\n════ 2. Other routes that serve question data ════\n");
 
-    for (const [label, path] of [
-      ["GET /tests/:id", `/tests/${test._id}`],
-      ["GET /assignments/:id", `/assignments/${assignment._id}`],
-      ["GET /answers/assignment/:id", `/answers/assignment/${assignment._id}`],
+    // A second test/assignment still in "Assigned", so the FRESH-start branch of
+    // POST /:id/start gets exercised too, not just the already-in-progress one.
+    // The two branches strip answers with their own copy of the code, and the
+    // leak this case was added for lived in both of them.
+    const test2 = await Test.create({
+      title: `ZZ Sec fresh ${MARK}`, type: "mcq", timeLimit: 60, allowedTabSwitches: 100,
+      status: "Active", createdBy: victim.user._id,
+      questions: [
+        { kind: "mcq", text: "Capital of Japan?", options: [{ text: "Tokyo" }, { text: "Osaka" }], answer: "Tokyo", points: 1 },
+        { kind: "theory", text: "Explain closures.", expectedAnswer: "THE MODEL ANSWER", points: 5 },
+        {
+          kind: "coding", text: "Sum two numbers.", points: 5, language: "python",
+          visibleTestCases: [{ input: "1 2", output: "3" }],
+          hiddenTestCases: [{ input: "40 2", output: "42", marks: 5 }],
+        },
+      ],
+    });
+    bin.tests.push(test2._id);
+
+    const freshAssignment = await Assignment.create({
+      testId: test2._id, userId: victim.user._id, status: "Assigned",
+      startTime: new Date(Date.now() - 60000), duration: 120, mentorId: null,
+    });
+    bin.assignments.push(freshAssignment._id);
+
+    await api("/proctor/session/start", {
+      token: victim.token, method: "POST",
+      body: { assignmentId: String(freshAssignment._id), testKind: "assigned" },
+    });
+
+    for (const [label, path, method] of [
+      ["GET /tests/:id", `/tests/${test._id}`, "GET"],
+      ["GET /assignments/:id", `/assignments/${assignment._id}`, "GET"],
+      ["GET /answers/assignment/:id", `/answers/assignment/${assignment._id}`, "GET"],
+      // This is the route the exam page actually loads the paper from, and it
+      // was the one route the original audit never probed -- which is exactly
+      // why it kept hand-stripping answers incorrectly long after the others
+      // were fixed. Both of its branches are covered.
+      ["POST /assignments/:id/start (already in progress)", `/assignments/${assignment._id}/start`, "POST"],
+      ["POST /assignments/:id/start (fresh start)", `/assignments/${freshAssignment._id}/start`, "POST"],
     ]) {
-      r = await api(path, { token: victim.token });
+      r = await api(path, { token: victim.token, method });
       found = exposes(r.body);
       if (found.length) breach(`${label} exposes answer content`, `exposed: ${JSON.stringify(found)}`);
       else secure(`${label} exposes no answers`);
