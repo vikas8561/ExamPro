@@ -76,6 +76,22 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
   );
 
   const allSatisfied = required.every(isSatisfied);
+  const grantedCount = required.filter(isSatisfied).length;
+
+  /**
+   * Everything the student genuinely needs to be told before starting, in one
+   * place. A second display belongs here rather than buried in a diagnostic
+   * footnote, because it is a caution that affects them.
+   */
+  const notices = useMemo(() => {
+    const list = [...(readiness?.warnings || [])];
+    if (environment?.secondMonitor === "yes") {
+      list.push(
+        "A second display is connected. This is allowed, but it will be recorded on your attempt."
+      );
+    }
+    return list;
+  }, [readiness, environment]);
 
   const askScreen = useCallback(async () => {
     setBusy("screen");
@@ -188,25 +204,33 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
   return (
     <div className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-slate-950/95 p-4">
       <div className="my-8 w-full max-w-2xl rounded-xl border border-slate-700 bg-slate-900 p-6 sm:p-8">
-        <h2 className="mb-2 text-2xl font-bold text-white">Before you begin</h2>
-        <p className="mb-6 text-sm text-slate-400">
-          This is a proctored test. Please grant the permissions below to continue.
-        </p>
+        <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-2xl font-bold text-white">Exam Security Check</h2>
+            <p className="mt-2 text-sm text-slate-400">
+              This exam is monitored. Allow the permissions below to begin.
+            </p>
+          </div>
 
-        {environment && (
-          <p className="mb-4 text-xs text-slate-500">
-            Detected browser: <span className="text-slate-300">{environment.browser}</span>
-            {environment.secondMonitor === "yes" && (
-              <span className="ml-2 text-amber-400">
-                • A second display was detected and will be recorded
-              </span>
-            )}
-          </p>
-        )}
+          {/* Progress, so the student can see how far through setup they are
+              rather than guessing why the button is still disabled. */}
+          <span
+            className={`shrink-0 rounded-full border px-3 py-1 text-xs font-semibold ${
+              allSatisfied
+                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                : "border-slate-600 bg-slate-800 text-slate-400"
+            }`}
+          >
+            {grantedCount} of {required.length} allowed
+          </span>
+        </div>
 
-        {readiness?.warnings?.length > 0 && (
-          <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4">
-            {readiness.warnings.map((note) => (
+        {/* One notice area. The browser name is deliberately not shown on its
+            own -- it means nothing to a student, and the warnings below already
+            name the browser on the occasions where it actually matters. */}
+        {notices.length > 0 && (
+          <div className="mb-6 space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4">
+            {notices.map((note) => (
               <p key={note} className="text-sm text-amber-200">
                 {note}
               </p>
@@ -310,7 +334,7 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
           {beginning
             ? "Starting…"
             : !allSatisfied
-            ? "Grant all permissions to continue"
+            ? "Allow all permissions to continue"
             : "Begin Test"}
         </button>
       </div>
