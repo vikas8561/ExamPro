@@ -93,7 +93,8 @@ app.set('trust proxy', 1);
 const allowedOrigins = [
   process.env.FRONTEND_URL,
   "http://localhost:5173",
-  "https://cg-test-app.vercel.app"
+  "https://cg-test-app.vercel.app",
+  "https://cg-test-app-dev.vercel.app"
 ].filter(Boolean);
 
 // Configure CORS with more permissive settings for production
