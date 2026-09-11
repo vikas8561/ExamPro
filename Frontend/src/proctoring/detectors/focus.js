@@ -28,8 +28,28 @@ export function createFocusDetector({ report, isPaused }) {
   const GRACE_MS = 400;
   let lostAt = 0;
 
+  /**
+   * The three signals overlap, and that used to cost the student twice: one tab
+   * switch fires `visibilitychange` *and* `blur`, so it was reported as both
+   * `tab_switch` and `window_blur` in the same instant and charged as two
+   * violations.
+   *
+   * They are all the same fact — "the student is no longer on the exam" — so
+   * only the first signal to notice reports it, and the rest stay quiet until
+   * the student has been back for a while. The server enforces the same rule
+   * independently (see VIOLATION_GROUPS in proctorPolicy.js), because a client
+   * that has been tampered with cannot be relied on to hold back.
+   */
+  const REPORT_COOLDOWN_MS = 2000;
+  let lastReportAt = 0;
+
   const flag = (type, details) => {
     if (!running || isPaused?.()) return;
+
+    const now = Date.now();
+    if (now - lastReportAt < REPORT_COOLDOWN_MS) return;
+    lastReportAt = now;
+
     report(type, details);
   };
 
@@ -52,7 +72,10 @@ export function createFocusDetector({ report, isPaused }) {
     setTimeout(() => {
       if (!running || isPaused?.()) return;
       if (document.hasFocus()) return;
-      if (document.visibilityState === "hidden") return; // already reported above
+      // A hidden document is a tab switch, which handleVisibilityChange has
+      // already reported. The cooldown covers the case where the student comes
+      // back fast enough that this no longer reads as hidden.
+      if (document.visibilityState === "hidden") return;
       flag("window_blur", "Moved to another window or application");
     }, GRACE_MS);
   };

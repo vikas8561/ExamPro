@@ -257,13 +257,18 @@ router.post("/session/event", authenticateToken, async (req, res, next) => {
       const violationType = clean(event?.violationType, 60);
       if (!policyService.isKnownViolationType(violationType)) continue;
 
-      // One action can fire several browser events. Collapse repeats of the
-      // same type inside a short window so the student pays only once.
-      const lastSeen = session.lastViolationByType?.get(violationType);
+      // One action can fire several browser events, and not always the same
+      // one: a tab switch makes the browser fire both `visibilitychange` and
+      // `blur`, which arrive as `tab_switch` and `window_blur` together.
+      // De-duplicating on the group rather than the exact type means the
+      // student is charged once for the act, not once per signal that spotted
+      // it.
+      const dedupeKey = policyService.groupOf(violationType);
+      const lastSeen = session.lastViolationByType?.get(dedupeKey);
       if (lastSeen && now - new Date(lastSeen).getTime() < dedupeWindow) {
         continue;
       }
-      session.lastViolationByType.set(violationType, new Date());
+      session.lastViolationByType.set(dedupeKey, new Date());
 
       const weight = policyService.weightOf(policy, violationType);
       session.violations.push({

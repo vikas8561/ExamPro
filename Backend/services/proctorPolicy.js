@@ -72,6 +72,40 @@ const VIOLATION_WEIGHTS = {
  */
 const DEDUPE_WINDOW_MS = 3000;
 
+/**
+ * Violation types that describe the same underlying act.
+ *
+ * De-duplicating by type alone is not enough, and this was a real bug: a single
+ * tab switch makes the browser fire both `visibilitychange` and `blur`, so the
+ * student was reported for `tab_switch` AND `window_blur` in the same instant
+ * and charged twice for one action.
+ *
+ * Grouping fixes that at the only place it can be fixed reliably — the server.
+ * Types sharing a group share one dedupe window, so whichever signal notices
+ * first is the one that counts and the rest are ignored.
+ */
+const VIOLATION_GROUPS = {
+  // "The student is no longer looking at the exam." Several browser events all
+  // mean this, and which ones fire depends on the OS and the browser.
+  tab_switch: "left_exam",
+  window_blur: "left_exam",
+  window_open: "left_exam",
+  tab_close: "left_exam",
+  browser_switch: "left_exam",
+
+  // Leaving fullscreen frequently coincides with losing focus, but it is a
+  // distinct act with its own blocking overlay, so it keeps its own group.
+  fullscreen_exit: "fullscreen",
+
+  screen_share_stopped: "screen_share",
+  screen_share_wrong_surface: "screen_share",
+};
+
+/** The dedupe key for a violation: its group, or the type itself if ungrouped. */
+function groupOf(violationType) {
+  return VIOLATION_GROUPS[violationType] || violationType;
+}
+
 // The browser pings this often; the server allows this long before it decides
 // the browser has gone quiet. Three missed pings plus a little slack.
 const HEARTBEAT_INTERVAL_MS = 5000;
@@ -214,6 +248,8 @@ function isKnownViolationType(violationType) {
 module.exports = {
   VIOLATION_TYPES,
   VIOLATION_WEIGHTS,
+  VIOLATION_GROUPS,
+  groupOf,
   BYPASSABLE_PERMISSIONS,
   HEARTBEAT_INTERVAL_MS,
   HEARTBEAT_GRACE_MS,
