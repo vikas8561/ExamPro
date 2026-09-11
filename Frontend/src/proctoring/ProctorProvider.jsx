@@ -482,6 +482,36 @@ export function ProctorProvider({
           onResume={resumeFromBlock}
         />
       )}
+
+      {/* Proctoring could not be started.
+          This must be shown, not swallowed. The exam page waits on `ready`
+          before it loads any questions, so a failed start leaves the student
+          staring at "Loading test..." indefinitely with nothing to act on.
+          That is exactly what happened when the frontend was deployed ahead of
+          the backend and /api/proctor/session/start returned 404. */}
+      {enabled && startError && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/95 p-4">
+          <div className="w-full max-w-md rounded-xl border border-red-500/30 bg-slate-900 p-8 text-center">
+            <h2 className="mb-4 text-2xl font-bold text-red-400">Cannot start the test</h2>
+            <p className="mb-6 text-slate-300">
+              The proctoring system could not be started, so the test cannot begin.
+            </p>
+            <p className="mb-6 break-words rounded-md bg-slate-800 px-4 py-3 text-sm text-slate-400">
+              {startError}
+            </p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="w-full rounded-md bg-white/90 py-3 font-semibold text-black hover:bg-white"
+            >
+              Try again
+            </button>
+            <p className="mt-4 text-xs text-slate-500">
+              If this keeps happening, tell your administrator — your answers are not lost.
+            </p>
+          </div>
+        </div>
+      )}
     </ProctorContext.Provider>
   );
 }
