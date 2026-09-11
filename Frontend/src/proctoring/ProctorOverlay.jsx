@@ -85,9 +85,15 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
 
   return (
     <div ref={ref}>
-      {/* Status strip. Always visible, so nobody can claim they did not know. */}
+      {/* Status strip. Always visible, so nobody can claim they did not know.
+
+          Anchored bottom-right, not top-right. The exam pages centre their
+          content in a max-w-7xl (1280px) column, so on any viewport narrower
+          than roughly 1730px a top-right badge lands straight on the header's
+          top-right corner — which is exactly where the countdown timer sits.
+          Nothing competes for the bottom of the page. */}
       {phase !== "terminated" && (
-        <div className="pointer-events-none fixed right-4 top-4 z-[9990] flex items-center gap-3 rounded-full border border-slate-700 bg-slate-900/90 px-4 py-2 text-xs backdrop-blur">
+        <div className="pointer-events-none fixed bottom-4 right-4 z-[9990] flex items-center gap-3 rounded-full border border-slate-700 bg-slate-900/90 px-4 py-2 text-xs shadow-lg backdrop-blur">
           <span className="flex items-center gap-1.5">
             <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
             <span className="font-medium text-slate-200">Proctored</span>
@@ -103,9 +109,11 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
         </div>
       )}
 
-      {/* Connection lost. Not a violation — recorded, but never charged. */}
+      {/* Connection lost. Not a violation — recorded, but never charged.
+          Sits above the status badge rather than beside it, so the two never
+          overlap on a narrow window. */}
       {offline && phase === "active" && (
-        <div className="fixed bottom-4 left-1/2 z-[9991] -translate-x-1/2 rounded-lg border border-amber-500/40 bg-amber-950/90 px-5 py-3 text-sm text-amber-200 backdrop-blur">
+        <div className="fixed bottom-16 left-1/2 z-[9991] max-w-[90vw] -translate-x-1/2 rounded-lg border border-amber-500/40 bg-amber-950/90 px-5 py-3 text-center text-sm text-amber-200 backdrop-blur">
           Your internet connection was lost. Your answers are saved and will sync when it returns.
         </div>
       )}
