@@ -46,7 +46,6 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
   const [granted, setGranted] = useState({});
   const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(null);
-  const [consent, setConsent] = useState(false);
   const [beginning, setBeginning] = useState(false);
 
   const [screenStream, setScreenStream] = useState(null);
@@ -143,7 +142,7 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
   }, [otp, session]);
 
   const handleBegin = useCallback(async () => {
-    if (!allSatisfied || !consent || beginning) return;
+    if (!allSatisfied || beginning) return;
     setBeginning(true);
 
     await onBegin({
@@ -156,7 +155,7 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
         location: isSatisfied("location"),
       },
     });
-  }, [allSatisfied, consent, beginning, onBegin, screenStream, mediaStream, isSatisfied]);
+  }, [allSatisfied, beginning, onBegin, screenStream, mediaStream, isSatisfied]);
 
   const askFor = {
     screen: askScreen,
@@ -191,7 +190,7 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
       <div className="my-8 w-full max-w-2xl rounded-xl border border-slate-700 bg-slate-900 p-6 sm:p-8">
         <h2 className="mb-2 text-2xl font-bold text-white">Before you begin</h2>
         <p className="mb-6 text-sm text-slate-400">
-          This is a proctored test. Please grant the permissions below and read the rules.
+          This is a proctored test. Please grant the permissions below to continue.
         </p>
 
         {environment && (
@@ -302,57 +301,16 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
           </div>
         )}
 
-        {/* The rules, stated plainly */}
-        <div className="mb-6 rounded-lg border border-slate-700 bg-slate-800/50 p-4">
-          <p className="mb-3 font-semibold text-white">While the test is running</p>
-          <ul className="space-y-2 text-sm text-slate-300">
-            <li>• The test runs in fullscreen. Leaving fullscreen is recorded.</li>
-            <li>• Switching tabs, windows or applications is recorded.</li>
-            <li>• Copy, paste and right-click are disabled.</li>
-            <li>• Keyboard shortcuts are disabled. Only typing your answers works.</li>
-            <li>• Opening developer tools is recorded.</li>
-            <li>• A second monitor is recorded.</li>
-            <li>
-              •{" "}
-              {policy.allowedViolations === -1
-                ? "Violations are recorded but will not end your test."
-                : policy.allowedViolations === 0
-                ? "This test allows no violations. The first one ends your test."
-                : `You are allowed ${policy.allowedViolations} violation${
-                    policy.allowedViolations === 1 ? "" : "s"
-                  }. Exceeding that ends your test and submits your answers.`}
-            </li>
-          </ul>
-          <p className="mt-3 text-xs text-slate-500">
-            No video, audio, screenshots or screen recordings are captured or stored at any point.
-            Only the time and type of each violation is recorded.
-          </p>
-        </div>
-
-        <label className="mb-6 flex cursor-pointer items-start gap-3">
-          <input
-            type="checkbox"
-            checked={consent}
-            onChange={(e) => setConsent(e.target.checked)}
-            className="mt-1 h-4 w-4 shrink-0 cursor-pointer"
-          />
-          <span className="text-sm text-slate-300">
-            I have read the rules above and agree to be monitored for the duration of this test.
-          </span>
-        </label>
-
         <button
           type="button"
           onClick={handleBegin}
-          disabled={!allSatisfied || !consent || beginning}
+          disabled={!allSatisfied || beginning}
           className="w-full rounded-md bg-white/90 py-3 font-semibold text-black hover:bg-white disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
         >
           {beginning
             ? "Starting…"
             : !allSatisfied
             ? "Grant all permissions to continue"
-            : !consent
-            ? "Accept the rules to continue"
             : "Begin Test"}
         </button>
       </div>
