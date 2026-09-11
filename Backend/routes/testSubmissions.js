@@ -9,89 +9,14 @@ const ProctorSession = require("../models/ProctorSession");
 
 // Gemini integration removed - mentors will grade manually
 
-// Sync violations (progress update)
-router.put("/sync-violations", authenticateToken, async (req, res, next) => {
-  try {
-    const { assignmentId, tabViolationCount, tabViolations } = req.body;
-    const userId = req.user.userId;
+// NOTE: PUT /sync-violations and GET /violations/:assignmentId used to live
+// here. They were part of the old system, where the browser reported its own
+// violation totals and the server wrote down whatever it was told. Nothing
+// calls them any more, and the writable one accepted any count from any
+// student -- so a student could POST a count of zero and erase their own
+// violation history after the fact. The proctoring session is now the single
+// authority for this (see Backend/routes/proctor.js).
 
-    if (!assignmentId) {
-      return res.status(400).json({ message: "assignmentId is required" });
-    }
-
-    console.log(`🔄 Syncing violations for assignment ${assignmentId}: count=${tabViolationCount}`);
-
-    // Get testId from assignment (required for TestSubmission schema)
-    const assignment = await Assignment.findById(assignmentId);
-    if (!assignment) {
-      return res.status(404).json({ message: "Assignment not found" });
-    }
-
-    // Get the testId - handle both populated and non-populated cases
-    const testId = assignment.testId._id || assignment.testId;
-
-    // Update submission violations without completing the test
-    // Include testId in the update to ensure it's set when upserting
-    const result = await TestSubmission.findOneAndUpdate(
-      { assignmentId, userId },
-      {
-        $set: {
-          tabViolationCount: tabViolationCount || 0,
-          tabViolations: tabViolations || [],
-          testId: testId // Required field
-        },
-        $setOnInsert: {
-          userId: userId,
-          assignmentId: assignmentId
-        }
-      },
-      { upsert: true, new: true, runValidators: false }
-    );
-
-    console.log(`✅ Violations synced successfully: ${result.tabViolationCount} violations stored`);
-
-    res.json({ message: "Violations synced successfully", violationCount: result.tabViolationCount });
-  } catch (error) {
-    console.error("Error syncing violations:", error);
-    next(error);
-  }
-});
-
-// Get violations for an in-progress test (simple endpoint for loading on refresh)
-router.get("/violations/:assignmentId", authenticateToken, async (req, res, next) => {
-  try {
-    const { assignmentId } = req.params;
-    const userId = req.user.userId;
-
-    console.log(`🔍 Fetching violations for assignment ${assignmentId}, user ${userId}`);
-
-    const submission = await TestSubmission.findOne({ assignmentId, userId })
-      .select('tabViolationCount tabViolations');
-
-    if (!submission) {
-      console.log(`📭 No submission found for assignment ${assignmentId}`);
-      return res.json({
-        tabViolationCount: 0,
-        tabViolations: [],
-        message: "No violations recorded yet"
-      });
-    }
-
-    console.log(`✅ Found ${submission.tabViolationCount} violations for assignment ${assignmentId}`);
-
-    res.json({
-      tabViolationCount: submission.tabViolationCount || 0,
-      tabViolations: submission.tabViolations || []
-    });
-  } catch (error) {
-    console.error("Error fetching violations:", error);
-    next(error);
-  }
-});
-
-// A submission is only accepted from an attempt that actually went through
-// proctoring. `allowTerminated` is essential: when the referee cancels a test,
-// the browser's forced submit arrives on a terminated session and must land.
 router.post("/", authenticateToken, requireProctorSession({ allowTerminated: true }), async (req, res, next) => {
   try {
     const { assignmentId, responses, timeSpent, permissions, tabViolationCount, tabViolations, cancelledDueToViolation, autoSubmit } = req.body;
@@ -594,12 +519,26 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
       return res.status(404).json({ message: "Assignment not found" });
     }
 
-    // Check if user is the student for this assignment
     const isStudent = assignment.userId.toString() === userId;
-    // Allow mentors to view if they are assigned to this assignment or if no mentor is assigned
-    const isMentor = !assignment.mentorId || assignment.mentorId.toString() === userId;
 
-    if (!isStudent && !isMentor) {
+    // A reviewer is someone whose ROLE is mentor or admin -- and, for a mentor,
+    // one actually attached to this assignment.
+    //
+    // This used to read `!assignment.mentorId || assignment.mentorId === userId`,
+    // which meant that whenever an assignment had no mentor attached (the
+    // default for every assignment) EVERY logged-in user counted as its mentor.
+    // That single flag both unlocked the correct answers and waived the
+    // ownership check, so any student could read any other student's
+    // submission -- and read the answers to their own paper while still
+    // sitting it.
+    const role = String(req.user?.role || "").toLowerCase();
+    const isAdmin = role === "admin";
+    const isReviewer =
+      isAdmin ||
+      (role === "mentor" &&
+        (!assignment.mentorId || assignment.mentorId.toString() === userId));
+
+    if (!isStudent && !isReviewer) {
       return res.status(403).json({ message: "Not authorized to view this submission" });
     }
 
@@ -646,9 +585,12 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
     // console.log('Deadline with buffer:', deadlineWithBuffer.toISOString());
     // console.log('Current time >= deadline with buffer:', currentTime >= deadlineWithBuffer);
 
-    // Determine if results should be shown
-    // Show results immediately if user is the mentor for this assignment, otherwise only after deadline
-    const showResults = isMentor || currentTime >= deadlineWithBuffer;
+    // Reviewers see results straight away. A student sees them only once the
+    // deadline has passed AND they have actually finished -- an unfinished
+    // attempt must never unlock its own answer key.
+    const hasFinished =
+      assignment.status === "Completed" || submission?.isFinalized === true;
+    const showResults = isReviewer || (hasFinished && currentTime >= deadlineWithBuffer);
 
     // console.log('Show results:', showResults);
     // console.log('================================');
@@ -661,7 +603,17 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
         );
 
         const mergedQuestion = {
-          ...question.toObject(),
+          // Reviewers get the question as-is. A student reviewing their own
+          // finished paper sees the correct answer -- that is the point of the
+          // review -- but never the hidden test cases, which are reused across
+          // cohorts and would leak to whoever they passed them on to.
+          ...(isReviewer
+            ? question.toObject()
+            : (() => {
+                const plain = question.toObject();
+                delete plain.hiddenTestCases;
+                return plain;
+              })()),
           selectedOption: response?.selectedOption || null,
           textAnswer: response?.textAnswer || null,
           language: response?.language || question.language || null, // Student's language or question default

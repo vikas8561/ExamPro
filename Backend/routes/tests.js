@@ -3,6 +3,7 @@ const router = express.Router();
 const Test = require("../models/Test");
 const { authenticateToken, requireRole } = require("../middleware/auth");
 const { resolveProctorStatusForTest } = require("../middleware/proctorSession");
+const { sanitizeQuestions, canSeeAnswers } = require("../services/questionSanitizer");
 const { recalculateScoresForTest } = require("../services/scoreCalculation");
 const { invalidateTestCache } = require("../utils/testCache");
 
@@ -142,11 +143,9 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
     }
 
     // Students take tests through this endpoint, so everything that would give
-    // away the answer must be stripped: MCQ answers and the hidden test cases
-    // the judge grades against. Admins and mentors need the full document to
-    // author and review.
-    const role = String(req.user?.role || "").toLowerCase();
-    if (role === "admin" || role === "mentor") {
+    // away the answer must be stripped. Admins and mentors need the full
+    // document to author and review.
+    if (canSeeAnswers(req.user)) {
       return res.json(test);
     }
 
@@ -165,16 +164,10 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
       });
     }
 
-    safeTest.questions = (safeTest.questions || []).map((question) => {
-      const { answer, answers, hiddenTestCases, ...rest } = question;
-      return {
-        ...rest,
-        // Students still need to know how many hidden cases there are and what
-        // the question is worth, just not what they contain.
-        hiddenTestCaseCount: (hiddenTestCases || []).length,
-        totalMarks: (hiddenTestCases || []).reduce((sum, testCase) => sum + (testCase.marks || 0), 0),
-      };
-    });
+    // Shared sanitizer. The hand-written version this replaces stripped
+    // answer/answers/hiddenTestCases but forgot expectedAnswer, so students
+    // could read the model answer for every theory question.
+    safeTest.questions = sanitizeQuestions(safeTest.questions);
 
     res.json(safeTest);
   } catch (error) {

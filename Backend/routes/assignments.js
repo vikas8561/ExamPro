@@ -7,6 +7,7 @@ const User = require("../models/User");
 const { authenticateToken, requireRole } = require("../middleware/auth");
 const { getCachedTestIds, setCachedTestIds, invalidateTestCache } = require("../utils/testCache");
 const { attachProctorStatus, mayServeQuestions } = require("../middleware/proctorSession");
+const { sanitizeQuestions, canSeeAnswers } = require("../services/questionSanitizer");
 
 // Get all assignments (admin only) - ULTRA FAST VERSION
 router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) => {
@@ -422,17 +423,15 @@ router.get("/student/recent-activity", authenticateToken, async (req, res, next)
 // Get assignment by ID
 router.get("/:id", authenticateToken, attachProctorStatus(), async (req, res, next) => {
   try {
+    // NOTE: `questions` is an embedded array on Test, not a reference, so the
+    // nested populate that used to be here did nothing at all — its `select`
+    // was silently ignored and the full question documents came through with
+    // every answer, model answer and hidden test case attached. Sanitising is
+    // done explicitly below instead, on a plain object.
     const assignment = await Assignment.findById(req.params.id)
       .populate({
         path: "testId",
         select: "title type instructions timeLimit allowedTabSwitches questions",
-        populate: {
-          path: "questions",
-          // Include answer only for admins, not for students
-          select: req.user.role === "admin"
-            ? "kind text options answer guidelines examples points"
-            : "kind text options guidelines examples points"
-        }
       })
       .populate("userId", "name email")
       .populate("mentorId", "name email");
@@ -446,12 +445,14 @@ router.get("/:id", authenticateToken, attachProctorStatus(), async (req, res, ne
       return res.status(403).json({ message: "Access denied" });
     }
 
-    // Remove answers from questions if user is a student
-    if (req.user.role !== "admin" && assignment.testId && assignment.testId.questions) {
-      assignment.testId.questions = assignment.testId.questions.map(q => {
-        const { answer, answers, ...questionWithoutAnswer } = q.toObject ? q.toObject() : q;
-        return questionWithoutAnswer;
-      });
+    // Everything from here works on a plain object. Re-assigning stripped
+    // questions onto the Mongoose document casts them straight back into full
+    // subdocuments, which is how the previous version leaked every answer while
+    // looking like it was removing them.
+    const payload = assignment.toObject ? assignment.toObject() : { ...assignment };
+
+    if (payload.testId && Array.isArray(payload.testId.questions) && !canSeeAnswers(req.user)) {
+      payload.testId.questions = sanitizeQuestions(payload.testId.questions);
     }
 
     // This route is called before the exam begins, to show the title, the
@@ -459,18 +460,13 @@ router.get("/:id", authenticateToken, attachProctorStatus(), async (req, res, ne
     // The question content is the part that is withheld until a proctoring
     // session is actually running — otherwise the questions could simply be
     // fetched with a direct API call and answered offline.
-    if (!mayServeQuestions(req) && assignment.testId) {
-      assignment.testId.questions = [];
-
-      // Converted to a plain object first: setting an arbitrary property on a
-      // Mongoose document does not survive serialisation, so the flag would
-      // silently never reach the browser.
-      const payload = assignment.toObject ? assignment.toObject() : { ...assignment };
+    if (!mayServeQuestions(req) && payload.testId) {
+      payload.testId.questions = [];
       payload.proctoringRequired = true;
       return res.json(payload);
     }
 
-    res.json(assignment);
+    return res.json(payload);
   } catch (error) {
     next(error);
   }
