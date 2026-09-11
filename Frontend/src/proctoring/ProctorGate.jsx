@@ -206,7 +206,7 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
       <div className="my-8 w-full max-w-2xl rounded-xl border border-slate-700 bg-slate-900 p-6 sm:p-8">
         <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-2xl font-bold text-white">Exam Security Check</h2>
+            <h2 className="text-2xl font-bold text-white">Ready to Begin?</h2>
             <p className="mt-2 text-sm text-slate-400">
               This exam is monitored. Allow the permissions below to begin.
             </p>
