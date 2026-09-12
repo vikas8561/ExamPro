@@ -88,6 +88,9 @@ const ViewCompletedTest = () => {
   // Check if results should be shown
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const isMentor = user.role === 'Mentor';
+  // This page is served to the student AND to whoever reviews their paper, on
+  // two different routes. Only the reviewer sees the proctoring record.
+  const isReviewer = user.role === 'Mentor' || user.role === 'Admin';
 
   if (!showResults && !isMentor) {
     return (
@@ -173,11 +176,20 @@ const ViewCompletedTest = () => {
           </div>
         </div>
 
-        {/* Proctoring record. Violations were stored on every submission long
-            before this rebuild and were never shown to anyone. */}
-        <div className="mb-8">
-          <ProctoringReport submission={submission} />
-        </div>
+        {/* Proctoring record -- reviewers only.
+
+            This is the same component on the same page for both audiences, and
+            it was rendering for the student too: their own results screen listed
+            every violation with a timestamp and a running total. That record is
+            the reviewer's evidence about the student, not a report card handed
+            back to them, and knowing the exact tally tells a student precisely
+            how much more they can get away with next time. The server no longer
+            sends the detail to a student either, so this is belt and braces. */}
+        {isReviewer && (
+          <div className="mb-8">
+            <ProctoringReport submission={submission} />
+          </div>
+        )}
 
         {/* Questions & Answers */}
         <div>

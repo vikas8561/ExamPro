@@ -478,6 +478,45 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
     // console.log('Show results:', showResults);
     // console.log('================================');
 
+    // The proctoring record belongs to the proctor.
+    //
+    // A student's own results page was showing them the full violation log --
+    // every type, every timestamp, and a running "N violations recorded" count.
+    // That is the reviewer's evidence, and handing it to the student turns it
+    // into a scoreboard for working out exactly how much they can get away with.
+    // They are still told at the time, by the overlay, every time one is
+    // recorded; what they do not get afterwards is the tally.
+    const proctorRecordFor = (sub) => (isReviewer
+      ? {
+        tabViolationCount: sub.tabViolationCount,
+        tabViolations: sub.tabViolations,
+        proctorBypassUsed: sub.proctorBypassUsed,
+      }
+      : {});
+
+    // A student reviewing their own paper should see it in the order they sat
+    // it. The questions are stored in one canonical order and shuffled per
+    // student on the way out, so a shuffled paper reviewed canonically puts
+    // "Q1" against a question the student answered somewhere else entirely --
+    // which reads exactly like shuffling never happened. Reviewers keep the
+    // canonical order, so "Q3" means one fixed thing to whoever marks it.
+    const inStudentOrder = (questions) => {
+      const order = (assignment.questionOrder || []).map(String);
+      if (isReviewer || order.length === 0) return questions;
+
+      const byId = new Map(questions.map((q) => [String(q._id), q]));
+      const ordered = [];
+      for (const id of order) {
+        if (byId.has(id)) {
+          ordered.push(byId.get(id));
+          byId.delete(id);
+        }
+      }
+      // Anything not named by the stored order (a question added since) keeps
+      // its canonical position at the end rather than vanishing from the review.
+      return [...ordered, ...byId.values()];
+    };
+
     if (submission) {
       // Merge responses with questions for display
       const questionsWithResponses = submission.testId.questions.map(question => {
@@ -541,7 +580,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
           test: {
             _id: submission.testId._id,
             title: submission.testId.title,
-            questions: questionsWithResponses,
+            questions: inStudentOrder(questionsWithResponses),
             negativeMarkingPercent: assignment.testId.negativeMarkingPercent || 0
           },
           submission: {
@@ -560,11 +599,12 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
             incorrectCount,
             notAnsweredCount,
             permissions: submission.permissions,
-            tabViolationCount: submission.tabViolationCount,
-            tabViolations: submission.tabViolations,
+            // Whether the attempt was cut short, and whether it submitted
+            // itself, are facts about the student's own paper and stay. The
+            // violation tally and log are the proctor's -- see proctorRecordFor.
             cancelledDueToViolation: submission.cancelledDueToViolation,
-            proctorBypassUsed: submission.proctorBypassUsed,
-            autoSubmit: submission.autoSubmit
+            autoSubmit: submission.autoSubmit,
+            ...proctorRecordFor(submission)
           },
           showResults: true
         });
@@ -579,7 +619,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
           test: {
             _id: submission.testId._id,
             title: submission.testId.title,
-            questions: questionsWithResponses.map(q => ({
+            questions: inStudentOrder(questionsWithResponses).map(q => ({
               _id: q._id,
               text: q.text,
               kind: q.kind,
@@ -607,11 +647,12 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
             reviewStatus: submission.reviewStatus,
             finalScore: null,
             permissions: submission.permissions,
-            tabViolationCount: submission.tabViolationCount,
-            tabViolations: submission.tabViolations,
+            // Whether the attempt was cut short, and whether it submitted
+            // itself, are facts about the student's own paper and stay. The
+            // violation tally and log are the proctor's -- see proctorRecordFor.
             cancelledDueToViolation: submission.cancelledDueToViolation,
-            proctorBypassUsed: submission.proctorBypassUsed,
-            autoSubmit: submission.autoSubmit
+            autoSubmit: submission.autoSubmit,
+            ...proctorRecordFor(submission)
           },
           showResults: false,
           message: `Results available after ${remainingTimeString}`
@@ -632,7 +673,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
         test: {
           _id: assignment.testId._id,
           title: assignment.testId.title,
-          questions: showResults ? questionsWithPlaceholders : questionsWithPlaceholders.map(q => ({
+          questions: showResults ? inStudentOrder(questionsWithPlaceholders) : inStudentOrder(questionsWithPlaceholders).map(q => ({
             _id: q._id,
             text: q.text,
             kind: q.kind,

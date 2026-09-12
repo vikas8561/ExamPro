@@ -271,7 +271,11 @@ const StudentAssignments = () => {
 
       // Add forceRefresh parameter to bypass cache
       const forceRefreshParam = forceRefresh ? '&forceRefresh=true' : '';
-      const data = await apiRequest(`/assignments/student?page=${page}&limit=9${typeFilter !== 'all' ? `&type=${typeFilter}` : ''}${forceRefreshParam}`, {
+      // Coding exams have their own page, so the server leaves them out of this
+      // one entirely. Filtering them in the browser instead meant the header
+      // counted assignments the list then hid -- "3 total assignments, 2
+      // showing" -- and a paginated page could silently come back short.
+      const data = await apiRequest(`/assignments/student?page=${page}&limit=9&exclude=coding${typeFilter !== 'all' ? `&type=${typeFilter}` : ''}${forceRefreshParam}`, {
         signal: controller.signal
       });
 
@@ -405,11 +409,8 @@ const StudentAssignments = () => {
   };
 
   const filteredAssignments = assignments.filter((assignment) => {
-    // Exclude coding tests from assigned tests section
-    // Coding tests should only appear in the "Coding Tests" section
-    if (assignment.testId?.type === 'coding') {
-      return false;
-    }
+    // Coding tests are excluded by the server now (see the fetch above), so the
+    // count in the header and the cards below describe the same set.
 
     // Status filter - show all statuses when filter is 'all'
     if (statusFilter !== 'all' && assignment.status !== statusFilter) {

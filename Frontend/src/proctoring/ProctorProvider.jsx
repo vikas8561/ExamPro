@@ -12,7 +12,7 @@ import {
 import { createKeyboardDetector } from "./detectors/keyboard";
 import { createClipboardDetector } from "./detectors/clipboard";
 import { createDevtoolsDetector } from "./detectors/devtools";
-import { createScreenDetector } from "./detectors/screen";
+import { createScreenDetector, requestScreenShare } from "./detectors/screen";
 import { createPermissionsDetector } from "./detectors/permissions";
 import { createNetworkDetector } from "./detectors/network";
 import { createIntegrityDetector } from "./detectors/integrity";
@@ -74,6 +74,7 @@ export function ProctorProvider({
   const detectorsRef = useRef([]);
   const keyboardRef = useRef(null);
   const devtoolsRef = useRef(null);
+  const screenRef = useRef(null);
   const overlayRef = useRef(null);
   const heartbeatRef = useRef(null);
   const terminatedRef = useRef(false);
@@ -228,6 +229,26 @@ export function ProctorProvider({
     keyboardRef.current = keyboard;
     devtoolsRef.current = devtools;
 
+    const screen = createScreenDetector({
+      report,
+      isPaused,
+      getStream: () => screenStreamRef.current,
+      detectSecondMonitor: policy.detectSecondMonitor !== false,
+      onShareStopped: () => {
+        // Screen sharing is a condition of sitting the exam, not a formality.
+        // This used to record the violation and let the student carry on
+        // through a plain "Continue Test" button, which meant the one control
+        // that makes the rest of the proctoring meaningful could be switched
+        // off at will and the exam continued unobserved. Now the exam stops
+        // until the share is genuinely back.
+        if (phaseRef.current === "active" || phaseRef.current === "blocked") {
+          setPhase("blocked");
+          setBlockReason("screenshare");
+        }
+      },
+    });
+    screenRef.current = screen;
+
     const detectors = [
       keyboard,
       devtools,
@@ -249,12 +270,7 @@ export function ProctorProvider({
           }
         },
       }),
-      createScreenDetector({
-        report,
-        isPaused,
-        getStream: () => screenStreamRef.current,
-        detectSecondMonitor: policy.detectSecondMonitor !== false,
-      }),
+      screen,
       createPermissionsDetector({
         report,
         isPaused,
@@ -352,7 +368,7 @@ export function ProctorProvider({
     [startDetectors, onReady]
   );
 
-  /** The student clicked "Return to fullscreen" on the blocking overlay. */
+  /** The student clicked the button on the blocking overlay. */
   const resumeFromBlock = useCallback(async () => {
     if (blockReason === "fullscreen") {
       const ok = await enterFullscreen();
@@ -362,6 +378,26 @@ export function ProctorProvider({
 
     if (blockReason === "devtools" && devtoolsRef.current?.isOpen()) {
       return false;
+    }
+
+    if (blockReason === "screenshare") {
+      // Ask again, and accept nothing less than the whole screen -- the same
+      // standard as the pre-exam gate. Only a real, live track releases them.
+      const result = await requestScreenShare();
+      if (!result.ok) return false;
+
+      screenStreamRef.current?.getTracks?.().forEach((t) => t.stop());
+      screenStreamRef.current = result.stream;
+      // Point the detector at the new track and clear its "already reported"
+      // latch, so a second stop is caught like the first.
+      screenRef.current?.rearm?.();
+
+      // Stopping the share usually drops fullscreen too; put it back while we
+      // have the student's click, which is the only thing the browser accepts.
+      if (!isFullscreen()) {
+        await enterFullscreen();
+        await keyboardRef.current?.reengage?.();
+      }
     }
 
     setBlockReason(null);
@@ -475,8 +511,6 @@ export function ProctorProvider({
           warning={warning}
           blockReason={blockReason}
           offline={offline}
-          violationCount={violationCount}
-          limit={limit}
           isDevtoolsOpen={() => devtoolsRef.current?.isOpen() === true}
           onDismissWarning={dismissWarning}
           onResume={resumeFromBlock}

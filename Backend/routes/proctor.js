@@ -253,7 +253,28 @@ router.post("/session/event", authenticateToken, async (req, res, next) => {
     const now = Date.now();
     let charged = false;
 
-    for (const event of events.slice(0, 20)) {
+    const batch = events.slice(0, 20);
+
+    // When did each suppressing cause last happen? Tracked separately from the
+    // dedupe map on purpose: writing causes into that map would make the cause
+    // dedupe *itself* away and never be charged at all.
+    //
+    // A cause arriving in the same batch as its consequences has to count as
+    // already seen, or the order the browser happened to send them in would
+    // decide what the student pays.
+    const causeSeenAt = new Map();
+    for (const causeGroup of policyService.causeGroups()) {
+      const previous = session.lastViolationByType?.get(causeGroup);
+      if (previous) causeSeenAt.set(causeGroup, new Date(previous).getTime());
+    }
+    for (const event of batch) {
+      const type = clean(event?.violationType, 60);
+      if (!policyService.isKnownViolationType(type)) continue;
+      const group = policyService.groupOf(type);
+      if (policyService.causeGroups().includes(group)) causeSeenAt.set(group, now);
+    }
+
+    for (const event of batch) {
       const violationType = clean(event?.violationType, 60);
       if (!policyService.isKnownViolationType(violationType)) continue;
 
@@ -270,7 +291,20 @@ router.post("/session/event", authenticateToken, async (req, res, next) => {
       }
       session.lastViolationByType.set(dedupeKey, new Date());
 
-      const weight = policyService.weightOf(policy, violationType);
+      let weight = policyService.weightOf(policy, violationType);
+
+      // Turning off screen sharing also drags focus away and usually drops
+      // fullscreen. Those are the same act, not three of them -- record them so
+      // the reviewer sees the sequence, but charge only the cause.
+      for (const causeGroup of policyService.causeGroups()) {
+        if (causeGroup === dedupeKey) continue;
+        if (!policyService.isConsequenceOf(causeGroup, dedupeKey)) continue;
+        const causedAt = causeSeenAt.get(causeGroup);
+        if (causedAt !== undefined && now - causedAt < policyService.CAUSAL_WINDOW_MS) {
+          weight = 0;
+          break;
+        }
+      }
       session.violations.push({
         timestamp: new Date(),
         violationType,

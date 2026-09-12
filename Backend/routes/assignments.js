@@ -9,6 +9,7 @@ const { getCachedTestIds, setCachedTestIds, invalidateTestCache } = require("../
 const { attachProctorStatus, mayServeQuestions } = require("../middleware/proctorSession");
 const { sanitizeQuestions, canSeeAnswers } = require("../services/questionSanitizer");
 const { resolveOrderedQuestions } = require("../services/questionOrder");
+const { isAttemptExpired } = require("../services/attemptWindow");
 
 /** Mongoose document -> plain object, so stripping actually sticks. */
 function toPlain(value) {
@@ -131,9 +132,19 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     const limit = parseInt(req.query.limit) || 9;
     const skip = (page - 1) * limit;
     const testType = req.query.type; // Optional filter for test type (e.g., 'coding')
+    // Types this page does not show at all. Coding exams live on their own page,
+    // and the assigned-tests list used to drop them in the browser AFTER the
+    // server had counted and paginated them -- so the header read "3 total
+    // assignments - 2 showing", and a page could come back short for no visible
+    // reason. Excluding them in the query keeps the count, the pages and the
+    // list describing the same set.
+    const excluded = String(req.query.exclude || "")
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
 
     // OPTIMIZED: Filter in database, not in memory
-    const testQuery = { type: { $ne: "practice" } };
+    const testQuery = { type: { $nin: ["practice", ...excluded] } };
     if (testType) {
       testQuery.type = testType;
     }
@@ -141,7 +152,11 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     // Step 1: Get test IDs from cache or database (CACHED for 5 minutes)
     // Allow force refresh via query parameter
     const forceRefresh = req.query.forceRefresh === 'true';
-    const cacheKey = testType ? `tests_${testType}` : 'tests_all';
+    // The excluded types are part of what was cached, or one page's list would
+    // be served from another page's cache entry.
+    const cacheKey = testType
+      ? `tests_${testType}`
+      : `tests_all${excluded.length ? `_not_${excluded.slice().sort().join("_")}` : ""}`;
     const testQueryStart = Date.now();
     let validTestIds = forceRefresh ? null : getCachedTestIds(cacheKey);
 
@@ -503,8 +518,15 @@ router.get("/:id", authenticateToken, attachProctorStatus(), async (req, res, ne
       return res.status(404).json({ message: "Assignment not found" });
     }
 
-    // Check if user has access to this assignment
-    if (req.user.role !== "admin" && assignment.userId && assignment.userId._id && assignment.userId._id.toString() !== req.user.userId) {
+    // Check if user has access to this assignment.
+    //
+    // The role comparison is case-insensitive because roles are stored
+    // capitalised ("Admin", "Student"), so the old `!== "admin"` could never be
+    // false and an admin was refused their own students' assignments here --
+    // while the very next lines already treat admins as privileged when
+    // deciding whether to strip the answers.
+    const isPrivileged = String(req.user.role || "").toLowerCase() === "admin";
+    if (!isPrivileged && assignment.userId && assignment.userId._id && assignment.userId._id.toString() !== req.user.userId) {
       return res.status(403).json({ message: "Access denied" });
     }
 
@@ -525,6 +547,25 @@ router.get("/:id", authenticateToken, attachProctorStatus(), async (req, res, ne
     // The student's own permutation never goes out with the payload — see
     // forStudent() for why.
     if (!canSeeAnswers(req.user)) delete payload.questionOrder;
+
+    // Same rule as POST /:id/start: once the attempt is over, the questions
+    // stop. This is the route the exam page resumes through, so without it a
+    // student could reopen an expired paper and carry on typing into it.
+    //
+    // "Over" covers a finished attempt as well as an expired one. The sweep
+    // that finalises abandoned attempts flips them to Completed, and a check
+    // that only looked at "In Progress" handed the paper back out again the
+    // moment it did. Review happens through /test-submissions/assignment/:id,
+    // which is where a finished paper is supposed to be read.
+    const attemptOver =
+      payload.status === "Completed" ||
+      (payload.status === "In Progress" && isAttemptExpired(payload, payload.testId));
+
+    if (!canSeeAnswers(req.user) && attemptOver && payload.testId) {
+      payload.testId.questions = [];
+      payload.expired = true;
+      return res.status(200).json(payload);
+    }
 
     // This route is called before the exam begins, to show the title, the
     // instructions and the timing, so it must keep working without proctoring.
@@ -686,6 +727,24 @@ router.post("/:id/start", authenticateToken, attachProctorStatus(), async (req, 
     // Check if already completed
     if (assignment.status === "Completed") {
       return res.status(400).json({ message: "Test already completed" });
+    }
+
+    // An attempt whose time has gone is not re-openable.
+    //
+    // Pressing Start flips the assignment to "In Progress" before the student
+    // has granted a single permission, so an attempt abandoned at the
+    // permissions screen sat there half-open indefinitely -- and the exam page
+    // would still load it days later, long past the deadline, with a timer
+    // reading zero. They could not submit it (the submit route has always
+    // checked), which left them typing into a paper that could never be handed
+    // in. The questions stop being served at the same moment the submit window
+    // closes.
+    if (assignment.status === "In Progress" && isAttemptExpired(assignment, assignment.testId)) {
+      return res.status(400).json({
+        message: "This test's time has expired. Your answers have been submitted for review.",
+        code: "attempt_expired",
+        expired: true,
+      });
     }
 
     // Check if already in progress - return 200 with special flag instead of 400

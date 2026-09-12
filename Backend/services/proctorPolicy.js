@@ -106,6 +106,36 @@ function groupOf(violationType) {
   return VIOLATION_GROUPS[violationType] || violationType;
 }
 
+/**
+ * One act, one charge -- even when the act causes other violations.
+ *
+ * Turning screen sharing off is a single decision, but the browser makes it
+ * look like three. Chrome's "you are sharing your screen" bar takes focus as it
+ * disappears, which arrives as `left_exam`, and dropping the share commonly
+ * drops fullscreen too, which arrives as `fullscreen`. Grouping cannot fix this
+ * -- these really are distinct groups, and a student who genuinely alt-tabs
+ * should still pay for it -- so the cause suppresses its own consequences for a
+ * few seconds instead.
+ *
+ * The consequences are still recorded, at weight zero, exactly like a blocked
+ * key: the reviewer sees the whole sequence, the student is charged once.
+ */
+const CAUSAL_WINDOW_MS = 5000;
+
+const CONSEQUENCES_OF = {
+  screen_share: ["left_exam", "fullscreen"],
+};
+
+/** Is `group` something `causeGroup` would have caused by itself? */
+function isConsequenceOf(causeGroup, group) {
+  return (CONSEQUENCES_OF[causeGroup] || []).includes(group);
+}
+
+/** The cause groups that suppress consequences, for the caller to scan. */
+function causeGroups() {
+  return Object.keys(CONSEQUENCES_OF);
+}
+
 // The browser pings this often; the server allows this long before it decides
 // the browser has gone quiet. Three missed pings plus a little slack.
 const HEARTBEAT_INTERVAL_MS = 5000;
@@ -248,6 +278,9 @@ function isKnownViolationType(violationType) {
 module.exports = {
   VIOLATION_TYPES,
   VIOLATION_WEIGHTS,
+  CAUSAL_WINDOW_MS,
+  isConsequenceOf,
+  causeGroups,
   VIOLATION_GROUPS,
   groupOf,
   BYPASSABLE_PERMISSIONS,
