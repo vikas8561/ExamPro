@@ -564,7 +564,13 @@ router.get("/check-expiration/:id", authenticateToken, async (req, res, next) =>
     const endTimeWithBuffer = new Date(endTime.getTime() + 5000);
 
     if (now > endTimeWithBuffer) {
-      return res.status(400).json({ message: "Test availability window has expired." });
+      return res.status(400).json({
+        message: "Test availability window has expired.",
+        // A stable code, because the exam page keys its auto-submit backstop off
+        // this reply. It used to match on the message text -- and matched the
+        // wrong string, so the backstop never once fired.
+        code: "attempt_expired",
+      });
     }
 
     // Check test time limit if test has started
@@ -573,7 +579,7 @@ router.get("/check-expiration/:id", authenticateToken, async (req, res, next) =>
       const testEndTimeWithBuffer = new Date(testEndTime.getTime() + 5000);
 
       if (now > testEndTimeWithBuffer) {
-        return res.status(400).json({ message: "Test time limit has expired." });
+        return res.status(400).json({ message: "Test time limit has expired.", code: "attempt_expired" });
       }
     }
 

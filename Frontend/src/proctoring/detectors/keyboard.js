@@ -6,9 +6,17 @@
  * unless it is explicitly allowed.** Forgetting something now fails safe.
  *
  * What is allowed, and only inside an answer field: letters, numbers,
- * punctuation, space, backspace, delete, the arrow keys, Home/End, and Enter
- * and Tab where the student is writing code. Outside an answer field the
- * keyboard does nothing at all.
+ * punctuation, space, backspace, delete, the arrow keys, Home/End, Enter and
+ * Tab, and the editing shortcuts a person needs to write with -- select all,
+ * undo, redo, copy, cut, paste, and word-wise movement. Outside an answer field
+ * the keyboard does nothing at all.
+ *
+ * That distinction is what makes the lockdown differ by exam type without
+ * needing to know the exam type: an MCQ paper is answered with radio buttons
+ * and has no field to type into, so it stays fully locked; theory and coding
+ * papers have a textarea or a code editor, so the keyboard works there.
+ * Clipboard keys are no longer swallowed, but the clipboard detector still
+ * cancels the copy or paste itself.
  *
  * On top of that, Chromium browsers (Chrome, Edge, Brave) offer the Keyboard
  * Lock API, which hands us keys the browser normally keeps for itself —
@@ -56,6 +64,54 @@ const EDITING_KEYS = new Set([
   "Tab",
   " ",
 ]);
+
+/**
+ * Ctrl/Cmd shortcuts a person needs in order to edit text at all.
+ *
+ * Allowed ONLY inside an answer field, which is what makes this safe: an MCQ
+ * paper answers with radio buttons and has no such field, so a multiple-choice
+ * exam stays under the same total lockdown as before. Theory and coding tests
+ * are the ones with a textarea or a code editor, and those are exactly the ones
+ * where a keyboard that swallows Ctrl+A and Ctrl+Z is unusable.
+ *
+ * Strictly an allowlist. Ctrl+T, Ctrl+W, Ctrl+N and Ctrl+R are absent on
+ * purpose, as are the devtools, view-source, print and save combos caught by
+ * SUSPICIOUS_COMBOS above -- all of them still fall through to the block below.
+ */
+const EDITING_SHORTCUTS = new Set(["a", "c", "v", "x", "z", "y"]);
+
+/** Keys that move or delete by word or line when held with a modifier. */
+const MODIFIED_NAVIGATION = new Set([
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowUp",
+  "ArrowDown",
+  "Backspace",
+  "Delete",
+  "Home",
+  "End",
+]);
+
+function isEditingShortcut(event) {
+  const primary = event.ctrlKey || event.metaKey;
+
+  if (primary && !event.altKey) {
+    const key = (event.key || "").toLowerCase();
+    // Shift only means anything here for redo (Ctrl+Shift+Z).
+    if (EDITING_SHORTCUTS.has(key) && (!event.shiftKey || key === "z")) return true;
+    if (MODIFIED_NAVIGATION.has(event.key)) return true;
+  }
+
+  // Alt covers macOS word-wise editing (Option+Backspace, Option+Up). Left and
+  // right are deliberately excluded: on Windows and Linux Alt+Left is the
+  // browser's Back, which would take the student out of the exam and lose
+  // whatever they had not saved.
+  if (event.altKey && !primary) {
+    if (["Backspace", "Delete", "ArrowUp", "ArrowDown"].includes(event.key)) return true;
+  }
+
+  return false;
+}
 
 /** Combinations worth recording, because nobody presses these by accident. */
 const SUSPICIOUS_COMBOS = [
@@ -145,6 +201,18 @@ export function createKeyboardDetector({ report, isPaused, onFullscreenRequest }
 
     if (isAltGrCharacter && isAnswerField(event.target)) {
       return; // let the student type their own language
+    }
+
+    // Editing shortcuts, but only where the student is actually writing. See
+    // EDITING_SHORTCUTS: this is what opens the keyboard up for theory and
+    // coding answers while leaving an MCQ paper locked down exactly as it was,
+    // since an MCQ paper has no field to type into.
+    //
+    // Copy, cut and paste are allowed as KEYSTROKES here. The clipboard itself
+    // stays blocked by the clipboard detector -- the key simply no longer
+    // vanishes before the editor sees it.
+    if (isAnswerField(event.target) && isEditingShortcut(event)) {
+      return;
     }
 
     // Any other modifier combination is out. Nothing a student needs to answer

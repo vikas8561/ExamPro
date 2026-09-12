@@ -465,6 +465,14 @@ connectDB(process.env.MONGODB_URI || 'mongodb://localhost:27017/test-platform')
       console.log(`📱 To access from mobile, use your computer's IP address: http://YOUR_IP:${PORT}`);
       console.log(`💡 Find your IP: Windows (ipconfig) | Mac/Linux (ifconfig or ip addr)`);
 
+      // Finalise attempts whose clock ran out while nobody was watching. The
+      // exam page auto-submits at zero, but only if it is still open -- a closed
+      // laptop or a dropped connection used to leave an attempt stuck at
+      // "In Progress" with no score forever. Runs every minute and only touches
+      // attempts already past the grace window, so a live browser always wins.
+      require("./services/expiredAttempts").startExpiredAttemptSweep();
+      console.log("🧹 Expired-attempt sweep running every 60s");
+
       // Probe Judge0 in the background so misconfiguration shows up in the boot
       // log rather than the first time a student presses Run. Never blocks boot.
       require("./services/judge0")

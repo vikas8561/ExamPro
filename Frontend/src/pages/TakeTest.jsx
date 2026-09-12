@@ -149,12 +149,20 @@ const TakeTestInner = ({ submitRef }) => {
         setTimeSpent((prev) => prev + 1);
       }, 1000);
 
+      // The server is the authority on whether time is up. This backstop matters
+      // because a backgrounded tab has its setInterval throttled to roughly once
+      // a minute, so the local countdown above drifts slow and would otherwise
+      // let the exam run over.
+      //
+      // It keys off `error.code`, not the message text. It used to test
+      // `message.includes("Test time has expired")`, which no reply from this
+      // route has ever contained -- so the backstop never fired at all.
       backendCheckTimer = setInterval(async () => {
         try {
           await apiRequest(`/assignments/check-expiration/${assignmentId}`);
         } catch (error) {
           if (
-            error.message.includes("Test time has expired") &&
+            error.code === "attempt_expired" &&
             !isSubmitting &&
             !autoSubmitTriggered.current
           ) {
@@ -1116,6 +1124,11 @@ const TakeTestInner = ({ submitRef }) => {
                     assignmentId={assignmentId}
                     initialLanguage={question.language || "python"}
                     initialCode={answers[question._id] || ""}
+                    // Capture what the student writes. This page keys every
+                    // answer off `answers[question._id]`, and without this the
+                    // coding editor never wrote to it, so the final submit sent
+                    // textAnswer: undefined and the work was silently lost.
+                    onCodeChange={(value) => handleAnswerChange(question._id, value)}
                     onRun={(res) => {/* optional hook */ }}
                     onSubmit={(res) => {/* optional hook */ }}
                   />

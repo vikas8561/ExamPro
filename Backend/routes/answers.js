@@ -19,7 +19,7 @@ router.get("/health", (req, res) => {
 // is live, so answers cannot be posted from outside the exam page.
 router.post("/", authenticateToken, requireProctorSession(), async (req, res, next) => {
   try {
-    const { assignmentId, questionId, selectedOption, textAnswer } = req.body;
+    const { assignmentId, questionId, selectedOption, textAnswer, language } = req.body;
     const userId = req.user.userId;
 
     console.log("📝 Saving answer:", { assignmentId, questionId, userId, selectedOption, textAnswer });
@@ -77,6 +77,9 @@ router.post("/", authenticateToken, requireProctorSession(), async (req, res, ne
       console.log("📝 Updating existing response");
       submission.responses[existingResponseIndex].selectedOption = selectedOption;
       submission.responses[existingResponseIndex].textAnswer = textAnswer;
+      // Only when the client actually sends one, so an MCQ autosave cannot wipe
+      // the language recorded against a coding answer.
+      if (language) submission.responses[existingResponseIndex].language = language;
     } else {
       // Add new response
       console.log("➕ Adding new response");
@@ -84,6 +87,9 @@ router.post("/", authenticateToken, requireProctorSession(), async (req, res, ne
         questionId,
         selectedOption,
         textAnswer,
+        // Kept so a coding answer recovered by the expiry sweep still tells the
+        // mentor which language it was written in.
+        language: language || null,
         isCorrect: false,
         points: 0,
         autoGraded: false

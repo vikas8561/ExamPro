@@ -1,7 +1,8 @@
 const express = require("express");
 const router = express.Router();
 const TestSubmission = require("../models/TestSubmission");
-const { maxMarksForQuestion, isAnswered, markMcq } = require("../services/grading");
+const { gradeSubmission } = require("../services/submissionGrading");
+const { isAttemptExpired, SUBMISSION_GRACE_MS } = require("../services/attemptWindow");
 const Assignment = require("../models/Assignment");
 const Test = require("../models/Test");
 const { authenticateToken, requireRole } = require("../middleware/auth");
@@ -72,35 +73,25 @@ router.post("/", authenticateToken, requireProctorSession({ allowTerminated: tru
 
     console.log("✅ Assignment found:", assignment._id);
 
-    // Check if test time has expired (skip for auto-submit)
-    if (!autoSubmit) {
-      const now = new Date();
+    // Has this attempt run out?
+    //
+    // An auto-submit is the student's own page doing the right thing the moment
+    // the clock hit zero, so it is allowed to land late -- but only inside the
+    // grace window. This check used to be skipped entirely for an auto-submit,
+    // and `autoSubmit` is a flag the browser supplies, so anyone could submit an
+    // attempt hours after it ended just by setting it. Past the grace window the
+    // server's own sweep owns the attempt instead.
+    //
+    // Both clocks are evaluated by services/attemptWindow.js, which the sweep
+    // shares, so the two can never disagree about when a sitting is over.
+    const testForWindow = await Test.findById(assignment.testId).select("timeLimit");
+    const graceMs = autoSubmit ? SUBMISSION_GRACE_MS : 5000;
 
-      // Check 1: Assignment availability window (deadline or startTime + duration)
-      let assignmentEndTime = assignment.deadline;
-      if (!assignmentEndTime) {
-        assignmentEndTime = new Date(assignment.startTime);
-        assignmentEndTime.setMinutes(assignmentEndTime.getMinutes() + assignment.duration);
-      }
-      const assignmentEndWithBuffer = new Date(assignmentEndTime.getTime() + 5000);
-      const assignmentWindowOpen = now <= assignmentEndWithBuffer;
-
-      // Check 2: Test time limit (startedAt + test.timeLimit)
-      // This is what the student's timer is actually based on
-      let testTimeOpen = false;
-      if (assignment.startedAt) {
-        const testWithTimeLimit = await Test.findById(assignment.testId).select("timeLimit");
-        if (testWithTimeLimit?.timeLimit) {
-          const testEndTime = new Date(assignment.startedAt.getTime() + testWithTimeLimit.timeLimit * 60000);
-          const testEndWithBuffer = new Date(testEndTime.getTime() + 5000);
-          testTimeOpen = now <= testEndWithBuffer;
-        }
-      }
-
-      // Allow submission if EITHER window is still open
-      if (!assignmentWindowOpen && !testTimeOpen) {
-        return res.status(400).json({ message: "Test time has expired. Please contact your instructor." });
-      }
+    if (isAttemptExpired(assignment, testForWindow, graceMs)) {
+      return res.status(400).json({
+        message: "Test time has expired. Please contact your instructor.",
+        code: "attempt_expired",
+      });
     }
 
     // Get assignment with test populated for scoring
@@ -149,120 +140,20 @@ router.post("/", authenticateToken, requireProctorSession({ allowTerminated: tru
         .map((response) => [response.questionId.toString(), response])
     );
 
-    // Calculate score
-    let totalScore = 0;
-    let maxScore = 0;
-    let correctCount = 0;
-    let incorrectCount = 0;
-    let notAnsweredCount = 0;
-    const processedResponses = [];
-    const negativeMarkingPercent = assignmentWithTest.testId.negativeMarkingPercent || 0;
-
     // Safety check for questions array
     if (!assignmentWithTest.testId.questions || !Array.isArray(assignmentWithTest.testId.questions)) {
       console.error("Questions array is missing or invalid:", assignmentWithTest.testId.questions);
       return res.status(500).json({ message: "Test questions data is invalid" });
     }
 
-    for (const question of assignmentWithTest.testId.questions) {
-      // Coding questions are scored from their hidden test cases (matching
-      // /api/coding/submit); everything else uses the question's own points.
-      maxScore += maxMarksForQuestion(question);
-
-      const userResponse = responses.find(r => r.questionId === question._id.toString());
-
-      // Debug logging for questionId matching
-      console.log(`🔍 Processing question ${question._id} (${question.kind}):`, {
-        questionId: question._id,
-        questionIdString: question._id.toString(),
-        userResponseFound: !!userResponse,
-        userResponseQuestionId: userResponse?.questionId
-      });
-
-      // Shared with the re-grade path, so a blank means the same thing to both.
-      const hasResponse = isAnswered(userResponse);
-
-      if (!hasResponse) {
-        notAnsweredCount++;
-        processedResponses.push({
-          questionId: question._id,
-          selectedOption: null,
-          textAnswer: null,
-          isCorrect: false,
-          points: 0,
-          autoGraded: false,
-          geminiFeedback: null,
-          correctAnswer: null,
-          errorAnalysis: null,
-          improvementSteps: [],
-          topicRecommendations: []
-        });
-        continue;
-      }
-
-      let isCorrect = false;
-      let points = 0;
-      let geminiFeedback = null;
-      let geminiResult = null;
-      // Tracks whether the score came from a grader rather than a mentor, so a
-      // repeat submit can carry it forward again.
-      let autoGraded = question.kind === "mcq";
-
-      if (question.kind === "mcq") {
-        const marked = markMcq(question, userResponse, negativeMarkingPercent);
-        isCorrect = marked.isCorrect;
-        points = marked.points;
-        if (isCorrect) correctCount++; else incorrectCount++;
-      } else if (question.kind === "theory" || question.kind === "coding") {
-        console.log(`🔍 Processing ${question.kind} question:`, question._id);
-        if (userResponse.textAnswer && userResponse.textAnswer.trim() !== "") {
-          const judged = question.kind === "coding"
-            ? priorAutoGraded.get(question._id.toString())
-            : null;
-
-          if (judged) {
-            // Already graded by Judge0 — keep that score.
-            points = judged.points || 0;
-            isCorrect = Boolean(judged.isCorrect);
-            autoGraded = true;
-            if (isCorrect) correctCount++; else incorrectCount++;
-            console.log(`⚖️  Keeping Judge0 score for ${question._id}: ${points}`);
-          } else {
-            console.log("📝 Text answer found - will be graded by mentor");
-            // Set points to 0 initially - mentor will grade manually
-            points = 0;
-            isCorrect = false; // Not applicable for theory/coding
-          }
-          geminiFeedback = null;
-          geminiResult = null;
-        } else {
-          console.log("❌ No text answer provided for theory/coding question");
-          notAnsweredCount++;
-          points = 0;
-          geminiFeedback = null;
-          isCorrect = false;
-        }
-      }
-
-      totalScore += points;
-
-      processedResponses.push({
-        questionId: question._id,
-        selectedOption: userResponse.selectedOption,
-        textAnswer: userResponse.textAnswer,
-        language: userResponse.language || null, // Save language for coding questions
-        isCorrect,
-        points,
-        autoGraded,
-        geminiFeedback: null, // No Gemini feedback
-        correctAnswer: null, // Answers only visible to mentors
-        errorAnalysis: null,
-        improvementSteps: [],
-        topicRecommendations: []
-      });
-    }
-
-
+    // Mark the paper. The loop that used to live here now lives in
+    // services/submissionGrading.js, so the sweep that finalises abandoned
+    // attempts grades them by exactly the same rules rather than its own copy.
+    const { processedResponses, totalScore, maxScore } = gradeSubmission({
+      test: assignmentWithTest.testId,
+      responses,
+      priorAutoGraded,
+    });
 
     // Create or update submission with permission data
     const submissionData = {

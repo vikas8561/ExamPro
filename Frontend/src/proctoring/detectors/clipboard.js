@@ -25,18 +25,32 @@ export function createClipboardDetector({ report, isPaused, blockContextMenu = t
           (typeof target.closest === "function" && target.closest(".monaco-editor")))
     );
 
+  // Copying inside an answer field is the student copying their own writing.
+  // It is still prevented -- the clipboard stays shut -- but it is not counted
+  // against them, for two reasons. The question text cannot be selected in the
+  // first place (see handleSelectStart), so there is nothing incriminating to
+  // copy from there; and copy_attempt costs a violation each time while the
+  // default budget is zero, so a single reflexive Ctrl+C would have cancelled
+  // the exam. This matters now that the keyboard detector lets Ctrl+C through
+  // to the editor rather than swallowing it first.
   const handleCopy = (event) => {
     if (!active()) return;
     event.preventDefault();
+    if (isAnswerField(event.target)) return;
     report("copy_attempt", "Tried to copy content during the exam");
   };
 
   const handleCut = (event) => {
     if (!active()) return;
     event.preventDefault();
+    if (isAnswerField(event.target)) return;
     report("copy_attempt", "Tried to cut content during the exam");
   };
 
+  // Paste is reported wherever it happens, answer field included. Unlike a
+  // copy, a paste is content arriving from outside the exam, which is the one
+  // thing here actually worth a mentor's attention -- so it stays on the record
+  // even though it is blocked.
   const handlePaste = (event) => {
     if (!active()) return;
     event.preventDefault();
