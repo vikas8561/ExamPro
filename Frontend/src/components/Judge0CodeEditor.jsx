@@ -41,6 +41,7 @@ export default function Judge0CodeEditor({
   initialCode = '',
   onRun,
   onSubmit,
+  onCodeChange,
   className = '',
 }) {
   const [languages, setLanguages] = useState(FALLBACK_LANGUAGES);
@@ -58,6 +59,23 @@ export default function Judge0CodeEditor({
   // Tracks the boilerplate we last inserted, so switching language only
   // overwrites code the student has not actually touched.
   const lastBoilerplateRef = useRef(initialCode || '');
+
+  // Hand the student's code back to the page that owns this editor.
+  //
+  // Without this the code lived only in here: TakeTest.jsx rendered the editor,
+  // never heard a keystroke, and submitted an empty answer for every coding
+  // question it showed. Kept in a ref so an inline arrow prop cannot make the
+  // effect fire on every render -- it fires only when the code really changes.
+  //
+  // Boilerplate is deliberately not reported. It is what we put in the editor,
+  // not something the student wrote, and reporting it would mark an untouched
+  // question as answered.
+  const onCodeChangeRef = useRef(onCodeChange);
+  useEffect(() => { onCodeChangeRef.current = onCodeChange; });
+  useEffect(() => {
+    if (code === lastBoilerplateRef.current) return;
+    onCodeChangeRef.current?.(code, language);
+  }, [code, language]);
 
   useEffect(() => {
     let cancelled = false;

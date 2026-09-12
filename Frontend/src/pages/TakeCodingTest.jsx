@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import apiRequest, { apiStream } from '../services/api';
+import { API_BASE_URL } from '../config/api';
 import LazyMonacoEditor from '../components/LazyMonacoEditor';
 import ProctorProvider from '../proctoring/ProctorProvider';
 import useProctor from '../proctoring/useProctor';
@@ -170,6 +171,12 @@ function TakeCodingTestInner({ submitRef }) {
   const [showSubmitConfirmModal, setShowSubmitConfirmModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const debounceTimers = useRef({});
+  // A ref, not state: the countdown can fire the auto-submit more than once in
+  // a single tick, and `isSubmitting` would still read false in the second
+  // call. TakeTest.jsx has always guarded this way; this page did not, so the
+  // loser of the race got a 400 back and alerted "Failed to submit test" over
+  // the student's own exam as it was submitting.
+  const submitInFlight = useRef(false);
 
 
   // Auto-start test if already started, or start it automatically
@@ -267,8 +274,13 @@ function TakeCodingTestInner({ submitRef }) {
 
 
   const submitTest = async (cancelledDueToViolation = false, autoSubmit = false) => {
-    if (isSubmitting) return;
+    if (isSubmitting || submitInFlight.current) return;
+    submitInFlight.current = true;
     setIsSubmitting(true);
+
+    // Whatever is still sitting in a debounce timer has to reach the server
+    // before the paper does, or the last thing the student typed is not in it.
+    await flushPendingSaves();
 
     try {
       const submissionData = {
@@ -337,6 +349,19 @@ function TakeCodingTestInner({ submitRef }) {
     } catch (error) {
       console.error('Error submitting test:', error);
       setIsSubmitting(false);
+      // Released so the student can genuinely try again. The guard exists to
+      // stop the timer double-firing, not to lock them out after a failure.
+      submitInFlight.current = false;
+
+      // An attempt the server has already finalised is not a failure the
+      // student can do anything about, and telling them the submit failed when
+      // their paper is in would be a lie. This happens when the expiry sweep
+      // got there first, or when a second auto-submit lost the race.
+      if (error.code === 'attempt_expired' || /already completed/i.test(error.message || '')) {
+        nav('/student/assignments');
+        return;
+      }
+
       alert(error.message || 'Failed to submit test. Please try again or contact support.');
       // Don't navigate away - let user try again
     }
@@ -347,15 +372,25 @@ function TakeCodingTestInner({ submitRef }) {
     if (submitRef) submitRef.current = submitTest;
   });
 
+  // Time's up. Guarded by a ref rather than `isSubmitting`, because the
+  // countdown below can reach zero more than once before React has re-rendered.
+  const handleTimeUp = useCallback(() => {
+    if (submitInFlight.current) return;
+    submitTest(false, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assignment, test, codeByQ, languageByQ, timeSpent]);
+
   // Timer countdown
   useEffect(() => {
     if (!testStarted || timeRemaining <= 0) return;
 
     const timer = setInterval(() => {
+      // The submit is fired from outside the state updater. React may invoke an
+      // updater more than once, and a submit is not something to run twice --
+      // this page used to call submitTest() from inside it.
       setTimeRemaining(prev => {
         if (prev <= 1) {
-          // Time's up - auto submit
-          submitTest(false, true);
+          handleTimeUp();
           return 0;
         }
         return prev - 1;
@@ -363,8 +398,24 @@ function TakeCodingTestInner({ submitRef }) {
       setTimeSpent(prev => prev + 1);
     }, 1000);
 
-    return () => clearInterval(timer);
-  }, [testStarted, timeRemaining, submitTest]);
+    // The server is the authority on whether time is up. Without this a
+    // backgrounded tab -- whose setInterval browsers throttle to roughly once a
+    // minute -- lets the exam run well past its deadline with nothing to correct
+    // it. TakeTest.jsx has had this backstop; this page had none.
+    const backendCheckTimer = setInterval(async () => {
+      try {
+        await apiRequest(`/assignments/check-expiration/${assignmentId}`);
+      } catch (error) {
+        if (error.code === "attempt_expired") handleTimeUp();
+      }
+    }, 30000);
+
+    return () => {
+      clearInterval(timer);
+      clearInterval(backendCheckTimer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [testStarted, timeRemaining, assignmentId]);
 
 
   const startTest = async () => {
@@ -489,6 +540,38 @@ function TakeCodingTestInner({ submitRef }) {
       const currentTime = serverTime;
       const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
       const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
+
+      // Put back whatever was autosaved. Without this a student who refreshed,
+      // or whose tab was killed, came back to an empty editor even though their
+      // code was sitting on the server -- which is most of the point of saving
+      // it in the first place.
+      try {
+        const saved = await apiRequest(`/answers/assignment/${finalAssignmentId}`);
+        const savedResponses = Array.isArray(saved) ? saved : (saved?.responses || []);
+        if (savedResponses.length) {
+          const restoredCode = {};
+          const restoredLangs = {};
+          for (const response of savedResponses) {
+            const questionId = String(response.questionId?._id || response.questionId || '');
+            if (!questionId) continue;
+            // Several rows can exist for one question; keep the longest, which
+            // is the furthest the student actually got.
+            const text = response.textAnswer || '';
+            if (text && text.length >= (restoredCode[questionId]?.length || 0)) {
+              restoredCode[questionId] = text;
+            }
+            if (response.language) restoredLangs[questionId] = normalizeLanguageKey(response.language);
+          }
+          if (Object.keys(restoredCode).length) {
+            setCodeByQ(prev => ({ ...prev, ...restoredCode }));
+            setLanguageByQ(prev => ({ ...prev, ...restoredLangs }));
+          }
+        }
+      } catch (error) {
+        // A failed restore must not stop the student getting back into the
+        // exam; they keep the templates and their time.
+        console.error('Could not restore saved code:', error);
+      }
 
       // Violations are no longer restored or judged here. The server carries the
       // count forward when the proctoring session is opened, and refuses to open
@@ -634,17 +717,110 @@ function TakeCodingTestInner({ submitRef }) {
     }
   }, [activeQ, assignment, assignmentId, codeByQ, customInputByQ, judgeBusy, languageByQ]);
 
-  // Auto-save functionality
-  useEffect(() => {
-    if (!autoSaveEnabled || !activeQ) return;
-
-    const timer = setTimeout(() => {
-      // Simulate auto-save (in real app, this would save to backend)
+  // Auto-save.
+  //
+  // This used to be a stub that only moved the "Saved" timestamp forward --
+  // `// Simulate auto-save (in real app, this would save to backend)` -- so the
+  // page told students their work was safe while nothing left the browser. Code
+  // lived in `codeByQ` and nowhere else, and a closed laptop or a dead tab took
+  // all of it: the server-side expiry sweep would finalise the attempt with an
+  // empty paper because there was nothing stored to recover.
+  //
+  // It now writes to the same /answers endpoint the MCQ and theory pages use,
+  // debounced a second after typing stops, and only reports "Saved" once the
+  // server has actually taken it.
+  const saveCodeToBackend = useCallback(async (questionId, code, lang) => {
+    if (!questionId) return;
+    try {
+      await apiRequest('/answers', {
+        method: 'POST',
+        body: JSON.stringify({
+          assignmentId,
+          questionId,
+          selectedOption: null,
+          textAnswer: code || '',
+          language: lang || 'python',
+        }),
+      });
       setLastSaved(new Date());
-    }, 2000); // Auto-save after 2 seconds of inactivity
+    } catch (error) {
+      // Deliberately quiet: this fires while the student is typing, and an
+      // alert every time the network hiccups would be worse than a missed
+      // save. The next keystroke schedules another attempt.
+      console.error('Auto-save failed:', error);
+    }
+  }, [assignmentId]);
 
-    return () => clearTimeout(timer);
-  }, [codeByQ, activeQ, autoSaveEnabled]);
+  /** Push anything still waiting in a debounce timer, and wait for it. */
+  const flushPendingSaves = useCallback(async () => {
+    const pending = Object.entries(debounceTimers.current);
+    debounceTimers.current = {};
+    await Promise.all(pending.map(([questionId, entry]) => {
+      clearTimeout(entry.timer);
+      return saveCodeToBackend(questionId, entry.code, entry.language);
+    }));
+  }, [saveCodeToBackend]);
+
+  useEffect(() => {
+    if (!autoSaveEnabled || !activeQ || !testStarted) return;
+
+    const questionId = activeQ._id;
+    const code = codeByQ[questionId];
+    const lang = languageByQ[questionId];
+
+    // Nothing to save until the editor has something in it.
+    if (code === undefined) return;
+
+    // Don't re-save the language template we inserted ourselves: that is not
+    // the student's work, and storing it would mark an untouched question as
+    // answered.
+    if (code === insertedTemplateRef.current[questionId]) return;
+
+    if (debounceTimers.current[questionId]) {
+      clearTimeout(debounceTimers.current[questionId].timer);
+    }
+    debounceTimers.current[questionId] = {
+      code,
+      language: lang,
+      timer: setTimeout(() => {
+        delete debounceTimers.current[questionId];
+        saveCodeToBackend(questionId, code, lang);
+      }, 1000),
+    };
+  }, [codeByQ, languageByQ, activeQ, autoSaveEnabled, testStarted, saveCodeToBackend]);
+
+  // A closing tab gets one last synchronous attempt. `keepalive` is what lets
+  // the request outlive the page; a normal fetch would be cancelled.
+  useEffect(() => {
+    const handleUnload = () => {
+      for (const [questionId, entry] of Object.entries(debounceTimers.current)) {
+        clearTimeout(entry.timer);
+        try {
+          fetch(`${API_BASE_URL}/answers`, {
+            method: 'POST',
+            keepalive: true,
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${localStorage.getItem('token')}`,
+            },
+            body: JSON.stringify({
+              assignmentId,
+              questionId,
+              selectedOption: null,
+              textAnswer: entry.code || '',
+              language: entry.language || 'python',
+            }),
+          });
+        } catch {
+          // Nothing useful to do while the page is going away.
+        }
+      }
+      debounceTimers.current = {};
+    };
+
+    window.addEventListener('beforeunload', handleUnload);
+    return () => window.removeEventListener('beforeunload', handleUnload);
+  }, [assignmentId]);
 
 
   const formatCode = async () => {

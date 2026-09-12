@@ -66,14 +66,22 @@ const UpcomingTests = ({ data }) => {
     }
   };
 
-  const handleStartTest = async (assignmentId) => {
+  const handleStartTest = async (assignmentId, testType) => {
     try {
       const response = await apiRequest(`/assignments/${assignmentId}/start`, {
         method: 'POST'
       });
 
       if (response.message === "Test started successfully" || response.alreadyStarted) {
-        navigate(`/student/take-test/${assignmentId}`);
+        // A coding exam belongs on the coding page. This used to send every
+        // test to /take-test, which renders coding questions in an editor it
+        // never reads back -- so a coding test started from the dashboard
+        // submitted an empty answer. The assignments list already routed
+        // correctly; this widget did not.
+        const type = testType || response?.test?.type;
+        navigate(type === "coding"
+          ? `/student/take-coding/${assignmentId}`
+          : `/student/take-test/${assignmentId}`);
       } else {
         alert(response.message);
       }
@@ -157,7 +165,7 @@ const UpcomingTests = ({ data }) => {
                     <td className="p-4">
                       {hasStarted ? (
                         <button
-                          onClick={() => handleStartTest(item._id)}
+                          onClick={() => handleStartTest(item._id, item.testId?.type)}
                           className="px-4 py-2 rounded-lg font-medium transition-all"
                           style={{ 
                             backgroundColor: '#FFFFFF',
@@ -231,7 +239,7 @@ const UpcomingTests = ({ data }) => {
                 </div>
                 {hasStarted ? (
                   <button
-                    onClick={() => handleStartTest(item._id)}
+                    onClick={() => handleStartTest(item._id, item.testId?.type)}
                     className="test-card-action w-full px-4 py-2.5 rounded-lg font-medium transition-all"
                     style={{ 
                       backgroundColor: '#FFFFFF',

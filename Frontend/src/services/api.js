@@ -162,7 +162,14 @@ const apiRequest = async (endpoint, options = {}) => {
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+      const error = new Error(errorData.message || `HTTP error! status: ${response.status}`);
+      // Carry the machine-readable parts through. Callers that need to branch on
+      // a specific failure should read `error.code`, never the message text --
+      // the exam page's auto-submit backstop matched on prose and silently
+      // stopped working when the wording drifted.
+      error.status = response.status;
+      if (errorData.code) error.code = errorData.code;
+      throw error;
     }
     
     const jsonStart = Date.now();
