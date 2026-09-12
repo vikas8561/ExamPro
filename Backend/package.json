@@ -12,10 +12,11 @@
     "test:security": "node scripts/security/answer-leak-audit.js && node scripts/security/answer-access-regression.js",
     "test:shuffle": "node scripts/exam/shuffle-order-check.js",
     "test:edit": "node scripts/exam/edit-preserves-answers-check.js",
-    "test:exam": "npm run test:shuffle && npm run test:edit && npm run test:autosubmit && npm run test:kinds && npm run test:deep",
+    "test:exam": "npm run test:shuffle && npm run test:edit && npm run test:autosubmit && npm run test:kinds && npm run test:deep && npm run test:reported",
     "test:autosubmit": "node scripts/exam/auto-submit-check.js",
     "test:kinds": "node scripts/exam/submit-all-kinds-check.js",
-    "test:deep": "node scripts/exam/deep-audit-check.js"
+    "test:deep": "node scripts/exam/deep-audit-check.js",
+    "test:reported": "node scripts/exam/reported-issues-check.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

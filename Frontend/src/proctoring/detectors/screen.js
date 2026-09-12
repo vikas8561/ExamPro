@@ -63,11 +63,39 @@ export async function requestScreenShare() {
   return { ok: true, stream, track };
 }
 
-export function createScreenDetector({ report, isPaused, getStream, detectSecondMonitor: enabled = true }) {
+export function createScreenDetector({
+  report,
+  isPaused,
+  getStream,
+  detectSecondMonitor: enabled = true,
+  onShareStopped,
+}) {
   let timer = null;
   let running = false;
   let stopReported = false;
   let lastMonitorState = null;
+
+  /**
+   * The share has gone. Report it once, and tell the provider, which stops the
+   * exam until it is back -- recording this and carrying on regardless made the
+   * requirement meaningless.
+   */
+  const noteStopped = () => {
+    if (stopReported) return;
+    stopReported = true;
+    report("screen_share_stopped", "Screen sharing was turned off");
+    onShareStopped?.();
+  };
+
+  /** Watch the current track, whichever one that now is. */
+  const watchTrack = () => {
+    const track = getStream?.()?.getVideoTracks?.()[0];
+    if (!track) return;
+    track.addEventListener("ended", () => {
+      if (!running || isPaused?.()) return;
+      noteStopped();
+    });
+  };
 
   const check = () => {
     if (!running || isPaused?.()) return;
@@ -78,9 +106,8 @@ export function createScreenDetector({ report, isPaused, getStream, detectSecond
     const track = stream?.getVideoTracks?.()[0];
     const live = track && track.readyState === "live";
 
-    if (!live && !stopReported) {
-      stopReported = true;
-      report("screen_share_stopped", "Screen sharing was turned off");
+    if (!live) {
+      noteStopped();
     } else if (live) {
       stopReported = false;
     }
@@ -112,15 +139,7 @@ export function createScreenDetector({ report, isPaused, getStream, detectSecond
 
       // The track's own end event is faster than polling when it works; the
       // poll below is the fallback for browsers where it does not fire.
-      const track = getStream?.()?.getVideoTracks?.()[0];
-      if (track) {
-        track.addEventListener("ended", () => {
-          if (!running || isPaused?.()) return;
-          if (stopReported) return;
-          stopReported = true;
-          report("screen_share_stopped", "Screen sharing was turned off");
-        });
-      }
+      watchTrack();
 
       timer = setInterval(check, RECHECK_INTERVAL_MS);
     },
@@ -131,6 +150,19 @@ export function createScreenDetector({ report, isPaused, getStream, detectSecond
         clearInterval(timer);
         timer = null;
       }
+    },
+
+    /**
+     * Point the detector at a freshly granted stream.
+     *
+     * Called after the student re-shares from the blocking overlay. Without
+     * this the detector stays latched on the stop it already reported and
+     * listening to a track that has ended, so a second stop would go unnoticed
+     * -- one free pass at turning the share off for the rest of the exam.
+     */
+    rearm() {
+      stopReported = false;
+      watchTrack();
     },
   };
 }

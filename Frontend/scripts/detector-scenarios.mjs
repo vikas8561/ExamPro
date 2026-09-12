@@ -138,6 +138,49 @@ check("one keystroke reports at most once (single listener)",
 
 kb.stop();
 
+// ── Devtools opened BEFORE the exam ────────────────────────────────────────
+console.log("\n════ Devtools: open before the test starts must not go unnoticed ════\n");
+{
+  // The reported hole: a student opens the Network tab, THEN presses Start. The
+  // detector learned its "clean" baseline with the devtools pane already there,
+  // treated it as ordinary browser chrome, and never reported it for the whole
+  // exam -- docked below or, as in the bug report, docked to the side.
+  const setWindow = (outerW, outerH) => {
+    window.outerWidth = outerW; window.innerWidth = 1440;
+    window.outerHeight = outerH; window.innerHeight = 900;
+  };
+  const runDetector = ({ fullscreen }) => {
+    document.fullscreenElement = fullscreen ? {} : null;
+    const reports = [];
+    const det = createDevtoolsDetector({ report: (t) => reports.push(t), isPaused: () => false, enabled: true });
+    det.start();
+    const open = det.isOpen();
+    det.stop();
+    return { open, reports };
+  };
+
+  setWindow(1440 + 400, 900);
+  check("side-docked devtools open before start IS caught in fullscreen", runDetector({ fullscreen: true }).open);
+
+  setWindow(1440, 900 + 400);
+  check("bottom-docked devtools open before start IS caught in fullscreen", runDetector({ fullscreen: true }).open);
+
+  setWindow(1440, 900);
+  check("fullscreen with no devtools is clean", !runDetector({ fullscreen: true }).open);
+
+  setWindow(1440 + 20, 900 + 20);
+  check("a few pixels of rounding in fullscreen is not devtools", !runDetector({ fullscreen: true }).open);
+
+  // Outside fullscreen the learned baseline still governs, so ordinary chrome
+  // on a windowed browser is still not a violation.
+  setWindow(1440, 900 + 200);
+  check("tall chrome outside fullscreen is still not devtools", !runDetector({ fullscreen: false }).open);
+
+  document.fullscreenElement = null;
+  window.outerWidth = 1440; window.innerWidth = 1440;
+  window.outerHeight = 900; window.innerHeight = 900;
+}
+
 // ── Clipboard ──────────────────────────────────────────────────────────────
 console.log("\n════ Clipboard: still blocked, but a reflex is not a violation ════\n");
 

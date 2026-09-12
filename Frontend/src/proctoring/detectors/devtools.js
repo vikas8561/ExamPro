@@ -45,6 +45,20 @@ const CHECK_INTERVAL_MS = 1500;
 // a devtools pane.
 const GROWTH_THRESHOLD_PX = 140;
 
+// In fullscreen the window fills the display, so outer and inner should agree
+// to within a hair. Anything more is something docked inside the window. The
+// tolerance is for rounding and OS scaling, nothing larger.
+const FULLSCREEN_GAP_TOLERANCE_PX = 60;
+
+function inFullscreen() {
+  if (typeof document === "undefined") return false;
+  return Boolean(
+    document.fullscreenElement ||
+      document.webkitFullscreenElement ||
+      document.msFullscreenElement
+  );
+}
+
 // The console trap is useful but writes to the console, so it runs on every
 // fourth check rather than constantly.
 const TRAP_EVERY = 4;
@@ -101,6 +115,25 @@ export function createDevtoolsDetector({ report, isPaused, enabled = true }) {
   const sizeSignal = () => {
     const { width, height } = gaps();
 
+    // Fullscreen is measured absolutely, not against the baseline.
+    //
+    // The baseline is learned from the window as it is when the exam starts,
+    // which is fine until devtools is ALREADY OPEN at that moment. Then the
+    // devtools pane is measured as if it were ordinary browser chrome, becomes
+    // the "clean" baseline, and nothing is ever reported however long it stays
+    // open -- exactly the hole a student gets by opening the Network tab before
+    // pressing Start, and it works just as well docked to the side as below.
+    //
+    // Fullscreen removes the ambiguity: the window fills the screen, so there
+    // is no chrome to account for and any real gap is devtools. The exam
+    // requires fullscreen, so this is the case that actually matters.
+    if (inFullscreen()) {
+      return width > FULLSCREEN_GAP_TOLERANCE_PX || height > FULLSCREEN_GAP_TOLERANCE_PX;
+    }
+
+    // Outside fullscreen, fall back to growth against the smallest gap seen.
+    // The baseline is only ever lowered here, never while fullscreen, so a
+    // devtools pane cannot be mistaken for furniture and learned as normal.
     if (width < baseWidth) baseWidth = width;
     if (height < baseHeight) baseHeight = height;
 
@@ -152,6 +185,18 @@ export function createDevtoolsDetector({ report, isPaused, enabled = true }) {
       const { width, height } = gaps();
       baseWidth = width;
       baseHeight = height;
+
+      // Ask the console trap straight away rather than waiting for the fourth
+      // check. Devtools that was open before the exam began is the case the
+      // size baseline is worst at, and the trap does not care when it opened.
+      try {
+        if (trap.probe()) {
+          openNow = true;
+          report("devtools_opened", "Developer tools were already open when the test began");
+        }
+      } catch {
+        // Some environments replace console entirely. Not conclusive.
+      }
 
       timer = setInterval(check, CHECK_INTERVAL_MS);
     },

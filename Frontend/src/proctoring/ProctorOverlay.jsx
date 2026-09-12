@@ -22,8 +22,6 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
     warning,
     blockReason,
     offline,
-    violationCount,
-    limit,
     isDevtoolsOpen,
     onDismissWarning,
     onResume,
@@ -39,6 +37,7 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
   useEffect(() => {
     const needsCheck =
       blockReason === "fullscreen" ||
+      blockReason === "screenshare" ||
       warning?.violationType === "devtools_opened" ||
       warning?.violationType === "fullscreen_exit";
 
@@ -48,6 +47,9 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
     }
 
     const check = () => {
+      // The screen-share dialog has nothing to poll: whether the student is
+      // sharing again is only known once they click and the browser answers.
+      if (blockReason === "screenshare") return;
       if (blockReason === "fullscreen" || warning?.violationType === "fullscreen_exit") {
         const fullscreen = Boolean(
           document.fullscreenElement ||
@@ -81,8 +83,6 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
     if (!ok) setStillBroken(true);
   };
 
-  const remaining = limit === -1 ? null : Math.max(0, limit - violationCount);
-
   return (
     <div ref={ref}>
       {/* Status strip. Always visible, so nobody can claim they did not know.
@@ -98,13 +98,15 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
             <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
             <span className="font-medium text-slate-200">Proctored</span>
           </span>
-          {limit !== -1 && (
-            <span className={remaining === 0 ? "text-red-400" : "text-slate-400"}>
-              {remaining === 0
-                ? "No violations left"
-                : `${remaining} violation${remaining === 1 ? "" : "s"} left`}
-            </span>
-          )}
+          {/* No running tally here.
+
+              This used to read "N violations left", and the warning dialog
+              spelled out "Violation 3 of 20 allowed". Between them they handed
+              the student a live budget to spend: exactly how many more times
+              they could look away before it cost them anything. The violation
+              record belongs to whoever reviews the attempt. The student is
+              still told, every single time, that something was recorded -- they
+              just are not told how much room is left. */}
           {offline && <span className="text-amber-400">Offline</span>}
         </div>
       )}
@@ -142,6 +144,40 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
         </div>
       )}
 
+      {/* Screen sharing stopped. The exam does not continue without it.
+
+          Previously this arrived as an ordinary warning with a "Continue Test"
+          button, so the student could switch off the one thing that makes the
+          rest of the proctoring observable and keep working. */}
+      {phase === "blocked" && blockReason === "screenshare" && (
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-950/95 p-4">
+          <div className="w-full max-w-md rounded-xl border border-red-500/30 bg-slate-900 p-8 text-center">
+            <h2 className="mb-4 text-2xl font-bold text-red-400">Screen sharing stopped</h2>
+            <p className="mb-6 text-slate-300">
+              Your exam is paused. Screen sharing is required for the whole test, so you will need
+              to share your entire screen again before you can carry on.
+            </p>
+            <p className="mb-6 text-sm text-slate-500">
+              Choose <span className="font-semibold text-slate-400">Entire Screen</span> when your
+              browser asks. Sharing a single window or tab will not be accepted.
+            </p>
+            {stillBroken && (
+              <p className="mb-4 text-sm font-semibold text-red-400">
+                Screen sharing was not restored. You must share your entire screen to continue.
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={handleResume}
+              disabled={working}
+              className="w-full rounded-md bg-white/90 py-3 font-semibold text-black hover:bg-white disabled:opacity-50"
+            >
+              {working ? "Please wait…" : "Share my screen again"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Warnings and the final cancellation notice. */}
       {warning && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 p-4">
@@ -161,9 +197,7 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
             <p className="mb-4 text-center text-slate-300">{warning.message}</p>
 
             <p className="mb-6 text-center text-sm text-slate-400">
-              {warning.limit === -1
-                ? `Violations recorded: ${warning.count}`
-                : `Violation ${warning.count} of ${warning.limit} allowed`}
+              This has been recorded and sent to your proctor.
             </p>
 
             {stillBroken && warning.violationType === "devtools_opened" && (
