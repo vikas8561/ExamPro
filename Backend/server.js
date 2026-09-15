@@ -438,8 +438,26 @@ app.use((err, req, res, next) => {
   if (err.code === 11000) {
     return res.status(400).json({ message: "Duplicate entry" });
   }
-  
-  res.status(500).json({ 
+
+  // The database being unreachable is not the caller's fault and must not be
+  // reported as though the request was wrong. An Atlas failover surfaces as one
+  // of these, and it is transient: 503 plus Retry-After says so, where a 500
+  // (or the 403 the auth middleware used to send) does not.
+  if (
+    err.name === "MongoServerSelectionError" ||
+    err.name === "MongoNetworkError" ||
+    err.name === "MongoNetworkTimeoutError" ||
+    err.name === "MongoTimeoutError" ||
+    err.name === "MongoNotConnectedError"
+  ) {
+    res.set("Retry-After", "5");
+    return res.status(503).json({
+      message: "The database is temporarily unavailable. Please try again in a moment.",
+      code: "db_unavailable",
+    });
+  }
+
+  res.status(500).json({
     message: "Server error",
     error: process.env.NODE_ENV === 'development' ? err.message : "Internal server error"
   });

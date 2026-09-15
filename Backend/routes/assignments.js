@@ -123,30 +123,48 @@ router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) 
   }
 });
 
-// Get assignments for current student - ULTRA FAST VERSION with pagination
+/**
+ * The cards a student sees on Assigned Tests and on Coding Tests.
+ *
+ * This is one database round trip, and it has to stay one. Every extra await
+ * here is a whole network hop to Atlas -- the queries themselves execute in
+ * under a millisecond, so the wall-clock cost of this endpoint is almost
+ * entirely the number of times it talks to the database. The previous version
+ * issued six in sequence (test ids, count, page, populate test, populate
+ * mentor, question counts) and spent half a second to a second doing nothing
+ * but waiting, for nine cards.
+ *
+ * So the whole thing is a single aggregation:
+ *
+ *   $match     the student's assignments, off the { userId, startTime } index
+ *   $lookup    the test, projected down to the card's fields, with its question
+ *              count computed server-side instead of fetched and measured here
+ *   $match     the test type this page shows -- done after the lookup, so the
+ *              count, the page boundaries and the cards all describe one set
+ *   $facet     the total and the page, from the same cursor
+ *
+ * The test-type filter used to be a separate cached query for "every test id
+ * that is not a practice test", fed back in as a $in of 165 ids. Doing it in
+ * the pipeline removes the round trip, the cache, and the staleness window
+ * where a test created a moment ago was invisible to every student for five
+ * minutes.
+ */
 router.get("/student", authenticateToken, async (req, res, next) => {
   try {
     if (req.user.role !== "Student") {
       return res.status(403).json({ message: "Access denied. Student access only." });
     }
 
-    // Disable ETag for this route to prevent 304 delays
-    res.set('ETag', false);
-    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.set('Pragma', 'no-cache');
-    res.set('Expires', '0');
+    // The card list changes as tests are assigned, so it must not be cached.
+    res.set("Cache-Control", "no-store");
 
-    const startTime = Date.now();
-    console.log('🚀 ULTRA FAST: Fetching assignments for student:', req.user.userId);
-
-    // Pagination parameters
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 9;
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 9, 1), 50);
     const skip = (page - 1) * limit;
-    const testType = req.query.type; // Optional filter for test type (e.g., 'coding')
-    // Types this page does not show at all. Coding exams live on their own page,
-    // and the assigned-tests list used to drop them in the browser AFTER the
-    // server had counted and paginated them -- so the header read "3 total
+
+    // Types this page does not show at all. Coding exams live on their own
+    // page, and the assigned-tests list used to drop them in the browser AFTER
+    // the server had counted and paginated them -- so the header read "3 total
     // assignments - 2 showing", and a page could come back short for no visible
     // reason. Excluding them in the query keeps the count, the pages and the
     // list describing the same set.
@@ -155,220 +173,356 @@ router.get("/student", authenticateToken, async (req, res, next) => {
       .map((t) => t.trim())
       .filter(Boolean);
 
-    // OPTIMIZED: Filter in database, not in memory
-    const testQuery = { type: { $nin: ["practice", ...excluded] } };
-    if (testType) {
-      testQuery.type = testType;
+    // `type=coding` asks for exactly one kind; otherwise it is everything bar
+    // practice tests (which have their own page) and whatever the caller excluded.
+    const testType = req.query.type;
+    const typeFilter = testType
+      ? { "testId.type": testType }
+      : { "testId.type": { $nin: ["practice", ...excluded] } };
+
+    // The list's own filters. These used to run in the browser over whichever
+    // nine rows it had been sent, so searching found only matches that happened
+    // to be on the current page and "Completed" showed fewer tests than the
+    // Completed tile counted. They belong in the query, where the whole set is.
+    //
+    // `subject` and `search` narrow the scope, so the summary tiles are computed
+    // after them. `status` is what the tiles themselves select between, so it is
+    // applied later, per facet branch - otherwise choosing one status would zero
+    // the other three tiles and there would be nothing left to click.
+    const scope = {};
+    if (req.query.subject && req.query.subject !== "all") {
+      scope["testId.subject"] = req.query.subject;
+    }
+    const search = String(req.query.search || "").trim();
+    if (search) {
+      // Escaped: the student's own typing must not reach the regex engine as a
+      // pattern.
+      const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+      scope.$or = [
+        { "testId.title": rx },
+        { "testId.type": rx },
+        { "mentorId.name": rx },
+        { effectiveStatus: rx },
+      ];
     }
 
-    // Step 1: Get test IDs from cache or database (CACHED for 5 minutes)
-    // Allow force refresh via query parameter
-    const forceRefresh = req.query.forceRefresh === 'true';
-    // The excluded types are part of what was cached, or one page's list would
-    // be served from another page's cache entry.
-    const cacheKey = testType
-      ? `tests_${testType}`
-      : `tests_all${excluded.length ? `_not_${excluded.slice().sort().join("_")}` : ""}`;
-    const testQueryStart = Date.now();
-    let validTestIds = forceRefresh ? null : getCachedTestIds(cacheKey);
+    const status = req.query.status;
+    const statusFilter = status && status !== "all" ? { effectiveStatus: status } : null;
 
-    if (!validTestIds) {
-      const validTests = await Test.find(testQuery).select('_id').lean();
-      validTestIds = validTests.map(t => t._id);
-      setCachedTestIds(cacheKey, validTestIds);
-      console.log(`💾 ${forceRefresh ? 'Force refreshed and ' : ''}Cached test IDs for key: ${cacheKey}`);
-    } else {
-      console.log(`⚡ Using cached test IDs for key: ${cacheKey}`);
-    }
-    const testQueryTime = Date.now() - testQueryStart;
-    console.log(`⏱️ Test query: ${testQueryTime}ms - Found ${validTestIds.length} valid tests`);
+    // Attaching a graded percentage to a row. Used twice -- once for the cards
+    // and once for the cumulative average -- and defined once so the tile can
+    // never disagree with the points plotted beside it.
+    const withScore = [
+      {
+        $lookup: {
+          from: "testsubmissions",
+          let: { assignmentId: "$_id" },
+          as: "submission",
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ["$assignmentId", "$$assignmentId"] },
+                // Interim rows written mid-test are not finished work. Legacy
+                // documents have no flag at all, which reads as finalized, so
+                // this must be $ne rather than $eq true.
+                isFinalized: { $ne: false },
+              },
+            },
+            { $project: { totalScore: 1, maxScore: 1 } },
+          ],
+        },
+      },
+      { $unwind: { path: "$submission", preserveNullAndEmptyArrays: true } },
+      {
+        $set: {
+          // The submission is the better source -- it is what the student was
+          // actually marked out of, even if the test has been edited since -- so
+          // it wins whenever it carries a usable maximum. Otherwise fall back to
+          // the assignment's own autoScore over the paper's derived worth, which
+          // is what rescues the graded attempts that have no usable submission:
+          // an abandoned attempt the sweep finalised at zero still scored zero,
+          // and leaving it out flattered the average.
+          scoreBasis: {
+            $cond: [
+              { $gt: [{ $ifNull: ["$submission.maxScore", 0] }, 0] },
+              { total: "$submission.totalScore", max: "$submission.maxScore" },
+              { total: "$autoScore", max: "$testId.maxMarks" },
+            ],
+          },
+        },
+      },
+      {
+        $set: {
+          totalScore: "$scoreBasis.total",
+          maxScore: "$scoreBasis.max",
+          // null, not 0, when the test was never graded: a student who has not
+          // sat a test has no score, and averaging a zero in would drag their
+          // reported performance down.
+          scorePercent: {
+            $cond: [
+              {
+                $and: [
+                  { $gt: [{ $ifNull: ["$scoreBasis.max", 0] }, 0] },
+                  { $ne: [{ $ifNull: ["$scoreBasis.total", null] }, null] },
+                ],
+              },
+              { $round: [{ $multiply: [{ $divide: ["$scoreBasis.total", "$scoreBasis.max"] }, 100] }, 0] },
+              null,
+            ],
+          },
+        },
+      },
+    ];
 
-    // Step 2 & 3: Run count and assignment queries in PARALLEL for maximum speed
-    const parallelStart = Date.now();
-    const [validCount, assignments] = await Promise.all([
-      // Count total valid assignments
-      Assignment.countDocuments({
-        userId: req.user.userId,
-        testId: { $in: validTestIds }
-      }),
-      // Get paginated assignments (optimized - removed populate match, filter in DB)
-      Assignment.find({
-        userId: req.user.userId,
-        testId: { $in: validTestIds }
-      })
-        .select("testId mentorId status startTime duration deadline startedAt completedAt score autoScore mentorScore mentorFeedback reviewStatus timeSpent createdAt")
-        .populate({
-          path: "testId",
-          select: "title type instructions timeLimit subject" // No match filter - we already filtered with $in
-        })
-        .populate("mentorId", "name email")
-        .sort({ startTime: -1, createdAt: -1 }) // Sort by startTime descending (newest first), then by createdAt
-        .limit(limit)
-        .skip(skip)
-        .lean()
-    ]);
-    const parallelTime = Date.now() - parallelStart;
-    console.log(`⏱️ Parallel queries (count + assignments): ${parallelTime}ms - Found ${validCount} total, ${assignments.length} assignments`);
+    // aggregate() does no schema casting, unlike find() -- userId is an
+    // ObjectId on the document and a string in the token, so it has to be cast
+    // by hand or the $match silently returns nothing.
+    const userId = new mongoose.Types.ObjectId(String(req.user.userId));
 
-    // Debug: Log assignment status breakdown
-    const statusBreakdown = assignments.reduce((acc, a) => {
-      acc[a.status] = (acc[a.status] || 0) + 1;
-      return acc;
-    }, {});
-    console.log(`📊 Assignment status breakdown:`, statusBreakdown);
-
-    // Step 4: Get question counts for tests (single aggregation query)
-    const questionCountStart = Date.now();
-    const testIds = [...new Set(assignments.map(a => a.testId?._id).filter(Boolean))];
-    let questionCountMap = {};
-    if (testIds.length > 0) {
-      const questionCounts = await Test.aggregate([
-        { $match: { _id: { $in: testIds } } },
-        { $project: { _id: 1, questionCount: { $size: { $ifNull: ['$questions', []] } } } }
-      ]);
-      questionCounts.forEach(test => {
-        questionCountMap[test._id.toString()] = test.questionCount || 0;
-      });
-    }
-    const questionCountTime = Date.now() - questionCountStart;
-    console.log(`⏱️ Question count query: ${questionCountTime}ms`);
-
-    // Step 5: Transform assignments with question counts
-    // SAFETY: Filter out null testIds (can happen if test was deleted but still in cache)
-    // This is safe - stale cache data is handled gracefully
-    const transformStart = Date.now();
-    const assignmentsWithQuestionCount = assignments
-      .filter(a => a.testId !== null) // Filter out null testIds (deleted tests or cache staleness)
-      .map(assignment => ({
-        ...assignment,
-        testId: {
-          _id: assignment.testId._id,
-          title: assignment.testId.title,
-          type: assignment.testId.type,
-          instructions: assignment.testId.instructions,
-          timeLimit: assignment.testId.timeLimit,
-          subject: assignment.testId.subject,
-          questionCount: questionCountMap[assignment.testId._id.toString()] || 0
-        }
-      }));
-    const transformTime = Date.now() - transformStart;
-    console.log(`⏱️ Transform: ${transformTime}ms`);
-
-    const totalQueryTime = Date.now() - startTime;
-    console.log(`📊 Query breakdown - Tests: ${testQueryTime}ms (cached), Parallel (Count+Assignments): ${parallelTime}ms, Questions: ${questionCountTime}ms, Transform: ${transformTime}ms, Total: ${totalQueryTime}ms`);
-
-    // Auto-start logic - batch update instead of individual updates
-    const autoStartStart = Date.now();
+    // One clock for the whole request: the pipeline classifies rows against it
+    // and the auto-start below writes with it, so a test cannot be counted
+    // Overdue by the database and then started a millisecond later here.
     const now = new Date();
 
-    // Auto-start assignments
-    const assignmentsToAutoStart = assignmentsWithQuestionCount.filter(assignment =>
-      assignment.status === "Assigned" &&
-      assignment.duration === assignment.testId.timeLimit &&
-      now >= new Date(assignment.startTime) &&
-      now <= new Date(assignment.deadline)
+    const [result] = await Assignment.aggregate([
+      { $match: { userId } },
+      {
+        $lookup: {
+          from: "tests",
+          localField: "testId",
+          foreignField: "_id",
+          as: "testId",
+          pipeline: [
+            {
+              $project: {
+                title: 1,
+                type: 1,
+                instructions: 1,
+                timeLimit: 1,
+                subject: 1,
+                // Counted where the questions already are. Shipping the array
+                // back just to read its length was a second query over the same
+                // documents.
+                questionCount: { $size: { $ifNull: ["$questions", []] } },
+                // What the paper is worth, mirroring maxMarksForQuestion() in
+                // services/grading.js exactly: a coding question is worth the
+                // sum of its hidden test cases' marks, falling back to `points`
+                // only when none of them carry any, and `?? 1` rather than
+                // `|| 1` so a deliberately zero-point question stays zero.
+                //
+                // Grading stores this on the submission at submit time, but 51
+                // completed assignments have no submission row at all and 24
+                // have one with maxScore 0, so 75 graded tests had no
+                // denominator and silently vanished from the dashboard. Derived
+                // here, they have one. If the rule in grading.js changes, this
+                // has to change with it or the two will disagree.
+                maxMarks: {
+                  $sum: {
+                    $map: {
+                      input: { $ifNull: ["$questions", []] },
+                      as: "q",
+                      in: {
+                        $let: {
+                          vars: {
+                            codingMarks: {
+                              $cond: [
+                                { $eq: ["$$q.kind", "coding"] },
+                                {
+                                  $sum: {
+                                    $map: {
+                                      input: { $ifNull: ["$$q.hiddenTestCases", []] },
+                                      as: "h",
+                                      in: { $ifNull: ["$$h.marks", 0] },
+                                    },
+                                  },
+                                },
+                                0,
+                              ],
+                            },
+                          },
+                          in: {
+                            $cond: [
+                              { $gt: ["$$codingMarks", 0] },
+                              "$$codingMarks",
+                              { $convert: { input: "$$q.points", to: "double", onError: 1, onNull: 1 } },
+                            ],
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        },
+      },
+      // $unwind rather than preserveNullAndEmptyArrays: an assignment whose
+      // test was deleted has no card to draw and must not be counted.
+      { $unwind: "$testId" },
+      { $match: typeFilter },
+      // Ahead of the facet rather than inside the page branch, because `search`
+      // matches on the mentor's name and so needs it resolved before filtering.
+      // One indexed lookup over this student's own assignments.
+      {
+        $lookup: {
+          from: "mentors",
+          localField: "mentorId",
+          foreignField: "_id",
+          as: "mentorId",
+          pipeline: [{ $project: { name: 1, email: 1 } }],
+        },
+      },
+      // A mentor may legitimately be absent, so this one keeps the row.
+      { $unwind: { path: "$mentorId", preserveNullAndEmptyArrays: true } },
+      // The status a card actually displays, which is not always the status on
+      // the document: an assignment past its deadline reads "Overdue", and one
+      // whose window has opened reads "In Progress" because the auto-start
+      // below is about to move it there. The summary counts are grouped on this
+      // rather than on `status`, so the four tiles agree with the badges under
+      // them instead of contradicting them.
+      {
+        $set: {
+          effectiveStatus: {
+            $switch: {
+              branches: [
+                { case: { $eq: ["$status", "Completed"] }, then: "Completed" },
+                { case: { $eq: ["$status", "In Progress"] }, then: "In Progress" },
+                { case: { $eq: ["$status", "Overdue"] }, then: "Overdue" },
+                {
+                  case: { $eq: ["$status", "Assigned"] },
+                  then: {
+                    $cond: [
+                      {
+                        $and: [
+                          { $eq: ["$duration", "$testId.timeLimit"] },
+                          { $lte: ["$startTime", now] },
+                          { $gte: ["$deadline", now] },
+                        ],
+                      },
+                      "In Progress",
+                      { $cond: [{ $lt: ["$deadline", now] }, "Overdue", "Assigned"] },
+                    ],
+                  },
+                },
+              ],
+              default: "$status",
+            },
+          },
+        },
+      },
+      // Subject and free-text search narrow everything, tiles included.
+      ...(Object.keys(scope).length ? [{ $match: scope }] : []),
+      { $sort: { startTime: -1, createdAt: -1 } },
+      {
+        $facet: {
+          // The status pills filter the list, not the tiles, so they apply here
+          // and not to statusCounts below.
+          total: [...(statusFilter ? [{ $match: statusFilter }] : []), { $count: "n" }],
+          // Counted over every assignment this filter matches, not just the
+          // page. The browser used to tally the nine rows it had been sent, so
+          // the totals changed every time the student turned the page.
+          statusCounts: [{ $group: { _id: "$effectiveStatus", n: { $sum: 1 } } }],
+          // The cumulative average, over every completed assignment rather
+          // than the fifty the dashboard happens to request. Computed from the
+          // same stages the cards use, so the tile and the plotted points can
+          // never disagree; the lookup runs only over completed rows.
+          scoreSummary: [
+            { $match: { status: "Completed" } },
+            ...withScore,
+            { $match: { scorePercent: { $ne: null } } },
+            { $group: { _id: null, average: { $avg: "$scorePercent" }, graded: { $sum: 1 } } },
+          ],
+          page: [
+            ...(statusFilter ? [{ $match: statusFilter }] : []),
+            { $skip: skip },
+            { $limit: limit },
+            // The marks a student actually scored, as a percentage.
+            //
+            // `Assignment.score` is null on every completed assignment in the
+            // database -- nothing populates it -- and `autoScore` holds raw
+            // marks with no denominator beside them, so 34 could be 38% or 97%.
+            ...withScore,
+            {
+              $project: {
+                testId: 1, mentorId: 1, status: 1, startTime: 1, duration: 1,
+                deadline: 1, startedAt: 1, completedAt: 1, score: 1, autoScore: 1,
+                mentorScore: 1, mentorFeedback: 1, reviewStatus: 1, timeSpent: 1,
+                createdAt: 1, totalScore: 1, maxScore: 1, scorePercent: 1,
+                // What the card badge shows. Sent so a client grouping by
+                // status reaches the same answer as the summary counts above.
+                effectiveStatus: 1,
+              },
+            },
+          ],
+        },
+      },
+    ]);
+
+    const assignments = result?.page || [];
+    const validCount = result?.total?.[0]?.n || 0;
+
+    // Scheduled tests move to "In Progress" on their own once their window
+    // opens. The write is deliberately not awaited: the response does not
+    // depend on it, it is idempotent, and the next page load repeats it if it
+    // failed -- so it must not cost the student another round trip's wait.
+    //
+    // Finishing an expired attempt is NOT done here. That belongs to
+    // services/expiredAttempts, which grades the answers the student actually
+    // saved. This route used to do its own version, marking the attempt
+    // Completed with a hard-coded autoScore of 0 after a 30-second buffer --
+    // far inside the five-minute grace the submit route honours, and blind to
+    // the student's own countdown. A student who merely opened this page while
+    // their exam was still running could be zeroed by it.
+    const toAutoStart = assignments.filter(
+      (a) =>
+        a.status === "Assigned" &&
+        a.duration === a.testId.timeLimit &&
+        now >= new Date(a.startTime) &&
+        now <= new Date(a.deadline)
     );
 
-    if (assignmentsToAutoStart.length > 0) {
-      const assignmentIds = assignmentsToAutoStart.map(a => a._id);
-      await Assignment.updateMany(
-        { _id: { $in: assignmentIds } },
-        {
-          status: "In Progress",
-          startedAt: now
-        }
-      );
-
-      // Update local assignment objects
-      assignmentsToAutoStart.forEach(assignment => {
-        assignment.status = "In Progress";
-        assignment.startedAt = now;
+    if (toAutoStart.length > 0) {
+      toAutoStart.forEach((a) => {
+        a.status = "In Progress";
+        a.startedAt = now;
       });
+      Assignment.updateMany(
+        { _id: { $in: toAutoStart.map((a) => a._id) }, status: "Assigned" },
+        { $set: { status: "In Progress", startedAt: now } }
+      ).catch((error) => console.error("Auto-start failed:", error.message));
     }
 
-    // Auto-complete assignments (expired In Progress tests)
-    const assignmentsToAutoComplete = assignmentsWithQuestionCount.filter(assignment =>
-      assignment.status === "In Progress" &&
-      now > new Date(new Date(assignment.startTime).getTime() + (assignment.duration * 60000) + 30000) // Add 30s buffer
-    );
+    const totalPages = Math.ceil(validCount / limit) || 1;
 
-    if (assignmentsToAutoComplete.length > 0) {
-      console.log(`🔄 Found ${assignmentsToAutoComplete.length} expired assignments to auto-complete`);
-
-      const TestSubmission = require("../models/TestSubmission");
-
-      for (const assignment of assignmentsToAutoComplete) {
-        // Update assignment status
-        await Assignment.findByIdAndUpdate(assignment._id, {
-          status: "Completed",
-          completedAt: now,
-          autoScore: 0,
-          reviewStatus: "Not Submitted"
-        });
-
-        // Update local object
-        assignment.status = "Completed";
-        assignment.completedAt = now;
-
-        // Ensure TestSubmission exists
-        const existingSubmission = await TestSubmission.exists({
-          assignmentId: assignment._id,
-          userId: req.user.userId
-        });
-
-        if (!existingSubmission) {
-          console.log(`📝 Creating auto-submission for assignment ${assignment._id}`);
-          await TestSubmission.create({
-            assignmentId: assignment._id,
-            testId: assignment.testId._id,
-            userId: req.user.userId,
-            responses: [],
-            totalScore: 0,
-            maxScore: 0, // Should ideally be calculated from test
-            submittedAt: now,
-            timeSpent: assignment.duration,
-            autoSubmit: true,
-            reviewStatus: "Not Submitted"
-          });
-        }
-      }
-    }
-
-    const autoStartTime = Date.now() - autoStartStart;
-    if (autoStartTime > 0) {
-      console.log(`⏱️ Auto-start/complete: ${autoStartTime}ms`);
-    }
-
-    // Prepare response
-    const responseStart = Date.now();
-
-    // Debug: Log final assignment status breakdown after auto-start
-    const finalStatusBreakdown = assignmentsWithQuestionCount.reduce((acc, a) => {
-      acc[a.status] = (acc[a.status] || 0) + 1;
-      return acc;
-    }, {});
-    console.log(`📊 Final assignment status breakdown (after auto-start):`, finalStatusBreakdown);
-
-    const responseData = {
-      assignments: assignmentsWithQuestionCount,
-      pagination: {
-        currentPage: page,
-        totalPages: Math.ceil(validCount / limit),
-        totalItems: validCount,
-        itemsPerPage: limit,
-        hasNextPage: page < Math.ceil(validCount / limit),
-        hasPrevPage: page > 1
-      }
+    const byStatus = Object.fromEntries((result?.statusCounts || []).map((s) => [s._id, s.n]));
+    const summary = result?.scoreSummary?.[0];
+    const stats = {
+      assigned: byStatus["Assigned"] || 0,
+      inProgress: byStatus["In Progress"] || 0,
+      completed: byStatus["Completed"] || 0,
+      overdue: byStatus["Overdue"] || 0,
+      total: validCount,
+      // Averaged over every completed assignment, so the figure does not depend
+      // on how many rows the caller asked for. null when nothing has been
+      // graded yet, which is not the same as having scored zero.
+      averagePercent: summary ? Math.round(summary.average) : null,
+      gradedCount: summary?.graded || 0,
     };
 
-    // Send response
-    res.json(responseData);
-    const responseTime = Date.now() - responseStart;
-    const totalTime = Date.now() - startTime;
-
-    console.log(`✅ Response sent - Response prep: ${responseTime}ms, Total: ${totalTime}ms`);
+    res.json({
+      assignments,
+      stats,
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalItems: validCount,
+        itemsPerPage: limit,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
+      },
+    });
   } catch (error) {
-    console.error('❌ Error in student assignments:', error);
     next(error);
   }
 });

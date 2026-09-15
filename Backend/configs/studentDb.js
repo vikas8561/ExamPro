@@ -17,7 +17,10 @@ function getStudentConnection() {
     // Only logins and roster reads run here, so the pool stays small.
     maxPoolSize: 50,
     minPoolSize: 5,
-    maxIdleTimeMS: 120000,
+    // Matches the ExamPro pool in db.config.js, and for the same reason: a floor
+    // of 5 against a two-minute idle timeout just trims connections and reopens
+    // them forever. Idle connections are cheap; the handshakes are not.
+    maxIdleTimeMS: 600000,
     serverSelectionTimeoutMS: 15000,
     socketTimeoutMS: 45000,
     connectTimeoutMS: 20000,

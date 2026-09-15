@@ -137,6 +137,11 @@ const AssignmentSchema = new mongoose.Schema({
 
 // Indexes for efficient queries
 AssignmentSchema.index({ userId: 1, status: 1 });
+// The student's own card list: GET /api/assignments/student matches on userId
+// and sorts by startTime, newest first. Without the sort key in the index Mongo
+// has to pull every one of the student's assignments and sort them in memory
+// before it can hand back a page of nine.
+AssignmentSchema.index({ userId: 1, startTime: -1, createdAt: -1 });
 AssignmentSchema.index({ testId: 1, userId: 1 }, { unique: true });
 AssignmentSchema.index({ mentorId: 1, status: 1 });
 AssignmentSchema.index({ mentorId: 1, createdAt: -1 });

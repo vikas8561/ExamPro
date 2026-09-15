@@ -1,39 +1,13 @@
 import React from "react";
-
-const scrollbarStyles = `
-  .custom-scrollbar::-webkit-scrollbar {
-    width: 6px;
-  }
-  
-  .custom-scrollbar::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 10px;
-  }
-  
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.3);
-    border-radius: 10px;
-  }
-  
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.5);
-  }
-`;
+import { Activity, CheckCircle2, PlayCircle, BookCheck, ClipboardList } from "lucide-react";
 
 const RecentActivity = ({ data }) => {
-  // Debug log removed
-
   if (!data || data.length === 0) {
     return (
-      <div 
-        className="rounded-2xl p-6 text-center border"
-        style={{ 
-          backgroundColor: '#0B1220',
-          borderColor: 'rgba(255, 255, 255, 0.2)',
-          color: '#9CA3AF'
-        }}
-      >
-        No recent activity found.
+      <div className="py-10 px-4 text-center text-[#7E8594]">
+        <Activity className="w-7 h-7 mx-auto mb-2 opacity-30 text-[#00C4B4]" />
+        <p className="text-sm font-medium">No recent activity</p>
+        <p className="text-xs text-slate-500 mt-1">Your recent test events will appear here.</p>
       </div>
     );
   }
@@ -45,95 +19,112 @@ const RecentActivity = ({ data }) => {
 
     if (diffInHours < 1) {
       const diffInMinutes = Math.floor((now - activityDate) / (1000 * 60));
-      return diffInMinutes <= 1 ? "Just now" : `${diffInMinutes} minutes ago`;
+      return diffInMinutes <= 1 ? "Just now" : `${diffInMinutes}m ago`;
     } else if (diffInHours < 24) {
-      return `${diffInHours} hours ago`;
+      return `${diffInHours}h ago`;
     } else {
       const diffInDays = Math.floor(diffInHours / 24);
-      return `${diffInDays} days ago`;
+      return `${diffInDays}d ago`;
     }
   };
 
-  const getActivityIcon = (type) => {
+  const getActivityBadge = (type) => {
     switch (type) {
       case "started":
-        return "▶️";
+        return {
+          icon: PlayCircle,
+          color: "text-[#38BDF8]",
+          bg: "bg-[#133242]",
+          border: "border-[#38BDF8]/20",
+          label: "Started",
+        };
       case "completed":
-        return "✅";
+        return {
+          icon: CheckCircle2,
+          color: "text-[#34D399]",
+          bg: "bg-[#143325]",
+          border: "border-[#34D399]/20",
+          label: "Done",
+        };
       case "assigned":
-        return "📋";
+        return {
+          icon: ClipboardList,
+          color: "text-[#FB923C]",
+          bg: "bg-[#332316]",
+          border: "border-[#FB923C]/20",
+          label: "Assigned",
+        };
       case "reviewed":
-        return "📝";
+        return {
+          icon: BookCheck,
+          color: "text-[#C084FC]",
+          bg: "bg-[#281838]",
+          border: "border-[#C084FC]/20",
+          label: "Reviewed",
+        };
       default:
-        return "📌";
+        return {
+          icon: Activity,
+          color: "text-[#00C4B4]",
+          bg: "bg-[#133B42]",
+          border: "border-[#00C4B4]/20",
+          label: "Activity",
+        };
     }
   };
 
   const getActivityMessage = (activity) => {
     switch (activity.type) {
       case "started":
-        return `Started test: ${activity.testTitle || "Test"}`;
+        return `Started ${activity.testTitle || "Test"}`;
       case "completed":
-        return `Completed test: ${activity.testTitle || "Test"}`;
+        return `Completed ${activity.testTitle || "Test"}`;
       case "assigned":
-        return `Assigned test: ${activity.testTitle || "Test"}`;
+        return `New assignment: ${activity.testTitle || "Test"}`;
       case "reviewed":
-        return `Test reviewed: ${activity.testTitle || "Test"}`;
+        return `Reviewed: ${activity.testTitle || "Test"}`;
       default:
-        return activity.message || "Activity";
+        return activity.message || "Test Activity";
     }
   };
 
   return (
-    <>
-      <style>{scrollbarStyles}</style>
-      <div 
-        className="rounded-2xl overflow-hidden border"
-        style={{ 
-          backgroundColor: '#0B1220',
-          borderColor: 'rgba(255, 255, 255, 0.2)'
-        }}
-      >
-      <div className="max-h-80 overflow-y-auto scroll-smooth custom-scrollbar">
-        <div className="p-4">
-          <h4 className="text-lg font-semibold mb-4" style={{ color: '#E5E7EB' }}>Recent Activity</h4>
-          <div className="space-y-3">
-            {data.map((activity, index) => (
-              <div 
-                key={index} 
-                className="recent-activity-item flex items-start space-x-3 p-3 rounded-lg transition-colors border"
-                style={{ 
-                  backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                  borderColor: 'rgba(255, 255, 255, 0.1)'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
-                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
-                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
-                }}
-              >
-                <div className="recent-activity-icon text-xl flex-shrink-0">
-                  {getActivityIcon(activity.type)}
+    <div className="py-2">
+      <div className="space-y-1">
+        {data.slice(0, 5).map((activity, index) => {
+          const badge = getActivityBadge(activity.type);
+          const Icon = badge.icon;
+
+          return (
+            <div
+              key={index}
+              className="group flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all duration-200 hover:bg-white/[0.03] border border-transparent hover:border-white/[0.04]"
+            >
+              <div className="flex items-center gap-3 min-w-0 flex-1 mr-3">
+                <div
+                  className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${badge.bg} ${badge.color} border ${badge.border}`}
+                >
+                  <Icon className="w-4 h-4" />
                 </div>
-                <div className="recent-activity-content flex-1 min-w-0">
-                  <p className="text-sm leading-relaxed" style={{ color: '#E5E7EB' }}>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-slate-200 truncate group-hover:text-white transition-colors">
                     {getActivityMessage(activity)}
-                  </p>
-                  <p className="recent-activity-time text-xs mt-1" style={{ color: '#9CA3AF' }}>
-                    {formatDate(activity.timestamp || activity.createdAt || activity.updatedAt)}
                   </p>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
+
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className="text-xs text-[#7E8594] font-medium">
+                  {formatDate(activity.timestamp || activity.createdAt || activity.updatedAt)}
+                </span>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
-    </>
   );
 };
 
 export default RecentActivity;
+
