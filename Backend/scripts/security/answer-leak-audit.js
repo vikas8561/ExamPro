@@ -28,6 +28,7 @@ async function api(path, { token, method = "GET", body } = {}) {
 (async () => {
   await mongoose.connect(process.env.MONGODB_URI);
   const User = require("../../models/User");
+  const AuthSession = require("../../models/AuthSession");
   const Test = require("../../models/Test");
   const Assignment = require("../../models/Assignment");
   const TestSubmission = require("../../models/TestSubmission");
@@ -39,8 +40,14 @@ async function api(path, { token, method = "GET", body } = {}) {
     const u = new User({ name: `ZZ ${name} ${MARK}`, email: `${MARK}-${name}@verify.invalid`, password: "x", role: "Student" });
     await u.save();
     const token = jwt.sign({ userId: u._id, email: u.email, role: u.role }, process.env.JWT_SECRET, { expiresIn: "1h" });
-    u.activeSessions = [token];
-    await u.save();
+    // Auth moved off User.activeSessions and onto the authsessions
+    // collection, so a token is only live once it has a row there.
+    await AuthSession.create({
+      principalId: String(u._id),
+      role: u.role,
+      token,
+      expiresAt: new Date(Date.now() + 3600_000),
+    });
     bin.users.push(u._id);
     return { user: u, token };
   };
@@ -212,6 +219,7 @@ async function api(path, { token, method = "GET", body } = {}) {
     await Assignment.deleteMany({ _id: { $in: bin.assignments } });
     await Test.deleteMany({ _id: { $in: bin.tests } });
     await User.deleteMany({ _id: { $in: bin.users } });
+    await require("../../models/AuthSession").deleteMany({ principalId: { $in: bin.users.map(String) } });
     console.log(`\n──────────────\n${held} secure, ${leaked} LEAKS`);
     await mongoose.disconnect();
     process.exit(0);

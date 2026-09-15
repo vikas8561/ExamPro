@@ -40,28 +40,75 @@ const VIOLATION_TYPE_SET = new Set(VIOLATION_TYPES);
 /**
  * How much each violation counts against the student's allowance.
  *
- * Most things cost 1. A few cost more because they are unambiguous — you do not
- * open devtools or unplug the proctoring by accident, whereas a notification
- * stealing focus for half a second is genuinely easy to do by mistake.
+ * The governing rule, learned the hard way:
+ *
+ *   Only events with spec-defined, operating-system-independent meaning may
+ *   count towards cancelling an exam. Everything platform-dependent is recorded
+ *   for the reviewer and charged nothing.
+ *
+ * Students on macOS and Linux were having papers auto-submitted by heuristics
+ * that misfire differently on every platform — window measurements that depend
+ * on display scaling and browser zoom, focus flags that cannot tell the browser's
+ * own address bar from another application, screen-capture tracks that blink
+ * during a compositor renegotiation. A heuristic that is wrong on one desktop
+ * environment must not be able to end somebody's exam.
+ *
+ * Anything scored 0 still appears in full on the submission report, with its
+ * timestamp. A reviewer looking at a suspicious paper sees "left the exam window
+ * 14 times"; the system simply will not act on it unaided.
  */
 const VIOLATION_WEIGHTS = {
+  // ── Charged: unambiguous, and identical on every operating system ──
+  //
+  // `visibilitychange`, `fullscreenchange` and the clipboard events are defined
+  // by specification and behave the same on Windows, macOS and Linux.
   tab_switch: 1,
   window_open: 1,
   tab_close: 1,
   browser_switch: 1,
   fullscreen_exit: 1,
-  window_blur: 1,
-  devtools_opened: 2,
   copy_attempt: 1,
   paste_attempt: 1,
+  screen_share_wrong_surface: 1,
+
+  // A capture track actually ending is unambiguous. Scored 1 rather than 2
+  // because the exam is already blocked until the student shares again — the
+  // block is the enforcement, the score should not punish twice.
+  screen_share_stopped: 1,
+
+  // Revoking a permission mid-exam is a deliberate act with a clear signal.
+  permission_revoked: 1,
+
+  // A browser that stops reporting is the one anti-tamper signal worth scoring,
+  // but it is also what a dropped connection looks like, so it is scored once
+  // rather than twice.
+  heartbeat_lost: 1,
+
+  // Detected by window growth sustained over several seconds. Reduced from 2:
+  // a single detection should never be able to exhaust a small allowance on its
+  // own, because this is the check that most recently ended an exam wrongly.
+  devtools_opened: 1,
+
+  // ── Recorded only: real information, but platform-dependent ──
+
+  // `document.hasFocus()` is false whenever focus sits in BROWSER CHROME — the
+  // address bar, an extension popup, or Chrome's "you are sharing your screen"
+  // bar. Clicking Hide on that bar is indistinguishable from switching to
+  // another application, and which one the browser reports differs by operating
+  // system and window manager. In fullscreen a genuine app switch also fires
+  // `visibilitychange`, which IS charged, so little enforcement is lost.
+  window_blur: 0,
+
+  // `screen.isExtended` is unavailable in some browsers and deliberately hidden
+  // by Brave's anti-fingerprinting. Worth showing a reviewer, not worth scoring.
+  second_monitor_detected: 0,
+
+  // Heuristic pattern-matching on injected DOM. Browser extensions a student
+  // has no idea are installed can trip it.
+  page_tampered: 0,
+
   context_menu: 0,        // recorded for the report, never costs the student
   blocked_key: 0,         // recorded only; the key was already blocked
-  screen_share_stopped: 2,
-  screen_share_wrong_surface: 1,
-  second_monitor_detected: 1,
-  permission_revoked: 2,
-  heartbeat_lost: 2,
-  page_tampered: 2,
   network_lost: 0,        // recorded only; a dropped connection is not cheating
 };
 

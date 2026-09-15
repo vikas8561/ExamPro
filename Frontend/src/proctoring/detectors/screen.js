@@ -21,6 +21,9 @@ import { detectSecondMonitor } from "../environment";
 
 const RECHECK_INTERVAL_MS = 5000;
 
+// Polled non-live readings required before a stop is believed. See check().
+const STOP_SUSTAIN_CHECKS = 2;
+
 /**
  * Ask for the whole screen. Returns the stream on success so the caller can
  * keep it alive; returns an error message the student can act on if not.
@@ -75,6 +78,9 @@ export function createScreenDetector({
   let stopReported = false;
   let lastMonitorState = null;
 
+  // Consecutive polled readings of a non-live track before we believe it.
+  let notLiveStreak = 0;
+
   /**
    * The share has gone. Report it once, and tell the provider, which stops the
    * exam until it is back -- recording this and carrying on regardless made the
@@ -102,14 +108,32 @@ export function createScreenDetector({
 
     // Has screen sharing been switched off? Browsers show a "stop sharing"
     // button outside the page, so this is a real and easy thing to do.
+    //
+    // But a single not-live reading is not enough to act on, and acting on one
+    // is what made "screen sharing was turned off" appear by itself on macOS
+    // and Linux. A track can read as not-live for a moment without the student
+    // touching anything:
+    //
+    //   - Linux shares through xdg-desktop-portal / PipeWire, which
+    //     renegotiates the stream when the display configuration changes.
+    //   - macOS interrupts capture briefly when the machine changes Space and
+    //     when a display sleeps.
+    //   - `getStream()` can return null for a tick around a re-render, which
+    //     read as "stopped" just as loudly as a genuinely ended track.
+    //
+    // Requiring the state to hold across consecutive checks costs a few seconds
+    // on a real stop and removes all of that noise. The track's own `ended`
+    // event is authoritative and still reports immediately.
     const stream = getStream?.();
     const track = stream?.getVideoTracks?.()[0];
-    const live = track && track.readyState === "live";
+    const live = Boolean(track) && track.readyState === "live";
 
-    if (!live) {
-      noteStopped();
-    } else if (live) {
+    if (live) {
+      notLiveStreak = 0;
       stopReported = false;
+    } else {
+      notLiveStreak += 1;
+      if (notLiveStreak >= STOP_SUSTAIN_CHECKS) noteStopped();
     }
 
     if (enabled) {
@@ -162,6 +186,7 @@ export function createScreenDetector({
      */
     rearm() {
       stopReported = false;
+      notLiveStreak = 0;
       watchTrack();
     },
   };

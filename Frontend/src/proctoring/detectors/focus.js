@@ -42,9 +42,20 @@
  */
 
 // How long a blur must persist, uncontradicted, before it counts as leaving.
-// Long enough to ride out a click on browser chrome; short enough that
-// genuinely switching to another app is still caught promptly.
-const CONFIRM_MS = 2500;
+//
+// Raised from 2.5s after students reported being warned for clicking "Hide" on
+// Chrome's screen-sharing bar. That click moves focus into browser chrome, which
+// is indistinguishable from switching to another application — the page simply
+// does not have focus either way — and 2.5s was short enough to catch a student
+// reaching for the mouse afterwards.
+//
+// Four seconds is the compromise. Fumbling with browser furniture resolves in
+// one or two; a genuine glance at something else does not. It does not need to
+// be longer than that, because `window_blur` is scored zero (see
+// Backend/services/proctorPolicy.js) — it informs the reviewer and cannot warn
+// the student or end the exam, so the cost of an occasional spurious entry is a
+// line in a report rather than a cancelled paper.
+const CONFIRM_MS = 4000;
 
 // The fallback poll. Only ever *starts* a confirmation, never reports directly.
 const POLL_INTERVAL_MS = 1000;
