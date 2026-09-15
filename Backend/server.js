@@ -318,7 +318,7 @@ app.get("/memory", authenticateToken, requireRole("Admin"), (req, res) => {
 });
 
 // ✅ Rate Limiting - safety net against automated attacks
-// Note: Per-user lockout (3 wrong attempts in 5 min → block) is already handled in auth.js
+// Note: Per-identifier lockout (3 wrong attempts in 5 min → 30-min cooldown) is handled in routes/auth.js
 // These IP-based limiters are just a fallback for extreme brute-force / DDoS attacks
 // IMPORTANT: 500+ students may share the same public IP on college WiFi (NAT),
 // so all limits are set high enough to avoid blocking legitimate users.
@@ -327,14 +327,6 @@ const loginLimiter = rateLimit({
   max: 500, // max 500 FAILED login attempts per IP per 15 min (successful ones don't count)
   skipSuccessfulRequests: true, // ✅ KEY FIX: successful logins (status < 400) are FREE — only failed attempts count
   message: { message: "Too many login attempts. Please try again after 15 minutes." },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-const passwordResetLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 50, // 50 password reset attempts per hour per IP (500 students may share IP)
-  message: { message: "Too many password reset attempts. Please try again after 1 hour." },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -349,7 +341,6 @@ const generalApiLimiter = rateLimit({
 
 // Apply rate limiters to specific routes
 app.use("/api/auth/login", loginLimiter);
-app.use("/api/auth/forgot-password", passwordResetLimiter);
 app.use("/api/users", generalApiLimiter);
 
 // ✅ API routes
@@ -470,6 +461,11 @@ connectDB(process.env.MONGODB_URI || 'mongodb://localhost:27017/test-platform')
       // laptop or a dropped connection used to leave an attempt stuck at
       // "In Progress" with no score forever. Runs every minute and only touches
       // attempts already past the grace window, so a live browser always wins.
+      // Warm the university's student database up front, so the first login
+      // does not pay the connection cost (and a bad URI shows up in the boot
+      // log rather than as a failed sign-in).
+      require("./models/Student");
+
       require("./services/expiredAttempts").startExpiredAttemptSweep();
       console.log("🧹 Expired-attempt sweep running every 60s");
 

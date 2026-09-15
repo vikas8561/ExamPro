@@ -15,7 +15,10 @@ export default function Tests() {
   const [startTime, setStartTime] = useState("");
   const [duration, setDuration] = useState("");
   const [assigning, setAssigning] = useState(false);
-  const [assignmentMode, setAssignmentMode] = useState("all"); // "all", "manual", "ru", "su"
+  // Cohort keys come from the backend (all, ru, su702, su714, cglab3, cglab4,
+  // ssiu) plus the local "manual" mode.
+  const [assignmentMode, setAssignmentMode] = useState("all");
+  const [cohorts, setCohorts] = useState([]);
   const [selectedStudents, setSelectedStudents] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -116,6 +119,17 @@ export default function Tests() {
     }
   }, [assignmentMode, showAssignModal]);
 
+  // Cohorts (with live student counts) for the assignment mode cards.
+  useEffect(() => {
+    if (!showAssignModal) return;
+    apiRequest("/assignments/cohorts")
+      .then((data) => setCohorts(data.cohorts || []))
+      .catch((err) => {
+        console.error("Error fetching cohorts:", err);
+        setCohorts([]);
+      });
+  }, [showAssignModal]);
+
   const fetchStudents = async () => {
     try {
       const data = await apiRequest("/users");
@@ -155,23 +169,28 @@ export default function Tests() {
     }
   };
 
-  // Assign test to all students
-  const assignTestToAll = async () => {
+  // Assign test to a whole cohort. The cohort list is served by the backend
+  // (see services/principals COHORTS) so the campuses stay defined in one place.
+  const assignTestToCohort = async () => {
     if (!selectedTest || !startTime || !duration) return;
+
+    const cohort = cohorts.find((c) => c.key === assignmentMode);
+    if (!cohort) return;
 
     setAssigning(true);
     try {
-      await apiRequest("/assignments/assign-all", {
+      const result = await apiRequest("/assignments/assign-cohort", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           testId: selectedTest,
+          cohort: cohort.key,
           startTime: new Date(startTime).toISOString(),
           duration: parseInt(duration)
         }),
       });
 
-      alert("Test assigned to all students successfully!");
+      alert(result?.message || `Test assigned to ${cohort.label}.`);
       setShowAssignModal(false);
       setSelectedTest(null);
       setStartTime("");
@@ -180,75 +199,12 @@ export default function Tests() {
       fetchTests();
     } catch (err) {
       console.error("Error assigning test:", err);
-      alert("Failed to assign test to students");
+      alert(err.message || `Failed to assign test to ${cohort.label}`);
     } finally {
       setAssigning(false);
     }
   };
 
-  // Assign test to RU students
-  const assignTestToRU = async () => {
-    if (!selectedTest || !startTime || !duration) return;
-
-    setAssigning(true);
-    try {
-      await apiRequest("/assignments/assign-ru", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          testId: selectedTest,
-          startTime: new Date(startTime).toISOString(),
-          duration: parseInt(duration)
-        }),
-      });
-
-      alert("Test assigned to RU students successfully!");
-      setShowAssignModal(false);
-      setSelectedTest(null);
-      setStartTime("");
-      setDuration("");
-      // Refresh tests list to update status from "Draft" to "Active"
-      fetchTests();
-    } catch (err) {
-      console.error("Error assigning test to RU students:", err);
-      alert("Failed to assign test to RU students");
-    } finally {
-      setAssigning(false);
-    }
-  };
-
-  // Assign test to SU students
-  const assignTestToSU = async () => {
-    if (!selectedTest || !startTime || !duration) return;
-
-    setAssigning(true);
-    try {
-      await apiRequest("/assignments/assign-su", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          testId: selectedTest,
-          startTime: new Date(startTime).toISOString(),
-          duration: parseInt(duration)
-        }),
-      });
-
-      alert("Test assigned to SU students successfully!");
-      setShowAssignModal(false);
-      setSelectedTest(null);
-      setStartTime("");
-      setDuration("");
-      // Refresh tests list to update status from "Draft" to "Active"
-      fetchTests();
-    } catch (err) {
-      console.error("Error assigning test to SU students:", err);
-      alert("Failed to assign test to SU students");
-    } finally {
-      setAssigning(false);
-    }
-  };
-
-  // Assign test to selected students manually
   const assignTestToSelected = async () => {
     if (!selectedTest || !startTime || !duration || selectedStudents.length === 0) return;
 
@@ -854,9 +810,12 @@ export default function Tests() {
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {[
-                    { id: 'all', label: 'All Students', icon: Globe, desc: 'Assign to everyone' },
-                    { id: 'ru', label: 'RU Students', icon: Building, desc: 'Regular University' },
-                    { id: 'su', label: 'SU Students', icon: Building, desc: 'Special University' },
+                    ...cohorts.map((c) => ({
+                      id: c.key,
+                      label: c.label,
+                      icon: c.key === 'all' ? Globe : Building,
+                      desc: `${c.description} \u00b7 ${c.count} student${c.count === 1 ? '' : 's'}`,
+                    })),
                     { id: 'manual', label: 'Specific Students', icon: UserCheck, desc: 'Select manually' },
                   ].map((mode) => (
                     <button
@@ -1010,10 +969,8 @@ export default function Tests() {
               </button>
               <button
                 onClick={() => {
-                  if (assignmentMode === "all") assignTestToAll();
-                  else if (assignmentMode === "ru") assignTestToRU();
-                  else if (assignmentMode === "su") assignTestToSU();
-                  else assignTestToSelected();
+                  if (assignmentMode === "manual") assignTestToSelected();
+                  else assignTestToCohort();
                 }}
                 disabled={assigning}
                 className="px-6 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"

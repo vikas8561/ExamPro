@@ -43,14 +43,16 @@ const AssignmentSchema = new mongoose.Schema({
     ref: 'Test',
     required: true
   },
+  // A student in the university's database. That lives on a separate
+  // connection, so there is no ref to populate through - services/principals
+  // hydrates it into { _id, name, email } instead.
   userId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
     required: true
   },
   mentorId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    ref: 'Mentor',
     default: null
   },
   status: {

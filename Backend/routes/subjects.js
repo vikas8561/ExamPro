@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const Subject = require("../models/Subject");
 const { authenticateToken, requireRole } = require("../middleware/auth");
+const { attach } = require("../services/principals");
 
 // Get all subjects (public - for students to use in filters)
 router.get("/public", async (req, res, next) => {
@@ -19,9 +20,11 @@ router.get("/public", async (req, res, next) => {
 // Get all subjects (admin only)
 router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
-    const subjects = await Subject.find({})
-      .populate("createdBy", "name email")
-      .sort({ name: 1 });
+    const subjects = await attach(
+      await Subject.find({}).sort({ name: 1 }).lean(),
+      "createdBy",
+      "Author"
+    );
 
     res.json({ subjects });
   } catch (error) {
@@ -44,8 +47,11 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
       createdBy: req.user.userId
     });
 
-    const populatedSubject = await Subject.findById(subject._id)
-      .populate("createdBy", "name email");
+    const populatedSubject = await attach(
+      await Subject.findById(subject._id).lean(),
+      "createdBy",
+      "Author"
+    );
 
     res.status(201).json(populatedSubject);
   } catch (error) {
@@ -65,11 +71,15 @@ router.put("/:id", authenticateToken, requireRole("admin"), async (req, res, nex
     if (name) updateData.name = name.trim();
     if (description !== undefined) updateData.description = description;
 
-    const subject = await Subject.findByIdAndUpdate(
-      req.params.id,
-      updateData,
-      { new: true, runValidators: true }
-    ).populate("createdBy", "name email");
+    const subject = await attach(
+      await Subject.findByIdAndUpdate(
+        req.params.id,
+        updateData,
+        { new: true, runValidators: true }
+      ).lean(),
+      "createdBy",
+      "Author"
+    );
 
     if (!subject) {
       return res.status(404).json({ message: "Subject not found" });

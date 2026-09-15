@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Camera, Mail, Lock, User as UserIcon, Building2 } from "lucide-react";
+import { Camera, Mail, User as UserIcon, Building2 } from "lucide-react";
 import { API_BASE_URL } from '../config/api';
 import apiRequest from '../services/api';
 
@@ -27,19 +27,6 @@ export default function StudentProfile() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [uploadingImage, setUploadingImage] = useState(false);
-
-  // Email Update States
-  const [showEmailForm, setShowEmailForm] = useState(false);
-  const [newEmail, setNewEmail] = useState("");
-  const [emailLoading, setEmailLoading] = useState(false);
-  const [emailMessage, setEmailMessage] = useState("");
-
-  // Password Change States
-  const [showPasswordForm, setShowPasswordForm] = useState(false);
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [passwordLoading, setPasswordLoading] = useState(false);
-  const [passwordMessage, setPasswordMessage] = useState("");
 
   // Initialize captured image from user profile
   useEffect(() => {
@@ -371,94 +358,6 @@ export default function StudentProfile() {
     };
   }, [stream]);
 
-  // Email Update Functions
-  const handleEmailUpdate = async (e) => {
-    e.preventDefault();
-    if (!newEmail) {
-      setEmailMessage("Please enter a new email address");
-      return;
-    }
-
-    setEmailLoading(true);
-    setEmailMessage("");
-
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${API_BASE_URL}/auth/profile/update-email`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ newEmail })
-      });
-
-      const data = await response.json();
-      if (response.ok) {
-        setEmailMessage("Verification email sent! Please check your new email address and click the verification link.");
-        setShowEmailForm(false);
-        setNewEmail("");
-      } else {
-        setEmailMessage(data.message || "Failed to update email");
-      }
-    } catch (error) {
-      console.error('Error updating email:', error);
-      setEmailMessage("Error updating email. Please try again.");
-    } finally {
-      setEmailLoading(false);
-    }
-  };
-
-  // Password Change Functions
-  const handlePasswordChange = async (e) => {
-    e.preventDefault();
-    if (!newPassword || !confirmPassword) {
-      setPasswordMessage("Please fill in all fields");
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setPasswordMessage("Passwords do not match");
-      return;
-    }
-
-    if (newPassword.length < 6) {
-      setPasswordMessage("Password must be at least 6 characters long");
-      return;
-    }
-
-    setPasswordLoading(true);
-    setPasswordMessage("");
-
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${API_BASE_URL}/auth/profile/change-password`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ newPassword, confirmPassword })
-      });
-
-      const data = await response.json();
-      if (response.ok) {
-        alert("Password changed successfully!");
-        setShowPasswordForm(false);
-        setNewPassword("");
-        setConfirmPassword("");
-        setPasswordMessage("");
-      } else {
-        setPasswordMessage(data.message || "Failed to change password");
-      }
-    } catch (error) {
-      console.error('Error changing password:', error);
-      setPasswordMessage("Error changing password. Please try again.");
-    } finally {
-      setPasswordLoading(false);
-    }
-  };
-
   if (loading && !user) {
     return (
       <div className="min-h-screen p-6" style={{ backgroundColor: '#0B1220' }}>
@@ -749,6 +648,24 @@ export default function StudentProfile() {
               </div>
             </div>
 
+            {(user.rollno || user.universityUID) && (
+              <div
+                className="flex items-center gap-3 p-4 rounded-lg border"
+                style={{
+                  backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                  borderColor: 'rgba(255, 255, 255, 0.2)'
+                }}
+              >
+                <UserIcon className="w-5 h-5" style={{ color: '#FFFFFF' }} />
+                <div className="flex-1">
+                  <p className="text-sm" style={{ color: '#9CA3AF' }}>UniversityUID / Roll No</p>
+                  <p className="text-lg font-semibold" style={{ color: '#E5E7EB' }}>
+                    {user.rollno || user.universityUID}
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div
               className="flex items-center gap-3 p-4 rounded-lg border"
               style={{
@@ -759,106 +676,11 @@ export default function StudentProfile() {
               <Mail className="w-5 h-5" style={{ color: '#FFFFFF' }} />
               <div className="flex-1">
                 <p className="text-sm" style={{ color: '#9CA3AF' }}>Email</p>
-                <p className="text-lg font-semibold" style={{ color: '#E5E7EB' }}>{user.email}</p>
+                <p className="text-lg font-semibold" style={{ color: '#E5E7EB' }}>
+                  {user.email || 'Not on record'}
+                </p>
               </div>
-              {!showEmailForm && (
-                <button
-                  onClick={() => setShowEmailForm(true)}
-                  className="px-4 py-2 text-sm rounded-lg transition border"
-                  style={{
-                    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                    color: '#FFFFFF',
-                    borderColor: 'rgba(255, 255, 255, 0.3)'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
-                  }}
-                >
-                  Update
-                </button>
-              )}
             </div>
-
-            {showEmailForm && (
-              <div
-                className="p-4 rounded-lg space-y-3 border"
-                style={{
-                  backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                  borderColor: 'rgba(255, 255, 255, 0.2)'
-                }}
-              >
-                <form onSubmit={handleEmailUpdate} className="space-y-3">
-                  <input
-                    type="email"
-                    value={newEmail}
-                    onChange={(e) => setNewEmail(e.target.value)}
-                    placeholder="New email address"
-                    className="w-full px-4 py-2 rounded-lg border transition focus:outline-none"
-                    style={{
-                      backgroundColor: '#0B1220',
-                      borderColor: 'rgba(255, 255, 255, 0.3)',
-                      color: '#E5E7EB'
-                    }}
-                    onFocus={(e) => {
-                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)';
-                    }}
-                    onBlur={(e) => {
-                      e.currentTarget.style.borderColor = 'rgba(34, 211, 238, 0.3)';
-                    }}
-                    required
-                  />
-                  {emailMessage && (
-                    <p className="text-sm" style={{ color: emailMessage.includes("sent") ? "#FFFFFF" : "#FCA5A5" }}>
-                      {emailMessage}
-                    </p>
-                  )}
-                  <div className="flex gap-2">
-                    <button
-                      type="submit"
-                      disabled={emailLoading}
-                      className="flex-1 px-4 py-2 rounded-lg transition disabled:opacity-50"
-                      style={{
-                        backgroundColor: '#22D3EE',
-                        color: '#020617'
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!emailLoading) e.currentTarget.style.opacity = '0.9';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.opacity = '1';
-                      }}
-                    >
-                      {emailLoading ? "Sending..." : "Send Verification"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowEmailForm(false);
-                        setNewEmail("");
-                        setEmailMessage("");
-                      }}
-                      className="px-4 py-2 rounded-lg transition border"
-                      style={{
-                        backgroundColor: 'rgba(148, 163, 184, 0.1)',
-                        color: '#94A3B8',
-                        borderColor: 'rgba(148, 163, 184, 0.3)'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.15)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.1)';
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </form>
-              </div>
-            )}
 
             <div
               className="flex items-center gap-3 p-4 rounded-lg border"
@@ -874,143 +696,9 @@ export default function StudentProfile() {
               </div>
             </div>
 
-            {/* Update Password Button */}
-            <button
-              onClick={() => setShowPasswordForm(true)}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg transition border"
-              style={{
-                backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                color: '#FFFFFF',
-                borderColor: 'rgba(255, 255, 255, 0.3)'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
-              }}
-            >
-              <Lock className="w-5 h-5" />
-              Update Password
-            </button>
-
-            {/* Password Update Modal */}
-            {showPasswordForm && (
-              <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center">
-                <div
-                  className="rounded-2xl p-6 max-w-md w-full mx-4 border"
-                  style={{
-                    backgroundColor: '#0B1220',
-                    borderColor: 'rgba(255, 255, 255, 0.3)'
-                  }}
-                >
-                  <h3 className="text-xl font-bold mb-4 text-center" style={{ color: '#E5E7EB' }}>
-                    Update Password
-                  </h3>
-                  <form onSubmit={handlePasswordChange} className="space-y-4">
-                    <div>
-                      <label className="block text-sm mb-1" style={{ color: '#9CA3AF' }}>
-                        New Password
-                      </label>
-                      <input
-                        type="password"
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="Enter new password"
-                        className="w-full px-4 py-2 rounded-lg border transition focus:outline-none"
-                        style={{
-                          backgroundColor: '#0B1220',
-                          borderColor: 'rgba(255, 255, 255, 0.3)',
-                          color: '#E5E7EB'
-                        }}
-                        onFocus={(e) => {
-                          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)';
-                        }}
-                        onBlur={(e) => {
-                          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
-                        }}
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm mb-1" style={{ color: '#9CA3AF' }}>
-                        Confirm New Password
-                      </label>
-                      <input
-                        type="password"
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        placeholder="Confirm new password"
-                        className="w-full px-4 py-2 rounded-lg border transition focus:outline-none"
-                        style={{
-                          backgroundColor: '#0B1220',
-                          borderColor: 'rgba(255, 255, 255, 0.3)',
-                          color: '#E5E7EB'
-                        }}
-                        onFocus={(e) => {
-                          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)';
-                        }}
-                        onBlur={(e) => {
-                          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
-                        }}
-                        required
-                      />
-                    </div>
-                    {passwordMessage && (
-                      <p className="text-sm text-center" style={{ color: passwordMessage.includes("sent") ? "#22D3EE" : "#FCA5A5" }}>
-                        {passwordMessage}
-                      </p>
-                    )}
-                    <div className="flex gap-3 mt-4">
-                      <button
-                        type="submit"
-                        disabled={passwordLoading}
-                        className="flex-1 px-4 py-2 rounded-lg transition disabled:opacity-50"
-                        style={{
-                          backgroundColor: '#22D3EE',
-                          color: '#020617'
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!passwordLoading) e.currentTarget.style.opacity = '0.9';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.opacity = '1';
-                        }}
-                      >
-                        {passwordLoading ? "Sending..." : "Update Password"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowPasswordForm(false);
-                          setNewPassword("");
-                          setConfirmPassword("");
-                          setPasswordMessage("");
-                        }}
-                        className="flex-1 px-4 py-2 rounded-lg transition border"
-                        style={{
-                          backgroundColor: 'rgba(148, 163, 184, 0.1)',
-                          color: '#94A3B8',
-                          borderColor: 'rgba(148, 163, 184, 0.3)'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.15)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.1)';
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>
     </div>
   );
 }
-

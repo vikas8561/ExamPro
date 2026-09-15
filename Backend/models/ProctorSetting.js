@@ -32,7 +32,6 @@ const ProctorSettingSchema = new mongoose.Schema(
     bypassOtpUpdatedAt: { type: Date, default: null },
     bypassOtpUpdatedBy: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
       default: null,
     },
   },

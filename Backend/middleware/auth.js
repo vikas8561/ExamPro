@@ -1,22 +1,19 @@
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const AuthSession = require('../models/AuthSession');
+
+const TOKEN_TTL_HOURS = 24;
 
 // Authentication middleware
 const authenticateToken = async (req, res, next) => {
   // Skip authentication for OPTIONS requests (CORS preflight)
   if (req.method === 'OPTIONS') {
-    console.log('🔧 Skipping auth for OPTIONS request');
     return next();
   }
 
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
-  console.log('🔐 Auth middleware - Method:', req.method);
-  console.log('🔐 Auth middleware - Token present:', !!token);
-
   if (!token) {
-    console.log('❌ No token provided');
     return res.status(401).json({ message: 'Access token required' });
   }
 
@@ -27,26 +24,19 @@ const authenticateToken = async (req, res, next) => {
       return res.status(500).json({ message: 'Server configuration error' });
     }
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    console.log('✅ Token verified for user:', decoded.userId);
-    
-    // OPTIMIZED: Only check activeSessions field, don't load full user document
-    // This is 10x faster than loading the entire user document
-    const userCheck = await User.findById(decoded.userId).select('activeSessions').lean();
-    if (!userCheck) {
-      console.log('❌ User not found:', decoded.userId);
-      return res.status(403).json({ message: 'User not found' });
-    }
-    
-    if (!userCheck.activeSessions || !userCheck.activeSessions.includes(token)) {
-      console.log('❌ Token not in active sessions. User sessions:', userCheck.activeSessions?.length || 0);
+
+    // Single-session check. This used to read `User.activeSessions`, but a
+    // student's record lives in the university's database now and ExamPro never
+    // writes there, so the live token is tracked in `authsessions` instead.
+    // One indexed lookup, no identity document loaded.
+    const session = await AuthSession.exists({ token });
+    if (!session) {
       return res.status(403).json({ message: 'Invalid or expired session' });
     }
-    
-    console.log('✅ Authentication successful for user:', decoded.userId);
+
     req.user = decoded;
     next();
   } catch (err) {
-    console.log('❌ Token verification failed:', err.message);
     return res.status(403).json({ message: 'Invalid or expired token' });
   }
 };
@@ -54,45 +44,54 @@ const authenticateToken = async (req, res, next) => {
 // Role-based authorization middleware
 const requireRole = (role) => {
   return (req, res, next) => {
-    // console.log('Role check - User:', req.user);
-    // console.log('Required role:', role);
-    // console.log('User role:', req.user?.role);
-    // console.log('User role type:', typeof req.user?.role);
-    
     if (!req.user) {
       return res.status(401).json({ message: 'Authentication required' });
     }
-    
+
     // Allow array of roles
     const allowedRoles = Array.isArray(role) ? role : [role];
-    
+
     // Normalize role to string and lowercase for comparison
     const userRole = String(req.user?.role || '').toLowerCase();
     const normalizedAllowedRoles = allowedRoles.map(r => String(r).toLowerCase());
-    
-    // console.log('Normalized user role:', userRole);
-    // console.log('Normalized allowed roles:', normalizedAllowedRoles);
-    
+
     if (!normalizedAllowedRoles.includes(userRole)) {
-      return res.status(403).json({ 
-        message: `Access denied. ${allowedRoles.join(' or ')} role required. Your role: ${req.user.role}` 
+      return res.status(403).json({
+        message: `Access denied. ${allowedRoles.join(' or ')} role required. Your role: ${req.user.role}`
       });
     }
-    
+
     next();
   };
 };
 
-// Optional: Create token
-const generateToken = (user) => {
+// Issue a token for an authenticated principal. `principal` is the normalized
+// shape from services/principals - a student, mentor or admin alike.
+const generateToken = (principal) => {
   if (!process.env.JWT_SECRET) {
     throw new Error('FATAL: JWT_SECRET environment variable is not set!');
   }
   return jwt.sign(
-    { userId: user._id, email: user.email, role: user.role },
+    { userId: principal._id, email: principal.email, role: principal.role },
     process.env.JWT_SECRET,
-    { expiresIn: '24h' }
+    { expiresIn: `${TOKEN_TTL_HOURS}h` }
   );
 };
 
-module.exports = { authenticateToken, generateToken, requireRole };
+// Replace any existing session for this principal, so signing in on a new
+// device still kicks the old one out exactly as it did before.
+const startSession = async (principal, token) => {
+  await AuthSession.deleteMany({ principalId: String(principal._id) });
+  await AuthSession.create({
+    principalId: String(principal._id),
+    role: principal.role,
+    token,
+    expiresAt: new Date(Date.now() + TOKEN_TTL_HOURS * 60 * 60 * 1000),
+  });
+};
+
+const endSession = async (token) => {
+  await AuthSession.deleteMany({ token });
+};
+
+module.exports = { authenticateToken, generateToken, requireRole, startSession, endSession, TOKEN_TTL_HOURS };

@@ -3,6 +3,7 @@ const router = express.Router();
 const Test = require("../models/Test");
 const PracticeTestSubmission = require("../models/PracticeTestSubmission");
 const { authenticateToken, requireRole } = require("../middleware/auth");
+const { attach } = require("../services/principals");
 
 
 // MEMORY OPTIMIZATION: Clean up old practice test data
@@ -46,11 +47,12 @@ router.get("/", authenticateToken, async (req, res, next) => {
       status: "Active" 
     })
     .select("title subject instructions timeLimit createdBy") // Removed questions from select
-    .populate("createdBy", "name email")
     .sort({ createdAt: -1 })
     .limit(limit)
     .skip(skip)
     .lean();
+
+    await attach(tests, "createdBy", "Author");
 
     // OPTIMIZED: Get question counts using aggregation (faster than loading questions array)
     const testIds = tests.map(t => t._id);

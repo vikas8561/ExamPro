@@ -25,9 +25,9 @@ const SessionViolationSchema = new mongoose.Schema(
 
 const ProctorSessionSchema = new mongoose.Schema(
   {
+    // Student in the university's database - hydrate via services/principals.
     userId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
       required: true,
       index: true,
     },

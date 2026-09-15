@@ -63,9 +63,9 @@ const TestSubmissionSchema = new mongoose.Schema({
     ref: 'Test', 
     required: true 
   },
+  // Student in the university's database - hydrate via services/principals.
   userId: { 
     type: mongoose.Schema.Types.ObjectId, 
-    ref: 'User', 
     required: true 
   },
   responses: { type: [ResponseSchema], default: [] },

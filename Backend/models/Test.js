@@ -90,7 +90,9 @@ const TestSchema = new mongoose.Schema(
       default: "Draft",
     },
     questions: { type: [QuestionSchema], default: [] },
-    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    // Created by an admin or a mentor, so no single ref fits: hydrate via
+    // services/principals.authorMap.
+    createdBy: { type: mongoose.Schema.Types.ObjectId, required: true },
   },
   { timestamps: true }
 );

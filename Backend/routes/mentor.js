@@ -2,10 +2,10 @@ const express = require("express");
 const router = express.Router();
 const mongoose = require("mongoose");
 const Assignment = require("../models/Assignment");
-const User = require("../models/User");
 const Test = require("../models/Test");
 const TestSubmission = require("../models/TestSubmission");
 const { authenticateToken, requireRole } = require("../middleware/auth");
+const { attach } = require("../services/principals");
 
 // Test endpoint removed for security - was publicly accessible
 
@@ -16,26 +16,34 @@ router.get("/dashboard", authenticateToken, requireRole(["Mentor", "Admin"]), as
     // console.log('Fetching dashboard for mentor:', mentorId);
     
     // Get all assignments so mentors can see all student submissions
-    const assignments = await Assignment.find({})
-      .populate("testId", "title type instructions timeLimit")
-      .populate("userId", "name email")
-      .sort({ createdAt: -1 });
+    const assignments = await attach(
+      await Assignment.find({})
+        .populate("testId", "title type instructions timeLimit")
+        .sort({ createdAt: -1 })
+        .lean(),
+      "userId",
+      "Student"
+    );
 
     const activeAssignments = assignments.filter(a => a.status === "In Progress");
     const completedAssignments = assignments.filter(a => a.status === "Completed");
     
     // Get test submissions for monitoring (with limit to avoid performance issues)
-    const submissions = await TestSubmission.find({ isFinalized: { $ne: false } })
-      .populate({
-        path: "assignmentId",
-        populate: {
-          path: "testId",
-          select: "title"
-        }
-      })
-      .populate("userId", "name email")
-      .sort({ submittedAt: -1 })
-      .limit(10); // Limit to 10 most recent submissions
+    const submissions = await attach(
+      await TestSubmission.find({ isFinalized: { $ne: false } })
+        .populate({
+          path: "assignmentId",
+          populate: {
+            path: "testId",
+            select: "title"
+          }
+        })
+        .sort({ submittedAt: -1 })
+        .limit(10) // Limit to 10 most recent submissions
+        .lean(),
+      "userId",
+      "Student"
+    );
 
     res.json({
       totalAssigned: assignments.length,
@@ -65,14 +73,15 @@ router.get("/assignments", authenticateToken, requireRole(["Mentor", "Admin"]), 
 
     // ULTRA FAST: Get assignments with MINIMAL population (NO questions!)
     // Show ALL assignments so mentors can see all student submissions
-    const assignments = await Assignment.find({})
+    const rawAssignments = await Assignment.find({})
       .populate("testId", "title type instructions timeLimit") // NO questions!
-      .populate("userId", "name email")
       .select("testId userId mentorId status startTime duration deadline startedAt completedAt score autoScore mentorScore mentorFeedback reviewStatus timeSpent createdAt")
       .sort({ createdAt: -1 })
       .limit(limit)
       .skip(skip)
       .lean(); // Use lean() for 2x faster queries
+
+    const assignments = await attach(rawAssignments, "userId", "Student");
 
     console.log(`📊 Found ${assignments.length} assignments in ${Date.now() - startTime}ms`);
     console.log('Sample assignments:', assignments.slice(0, 3).map(a => ({ 
@@ -175,23 +184,26 @@ router.get("/submissions", authenticateToken, requireRole(["Mentor", "Admin"]), 
     const skip = (page - 1) * limit;
 
     // Use optimized query with pagination
-    const submissions = await TestSubmission.find({ isFinalized: { $ne: false } })
-      .populate({
-        path: "assignmentId",
-        populate: {
-          path: "testId",
-          select: "title questions",
+    const submissions = await attach(
+      await TestSubmission.find({ isFinalized: { $ne: false } })
+        .populate({
+          path: "assignmentId",
           populate: {
-            path: "questions",
-            select: "kind text options answer answers guidelines examples points"
+            path: "testId",
+            select: "title questions",
+            populate: {
+              path: "questions",
+              select: "kind text options answer answers guidelines examples points"
+            }
           }
-        }
-      })
-      .populate("userId", "name email")
-      .sort({ submittedAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean();
+        })
+        .sort({ submittedAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      "userId",
+      "Student"
+    );
 
     // Group submissions by student
     const studentsMap = new Map();
@@ -329,12 +341,17 @@ router.get("/monitor/:assignmentId", authenticateToken, requireRole(["Mentor", "
   try {
     const { assignmentId } = req.params;
     
-    const assignment = await Assignment.findById(assignmentId)
-      .populate("testId")
-      .populate("userId", "name email");
-    
-    const submission = await TestSubmission.findOne({ assignmentId })
-      .populate("userId", "name email");
+    const assignment = await attach(
+      await Assignment.findById(assignmentId).populate("testId").lean(),
+      "userId",
+      "Student"
+    );
+
+    const submission = await attach(
+      await TestSubmission.findOne({ assignmentId }).lean(),
+      "userId",
+      "Student"
+    );
     
     if (!assignment) {
       return res.status(404).json({ error: "Assignment not found" });
@@ -361,11 +378,15 @@ router.get("/monitor/:assignmentId", authenticateToken, requireRole(["Mentor", "
 router.put("/assignments/:id/review", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res) => {
   try {
     const { notes, status } = req.body;
-    const assignment = await Assignment.findByIdAndUpdate(
-      req.params.id,
-      { notes, status },
-      { new: true }
-    ).populate("testId").populate("userId", "name email");
+    const assignment = await attach(
+      await Assignment.findByIdAndUpdate(
+        req.params.id,
+        { notes, status },
+        { new: true }
+      ).populate("testId").lean(),
+      "userId",
+      "Student"
+    );
 
     res.json(assignment);
   } catch (err) {
@@ -393,15 +414,15 @@ router.get("/submissions/pending", authenticateToken, requireRole(["Mentor", "Ad
       isFinalized: { $ne: false }
     })
     .populate("testId", "title")
-    .populate("userId", "name email")
     .populate({
       path: "assignmentId",
       select: "mentorId status deadline"
     })
-    .sort({ submittedAt: -1 });
+    .sort({ submittedAt: -1 })
+    .lean();
 
     // console.log(`Found ${submissions.length} pending submissions for review`);
-    res.json(submissions);
+    res.json(await attach(submissions, "userId", "Student"));
   } catch (error) {
     console.error("Error fetching mentor pending submissions:", error);
     next(error);

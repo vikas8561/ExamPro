@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Assignment = require('../models/Assignment');
 const { authenticateToken, requireRole } = require('../middleware/auth');
+const { attach } = require("../services/principals");
 
 // Debug endpoint to check current user role (admin only)
 router.get('/check-role', authenticateToken, requireRole("Admin"), (req, res) => {
@@ -16,9 +17,11 @@ router.get('/check-role', authenticateToken, requireRole("Admin"), (req, res) =>
 // Debug endpoint to check assignment status (admin only)
 router.get('/assignment/:id/status', authenticateToken, requireRole("Admin"), async (req, res) => {
   try {
-    const assignment = await Assignment.findById(req.params.id)
-      .populate('testId', 'title')
-      .populate('userId', 'name email');
+    const assignment = await attach(
+      await Assignment.findById(req.params.id).populate('testId', 'title').lean(),
+      'userId',
+      'Student'
+    );
 
     if (!assignment) {
       return res.status(404).json({ message: 'Assignment not found' });

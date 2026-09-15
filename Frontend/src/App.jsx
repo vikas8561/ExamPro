@@ -8,10 +8,6 @@ import "./styles/StudentSidebar.mobile.css";
 
 import CreateTest from "./pages/CreateTest";
 import Login from "./pages/Login";
-import ForgotPassword from "./pages/ForgotPassword";
-import ResetPassword from "./pages/ResetPassword";
-import VerifyEmail from "./pages/VerifyEmail";
-import VerifyPassword from "./pages/VerifyPassword";
 import StudentDashboard from "./pages/StudentDashboard";
 import StudentAssignments from "./pages/StudentAssignments";
 import StudentResults from "./pages/StudentResults";
@@ -37,8 +33,10 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   const token = localStorage.getItem('token');
   const user = JSON.parse(localStorage.getItem('user') || '{}');
 
-  // Must have a token to be authenticated
-  if (!token || !user.email) {
+  // Must have a token to be authenticated. Identity is checked on `_id`, not
+  // email: students sign in with a UniversityUID or roll number and many have
+  // no email address recorded at all.
+  if (!token || !user._id) {
     return <Navigate to="/login" replace />;
   }
 
@@ -179,10 +177,6 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
-      <Route path="/forgot-password" element={<ForgotPassword />} />
-      <Route path="/reset-password" element={<ResetPassword />} />
-      <Route path="/verify-email" element={<VerifyEmail />} />
-      <Route path="/verify-password" element={<VerifyPassword />} />
 
       {/* Admin Routes */}
       <Route

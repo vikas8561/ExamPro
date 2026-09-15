@@ -7,9 +7,9 @@ const DSAQuestionNoteSchema = new mongoose.Schema(
       ref: "DSAQuestion",
       required: true,
     },
+    // Student in the university's database - hydrate via services/principals.
     userId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
       required: true,
     },
     notes: {

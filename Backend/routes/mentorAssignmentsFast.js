@@ -3,6 +3,7 @@ const router = express.Router();
 const Assignment = require("../models/Assignment");
 const TestSubmission = require("../models/TestSubmission");
 const { authenticateToken, requireRole } = require("../middleware/auth");
+const { attach } = require("../services/principals");
 // ULTRA-FAST assignments endpoint - optimized for 30+ second loading issue (mentor/admin only)
 router.get("/assignments", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res) => {
   try {
@@ -24,14 +25,18 @@ router.get("/assignments", authenticateToken, requireRole(["Mentor", "Admin"]), 
         select: "title type instructions timeLimit",
         match: { type: { $ne: "practice" } } // Exclude practice tests from mentor assignments
       })
-      .populate("userId", "name email")
       .sort({ createdAt: -1 })
       .limit(limit)
       .skip(skip)
       .lean(); // Use lean() for 2x faster queries
 
     // Filter out assignments where testId is null (due to the match filter above)
-    const filteredAssignments = assignments.filter(assignment => assignment.testId !== null);
+    // then resolve each student from the university's database.
+    const filteredAssignments = await attach(
+      assignments.filter(assignment => assignment.testId !== null),
+      "userId",
+      "Student"
+    );
     
     // console.log(`📊 Found ${filteredAssignments.length} assignments in ${Date.now() - startTime}ms`);
     

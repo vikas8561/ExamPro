@@ -3,7 +3,15 @@ const router = express.Router();
 const mongoose = require("mongoose");
 const Assignment = require("../models/Assignment");
 const Test = require("../models/Test");
-const User = require("../models/User");
+const {
+  attach,
+  COHORTS,
+  getCohort,
+  findStudentsByCohort,
+  cohortCounts,
+} = require("../services/principals");
+const Student = require("../models/Student");
+const Mentor = require("../models/Mentor");
 const { authenticateToken, requireRole } = require("../middleware/auth");
 const { getCachedTestIds, setCachedTestIds, invalidateTestCache } = require("../utils/testCache");
 const { attachProctorStatus, mayServeQuestions } = require("../middleware/proctorSession");
@@ -94,13 +102,17 @@ router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) 
         select: "title type instructions timeLimit",
         match: { type: { $ne: "practice" } } // Exclude practice tests from admin assignments
       })
-      .populate("userId", "name email")
       .populate("mentorId", "name email")
       .sort({ createdAt: -1 })
       .lean(); // Use lean() for 2x faster queries
 
-    // Filter out assignments where testId is null (due to the match filter above)
-    const filteredAssignments = assignments.filter(assignment => assignment.testId !== null);
+    // Filter out assignments where testId is null (due to the match filter
+    // above), then resolve each student from the university's database.
+    const filteredAssignments = await attach(
+      assignments.filter(assignment => assignment.testId !== null),
+      "userId",
+      "Student"
+    );
 
     const totalTime = Date.now() - startTime;
     // console.log(`✅ ULTRA FAST admin assignments completed in ${totalTime}ms - Found ${filteredAssignments.length} assignments`);
@@ -499,6 +511,17 @@ router.get("/student/recent-activity", authenticateToken, async (req, res, next)
 });
 
 // Get assignment by ID
+// The cohorts a test can be assigned to, with live student counts (admin only).
+router.get("/cohorts", authenticateToken, requireRole("admin"), async (req, res, next) => {
+  try {
+    res.json({ cohorts: await cohortCounts() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Assign test to specific students manually (admin only)
+
 router.get("/:id", authenticateToken, attachProctorStatus(), async (req, res, next) => {
   try {
     // NOTE: `questions` is an embedded array on Test, not a reference, so the
@@ -511,12 +534,14 @@ router.get("/:id", authenticateToken, attachProctorStatus(), async (req, res, ne
         path: "testId",
         select: "title type instructions timeLimit allowedTabSwitches shuffleQuestions questions",
       })
-      .populate("userId", "name email")
-      .populate("mentorId", "name email");
+      .populate("mentorId", "name email")
+      .lean();
 
     if (!assignment) {
       return res.status(404).json({ message: "Assignment not found" });
     }
+
+    await attach(assignment, "userId", "Student");
 
     // Check if user has access to this assignment.
     //
@@ -681,10 +706,14 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
       await updatedTest.save();
     }
 
-    const populatedAssignment = await Assignment.findById(assignment._id)
-      .populate("testId", "title type instructions timeLimit subject")
-      .populate("userId", "name email")
-      .populate("mentorId", "name email");
+    const populatedAssignment = await attach(
+      await Assignment.findById(assignment._id)
+        .populate("testId", "title type instructions timeLimit subject")
+        .populate("mentorId", "name email")
+        .lean(),
+      "userId",
+      "Student"
+    );
 
     // Emit real-time update to specific student
     const io = req.app.get('io');
@@ -960,156 +989,148 @@ router.put("/:id", authenticateToken, requireRole("admin"), async (req, res, nex
       { new: true }
     )
       .populate("testId", "title type instructions timeLimit")
-      .populate("userId", "name email")
-      .populate("mentorId", "name email");
+      .populate("mentorId", "name email")
+      .lean();
 
     if (!assignment) {
       return res.status(404).json({ message: "Assignment not found" });
     }
 
-    res.json(assignment);
+    res.json(await attach(assignment, "userId", "Student"));
   } catch (error) {
     next(error);
   }
 });
 
-// Assign test to all students (admin only) - OPTIMIZED for large numbers
-router.post("/assign-all", authenticateToken, requireRole("admin"), async (req, res, next) => {
+// Assign a test to a whole cohort (admin only).
+//
+// This replaces the old /assign-all, /assign-ru and /assign-su routes, which
+// were three near-identical copies of the same 190 lines differing only in which
+// students they selected. The cohort list lives in services/principals, so a new
+// campus needs one entry there and nothing here.
+router.post("/assign-cohort", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
-    const { testId, startTime, duration, mentorId } = req.body;
+    const { testId, startTime, duration, mentorId, cohort } = req.body;
 
-    if (!testId || !startTime || !duration) {
-      return res.status(400).json({ message: "testId, startTime, and duration are required" });
+    if (!testId || !startTime || !duration || !cohort) {
+      return res.status(400).json({ message: "testId, startTime, duration and cohort are required" });
     }
 
-    // Get test to validate timeLimit
+    const cohortDef = getCohort(cohort);
+    if (!cohortDef) {
+      return res.status(400).json({
+        message: `Unknown cohort "${cohort}". Expected one of: ${COHORTS.map((c) => c.key).join(", ")}`
+      });
+    }
+
     const test = await Test.findById(testId);
     if (!test) {
       return res.status(404).json({ message: "Test not found" });
     }
 
-    // Validate duration >= timeLimit
     if (Number(duration) < test.timeLimit) {
       return res.status(400).json({
         message: `Duration (${duration} minutes) must be greater than or equal to test time limit (${test.timeLimit} minutes)`
       });
     }
 
-    // Send response immediately to prevent timeout
-    res.status(202).json({
-      message: "Assignment process started. This may take a few moments for large numbers of students.",
-      status: "processing"
-    });
-
-    // Continue processing in background
-    (async () => {
-      try {
-        // Get all students - use lean() for better performance
-        const students = await User.find({ role: "Student" }).select("_id").lean();
-
-        if (!students.length) {
-          console.log("No students found for assignment");
-          return;
-        }
-
-        // Get existing assignments in one query - use lean() for better performance
-        const existingAssignments = await Assignment.find({ testId }).select("userId").lean();
-        const existingUserIds = new Set(existingAssignments.map(a => a.userId.toString()));
-
-        // Calculate deadline once
-        const startTimeDate = new Date(startTime);
-        const deadline = new Date(startTimeDate);
-        deadline.setMinutes(deadline.getMinutes() + Number(duration));
-
-        // Prepare bulk operations for new assignments
-        const assignmentsToInsert = [];
-        const studentIdsForSocket = [];
-
-        for (const student of students) {
-          const studentIdStr = student._id.toString();
-          if (!existingUserIds.has(studentIdStr)) {
-            assignmentsToInsert.push({
-              testId,
-              userId: student._id,
-              mentorId: mentorId || null,
-              startTime: startTimeDate,
-              duration: Number(duration),
-              deadline: deadline,
-              status: "Assigned"
-            });
-            studentIdsForSocket.push(studentIdStr);
-          }
-        }
-
-        if (assignmentsToInsert.length === 0) {
-          console.log("All students already have this assignment");
-          return;
-        }
-
-        // Use bulk insert for better performance
-        const BATCH_SIZE = 100; // Process in batches to avoid memory issues
-        let insertedCount = 0;
-
-        for (let i = 0; i < assignmentsToInsert.length; i += BATCH_SIZE) {
-          const batch = assignmentsToInsert.slice(i, i + BATCH_SIZE);
-          await Assignment.insertMany(batch, { ordered: false }); // ordered: false allows partial success
-          insertedCount += batch.length;
-          console.log(`✅ Inserted batch: ${insertedCount}/${assignmentsToInsert.length} assignments`);
-        }
-
-        // Update test status from "Draft" to "Active" when assigned to students
-        const updatedTest = await Test.findById(testId);
-        if (updatedTest && updatedTest.status === "Draft") {
-          updatedTest.status = "Active";
-          await updatedTest.save();
-        }
-
-        // Emit real-time updates in batches to avoid overwhelming socket.io
-        const io = req.app.get('io');
-        if (io) {
-          // Emit in smaller batches with delay to avoid overwhelming the server
-          const SOCKET_BATCH_SIZE = 50;
-          for (let i = 0; i < studentIdsForSocket.length; i += SOCKET_BATCH_SIZE) {
-            const batch = studentIdsForSocket.slice(i, i + SOCKET_BATCH_SIZE);
-            batch.forEach(userId => {
-              try {
-                io.to(userId).emit('assignmentCreated', {
-                  userId: userId,
-                  testId: testId,
-                  timestamp: new Date().toISOString()
-                });
-              } catch (emitError) {
-                console.error(`Error emitting to user ${userId}:`, emitError);
-              }
-            });
-            // Small delay between batches to avoid overwhelming socket.io
-            if (i + SOCKET_BATCH_SIZE < studentIdsForSocket.length) {
-              await new Promise(resolve => setTimeout(resolve, 10));
-            }
-          }
-          console.log(`📡 Emitted assignmentCreated events to ${studentIdsForSocket.length} students`);
-        }
-
-        // Invalidate test cache so students see the newly assigned test immediately
-        invalidateTestCache();
-
-        console.log(`✅ Successfully assigned test ${testId} to ${insertedCount} students`);
-      } catch (error) {
-        console.error("❌ Error in background assignment process:", error);
-        // Log error but don't throw - response already sent
-      }
-    })();
-  } catch (error) {
-    // Only handle errors if response hasn't been sent yet
-    if (!res.headersSent) {
-      next(error);
-    } else {
-      console.error("❌ Error after response sent:", error);
+    const students = await findStudentsByCohort(cohort);
+    if (!students.length) {
+      return res.status(404).json({ message: `No students found in ${cohortDef.label}` });
     }
+
+    // Skip students who already hold this assignment, so re-assigning a cohort
+    // tops it up rather than failing on the unique {testId, userId} index.
+    const existingAssignments = await Assignment.find({ testId }).select("userId").lean();
+    const existingUserIds = new Set(existingAssignments.map((a) => String(a.userId)));
+
+    const startTimeDate = new Date(startTime);
+    const deadline = new Date(startTimeDate);
+    deadline.setMinutes(deadline.getMinutes() + Number(duration));
+
+    const assignmentsToInsert = [];
+    const studentIdsForSocket = [];
+
+    for (const student of students) {
+      const studentIdStr = String(student._id);
+      if (!existingUserIds.has(studentIdStr)) {
+        assignmentsToInsert.push({
+          testId,
+          userId: student._id,
+          mentorId: mentorId || null,
+          startTime: startTimeDate,
+          duration: Number(duration),
+          deadline,
+          status: "Assigned"
+        });
+        studentIdsForSocket.push(studentIdStr);
+      }
+    }
+
+    let created = 0;
+    const BATCH_SIZE = 100;
+    for (let i = 0; i < assignmentsToInsert.length; i += BATCH_SIZE) {
+      const batch = assignmentsToInsert.slice(i, i + BATCH_SIZE);
+      const inserted = await Assignment.insertMany(batch, { ordered: false });
+      created += inserted.length;
+    }
+
+    // A test goes live the moment it is assigned to anyone.
+    const updatedTest = await Test.findById(testId);
+    if (updatedTest && updatedTest.status === "Draft") {
+      updatedTest.status = "Active";
+      await updatedTest.save();
+    }
+
+    if (created === 0) {
+      return res.status(200).json({
+        message: `Every student in ${cohortDef.label} already has this assignment`,
+        cohort: cohortDef.key,
+        cohortLabel: cohortDef.label,
+        totalInCohort: students.length,
+        assignedCount: 0
+      });
+    }
+
+    // Tell each student's open tab, in batches so a large cohort does not
+    // flood socket.io in one go.
+    try {
+      const io = req.app.get("io");
+      if (io && studentIdsForSocket.length) {
+        const SOCKET_BATCH_SIZE = 50;
+        for (let i = 0; i < studentIdsForSocket.length; i += SOCKET_BATCH_SIZE) {
+          studentIdsForSocket.slice(i, i + SOCKET_BATCH_SIZE).forEach((userId) => {
+            try {
+              io.to(userId).emit("assignmentCreated", { userId, testId });
+            } catch (emitError) {
+              console.error(`Error emitting to user ${userId}:`, emitError);
+            }
+          });
+          if (i + SOCKET_BATCH_SIZE < studentIdsForSocket.length) {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+          }
+        }
+      }
+    } catch (socketError) {
+      // A socket failure must not undo a successful assignment.
+      console.error("Error emitting assignment events:", socketError);
+    }
+
+    invalidateTestCache();
+
+    res.status(201).json({
+      message: `Successfully assigned to ${created} student${created === 1 ? "" : "s"} in ${cohortDef.label}`,
+      cohort: cohortDef.key,
+      cohortLabel: cohortDef.label,
+      totalInCohort: students.length,
+      assignedCount: created
+    });
+  } catch (error) {
+    if (!res.headersSent) next(error);
+    else console.error("Error in /assign-cohort after response sent:", error);
   }
 });
 
-// Assign test to specific students manually (admin only)
 router.post("/assign-manual", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
     const { testId, studentIds, startTime, duration, mentorId } = req.body;
@@ -1140,10 +1161,9 @@ router.post("/assign-manual", authenticateToken, requireRole("admin"), async (re
     }
 
     // Validate that all student IDs are valid and correspond to actual students
-    const students = await User.find({
-      _id: { $in: studentIds },
-      role: "Student"
-    });
+    const students = await Student.find({ _id: { $in: studentIds } })
+      .select("_id")
+      .lean();
 
     if (students.length !== studentIds.length) {
       const validStudentIds = students.map(student => student._id.toString());
@@ -1246,433 +1266,13 @@ router.post("/assign-manual", authenticateToken, requireRole("admin"), async (re
     next(error);
   }
 });
-
-// Helper function to check if email is SU student (student1@gmail.com to student123@gmail.com)
-const isSUStudent = (email) => {
-  const match = email.match(/^student(\d+)@gmail\.com$/);
-  if (!match) return false;
-  const num = parseInt(match[1], 10);
-  return num >= 1 && num <= 123;
-};
-
-// Assign test to RU students (admin only)
-router.post("/assign-ru", authenticateToken, requireRole("admin"), async (req, res, next) => {
-  console.log('📥 POST /assignments/assign-ru - Request received');
-  try {
-    const { testId, startTime, duration, mentorId } = req.body;
-    console.log('📋 Request body:', { testId, startTime, duration, mentorId });
-
-    if (!testId || !startTime || !duration) {
-      console.log('❌ Missing required fields');
-      return res.status(400).json({ message: "testId, startTime, and duration are required" });
-    }
-
-    // Get test to validate timeLimit
-    console.log('🔍 Fetching test:', testId);
-    const test = await Test.findById(testId);
-    if (!test) {
-      console.log('❌ Test not found:', testId);
-      return res.status(404).json({ message: "Test not found" });
-    }
-
-    // Validate duration >= timeLimit
-    if (Number(duration) < test.timeLimit) {
-      console.log(`❌ Duration validation failed: ${duration} < ${test.timeLimit}`);
-      return res.status(400).json({
-        message: `Duration (${duration} minutes) must be greater than or equal to test time limit (${test.timeLimit} minutes)`
-      });
-    }
-
-    // Get RU students (students with studentCategory = "RU")
-    console.log('🔍 Fetching RU students...');
-    let ruStudents;
-    try {
-      // Add a timeout wrapper to prevent indefinite hanging
-      const queryPromise = User.find({
-        role: "Student",
-        studentCategory: "RU"
-      })
-        .select("_id name email") // Only select needed fields for performance
-        .lean() // Use lean() for better performance
-        .maxTimeMS(10000); // 10 second timeout
-
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Query timeout: Fetching RU students took longer than 15 seconds')), 15000);
-      });
-
-      ruStudents = await Promise.race([queryPromise, timeoutPromise]);
-      console.log(`✅ Found ${ruStudents.length} RU students`);
-    } catch (queryError) {
-      console.error('❌ Error fetching RU students:', queryError);
-      console.error('📍 Error details:', {
-        message: queryError.message,
-        name: queryError.name,
-        code: queryError.code
-      });
-
-      // If it's a timeout or hint error, try a simpler query
-      if (queryError.message && (queryError.message.includes('timeout') || queryError.message.includes('hint'))) {
-        console.log('⚠️ Retrying with simpler query...');
-        try {
-          ruStudents = await User.find({
-            role: "Student",
-            studentCategory: "RU"
-          })
-            .select("_id")
-            .lean()
-            .maxTimeMS(10000)
-            .limit(10000); // Add a safety limit
-          console.log(`✅ Found ${ruStudents.length} RU students (simplified query)`);
-        } catch (retryError) {
-          console.error('❌ Retry also failed:', retryError);
-          return res.status(500).json({
-            message: "Failed to fetch RU students. Please try again or contact support.",
-            error: process.env.NODE_ENV === 'development' ? retryError.message : undefined
-          });
-        }
-      } else {
-        throw queryError;
-      }
-    }
-
-    if (!ruStudents.length) {
-      console.log('❌ No RU students found');
-      return res.status(404).json({ message: "No RU students found" });
-    }
-
-    // Create assignments for RU students - OPTIMIZED with bulk operations
-    console.log('🔍 Fetching existing assignments...');
-    const existingAssignments = await Assignment.find({ testId }).select("userId").lean();
-    const existingUserIds = new Set(existingAssignments.map(a => a.userId.toString()));
-    console.log(`✅ Found ${existingAssignments.length} existing assignments`);
-
-    // Calculate deadline once
-    const startTimeDate = new Date(startTime);
-    const deadline = new Date(startTimeDate);
-    deadline.setMinutes(deadline.getMinutes() + Number(duration));
-
-    // Prepare bulk operations for new assignments
-    const assignmentsToInsert = [];
-    const studentIdsForSocket = [];
-
-    console.log('📝 Creating assignments for RU students...');
-    for (const student of ruStudents) {
-      const studentIdStr = student._id.toString();
-      if (!existingUserIds.has(studentIdStr)) {
-        assignmentsToInsert.push({
-          testId,
-          userId: student._id,
-          mentorId: mentorId || null,
-          startTime: startTimeDate,
-          duration: Number(duration),
-          deadline: deadline,
-          status: "Assigned"
-        });
-        studentIdsForSocket.push(studentIdStr);
-      }
-    }
-
-    let assignments = [];
-    if (assignmentsToInsert.length > 0) {
-      // Use bulk insert for better performance
-      const BATCH_SIZE = 100;
-      for (let i = 0; i < assignmentsToInsert.length; i += BATCH_SIZE) {
-        const batch = assignmentsToInsert.slice(i, i + BATCH_SIZE);
-        const insertedBatch = await Assignment.insertMany(batch, { ordered: false });
-        assignments.push(...insertedBatch);
-        console.log(`✅ Inserted batch: ${assignments.length}/${assignmentsToInsert.length} assignments`);
-      }
-    }
-    console.log(`✅ Created ${assignments.length} new assignments`);
-
-    // Update test status from "Draft" to "Active" when assigned to students
-    // Refetch test to ensure we have the latest status
-    const updatedTest = await Test.findById(testId);
-    if (updatedTest && updatedTest.status === "Draft") {
-      updatedTest.status = "Active";
-      await updatedTest.save();
-      console.log('✅ Updated test status to Active');
-    }
-
-    if (assignments.length === 0) {
-      console.log('ℹ️ All RU students already have this assignment');
-      return res.status(200).json({
-        message: "All RU students already have this assignment",
-        assignedCount: 0
-      });
-    }
-
-    // Emit real-time update to specific student for each assignment - optimized for large numbers
-    try {
-      const io = req.app.get('io');
-      if (io && studentIdsForSocket.length > 0) {
-        console.log('📡 Emitting socket.io events...');
-        // Emit in batches to avoid overwhelming socket.io
-        const SOCKET_BATCH_SIZE = 50;
-        for (let i = 0; i < studentIdsForSocket.length; i += SOCKET_BATCH_SIZE) {
-          const batch = studentIdsForSocket.slice(i, i + SOCKET_BATCH_SIZE);
-          batch.forEach(userId => {
-            try {
-              io.to(userId).emit('assignmentCreated', {
-                userId: userId,
-                testId: testId
-              });
-            } catch (emitError) {
-              console.error(`Error emitting to user ${userId}:`, emitError);
-            }
-          });
-          // Small delay between batches
-          if (i + SOCKET_BATCH_SIZE < studentIdsForSocket.length) {
-            await new Promise(resolve => setTimeout(resolve, 10));
-          }
-        }
-        console.log('✅ Socket.io events emitted');
-      } else {
-        console.log('⚠️ Socket.io not available, skipping emit');
-      }
-    } catch (socketError) {
-      console.error('❌ Error with socket.io:', socketError);
-      // Continue even if socket.io fails - assignment creation was successful
-    }
-
-    // Invalidate test cache so students see the newly assigned test immediately
-    // This is critical for immediate visibility
-    invalidateTestCache();
-    console.log('🗑️ Test cache invalidated after assignment creation');
-    console.log('🗑️ Test cache invalidated after assignment creation');
-
-    console.log('✅ Sending success response');
-    if (!res.headersSent) {
-      res.status(201).json({
-        message: `Successfully assigned to ${assignments.length} RU students`,
-        assignedCount: assignments.length
-      });
-    } else {
-      console.warn('⚠️ Response already sent, skipping');
-    }
-  } catch (error) {
-    console.error('❌ Error in /assign-ru route:', error);
-    console.error('📍 Error stack:', error.stack);
-    if (!res.headersSent) {
-      next(error);
-    } else {
-      console.error('❌ Response already sent, cannot send error response');
-    }
-  }
-});
-
-// Assign test to SU students (admin only)
-router.post("/assign-su", authenticateToken, requireRole("admin"), async (req, res, next) => {
-  console.log('📥 POST /assignments/assign-su - Request received');
-  try {
-    const { testId, startTime, duration, mentorId } = req.body;
-    console.log('📋 Request body:', { testId, startTime, duration, mentorId });
-
-    if (!testId || !startTime || !duration) {
-      console.log('❌ Missing required fields');
-      return res.status(400).json({ message: "testId, startTime, and duration are required" });
-    }
-
-    // Get test to validate timeLimit
-    console.log('🔍 Fetching test:', testId);
-    const test = await Test.findById(testId);
-    if (!test) {
-      console.log('❌ Test not found:', testId);
-      return res.status(404).json({ message: "Test not found" });
-    }
-
-    // Validate duration >= timeLimit
-    if (Number(duration) < test.timeLimit) {
-      console.log(`❌ Duration validation failed: ${duration} < ${test.timeLimit}`);
-      return res.status(400).json({
-        message: `Duration (${duration} minutes) must be greater than or equal to test time limit (${test.timeLimit} minutes)`
-      });
-    }
-
-    // Get SU students (students with studentCategory = "SU")
-    console.log('🔍 Fetching SU students...');
-    let suStudents;
-    try {
-      // Add a timeout wrapper to prevent indefinite hanging
-      const queryPromise = User.find({
-        role: "Student",
-        studentCategory: "SU"
-      })
-        .select("_id name email") // Only select needed fields for performance
-        .lean() // Use lean() for better performance
-        .maxTimeMS(10000); // 10 second timeout
-
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Query timeout: Fetching SU students took longer than 15 seconds')), 15000);
-      });
-
-      suStudents = await Promise.race([queryPromise, timeoutPromise]);
-      console.log(`✅ Found ${suStudents.length} SU students`);
-    } catch (queryError) {
-      console.error('❌ Error fetching SU students:', queryError);
-      console.error('📍 Error details:', {
-        message: queryError.message,
-        name: queryError.name,
-        code: queryError.code
-      });
-
-      // If it's a timeout or hint error, try a simpler query
-      if (queryError.message && (queryError.message.includes('timeout') || queryError.message.includes('hint'))) {
-        console.log('⚠️ Retrying with simpler query...');
-        try {
-          suStudents = await User.find({
-            role: "Student",
-            studentCategory: "SU"
-          })
-            .select("_id")
-            .lean()
-            .maxTimeMS(10000)
-            .limit(10000); // Add a safety limit
-          console.log(`✅ Found ${suStudents.length} SU students (simplified query)`);
-        } catch (retryError) {
-          console.error('❌ Retry also failed:', retryError);
-          return res.status(500).json({
-            message: "Failed to fetch SU students. Please try again or contact support.",
-            error: process.env.NODE_ENV === 'development' ? retryError.message : undefined
-          });
-        }
-      } else {
-        throw queryError;
-      }
-    }
-
-    if (!suStudents.length) {
-      console.log('❌ No SU students found');
-      return res.status(404).json({ message: "No SU students found" });
-    }
-
-    // Create assignments for SU students - OPTIMIZED with bulk operations
-    console.log('🔍 Fetching existing assignments...');
-    const existingAssignments = await Assignment.find({ testId }).select("userId").lean();
-    const existingUserIds = new Set(existingAssignments.map(a => a.userId.toString()));
-    console.log(`✅ Found ${existingAssignments.length} existing assignments`);
-
-    // Calculate deadline once
-    const startTimeDate = new Date(startTime);
-    const deadline = new Date(startTimeDate);
-    deadline.setMinutes(deadline.getMinutes() + Number(duration));
-
-    // Prepare bulk operations for new assignments
-    const assignmentsToInsert = [];
-    const studentIdsForSocket = [];
-
-    console.log('📝 Creating assignments for SU students...');
-    for (const student of suStudents) {
-      const studentIdStr = student._id.toString();
-      if (!existingUserIds.has(studentIdStr)) {
-        assignmentsToInsert.push({
-          testId,
-          userId: student._id,
-          mentorId: mentorId || null,
-          startTime: startTimeDate,
-          duration: Number(duration),
-          deadline: deadline,
-          status: "Assigned"
-        });
-        studentIdsForSocket.push(studentIdStr);
-      }
-    }
-
-    let assignments = [];
-    if (assignmentsToInsert.length > 0) {
-      // Use bulk insert for better performance
-      const BATCH_SIZE = 100;
-      for (let i = 0; i < assignmentsToInsert.length; i += BATCH_SIZE) {
-        const batch = assignmentsToInsert.slice(i, i + BATCH_SIZE);
-        const insertedBatch = await Assignment.insertMany(batch, { ordered: false });
-        assignments.push(...insertedBatch);
-        console.log(`✅ Inserted batch: ${assignments.length}/${assignmentsToInsert.length} assignments`);
-      }
-    }
-    console.log(`✅ Created ${assignments.length} new assignments`);
-
-    // Update test status from "Draft" to "Active" when assigned to students
-    // Refetch test to ensure we have the latest status
-    const updatedTest = await Test.findById(testId);
-    if (updatedTest && updatedTest.status === "Draft") {
-      updatedTest.status = "Active";
-      await updatedTest.save();
-      console.log('✅ Updated test status to Active');
-    }
-
-    if (assignments.length === 0) {
-      console.log('ℹ️ All SU students already have this assignment');
-      return res.status(200).json({
-        message: "All SU students already have this assignment",
-        assignedCount: 0
-      });
-    }
-
-    // Emit real-time update to specific student for each assignment - optimized for large numbers
-    try {
-      const io = req.app.get('io');
-      if (io && studentIdsForSocket.length > 0) {
-        console.log('📡 Emitting socket.io events...');
-        // Emit in batches to avoid overwhelming socket.io
-        const SOCKET_BATCH_SIZE = 50;
-        for (let i = 0; i < studentIdsForSocket.length; i += SOCKET_BATCH_SIZE) {
-          const batch = studentIdsForSocket.slice(i, i + SOCKET_BATCH_SIZE);
-          batch.forEach(userId => {
-            try {
-              io.to(userId).emit('assignmentCreated', {
-                userId: userId,
-                testId: testId
-              });
-            } catch (emitError) {
-              console.error(`Error emitting to user ${userId}:`, emitError);
-            }
-          });
-          // Small delay between batches
-          if (i + SOCKET_BATCH_SIZE < studentIdsForSocket.length) {
-            await new Promise(resolve => setTimeout(resolve, 10));
-          }
-        }
-        console.log('✅ Socket.io events emitted');
-      } else {
-        console.log('⚠️ Socket.io not available, skipping emit');
-      }
-    } catch (socketError) {
-      console.error('❌ Error with socket.io:', socketError);
-      // Continue even if socket.io fails - assignment creation was successful
-    }
-
-    // Invalidate test cache so students see the newly assigned test immediately
-    // This is critical for immediate visibility
-    invalidateTestCache();
-    console.log('🗑️ Test cache invalidated after assignment creation');
-    console.log('🗑️ Test cache invalidated after assignment creation');
-
-    console.log('✅ Sending success response');
-    if (!res.headersSent) {
-      res.status(201).json({
-        message: `Successfully assigned to ${assignments.length} SU students`,
-        assignedCount: assignments.length
-      });
-    } else {
-      console.warn('⚠️ Response already sent, skipping');
-    }
-  } catch (error) {
-    console.error('❌ Error in /assign-su route:', error);
-    console.error('📍 Error stack:', error.stack);
-    if (!res.headersSent) {
-      next(error);
-    } else {
-      console.error('❌ Response already sent, cannot send error response');
-    }
-  }
-});
-
 // Get available mentors (admin only)
 router.get("/mentors/available", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
-    const mentors = await User.find({ role: "Mentor" })
+    const mentors = await Mentor.find({})
       .select("name email")
-      .sort({ name: 1 });
+      .sort({ name: 1 })
+      .lean();
 
     res.json(mentors);
   } catch (error) {

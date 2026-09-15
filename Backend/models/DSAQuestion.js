@@ -27,9 +27,10 @@ const DSAQuestionSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    // Created by an admin or a mentor, so no single ref fits: hydrate via
+    // services/principals.authorMap.
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
       required: true,
     },
   },
