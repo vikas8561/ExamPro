@@ -784,11 +784,12 @@ export default function CreateTest() {
                     onChange={(e) =>
                       setForm((prev) => ({ ...prev, timeLimit: e.target.value }))
                     }
-                    className="w-full p-4 bg-slate-600/50 border border-slate-500/50 rounded-lg focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200"
+                    onWheel={(e) => e.currentTarget.blur()}
+                    className="w-full p-4 bg-slate-600/50 border border-slate-500/50 rounded-lg focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                     placeholder="30"
                   />
                   <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 text-sm">
-                    min
+                    mins
                   </div>
                 </div>
                 <div className="mt-2 text-xs text-slate-400">
@@ -832,7 +833,7 @@ export default function CreateTest() {
               )}
 
               {form.type !== "practice" && (
-                <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-500/30">
+                <div className="bg-slate-700/30 rounded-lg p-4 border border-slate-500/30  [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none">
                   <label className="block text-sm font-medium mb-3 text-slate-200">
                     Allowed Tab Switches
                   </label>
@@ -881,7 +882,8 @@ export default function CreateTest() {
                           }
                         }
                       }}
-                      className={`w-full p-4 bg-slate-600/50 border rounded-lg focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50 transition-all duration-200 ${allowedTabSwitchesError
+                      onWheel={(e) => e.currentTarget.blur()}
+                      className={`w-full p-4 bg-slate-600/50 border rounded-lg focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50 transition-all duration-200 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${allowedTabSwitchesError
                           ? "border-red-500/50 focus:ring-red-500/50 focus:border-red-500/50"
                           : "border-slate-500/50"
                         }`}
@@ -1071,7 +1073,8 @@ export default function CreateTest() {
                           duration: e.target.value,
                         }))
                       }
-                      className="w-full p-3 bg-slate-600 border border-slate-500 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                      onWheel={(e) => e.currentTarget.blur()}
+                      className="w-full p-3 bg-slate-600 border border-slate-500 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                       min="1"
                       placeholder="Enter duration in minutes"
                       required
