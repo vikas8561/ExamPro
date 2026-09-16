@@ -16,7 +16,8 @@
     "test:autosubmit": "node scripts/exam/auto-submit-check.js",
     "test:kinds": "node scripts/exam/submit-all-kinds-check.js",
     "test:deep": "node scripts/exam/deep-audit-check.js",
-    "test:reported": "node scripts/exam/reported-issues-check.js"
+    "test:reported": "node scripts/exam/reported-issues-check.js",
+    "audit-coding-marks": "node scripts/auditCodingMarks.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

@@ -35,25 +35,114 @@ const num = (value, fallback) => {
   return Number.isFinite(n) ? n : fallback;
 };
 
-const JUDGE0_URL = String(
-  process.env.JUDGE0_URL || process.env.JUDGE0_BASE_URL || 'http://localhost:2358'
-).replace(/\/+$/, '');
+/**
+ * Settings that have more than one accepted spelling.
+ *
+ * The deployed .env files use operational names (how many batches may be in
+ * flight, how long we may wait) while the code grew up with transport names
+ * (concurrent requests, poll timeout). Both are correct descriptions of the
+ * same knob, so both are honoured rather than silently ignored: a tuning value
+ * that does nothing is worse than one that is spelled unexpectedly.
+ *
+ * The first name listed is canonical. Later names are aliases, used only when
+ * the canonical one is unset.
+ */
+const ENV_ALIASES = {
+  JUDGE0_MAX_CONCURRENT: ['JUDGE0_MAX_CONCURRENT_BATCHES'],
+  JUDGE0_POLL_TIMEOUT_MS: ['JUDGE0_MAX_WAIT_MS'],
+  JUDGE0_URL: ['JUDGE0_BASE_URL'],
+};
+
+const isSet = (name) =>
+  process.env[name] !== undefined && String(process.env[name]).trim() !== '';
+
+/** Read a setting by its canonical name, falling back to any alias. */
+function readEnv(canonical) {
+  const names = [canonical, ...(ENV_ALIASES[canonical] || [])];
+  const provided = names.filter(isSet);
+
+  if (provided.length > 1) {
+    const [winner, ...ignored] = provided;
+    const differing = ignored.filter(
+      (name) => String(process.env[name]).trim() !== String(process.env[winner]).trim()
+    );
+    if (differing.length) {
+      console.warn(
+        `\u26a0\ufe0f Judge0 config: ${winner} and ${differing.join(', ')} are the same setting ` +
+        `with different values. Using ${winner}=${process.env[winner]}.`
+      );
+    }
+  }
+
+  return provided.length ? String(process.env[provided[0]]).trim() : undefined;
+}
+
+const envNum = (canonical, fallback) => num(readEnv(canonical), fallback);
+
+/**
+ * Warn about JUDGE0_* variables this module never reads. Without this, a typo
+ * in a production .env is invisible: the judge keeps working on defaults and
+ * the tuning is silently discarded under exam load, which is exactly when it
+ * was supposed to matter.
+ */
+function warnAboutUnknownJudge0Env(known) {
+  const recognized = new Set(known);
+  for (const list of Object.values(ENV_ALIASES)) list.forEach((name) => recognized.add(name));
+
+  const unknown = Object.keys(process.env)
+    .filter((name) => name.startsWith('JUDGE0_') && !recognized.has(name));
+
+  if (unknown.length) {
+    console.warn(
+      `\u26a0\ufe0f Judge0 config: ignoring unrecognized ${unknown.join(', ')} ` +
+      `(not read by services/judge0.js \u2014 check the spelling against .env.example).`
+    );
+  }
+}
+
+const JUDGE0_URL = String(readEnv('JUDGE0_URL') || 'http://localhost:2358').replace(/\/+$/, '');
 
 const AUTH_HEADER = process.env.JUDGE0_AUTH_HEADER || 'X-Auth-Token';
 const AUTH_TOKEN = process.env.JUDGE0_AUTH_TOKEN || '';
 
 // Per-submission sandbox limits. Judge0 clamps these to its own max_* values.
-const CPU_TIME_LIMIT = num(process.env.JUDGE0_CPU_TIME_LIMIT, 5);      // seconds
-const WALL_TIME_LIMIT = num(process.env.JUDGE0_WALL_TIME_LIMIT, 10);   // seconds
-const MEMORY_LIMIT = num(process.env.JUDGE0_MEMORY_LIMIT, 256000);     // KB
+const CPU_TIME_LIMIT = envNum('JUDGE0_CPU_TIME_LIMIT', 5);      // seconds
+const WALL_TIME_LIMIT = envNum('JUDGE0_WALL_TIME_LIMIT', 10);   // seconds
+const MEMORY_LIMIT = envNum('JUDGE0_MEMORY_LIMIT', 256000);     // KB
 
 // Transport / orchestration
-const REQUEST_TIMEOUT_MS = num(process.env.JUDGE0_REQUEST_TIMEOUT_MS, 20000);
-const POLL_TIMEOUT_MS = num(process.env.JUDGE0_POLL_TIMEOUT_MS, 90000);
-const POLL_INTERVAL_MS = num(process.env.JUDGE0_POLL_INTERVAL_MS, 600);
-const MAX_RETRIES = num(process.env.JUDGE0_MAX_RETRIES, 3);
-const MAX_CONCURRENT = num(process.env.JUDGE0_MAX_CONCURRENT, 8);
-const DEFAULT_BATCH_SIZE = num(process.env.JUDGE0_BATCH_SIZE, 20);
+const REQUEST_TIMEOUT_MS = envNum('JUDGE0_REQUEST_TIMEOUT_MS', 20000);
+// Total wall clock allowed for one batch to finish grading (JUDGE0_MAX_WAIT_MS).
+const POLL_TIMEOUT_MS = envNum('JUDGE0_POLL_TIMEOUT_MS', 90000);
+const POLL_INTERVAL_MS = envNum('JUDGE0_POLL_INTERVAL_MS', 600);
+const MAX_RETRIES = envNum('JUDGE0_MAX_RETRIES', 3);
+// In-flight HTTP requests to the judge (JUDGE0_MAX_CONCURRENT_BATCHES). This
+// bounds every call, polls included, not just batch creation.
+const MAX_CONCURRENT = envNum('JUDGE0_MAX_CONCURRENT', 8);
+const DEFAULT_BATCH_SIZE = envNum('JUDGE0_BATCH_SIZE', 20);
+
+warnAboutUnknownJudge0Env([
+  'JUDGE0_URL', 'JUDGE0_AUTH_HEADER', 'JUDGE0_AUTH_TOKEN',
+  'JUDGE0_CPU_TIME_LIMIT', 'JUDGE0_WALL_TIME_LIMIT', 'JUDGE0_MEMORY_LIMIT',
+  'JUDGE0_REQUEST_TIMEOUT_MS', 'JUDGE0_POLL_TIMEOUT_MS', 'JUDGE0_POLL_INTERVAL_MS',
+  'JUDGE0_MAX_RETRIES', 'JUDGE0_MAX_CONCURRENT', 'JUDGE0_BATCH_SIZE',
+  'JUDGE0_FALLBACK_RETRY_MS', 'JUDGE0_RATE_LIMIT_PER_MINUTE',
+]);
+
+/** Effective settings after alias resolution, for diagnostics and /health. */
+const CONFIG = Object.freeze({
+  url: JUDGE0_URL,
+  authHeader: AUTH_HEADER,
+  cpuTimeLimit: CPU_TIME_LIMIT,
+  wallTimeLimit: WALL_TIME_LIMIT,
+  memoryLimit: MEMORY_LIMIT,
+  requestTimeoutMs: REQUEST_TIMEOUT_MS,
+  pollTimeoutMs: POLL_TIMEOUT_MS,
+  pollIntervalMs: POLL_INTERVAL_MS,
+  maxRetries: MAX_RETRIES,
+  maxConcurrent: MAX_CONCURRENT,
+  batchSize: DEFAULT_BATCH_SIZE,
+});
 
 // Judge0 status ids (GET /statuses)
 const STATUS = {
@@ -200,7 +289,7 @@ let discoveryPromise = null;
 // become permanent — retry it periodically so a blip at boot self-heals.
 let usingFallback = false;
 let fallbackAt = 0;
-const FALLBACK_RETRY_MS = num(process.env.JUDGE0_FALLBACK_RETRY_MS, 60000);
+const FALLBACK_RETRY_MS = envNum('JUDGE0_FALLBACK_RETRY_MS', 60000);
 
 /**
  * Pick, for every language we support, the best Judge0 id actually offered by
@@ -420,9 +509,19 @@ function toResult(raw, testCase, index) {
     exitCode: raw?.exit_code ?? null,
     passed,
     marks: testCase.marks ?? 0,
+    // The judge actually ran this case, so `passed` reflects the student's code.
+    infrastructureError: false,
   };
 }
 
+/**
+ * A placeholder for a case the judge never returned a verdict for: the batch
+ * could not be created, polling timed out, or the response was short.
+ *
+ * `passed: false` keeps the shape uniform, but it does NOT mean the student's
+ * code is wrong — nothing ran. `infrastructureError` is what callers must key
+ * off before scoring, or an outage silently becomes a zero.
+ */
 function errorResult(testCase, index, messageText) {
   return {
     index,
@@ -438,7 +537,16 @@ function errorResult(testCase, index, messageText) {
     exitCode: null,
     passed: false,
     marks: testCase.marks ?? 0,
+    infrastructureError: true,
   };
+}
+
+/**
+ * The cases in `results` that never actually ran. A non-empty list means the
+ * run is UNGRADED: no score may be derived from it or persisted.
+ */
+function infrastructureFailures(results) {
+  return (Array.isArray(results) ? results : []).filter((r) => r && r.infrastructureError);
 }
 
 // ---------------------------------------------------------------------------
@@ -599,6 +707,7 @@ async function checkHealth({ refresh = false } = {}) {
       authenticated: Boolean(AUTH_TOKEN),
       version: about?.version || null,
       latencyMs: Date.now() - startedAt,
+      config: CONFIG,
       batchSize,
       languages: languageIds,
       missingLanguages: LANGUAGE_KEYS.filter((key) => !languageIds[key]),
@@ -615,6 +724,8 @@ async function checkHealth({ refresh = false } = {}) {
 }
 
 module.exports = {
+  CONFIG,
+  infrastructureFailures,
   runAgainstCases,
   runSingle,
   resolveLanguage,
