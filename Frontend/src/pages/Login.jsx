@@ -110,7 +110,7 @@ export default function Login() {
       } else if (response.status === 403) {
         setError(data.message || "Access denied.");
       } else {
-        setError(data.message || "Invalid credentials. Please check your UID/Email and password.");
+        setError(data.message || "Invalid credentials. Please check your UID and password.");
       }
     } catch (err) {
       setError("Login service unavailable. Please check your connection and try again.");
@@ -160,7 +160,7 @@ export default function Login() {
           {/* Identifier Input */}
           <div className="space-y-1.5">
             <label className="block text-xs font-semibold text-slate-300 tracking-wide">
-              University UID / Roll Number / Email
+              University UID / Roll Number
             </label>
             <div className="relative group">
               <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#7E8594] group-focus-within:text-[#00C4B4] transition-colors">
