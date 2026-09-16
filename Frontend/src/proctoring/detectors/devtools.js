@@ -1,54 +1,80 @@
 /**
  * Is the developer console open?
  *
- * Two independent signals, because each has a blind spot the other covers:
+ * Two size tests, chosen by whether the window is in fullscreen:
  *
- *  1. Window size, measured against a learned baseline. Catches docked devtools.
- *  2. A console getter trap. Logging an object whose `id` property has a getter
- *     only triggers that getter when something renders the object, which in
- *     practice means an open console. Catches devtools undocked into its own
- *     window, which no size check can see.
+ *   in fullscreen   axis skew — the outer/inner ratio must match on both axes.
+ *                   Zoom-independent, and sees devtools that was already open
+ *                   before the exam began. This is the case that matters,
+ *                   because the exam requires fullscreen.
+ *   out of it       growth from the smallest gap this window has shown, since
+ *                   an arbitrary window shape makes the ratios meaningless.
  *
- * ── Why the baseline, and not a fixed threshold ──
+ * The reasons for the shape of this matter, because earlier versions of this
+ * file ended innocent students' exams.
  *
- * This used to compare `outerHeight - innerHeight` against a flat 160px. That
- * gap is not devtools — it is ordinary browser chrome: the tab strip, the
- * address bar, the bookmarks bar, and Chrome's "you are sharing your screen"
- * notification bar. Stack those and a perfectly clean window clears 160px on
- * its own.
+ * ── Why there is no absolute size test ──
  *
- * The consequence was not just a false violation. `isOpen()` gates the warning
- * dialog's Continue button, so a student whose browser chrome happened to be
- * tall enough was told "close developer tools to continue" about developer
- * tools that were never open — and could never dismiss it. A locked-out student
- * with no way back into their exam.
+ * `innerWidth`/`innerHeight` are CSS pixels, so they shrink as BROWSER ZOOM
+ * rises, while `outerWidth`/`outerHeight` do not. The gap between them is
+ * therefore a function of the student's zoom level, not of devtools. In
+ * fullscreen, with nothing whatsoever open, on a 1512px display:
  *
- * Measuring the *increase* from the smallest gap ever observed fixes that.
- * Devtools only ever adds chrome, so the smallest gap seen is the honest
- * baseline, whatever that particular browser's furniture happens to be.
+ *     100% zoom -> gap    0px
+ *     110% zoom -> gap  137px
+ *     125% zoom -> gap  302px
+ *     150% zoom -> gap  504px
  *
- * ── Why there is no `debugger` statement here ──
+ * A fixed threshold flags every student who is not sitting at exactly 100%
+ * zoom — which, on a Retina Mac or a HiDPI Linux desktop, is most of them. That
+ * is what auto-submitted a real student's paper for devtools that was never
+ * open. Display scaling and window decorations vary the same way between
+ * Windows, macOS and Linux, so no constant works everywhere.
  *
- * A `debugger` on a timer does detect an open console, by stalling. It also
- * genuinely pauses the page, every 1.5 seconds, and the student cannot then
- * interact with the very dialog telling them to close devtools. It made the
- * recovery path impossible to complete, so it is gone.
+ * Only a CHANGE during the exam carries information, so only a change is used,
+ * and it must persist across consecutive checks before it counts.
  *
- * Detection, not prevention: no web page can stop devtools being opened. What
- * it can do is make opening it cost the student their exam.
+ * ── Why there is no console getter trap ──
+ *
+ * Logging an object with a getter on `id` and seeing whether the getter fires
+ * is a popular trick: in Chrome the getter runs only when the console renders
+ * the object. But whether, and when, a getter is invoked during `console.log`
+ * is not specified, and Firefox and Safari differ. A browser that evaluates it
+ * eagerly reports devtools as open permanently, for every student, on that
+ * platform — and it called `console.clear()` on a timer as a side effect.
+ * Unverifiable across the three operating systems this has to work on, so gone.
+ *
+ * ── Why there is no `debugger` statement ──
+ *
+ * It works, by pausing the page every couple of seconds — which leaves the
+ * student unable to interact with the very dialog telling them to close
+ * devtools. Recovery became impossible, so gone.
+ *
+ * ── What this means ──
+ *
+ * Devtools docked into the window is caught, whether it was opened during the
+ * exam or before it. Devtools undocked into a window of its own is not caught
+ * by any size test, and nothing here pretends otherwise.
+ *
+ * That is a deliberate trade. No web page can prevent devtools at all; the
+ * keyboard shortcuts are blocked separately; and a missed detection is a far
+ * smaller harm than cancelling the exam of a student who did nothing wrong.
  */
 
 const CHECK_INTERVAL_MS = 1500;
 
-// How much taller/wider than its own baseline a window must get before we call
-// it devtools. Comfortably more than a toolbar appearing, comfortably less than
-// a devtools pane.
-const GROWTH_THRESHOLD_PX = 140;
+// How much taller/wider than its own baseline a window must get before this
+// looks like a devtools pane rather than a toolbar appearing.
+const GROWTH_THRESHOLD_PX = 160;
 
-// In fullscreen the window fills the display, so outer and inner should agree
-// to within a hair. Anything more is something docked inside the window. The
-// tolerance is for rounding and OS scaling, nothing larger.
-const FULLSCREEN_GAP_TOLERANCE_PX = 60;
+// Consecutive checks the growth must persist for. A window-manager reflow, an
+// OS notification, a screen-share bar appearing, or a display change all move
+// the size for a moment; a devtools pane stays put.
+const SUSTAIN_CHECKS = 2;
+
+// How far the two axes may disagree before something is docked in the window.
+// A scrollbar moves this about 1%; a devtools pane moves it 30-40%.
+const SKEW_TOLERANCE = 0.08;
 
 function inFullscreen() {
   if (typeof document === "undefined") return false;
@@ -59,9 +85,37 @@ function inFullscreen() {
   );
 }
 
-// The console trap is useful but writes to the console, so it runs on every
-// fourth check rather than constantly.
-const TRAP_EVERY = 4;
+/**
+ * Is something docked inside the window? Zoom-independent.
+ *
+ * In fullscreen with nothing docked, `outer / inner` is the same ratio on both
+ * axes, because that ratio IS the browser zoom factor. Zoom shrinks width and
+ * height together, so it cancels out. Anything docked shrinks one axis only and
+ * breaks the symmetry — a pane at the bottom moves the height ratio, one at the
+ * side moves the width ratio.
+ *
+ * That is what lets this catch devtools that was ALREADY OPEN when the exam
+ * began, which a growth-from-baseline test cannot see, without reintroducing
+ * the absolute threshold that flagged every student not at exactly 100% zoom:
+ *
+ *     clean, 125% zoom       ratios 1.250 / 1.249   skew  0.0%   clean
+ *     devtools bottom, 125%  ratios 1.250 / 2.107   skew 40.7%   detected
+ *     devtools side,   125%  ratios 1.867 / 1.249   skew 33.1%   detected
+ *
+ * Only meaningful in fullscreen, where the window fills the screen. Out of
+ * fullscreen the window is an arbitrary shape and the ratios mean nothing.
+ */
+function dockedSkew() {
+  const { innerWidth: iw, innerHeight: ih, outerWidth: ow, outerHeight: oh } = window;
+  if (!iw || !ih || !ow || !oh) return false;
+
+  const ratioWidth = ow / iw;
+  const ratioHeight = oh / ih;
+  const larger = Math.max(ratioWidth, ratioHeight);
+  if (larger <= 0) return false;
+
+  return Math.abs(ratioWidth - ratioHeight) / larger > SKEW_TOLERANCE;
+}
 
 function gaps() {
   return {
@@ -70,95 +124,48 @@ function gaps() {
   };
 }
 
-/** Console getter trap. Fires only when something renders the logged object. */
-function createConsoleTrap() {
-  let tripped = false;
-  const bait = {};
-  Object.defineProperty(bait, "id", {
-    get() {
-      tripped = true;
-      return "";
-    },
-  });
-
-  return {
-    probe() {
-      tripped = false;
-      // Written and immediately cleared, so a student watching the console sees
-      // nothing useful and the page is not spammed.
-      console.log(bait);
-      console.clear();
-      return tripped;
-    },
-  };
-}
-
 export function createDevtoolsDetector({ report, isPaused, enabled = true }) {
   let timer = null;
   let running = false;
   let openNow = false;
-  let checks = 0;
-  const trap = createConsoleTrap();
+  let sustained = 0;
 
-  // The smallest gap seen so far — this browser's chrome with nothing extra.
-  // Starts at Infinity so the first reading establishes it.
+  // The smallest gap seen so far — this window with nothing extra docked in it.
   let baseWidth = Infinity;
   let baseHeight = Infinity;
 
   /**
-   * Has the window grown meaningfully beyond its own baseline?
+   * Has the window grown well beyond its own baseline?
    *
-   * Also keeps the baseline honest: any smaller reading becomes the new floor,
-   * so closing a toolbar or entering fullscreen re-calibrates rather than
-   * leaving the student permanently flagged.
+   * The baseline only ever moves down, so anything that makes the window
+   * smaller — closing a toolbar, entering fullscreen, changing zoom — becomes
+   * the new normal rather than leaving the student permanently flagged.
    */
-  const sizeSignal = () => {
+  const grown = () => {
+    // In fullscreen, axis skew is the better test: it is independent of zoom and
+    // it sees devtools that was open before the exam started. The exam requires
+    // fullscreen, so this is the case that matters.
+    if (inFullscreen()) return dockedSkew();
+
     const { width, height } = gaps();
 
-    // Fullscreen is measured absolutely, not against the baseline.
-    //
-    // The baseline is learned from the window as it is when the exam starts,
-    // which is fine until devtools is ALREADY OPEN at that moment. Then the
-    // devtools pane is measured as if it were ordinary browser chrome, becomes
-    // the "clean" baseline, and nothing is ever reported however long it stays
-    // open -- exactly the hole a student gets by opening the Network tab before
-    // pressing Start, and it works just as well docked to the side as below.
-    //
-    // Fullscreen removes the ambiguity: the window fills the screen, so there
-    // is no chrome to account for and any real gap is devtools. The exam
-    // requires fullscreen, so this is the case that actually matters.
-    if (inFullscreen()) {
-      return width > FULLSCREEN_GAP_TOLERANCE_PX || height > FULLSCREEN_GAP_TOLERANCE_PX;
-    }
-
-    // Outside fullscreen, fall back to growth against the smallest gap seen.
-    // The baseline is only ever lowered here, never while fullscreen, so a
-    // devtools pane cannot be mistaken for furniture and learned as normal.
     if (width < baseWidth) baseWidth = width;
     if (height < baseHeight) baseHeight = height;
 
-    const grownWide = width - baseWidth > GROWTH_THRESHOLD_PX;
-    const grownTall = height - baseHeight > GROWTH_THRESHOLD_PX;
-    return grownWide || grownTall;
+    return (
+      width - baseWidth > GROWTH_THRESHOLD_PX || height - baseHeight > GROWTH_THRESHOLD_PX
+    );
   };
 
   const check = () => {
     if (!running || !enabled) return;
 
-    checks += 1;
-    let detected = false;
+    // Evaluated even while paused, because the warning dialog needs to know
+    // whether the student has actually closed devtools yet.
+    if (grown()) sustained += 1;
+    else sustained = 0;
 
-    // Size is evaluated even while paused, because the warning dialog needs to
-    // know whether the student has actually closed devtools yet.
-    if (sizeSignal()) detected = true;
-
-    if (!detected && !isPaused?.() && checks % TRAP_EVERY === 0) {
-      try {
-        if (trap.probe()) detected = true;
-      } catch {
-        // Some environments replace console entirely. Not conclusive.
-      }
-    }
+    const detected = sustained >= SUSTAIN_CHECKS;
 
     // Report the transition only, so one open does not bill the student
     // repeatedly for every check while it stays open.
@@ -178,25 +185,14 @@ export function createDevtoolsDetector({ report, isPaused, enabled = true }) {
     start() {
       if (!enabled) return;
       running = true;
-      checks = 0;
       openNow = false;
+      sustained = 0;
 
-      // Establish the baseline from the current window before judging anything.
+      // Establish the baseline from the window as it is now, before judging
+      // anything against it.
       const { width, height } = gaps();
       baseWidth = width;
       baseHeight = height;
-
-      // Ask the console trap straight away rather than waiting for the fourth
-      // check. Devtools that was open before the exam began is the case the
-      // size baseline is worst at, and the trap does not care when it opened.
-      try {
-        if (trap.probe()) {
-          openNow = true;
-          report("devtools_opened", "Developer tools were already open when the test began");
-        }
-      } catch {
-        // Some environments replace console entirely. Not conclusive.
-      }
 
       timer = setInterval(check, CHECK_INTERVAL_MS);
     },
@@ -211,11 +207,11 @@ export function createDevtoolsDetector({ report, isPaused, enabled = true }) {
 
     /**
      * Used by the overlay to hold the student until devtools is really closed.
-     * Re-measures rather than trusting the latch, so that a student who has
-     * genuinely closed devtools is released immediately.
+     * Re-measures rather than trusting the latch, so a student who has genuinely
+     * closed devtools is released immediately and is never stuck on the dialog.
      */
     isOpen() {
-      return sizeSignal();
+      return grown();
     },
   };
 }

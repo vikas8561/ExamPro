@@ -58,7 +58,10 @@ export default function CreateTest() {
   const [students, setStudents] = useState([]);
   const [selectedStudents, setSelectedStudents] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [assignmentMode, setAssignmentMode] = useState("all"); // "all", "manual", "ru", "su"
+  // Cohort keys come from the backend (all, ru, su702, su714, cglab3, cglab4,
+  // ssiu) plus the local "manual" mode.
+  const [assignmentMode, setAssignmentMode] = useState("all");
+  const [cohorts, setCohorts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [subjects, setSubjects] = useState([]);
   const [showSubjectModal, setShowSubjectModal] = useState(false);
@@ -136,6 +139,16 @@ export default function CreateTest() {
   };
 
   // Fetch students when manual assignment mode is selected
+  // Cohorts (with live student counts) for the assignment mode cards.
+  useEffect(() => {
+    apiRequest("/assignments/cohorts")
+      .then((data) => setCohorts(data.cohorts || []))
+      .catch((err) => {
+        console.error("Error fetching cohorts:", err);
+        setCohorts([]);
+      });
+  }, []);
+
   useEffect(() => {
     if (assignmentMode === "manual") {
       fetchStudents();
@@ -503,50 +516,26 @@ export default function CreateTest() {
         // This makes test creation much faster
         (async () => {
           try {
-            if (assignmentMode === "all") {
-              const assignResponse = await apiRequest("/assignments/assign-all", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  testId: createdTest._id,
-                  startTime: startTimeISO,
-                  duration: parseInt(assignmentOptions.duration),
-                }),
-              });
-              // Handle 202 Accepted response (processing in background)
-              if (assignResponse && assignResponse.status === "processing") {
-                console.log("✅ Assignment process started in background for large number of students");
+            if (assignmentMode === "manual") {
+              if (selectedStudents.length > 0) {
+                await apiRequest("/assignments/assign-manual", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    testId: createdTest._id,
+                    studentIds: selectedStudents,
+                    startTime: startTimeISO,
+                    duration: parseInt(assignmentOptions.duration),
+                  }),
+                });
               }
-            } else if (
-              assignmentMode === "manual" &&
-              selectedStudents.length > 0
-            ) {
-              await apiRequest("/assignments/assign-manual", {
+            } else {
+              await apiRequest("/assignments/assign-cohort", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   testId: createdTest._id,
-                  studentIds: selectedStudents,
-                  startTime: startTimeISO,
-                  duration: parseInt(assignmentOptions.duration),
-                }),
-              });
-            } else if (assignmentMode === "ru") {
-              await apiRequest("/assignments/assign-ru", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  testId: createdTest._id,
-                  startTime: startTimeISO,
-                  duration: parseInt(assignmentOptions.duration),
-                }),
-              });
-            } else if (assignmentMode === "su") {
-              await apiRequest("/assignments/assign-su", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  testId: createdTest._id,
+                  cohort: assignmentMode,
                   startTime: startTimeISO,
                   duration: parseInt(assignmentOptions.duration),
                 }),
@@ -1001,113 +990,36 @@ export default function CreateTest() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {/* All Students Option */}
-                  <div
-                    className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${assignmentMode === "all"
-                        ? "border-blue-500 bg-blue-900/20"
-                        : "border-slate-600 bg-slate-700 hover:border-slate-500"
-                      }`}
-                    onClick={() => setAssignmentMode("all")}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${assignmentMode === "all"
-                          ? "border-blue-500 bg-blue-500"
-                          : "border-slate-400"
-                        }`}>
-                        {assignmentMode === "all" && (
-                          <div className="w-2 h-2 bg-white rounded-full"></div>
-                        )}
+                  {[
+                    ...cohorts.map((c) => ({
+                      id: c.key,
+                      label: c.label,
+                      desc: `${c.description} \u00b7 ${c.count} student${c.count === 1 ? "" : "s"}`,
+                    })),
+                    { id: "manual", label: "Specific Students", desc: "Choose individual students" },
+                  ].map((mode) => (
+                    <div
+                      key={mode.id}
+                      className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${assignmentMode === mode.id
+                          ? "border-blue-500 bg-blue-900/20"
+                          : "border-slate-600 bg-slate-700 hover:border-slate-500"
+                        }`}
+                      onClick={() => setAssignmentMode(mode.id)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${assignmentMode === mode.id
+                            ? "border-blue-500 bg-blue-500"
+                            : "border-slate-400"
+                          }`}>
+                          {assignmentMode === mode.id && (
+                            <div className="w-2 h-2 bg-white rounded-full"></div>
+                          )}
+                        </div>
+                        <span className="font-medium">{mode.label}</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                        </svg>
-                        <span className="font-medium">All Students</span>
-                      </div>
+                      <p className="text-sm text-slate-400 mt-1 ml-7">{mode.desc}</p>
                     </div>
-                    <p className="text-sm text-slate-400 mt-1 ml-7">Assign to all registered students</p>
-                  </div>
-
-                  {/* Specific Students Option */}
-                  <div
-                    className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${assignmentMode === "manual"
-                        ? "border-blue-500 bg-blue-900/20"
-                        : "border-slate-600 bg-slate-700 hover:border-slate-500"
-                      }`}
-                    onClick={() => setAssignmentMode("manual")}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${assignmentMode === "manual"
-                          ? "border-blue-500 bg-blue-500"
-                          : "border-slate-400"
-                        }`}>
-                        {assignmentMode === "manual" && (
-                          <div className="w-2 h-2 bg-white rounded-full"></div>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                        </svg>
-                        <span className="font-medium">Specific Students</span>
-                      </div>
-                    </div>
-                    <p className="text-sm text-slate-400 mt-1 ml-7">Choose individual students</p>
-                  </div>
-
-                  {/* RU Students Option */}
-                  <div
-                    className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${assignmentMode === "ru"
-                        ? "border-blue-500 bg-blue-900/20"
-                        : "border-slate-600 bg-slate-700 hover:border-slate-500"
-                      }`}
-                    onClick={() => setAssignmentMode("ru")}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${assignmentMode === "ru"
-                          ? "border-blue-500 bg-blue-500"
-                          : "border-slate-400"
-                        }`}>
-                        {assignmentMode === "ru" && (
-                          <div className="w-2 h-2 bg-white rounded-full"></div>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <svg className="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                        </svg>
-                        <span className="font-medium">RU Students</span>
-                      </div>
-                    </div>
-                    <p className="text-sm text-slate-400 mt-1 ml-7">Assign to RU category students only</p>
-                  </div>
-
-                  {/* SU Students Option */}
-                  <div
-                    className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${assignmentMode === "su"
-                        ? "border-blue-500 bg-blue-900/20"
-                        : "border-slate-600 bg-slate-700 hover:border-slate-500"
-                      }`}
-                    onClick={() => setAssignmentMode("su")}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${assignmentMode === "su"
-                          ? "border-blue-500 bg-blue-500"
-                          : "border-slate-400"
-                        }`}>
-                        {assignmentMode === "su" && (
-                          <div className="w-2 h-2 bg-white rounded-full"></div>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                        </svg>
-                        <span className="font-medium">SU Students</span>
-                      </div>
-                    </div>
-                    <p className="text-sm text-slate-400 mt-1 ml-7">Assign to SU category students only</p>
-                  </div>
+                  ))}
                 </div>
               </div>
 

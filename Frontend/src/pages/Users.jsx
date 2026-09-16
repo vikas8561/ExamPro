@@ -1,7 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
-import { Search, X as CloseIcon, UserPlus, Users as UsersIcon, Trash2, Image as ImageIcon, KeyRound, ShieldOff, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Search, X as CloseIcon, UserPlus, Users as UsersIcon, Trash2, Image as ImageIcon } from "lucide-react";
 import StatusPill from "../components/StatusPill";
-import EmailUploader from "../components/EmailUploader";
 import { API_BASE_URL } from "../config/api";
 import apiRequest from "../services/api";
 
@@ -41,21 +40,21 @@ export default function Users() {
   const [users, setUsers] = useState([]);
   const [q, setQ] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [form, setForm] = useState({
-    name: "",
-    email: "",
-    role: "Student",
-    studentCategory: "SU",
-  });
+  // Students come from the university's system and are read-only here, so the
+  // form only ever creates a mentor or an admin.
+  const EMPTY_FORM = { name: "", email: "", password: "", role: "Mentor", subjects: [] };
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [subjectOptions, setSubjectOptions] = useState([]);
   const [editing, setEditing] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [addMode, setAddMode] = useState(null); // 'single' or 'bulk'
-  const [filter, setFilter] = useState("All Users"); // "All Users", "RU Students", "SU Students", "Mentor", "Admin"
+  // Filter values are "All Users", "Mentor", "Admin", or "students:<cohortKey>"
+  // for one of the campus cohorts. The option list is served by the backend so
+  // the cohorts stay defined in one place.
+  const [filter, setFilter] = useState("All Users");
+  const [filterOptions, setFilterOptions] = useState([{ value: "All Users", label: "All Users" }]);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [deletingImage, setDeletingImage] = useState(null);
-  const [resettingPassword, setResettingPassword] = useState(null);
-  const [unblockingUser, setUnblockingUser] = useState(null);
-  const [unblockingAll, setUnblockingAll] = useState(false);
   // Themed popup for showing results instead of browser alert
   const [resultPopup, setResultPopup] = useState({ show: false, message: '', type: 'success' });
   const [loading, setLoading] = useState(true);
@@ -133,6 +132,31 @@ export default function Users() {
     setCurrentPage(1);
   }, [searchTerm, filter]);
 
+  // Directory filter options (campus cohorts + staff roles), loaded once.
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/users/filters`, {
+      headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+    })
+      .then((res) => (res.ok ? res.json() : { filters: [] }))
+      .then((data) => {
+        if (data.filters?.length) setFilterOptions(data.filters);
+      })
+      .catch((err) => console.error("Error fetching filter options:", err));
+  }, []);
+
+  // Subjects a mentor can be assigned to, loaded once for the create/edit form.
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/subjects`, {
+      headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+    })
+      .then((res) => (res.ok ? res.json() : { subjects: [] }))
+      .then((data) => setSubjectOptions(data.subjects || []))
+      .catch((err) => {
+        console.error("Error fetching subjects:", err);
+        setSubjectOptions([]);
+      });
+  }, []);
+
   useEffect(() => {
     // Clear previous debounce timer
     if (searchDebounceRef.current) {
@@ -177,6 +201,24 @@ export default function Users() {
       return alert("Name & email required");
     }
 
+    // A new account needs a password; editing one may leave it blank to keep
+    // the existing password.
+    if (!editing && !form.password.trim()) {
+      return alert("Password is required");
+    }
+
+    if (form.password.trim() && form.password.trim().length < 6) {
+      return alert("Password must be at least 6 characters long");
+    }
+
+    const payload = {
+      name: form.name.trim(),
+      email: form.email.trim(),
+      role: form.role,
+      subjects: form.role === "Mentor" ? form.subjects : [],
+    };
+    if (form.password.trim()) payload.password = form.password.trim();
+
     if (editing) {
       // Update existing user
       fetch(`${API_BASE_URL}/users/${editing}`, {
@@ -185,7 +227,7 @@ export default function Users() {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${localStorage.getItem("token")}`
         },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       })
         .then((res) => {
           if (!res.ok) {
@@ -213,7 +255,7 @@ export default function Users() {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${localStorage.getItem("token")}`
         },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       })
         .then((res) => {
           if (!res.ok) {
@@ -235,12 +277,7 @@ export default function Users() {
     }
 
     // Reset form
-    setForm({
-      name: "",
-      email: "",
-      role: "Student",
-      studentCategory: "SU",
-    });
+    setForm(EMPTY_FORM);
   };
 
   const deleteUser = (id) => {
@@ -342,136 +379,6 @@ export default function Users() {
     });
   };
 
-  const resetAllPasswords = () => {
-    setConfirmModal({
-      isOpen: true,
-      title: "Reset All Passwords",
-      message: "Are you sure you want to reset passwords for ALL users to '12345'? This action cannot be undone.",
-      confirmKeyword: "RESET PASSWORDS",
-      isDanger: true,
-      isLoading: false,
-      action: async () => {
-        const response = await fetch(`${API_BASE_URL}/users/reset-passwords/all`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${localStorage.getItem("token")}`
-          }
-        });
-
-        const data = await response.json();
-
-        if (response.ok) {
-          alert(data.message);
-        } else {
-          throw new Error(data.message || "Failed to reset passwords");
-        }
-      }
-    });
-  };
-
-  const resetPassword = async (userId, userName) => {
-    // For single user reset, we can allow a simpler confirmation or use the modal without typing
-    setConfirmModal({
-      isOpen: true,
-      title: "Reset User Password",
-      message: `Are you sure you want to reset the password for ${userName}? The password will be changed to the default: 12345`,
-      confirmKeyword: "", // No typing required for single user
-      isDanger: false, // Less dangerous than executing for ALL
-      isLoading: false,
-      action: async () => {
-        const response = await fetch(`${API_BASE_URL}/users/${userId}/reset-password`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${localStorage.getItem("token")}`
-          },
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          alert(data.message || "Password reset successfully. Default password is now: 12345");
-        } else {
-          const errorData = await response.json();
-          alert(errorData.message || "Failed to reset password");
-        }
-      }
-    });
-  };
-
-  // Unblock a blocked user
-  const unblockUser = async (userId, userName) => {
-    setConfirmModal({
-      isOpen: true,
-      title: "Unblock User",
-      message: `Are you sure you want to unblock ${userName}? They will be able to login again.`,
-      confirmKeyword: "",
-      isDanger: false,
-      isLoading: false,
-      action: async () => {
-        setUnblockingUser(userId);
-        try {
-          const response = await fetch(`${API_BASE_URL}/users/${userId}/unblock`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${localStorage.getItem("token")}`
-            }
-          });
-
-          const data = await response.json();
-
-          if (response.ok) {
-            alert(data.message || "User unblocked successfully.");
-            fetchUsers();
-          } else {
-            alert(data.message || "Failed to unblock user.");
-          }
-        } catch (error) {
-          alert("An error occurred while unblocking the user.");
-        } finally {
-          setUnblockingUser(null);
-        }
-      }
-    });
-  };
-
-  // Unblock all blocked users at once
-  const unblockAllUsers = async () => {
-    setConfirmModal({
-      isOpen: true,
-      title: "Unblock All Users",
-      message: "This will unblock all currently blocked accounts and reset their failed login attempts. They will be able to login again.",
-      confirmKeyword: "",
-      isDanger: false,
-      isLoading: false,
-      action: async () => {
-        setUnblockingAll(true);
-        try {
-          const response = await fetch(`${API_BASE_URL}/users/unblock-all`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${localStorage.getItem("token")}`
-            }
-          });
-
-          const data = await response.json();
-
-          if (response.ok) {
-            setResultPopup({ show: true, message: data.message || "All users unblocked successfully.", type: 'success' });
-            fetchUsers();
-          } else {
-            setResultPopup({ show: true, message: data.message || "Failed to unblock users.", type: 'error' });
-          }
-        } catch (error) {
-          setResultPopup({ show: true, message: "An error occurred while unblocking users.", type: 'error' });
-        } finally {
-          setUnblockingAll(false);
-        }
-      }
-    });
-  };
 
   // Auto-dismiss result popup after 3 seconds
   useEffect(() => {
@@ -560,7 +467,7 @@ export default function Users() {
                       <svg className="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
                       </svg>
-                      {filter}
+                      {filterOptions.find((o) => o.value === filter)?.label || filter}
                     </span>
                     <svg className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${isFilterOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -568,18 +475,23 @@ export default function Users() {
                   </button>
                   {isFilterOpen && (
                     <div className="absolute top-full right-0 mt-2 w-56 bg-slate-900 border border-slate-700 rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                      {['All Users', 'RU Students', 'SU Students', 'Mentor', 'Admin'].map(option => (
+                      {filterOptions.map(option => (
                         <div
-                          key={option}
+                          key={option.value}
                           onClick={() => {
-                            setFilter(option);
+                            setFilter(option.value);
                             setIsFilterOpen(false);
                           }}
-                          className={`px-4 py-3 hover:bg-slate-800 cursor-pointer text-sm font-medium transition-colors flex items-center justify-between ${filter === option ? 'text-indigo-400 bg-slate-800/50' : 'text-slate-300'
+                          className={`px-4 py-3 hover:bg-slate-800 cursor-pointer text-sm font-medium transition-colors flex items-center justify-between gap-2 ${filter === option.value ? 'text-indigo-400 bg-slate-800/50' : 'text-slate-300'
                             }`}
                         >
-                          {option}
-                          {filter === option && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
+                          <span className="truncate">{option.label}</span>
+                          <span className="flex items-center gap-2 flex-shrink-0">
+                            {typeof option.count === 'number' && (
+                              <span className="text-xs text-slate-500">{option.count}</span>
+                            )}
+                            {filter === option.value && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -598,25 +510,6 @@ export default function Users() {
                   <span className="hidden lg:inline">Images</span>
                 </button>
 
-                <button
-                  onClick={resetAllPasswords}
-                  className="px-4 py-3.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 transition-all hover:scale-105 active:scale-95 flex items-center gap-2 font-medium text-sm"
-                  title="Reset all user passwords"
-                >
-                  <KeyRound className="h-4 w-4" />
-                  <span className="hidden lg:inline">Passwords</span>
-                </button>
-
-                <button
-                  onClick={unblockAllUsers}
-                  disabled={unblockingAll}
-                  className="px-4 py-3.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 transition-all hover:scale-105 active:scale-95 flex items-center gap-2 font-medium text-sm disabled:opacity-50 disabled:hover:scale-100"
-                  title="Unblock all blocked user accounts"
-                >
-                  <ShieldCheck className="h-4 w-4" />
-                  <span className="hidden lg:inline">{unblockingAll ? 'Unblocking...' : 'Unblock All'}</span>
-                </button>
-
                 {/* Add User Button - Prominent */}
                 <button
                   onClick={() => {
@@ -625,16 +518,11 @@ export default function Users() {
                       setAddMode(null);
                       if (editing) {
                         setEditing(null);
-                        setForm({
-                          name: "",
-                          email: "",
-                          role: "Student",
-                          studentCategory: "SU",
-                        });
+                        setForm(EMPTY_FORM);
                       }
                     } else {
                       setShowAddForm(true);
-                      setAddMode(null);
+                      setAddMode("single");
                     }
                   }}
                   className="flex items-center gap-2 px-6 py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/25 transition-all hover:scale-105 active:scale-95 border border-white/10"
@@ -648,7 +536,7 @@ export default function Users() {
         </div>
       </div>
 
-      {/* Add/Edit User Form or Bulk Upload */}
+      {/* Add/Edit User Form */}
       {showAddForm && (
         <div className="mb-6">
           <div
@@ -658,98 +546,6 @@ export default function Users() {
               borderColor: "rgba(255, 255, 255, 0.2)",
             }}
           >
-            {/* Choice Selection - Show when no mode selected and not editing */}
-            {!addMode && !editing && (
-              <>
-                <h3 className="text-xl font-semibold mb-4" style={{ color: "#E5E7EB" }}>
-                  Add Users
-                </h3>
-                <p className="text-sm mb-6" style={{ color: "#9CA3AF" }}>
-                  Choose how you want to add users
-                </p>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <button
-                    onClick={() => setAddMode("single")}
-                    className="p-6 rounded-xl border transition-all duration-300 text-left group"
-                    style={{
-                      backgroundColor: "#0B1220",
-                      borderColor: "rgba(255, 255, 255, 0.2)",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.4)";
-                      e.currentTarget.style.boxShadow = "0 10px 25px -5px rgba(255, 255, 255, 0.1)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.2)";
-                      e.currentTarget.style.boxShadow = "none";
-                    }}
-                  >
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="p-2 bg-slate-800/70 rounded-lg">
-                        <UserPlus className="h-5 w-5" style={{ color: "#FFFFFF" }} />
-                      </div>
-                      <h4 className="text-lg font-semibold" style={{ color: "#E5E7EB" }}>
-                        Single User
-                      </h4>
-                    </div>
-                    <p className="text-sm" style={{ color: "#9CA3AF" }}>
-                      Add one user at a time with custom details
-                    </p>
-                  </button>
-                  <button
-                    onClick={() => setAddMode("bulk")}
-                    className="p-6 rounded-xl border transition-all duration-300 text-left group"
-                    style={{
-                      backgroundColor: "#0B1220",
-                      borderColor: "rgba(255, 255, 255, 0.2)",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.4)";
-                      e.currentTarget.style.boxShadow = "0 10px 25px -5px rgba(255, 255, 255, 0.1)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.2)";
-                      e.currentTarget.style.boxShadow = "none";
-                    }}
-                  >
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="p-2 bg-slate-800/70 rounded-lg">
-                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: "#FFFFFF" }}>
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                        </svg>
-                      </div>
-                      <h4 className="text-lg font-semibold" style={{ color: "#E5E7EB" }}>
-                        Bulk Upload
-                      </h4>
-                    </div>
-                    <p className="text-sm" style={{ color: "#9CA3AF" }}>
-                      Upload CSV file to add multiple users at once
-                    </p>
-                  </button>
-                </div>
-                <button
-                  onClick={() => {
-                    setShowAddForm(false);
-                    setAddMode(null);
-                  }}
-                  className="mt-4 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300"
-                  style={{
-                    backgroundColor: "rgba(255, 255, 255, 0.05)",
-                    color: "#E5E7EB",
-                    border: "1px solid rgba(255, 255, 255, 0.2)",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.05)";
-                  }}
-                >
-                  Cancel
-                </button>
-              </>
-            )}
-
             {/* Single User Form */}
             {(addMode === "single" || editing) && (
               <>
@@ -766,12 +562,7 @@ export default function Users() {
                       } else {
                         setAddMode(null);
                       }
-                      setForm({
-                        name: "",
-                        email: "",
-                        role: "Student",
-                        studentCategory: "SU",
-                      });
+                      setForm(EMPTY_FORM);
                     }}
                     className="text-sm"
                     style={{ color: "#9CA3AF" }}
@@ -830,32 +621,73 @@ export default function Users() {
                       e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
                     }}
                   >
-                    <option value="Student" style={{ backgroundColor: "#1E293B" }}>Student</option>
                     <option value="Mentor" style={{ backgroundColor: "#1E293B" }}>Mentor</option>
                     <option value="Admin" style={{ backgroundColor: "#1E293B" }}>Admin</option>
                   </select>
-                  {form.role === "Student" && (
-                    <select
-                      value={form.studentCategory}
-                      onChange={(e) => setForm((f) => ({ ...f, studentCategory: e.target.value }))}
-                      className="px-4 py-3 rounded-xl focus:outline-none transition-all duration-300"
+                  <input
+                    type="password"
+                    value={form.password}
+                    onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                    placeholder={editing ? "New password (leave blank to keep current)" : "Password"}
+                    autoComplete="new-password"
+                    className="px-4 py-3 rounded-xl focus:outline-none transition-all duration-300"
+                    style={{
+                      backgroundColor: "#1E293B",
+                      border: "1px solid rgba(255, 255, 255, 0.3)",
+                      color: "#FFFFFF",
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.5)";
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
+                    }}
+                  />
+                </div>
+
+                {form.role === "Mentor" && (
+                  <div className="mt-4">
+                    <p className="text-sm mb-2" style={{ color: "#9CA3AF" }}>
+                      Subjects (select one or more)
+                    </p>
+                    <div
+                      className="max-h-48 overflow-y-auto rounded-xl p-3 grid grid-cols-1 sm:grid-cols-2 gap-2"
                       style={{
                         backgroundColor: "#1E293B",
                         border: "1px solid rgba(255, 255, 255, 0.3)",
-                        color: "#FFFFFF",
-                      }}
-                      onFocus={(e) => {
-                        e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.5)";
-                      }}
-                      onBlur={(e) => {
-                        e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
                       }}
                     >
-                      <option value="RU" style={{ backgroundColor: "#1E293B" }}>RU</option>
-                      <option value="SU" style={{ backgroundColor: "#1E293B" }}>SU</option>
-                    </select>
-                  )}
-                </div>
+                      {subjectOptions.length === 0 && (
+                        <p className="text-sm" style={{ color: "#64748B" }}>
+                          No subjects available yet.
+                        </p>
+                      )}
+                      {subjectOptions.map((subject) => (
+                        <label
+                          key={subject._id}
+                          className="flex items-center gap-2 text-sm cursor-pointer"
+                          style={{ color: "#E5E7EB" }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={form.subjects.includes(subject._id)}
+                            onChange={(e) =>
+                              setForm((f) => ({
+                                ...f,
+                                subjects: e.target.checked
+                                  ? [...f.subjects, subject._id]
+                                  : f.subjects.filter((id) => id !== subject._id),
+                              }))
+                            }
+                            className="accent-blue-500"
+                          />
+                          <span className="truncate" title={subject.name}>{subject.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex gap-3 mt-4">
                   <button
                     onClick={submit}
@@ -879,12 +711,7 @@ export default function Users() {
                       setShowAddForm(false);
                       setAddMode(null);
                       setEditing(null);
-                      setForm({
-                        name: "",
-                        email: "",
-                        role: "Student",
-                        studentCategory: "SU",
-                      });
+                      setForm(EMPTY_FORM);
                     }}
                     className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300"
                     style={{
@@ -905,30 +732,6 @@ export default function Users() {
               </>
             )}
 
-            {/* Bulk Upload */}
-            {addMode === "bulk" && !editing && (
-              <>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-xl font-semibold" style={{ color: "#E5E7EB" }}>
-                    Bulk Upload Users
-                  </h3>
-                  <button
-                    onClick={() => {
-                      setAddMode(null);
-                    }}
-                    className="text-sm"
-                    style={{ color: "#9CA3AF" }}
-                  >
-                    ← Back
-                  </button>
-                </div>
-                <EmailUploader onUploadComplete={() => {
-                  fetchUsers();
-                  setShowAddForm(false);
-                  setAddMode(null);
-                }} />
-              </>
-            )}
           </div>
         </div>
       )}
@@ -963,7 +766,7 @@ export default function Users() {
                       </svg>
                     </div>
                     {/* Status indicator ring */}
-                    <div className={`absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full border-2 border-slate-800 shadow-lg ${u.isBlocked ? 'bg-gradient-to-br from-red-400 to-red-600' : 'bg-gradient-to-br from-green-400 to-emerald-500'}`}></div>
+                    <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full border-2 border-slate-800 shadow-lg bg-gradient-to-br from-green-400 to-emerald-500"></div>
                   </div>
                   <div className="flex-1 min-w-0 pt-1">
                     <h3
@@ -973,12 +776,6 @@ export default function Users() {
                     >
                       {u.name}
                     </h3>
-                    {u.isBlocked && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/20 border border-red-500/40 text-red-300 text-xs font-semibold mb-1">
-                        <ShieldAlert className="h-3 w-3" />
-                        Blocked
-                      </span>
-                    )}
                     <p
                       className="text-sm truncate"
                       style={{ color: "#94A3B8" }}
@@ -1041,6 +838,11 @@ export default function Users() {
 
               {/* Action Buttons */}
               <div className="flex flex-col gap-2.5 mt-auto pt-4" style={{ borderTop: "1px solid rgba(148, 163, 184, 0.2)" }}>
+                {u.role === "Student" ? (
+                  <p className="text-xs text-center" style={{ color: "#64748B" }}>
+                    Managed in the university system
+                  </p>
+                ) : (
                 <div className="flex justify-between gap-2.5">
                   <button
                     onClick={() => {
@@ -1048,8 +850,9 @@ export default function Users() {
                       setForm({
                         name: u.name,
                         email: u.email,
+                        password: "", // blank keeps the existing password
                         role: u.role,
-                        studentCategory: u.studentCategory || "SU",
+                        subjects: (u.subjects || []).map((sub) => sub._id || sub),
                       });
                       setShowAddForm(true);
                       setAddMode("single");
@@ -1069,15 +872,7 @@ export default function Users() {
                     Delete
                   </button>
                 </div>
-                {/* Reset Password Button */}
-                <button
-                  onClick={() => resetPassword(u._id, u.name)}
-                  disabled={resettingPassword === u._id}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600/20 to-blue-700/20 hover:from-blue-600/30 hover:to-blue-700/30 text-blue-300 rounded-lg text-xs font-semibold border border-blue-500/30 shadow-md hover:shadow-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 hover:scale-105"
-                >
-                  <KeyRound className="h-4 w-4" />
-                  {resettingPassword === u._id ? "Resetting..." : "Reset Password"}
-                </button>
+                )}
                 {/* Delete Profile Image Button - Show if image OR face descriptor exists in DB */}
                 {u.profileImageSaved && (
                   <button
@@ -1087,17 +882,6 @@ export default function Users() {
                   >
                     <Trash2 className="h-4 w-4" />
                     {deletingImage === u._id ? "Deleting..." : "Delete Profile Image"}
-                  </button>
-                )}
-                {/* Unblock User Button - Show only when user is blocked */}
-                {u.isBlocked && (
-                  <button
-                    onClick={() => unblockUser(u._id, u.name)}
-                    disabled={unblockingUser === u._id}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600/20 to-emerald-700/20 hover:from-emerald-600/30 hover:to-emerald-700/30 text-emerald-300 rounded-lg text-xs font-semibold border border-emerald-500/30 shadow-md hover:shadow-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 hover:scale-105"
-                  >
-                    <ShieldOff className="h-4 w-4" />
-                    {unblockingUser === u._id ? "Unblocking..." : "Unblock User"}
                   </button>
                 )}
               </div>

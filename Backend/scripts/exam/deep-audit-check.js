@@ -13,6 +13,7 @@
 require("dotenv").config({ path: require("path").resolve(__dirname, "../../.env") });
 const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken");
+const { grantSession, revokeSessions } = require("../lib/testAuth");
 
 const API = "http://localhost:4000/api";
 const MARK = `deep-${Date.now()}`;
@@ -48,7 +49,7 @@ async function api(path, { token, method = "GET", body } = {}) {
     const u = new User({ name: `ZZ ${n} ${MARK}`, email: `${MARK}-${n}@verify.invalid`, password: "x", role });
     await u.save();
     const token = jwt.sign({ userId: u._id, email: u.email, role: u.role }, process.env.JWT_SECRET, { expiresIn: "2h" });
-    u.activeSessions = [token]; await u.save(); bin.users.push(u._id);
+    await grantSession(u, token); bin.users.push(u._id);
     return { user: u, token };
   };
 

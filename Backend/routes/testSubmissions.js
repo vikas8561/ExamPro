@@ -8,6 +8,7 @@ const Test = require("../models/Test");
 const { authenticateToken, requireRole } = require("../middleware/auth");
 const { requireProctorSession } = require("../middleware/proctorSession");
 const ProctorSession = require("../models/ProctorSession");
+const { attach } = require("../services/principals");
 
 // Gemini integration removed - mentors will grade manually
 
@@ -771,8 +772,11 @@ router.get("/stats/:testId", authenticateToken, requireRole("admin"), async (req
   try {
     const { testId } = req.params;
 
-    const submissions = await TestSubmission.find({ testId })
-      .populate("userId", "name email");
+    const submissions = await attach(
+      await TestSubmission.find({ testId }).lean(),
+      "userId",
+      "Student"
+    );
 
     const stats = {
       totalSubmissions: submissions.length,

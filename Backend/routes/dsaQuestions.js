@@ -3,6 +3,7 @@ const router = express.Router();
 const DSAQuestion = require("../models/DSAQuestion");
 const DSAQuestionNote = require("../models/DSAQuestionNote");
 const { authenticateToken, requireRole } = require("../middleware/auth");
+const { attach } = require("../services/principals");
 
 // Get all DSA questions (for students - shows all questions)
 router.get("/", authenticateToken, async (req, res, next) => {
@@ -71,11 +72,14 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
 // Admin: Get all DSA questions (for admin panel)
 router.get("/admin/all", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
-    const questions = await DSAQuestion.find()
-      .select("questionNumber name link videoLink topic createdAt createdBy")
-      .populate("createdBy", "name email")
-      .sort({ questionNumber: 1 })
-      .lean();
+    const questions = await attach(
+      await DSAQuestion.find()
+        .select("questionNumber name link videoLink topic createdAt createdBy")
+        .sort({ questionNumber: 1 })
+        .lean(),
+      "createdBy",
+      "Author"
+    );
 
     res.json({ questions });
   } catch (error) {

@@ -58,9 +58,9 @@
     padding-bottom: 1rem !important;
     flex-shrink: 0 !important;
     position: relative !important;
-    background-color: #0B1220;
+    background-color: #181A22;
     z-index: 10;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   }
 
   .student-sidebar-mobile .sidebar-header-content {
@@ -171,8 +171,8 @@
     flex: 0 0 auto !important;
     flex-shrink: 0 !important;
     flex-grow: 0 !important;
-    background-color: #0B1220;
-    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    background-color: #181A22;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
     position: relative !important;
     z-index: 5;
     width: 100% !important;
@@ -276,8 +276,8 @@
   /* Mobile Header */
   .mobile-header {
     padding: 0.875rem 1rem !important;
-    background-color: #0B1220 !important;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.2) !important;
+    background-color: #181A22 !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
   }
 
   .mobile-header-title {

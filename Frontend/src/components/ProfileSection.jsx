@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Camera, Mail, Lock, User as UserIcon, Building2 } from "lucide-react";
+import { Camera, Mail, User as UserIcon, Building2 } from "lucide-react";
 import { API_BASE_URL } from '../config/api';
 
 export default function ProfileSection() {
@@ -26,19 +26,6 @@ export default function ProfileSection() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [uploadingImage, setUploadingImage] = useState(false);
-
-  // Email Update States
-  const [showEmailForm, setShowEmailForm] = useState(false);
-  const [newEmail, setNewEmail] = useState("");
-  const [emailLoading, setEmailLoading] = useState(false);
-  const [emailMessage, setEmailMessage] = useState("");
-
-  // Password Change States
-  const [showPasswordForm, setShowPasswordForm] = useState(false);
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [passwordLoading, setPasswordLoading] = useState(false);
-  const [passwordMessage, setPasswordMessage] = useState("");
 
   // Initialize captured image from user profile
   useEffect(() => {
@@ -270,93 +257,6 @@ export default function ProfileSection() {
     };
   }, [stream]);
 
-  // Email Update Functions
-  const handleEmailUpdate = async (e) => {
-    e.preventDefault();
-    if (!newEmail) {
-      setEmailMessage("Please enter a new email address");
-      return;
-    }
-
-    setEmailLoading(true);
-    setEmailMessage("");
-
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${API_BASE_URL}/auth/profile/update-email`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ newEmail })
-      });
-
-      const data = await response.json();
-      if (response.ok) {
-        setEmailMessage("Verification email sent! Please check your new email address and click the verification link.");
-        setShowEmailForm(false);
-        setNewEmail("");
-      } else {
-        setEmailMessage(data.message || "Failed to update email");
-      }
-    } catch (error) {
-      console.error('Error updating email:', error);
-      setEmailMessage("Error updating email. Please try again.");
-    } finally {
-      setEmailLoading(false);
-    }
-  };
-
-  // Password Change Functions
-  const handlePasswordChange = async (e) => {
-    e.preventDefault();
-    if (!newPassword || !confirmPassword) {
-      setPasswordMessage("Please fill in all fields");
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setPasswordMessage("Passwords do not match");
-      return;
-    }
-
-    if (newPassword.length < 6) {
-      setPasswordMessage("Password must be at least 6 characters long");
-      return;
-    }
-
-    setPasswordLoading(true);
-    setPasswordMessage("");
-
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${API_BASE_URL}/auth/profile/change-password`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ newPassword, confirmPassword })
-      });
-
-      const data = await response.json();
-      if (response.ok) {
-        setPasswordMessage("Verification email sent! Please check your email and click the verification link to complete the password change.");
-        setShowPasswordForm(false);
-        setNewPassword("");
-        setConfirmPassword("");
-      } else {
-        setPasswordMessage(data.message || "Failed to change password");
-      }
-    } catch (error) {
-      console.error('Error changing password:', error);
-      setPasswordMessage("Error changing password. Please try again.");
-    } finally {
-      setPasswordLoading(false);
-    }
-  };
-
   if (loading && !user) {
     return (
       <div className="p-4 text-center text-slate-400 text-sm">
@@ -470,118 +370,23 @@ export default function ProfileSection() {
           <span className="text-slate-300">{user.name}</span>
         </div>
 
+        {(user.rollno || user.universityUID) && (
+          <div className="flex items-center gap-2 text-sm">
+            <UserIcon className="w-4 h-4 text-slate-400" />
+            <span className="text-slate-300">{user.rollno || user.universityUID}</span>
+          </div>
+        )}
+
         <div className="flex items-center gap-2 text-sm">
           <Mail className="w-4 h-4 text-slate-400" />
-          <span className="text-slate-300">{user.email}</span>
-          {!showEmailForm && (
-            <button
-              onClick={() => setShowEmailForm(true)}
-              className="ml-auto text-xs text-blue-400 hover:text-blue-300"
-            >
-              Update
-            </button>
-          )}
+          <span className="text-slate-300">{user.email || 'No email on record'}</span>
         </div>
-
-        {showEmailForm && (
-          <form onSubmit={handleEmailUpdate} className="space-y-2 p-2 bg-slate-700/50 rounded">
-            <input
-              type="email"
-              value={newEmail}
-              onChange={(e) => setNewEmail(e.target.value)}
-              placeholder="New email address"
-              className="w-full px-2 py-1 bg-slate-800 border border-slate-600 rounded text-sm text-white"
-              required
-            />
-            {emailMessage && (
-              <p className={`text-xs ${emailMessage.includes("sent") ? "text-green-400" : "text-red-400"}`}>
-                {emailMessage}
-              </p>
-            )}
-            <div className="flex gap-2">
-              <button
-                type="submit"
-                disabled={emailLoading}
-                className="flex-1 px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 rounded transition disabled:opacity-50"
-              >
-                {emailLoading ? "Sending..." : "Send Verification"}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowEmailForm(false);
-                  setNewEmail("");
-                  setEmailMessage("");
-                }}
-                className="px-2 py-1 text-xs bg-slate-600 hover:bg-slate-700 rounded transition"
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        )}
 
         <div className="flex items-center gap-2 text-sm">
           <Building2 className="w-4 h-4 text-slate-400" />
           <span className="text-slate-300">CodingGita</span>
         </div>
 
-        {!showPasswordForm && (
-          <button
-            onClick={() => setShowPasswordForm(true)}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 mt-2 bg-slate-700 hover:bg-slate-600 rounded transition text-sm"
-          >
-            <Lock className="w-4 h-4" />
-            Change Password
-          </button>
-        )}
-
-        {showPasswordForm && (
-          <form onSubmit={handlePasswordChange} className="space-y-2 p-2 bg-slate-700/50 rounded">
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="New password"
-              className="w-full px-2 py-1 bg-slate-800 border border-slate-600 rounded text-sm text-white"
-              required
-            />
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Confirm password"
-              className="w-full px-2 py-1 bg-slate-800 border border-slate-600 rounded text-sm text-white"
-              required
-            />
-            {passwordMessage && (
-              <p className={`text-xs ${passwordMessage.includes("sent") ? "text-green-400" : "text-red-400"}`}>
-                {passwordMessage}
-              </p>
-            )}
-            <div className="flex gap-2">
-              <button
-                type="submit"
-                disabled={passwordLoading}
-                className="flex-1 px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 rounded transition disabled:opacity-50"
-              >
-                {passwordLoading ? "Sending..." : "Send Verification"}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowPasswordForm(false);
-                  setNewPassword("");
-                  setConfirmPassword("");
-                  setPasswordMessage("");
-                }}
-                className="px-2 py-1 text-xs bg-slate-600 hover:bg-slate-700 rounded transition"
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        )}
       </div>
     </div >
   );

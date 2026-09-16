@@ -1,8 +1,10 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const router = express.Router();
 const Test = require("../models/Test");
 const PracticeTestSubmission = require("../models/PracticeTestSubmission");
 const { authenticateToken, requireRole } = require("../middleware/auth");
+const { attach } = require("../services/principals");
 
 
 // MEMORY OPTIMIZATION: Clean up old practice test data
@@ -24,75 +26,96 @@ const cleanupOldPracticeData = async () => {
 // Run cleanup daily
 setInterval(cleanupOldPracticeData, 24 * 60 * 60 * 1000); // 24 hours
 
-// Get all practice tests for students with pagination
+/**
+ * The practice test cards, in one database round trip.
+ *
+ * Same reasoning as GET /api/assignments/student: the queries are trivial, the
+ * round trips are not. Counting, paging and measuring each test's question
+ * array used to be three sequential hops; $facet does all three from one
+ * cursor, and the question count is computed where the questions already live
+ * rather than being fetched back to have its length read.
+ */
 router.get("/", authenticateToken, async (req, res, next) => {
   try {
-    console.log('🎯 Fetching practice tests...');
-    
-    // Pagination parameters
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 9;
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 9, 1), 50);
     const skip = (page - 1) * limit;
-    
-    // Get total count of active practice tests
-    const totalCount = await Test.countDocuments({ 
-      type: "practice", 
-      status: "Active" 
-    });
-    
-    // OPTIMIZED: Get paginated active practice tests - don't load questions array at all
-    const tests = await Test.find({ 
-      type: "practice", 
-      status: "Active" 
-    })
-    .select("title subject instructions timeLimit createdBy") // Removed questions from select
-    .populate("createdBy", "name email")
-    .sort({ createdAt: -1 })
-    .limit(limit)
-    .skip(skip)
-    .lean();
 
-    // OPTIMIZED: Get question counts using aggregation (faster than loading questions array)
-    const testIds = tests.map(t => t._id);
-    let questionCountMap = {};
-    
-    if (testIds.length > 0) {
-      const mongoose = require('mongoose');
-      const questionCounts = await Test.aggregate([
-        { $match: { _id: { $in: testIds } } },
-        { $project: { _id: 1, questionCount: { $size: { $ifNull: ['$questions', []] } } } }
-      ]);
-      
-      questionCounts.forEach(test => {
-        questionCountMap[test._id.toString()] = test.questionCount || 0;
-      });
-    }
+    const [result] = await Test.aggregate([
+      { $match: { type: "practice", status: "Active" } },
+      { $sort: { createdAt: -1 } },
+      {
+        $facet: {
+          total: [{ $count: "n" }],
+          page: [
+            { $skip: skip },
+            { $limit: limit },
+            {
+              $project: {
+                title: 1,
+                subject: 1,
+                instructions: 1,
+                timeLimit: 1,
+                createdBy: 1,
+                questionCount: { $size: { $ifNull: ["$questions", []] } },
+              },
+            },
+          ],
+        },
+      },
+    ]);
 
-    // Transform tests to include question count from map
-    const testsWithQuestionCount = tests.map(test => ({
-      _id: test._id,
-      title: test.title,
-      subject: test.subject,
-      instructions: test.instructions,
-      timeLimit: test.timeLimit,
-      createdBy: test.createdBy,
-      questionCount: questionCountMap[test._id.toString()] || 0
-    }));
+    const tests = result?.page || [];
+    const totalCount = result?.total?.[0]?.n || 0;
 
-    console.log(`🎯 Active practice tests found: ${testsWithQuestionCount.length} (page ${page})`);
-    res.json({ 
-      tests: testsWithQuestionCount,
+    // The author is an admin or a mentor, in ExamPro's own collections.
+    await attach(tests, "createdBy", "Author");
+
+    const totalPages = Math.ceil(totalCount / limit) || 1;
+
+    res.json({
+      tests,
       pagination: {
         currentPage: page,
-        totalPages: Math.ceil(totalCount / limit),
+        totalPages,
         totalItems: totalCount,
         itemsPerPage: limit,
-        hasNextPage: page < Math.ceil(totalCount / limit),
-        hasPrevPage: page > 1
-      }
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
+      },
     });
   } catch (error) {
-    console.error('🎯 Error fetching practice tests:', error);
+    next(error);
+  }
+});
+
+/**
+ * Which of these practice tests has this student already attempted?
+ *
+ * The cards need one boolean each. The page used to get them by firing a
+ * separate GET /:testId/attempts per card -- nine authenticated requests, nine
+ * session lookups and nine queries, all to learn nine booleans, and all of them
+ * after the list itself had finished loading. One indexed query answers the
+ * whole page.
+ *
+ * `ids` is the comma-separated list of test ids on screen; with no `ids` it
+ * answers for every practice test this student has touched.
+ */
+router.get("/attempted", authenticateToken, async (req, res, next) => {
+  try {
+    const query = { userId: req.user.userId };
+
+    const ids = String(req.query.ids || "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter((id) => mongoose.Types.ObjectId.isValid(id));
+
+    if (ids.length) query.testId = { $in: ids };
+
+    const rows = await PracticeTestSubmission.find(query).select("testId").lean();
+
+    res.json({ testIds: rows.map((row) => String(row.testId)) });
+  } catch (error) {
     next(error);
   }
 });

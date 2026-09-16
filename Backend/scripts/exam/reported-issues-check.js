@@ -7,6 +7,7 @@
 require("dotenv").config({ path: require("path").resolve(__dirname, "../../.env") });
 const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken");
+const { grantSession, revokeSessions } = require("../lib/testAuth");
 
 const API = "http://localhost:4000/api";
 const MARK = `rep-${Date.now()}`;
@@ -40,7 +41,7 @@ async function api(path, { token, method = "GET", body } = {}) {
     const u = new User({ name: `ZZ ${n} ${MARK}`, email: `${MARK}-${n}@verify.invalid`, password: "x", role });
     await u.save();
     const token = jwt.sign({ userId: u._id, email: u.email, role: u.role }, process.env.JWT_SECRET, { expiresIn: "2h" });
-    u.activeSessions = [token]; await u.save(); bin.users.push(u._id);
+    await grantSession(u, token); bin.users.push(u._id);
     return { user: u, token };
   };
 
@@ -185,13 +186,16 @@ async function api(path, { token, method = "GET", body } = {}) {
 
       const after = await ProctorSession.findById(started.body.sessionId).lean();
       // "One charge" means one violation is billed, not that it is worth one
-      // point -- stopping a screen share is deliberately weighted 2.
+      // point. The weight itself is asserted below.
       const billed = after.violations.filter((v) => v.weight > 0);
       check(billed.length === 1 && billed[0].violationType === "screen_share_stopped",
         "one act bills one violation, the cause, not three",
         `billed ${JSON.stringify(after.violations.map((v) => `${v.violationType}:${v.weight}`))}`);
-      check(after.violationCount - before === 2,
-        "and it costs exactly what stopping a share is worth (2)",
+      // Scored 1, not 2. The exam is already blocked until the student shares
+      // again, and that block is the enforcement -- charging twice over for one
+      // act punished them for the same thing in two different ways.
+      check(after.violationCount - before === 1,
+        "and it costs exactly what stopping a share is worth (1)",
         `charged ${after.violationCount - before}`);
       check(after.violations.length >= 3,
         "all three are still recorded, so the reviewer sees the whole sequence",

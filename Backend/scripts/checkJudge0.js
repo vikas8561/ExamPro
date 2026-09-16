@@ -14,7 +14,7 @@
 
 require('dotenv').config();
 
-const { checkHealth, runAgainstCases, JUDGE0_URL } = require('../services/judge0');
+const { checkHealth, runAgainstCases, JUDGE0_URL, CONFIG } = require('../services/judge0');
 const { LANGUAGES, LANGUAGE_KEYS } = require('../configs/languages');
 
 const quick = process.argv.includes('--quick');
@@ -33,7 +33,13 @@ async function main() {
   info(`JUDGE0_URL         ${JUDGE0_URL}`);
   info(`JUDGE0_AUTH_TOKEN  ${process.env.JUDGE0_AUTH_TOKEN ? 'set (hidden)' : 'NOT SET'}`);
   info(`JUDGE0_AUTH_HEADER ${process.env.JUDGE0_AUTH_HEADER || 'X-Auth-Token (default)'}`);
-  info(`cpu/wall/memory    ${process.env.JUDGE0_CPU_TIME_LIMIT || 5}s / ${process.env.JUDGE0_WALL_TIME_LIMIT || 10}s / ${process.env.JUDGE0_MEMORY_LIMIT || 256000} KB`);
+  info(`cpu/wall/memory    ${CONFIG.cpuTimeLimit}s / ${CONFIG.wallTimeLimit}s / ${CONFIG.memoryLimit} KB`);
+  // Effective values after alias resolution, so a setting that silently failed
+  // to apply is visible here rather than only under exam load.
+  info(`max concurrent     ${CONFIG.maxConcurrent} in-flight requests`);
+  info(`max wait per batch ${CONFIG.pollTimeoutMs}ms (poll every ${CONFIG.pollIntervalMs}ms)`);
+  info(`batch size         ${CONFIG.batchSize}`);
+  info(`request timeout    ${CONFIG.requestTimeoutMs}ms, ${CONFIG.maxRetries} retries`);
 
   console.log('\nConnectivity');
   const health = await checkHealth({ refresh: true });

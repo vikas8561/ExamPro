@@ -262,5 +262,45 @@ devtoolsRun({ startGap: 80, thenGap: 420, label: "a real docked devtools pane IS
     whileOpen === true && afterClose === false, `open=${whileOpen} afterClose=${afterClose}`);
 })();
 
-console.log(`\n──────────────\n${pass} passed, ${fail} failed`);
+// ── Cross-platform regressions ─────────────────────────────────────────────
+// The failures below were reported from real macOS and Linux machines. Each one
+// ended or disrupted an exam for a student who had done nothing wrong.
+console.log("\n════ Cross-platform: Windows, macOS and Linux ════\n");
+
+function devtoolsAt({ startGap, thenGap, ticks = 4 }) {
+  window.outerHeight = 900 + startGap;
+  window.innerHeight = 900;
+  window.outerWidth = 1512;
+  window.innerWidth = 1512;
+  const reports = [];
+  const det = createDevtoolsDetector({ report: (t) => reports.push(t), isPaused: () => false, enabled: true });
+  det.start();
+  window.outerHeight = 900 + thenGap;
+  for (let i = 0; i < ticks; i++) (globalThis.__devtoolsTick || (() => {}))();
+  const open = det.isOpen();
+  det.stop();
+  return { reports, open };
+}
+
+// Browser zoom makes innerWidth shrink while outerWidth stays put, so the gap
+// is a function of zoom, not of devtools. An absolute threshold flagged every
+// student not sitting at exactly 100% -- most of them, on a Retina Mac or a
+// HiDPI Linux desktop. This auto-submitted a real student's paper.
+for (const [zoom, gap] of [["110%", 137], ["125%", 302], ["150%", 504], ["175%", 648]]) {
+  const { open } = devtoolsAt({ startGap: gap, thenGap: gap });
+  check(`fullscreen at ${zoom} browser zoom is NOT devtools`, open === false, `isOpen=${open}`);
+}
+
+// macOS and Linux add and remove furniture on their own: the screen-share bar,
+// a notification, a window-manager reflow on display change.
+const shareBar = devtoolsAt({ startGap: 0, thenGap: 45 });
+check("a screen-share bar appearing is NOT devtools",
+  shareBar.open === false && shareBar.reports.length === 0,
+  `isOpen=${shareBar.open}, reports=${shareBar.reports.length}`);
+
+// A genuine pane is much larger than any of that, and must still be caught.
+const realPane = devtoolsAt({ startGap: 0, thenGap: 400 });
+check("a real devtools pane IS still detected", realPane.open === true, `isOpen=${realPane.open}`);
+
+console.log(`\n──────────────\nTOTAL ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

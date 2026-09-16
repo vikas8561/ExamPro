@@ -17,7 +17,10 @@ import {
   BookOpen,
   GraduationCap,
   Wifi,
-  WifiOff
+  WifiOff,
+  LayoutDashboard,
+  Inbox,
+  Plus
 } from "lucide-react";
 
 // Skeleton loader styles
@@ -154,13 +157,19 @@ const StudentDashboard = () => {
 
       setAllAssignments(assignments);
 
-      // Calculate Average Score
-      const completedOnly = assignments.filter(a => a.status === 'Completed' && a.score !== null);
-      if (completedOnly.length > 0) {
-        const totalScore = completedOnly.reduce((sum, a) => sum + (a.score || 0), 0);
-        setAverageScore(Math.round(totalScore / completedOnly.length));
+      // Cumulative performance. Averaged by the server over every completed
+      // assignment, so it does not quietly become "the average of the fifty we
+      // asked for" once a student has more than that. Falls back to averaging
+      // what is on hand only if an older response carries no stats block.
+      if (upcomingResponse?.stats?.averagePercent !== undefined) {
+        setAverageScore(upcomingResponse.stats.averagePercent ?? 0);
       } else {
-        setAverageScore(0);
+        const graded = assignments.filter(
+          (a) => a.status === "Completed" && a.scorePercent !== null && a.scorePercent !== undefined
+        );
+        setAverageScore(
+          graded.length ? Math.round(graded.reduce((s, a) => s + a.scorePercent, 0) / graded.length) : 0
+        );
       }
 
       const upcomingTestsData = assignments.filter(assignment =>
@@ -196,176 +205,197 @@ const StudentDashboard = () => {
   };
 
   return (
-    <div className="student-dashboard-mobile min-h-screen bg-[#0B1220] text-slate-100 font-sans pb-12">
-      <style>{skeletonStyles}</style>
+    <div className="student-dashboard-mobile min-h-screen bg-[#16181F] text-slate-100 font-sans p-6 lg:p-6 relative">
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 5px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.02);
+          border-radius: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.12);
+          border-radius: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.25);
+        }
+      `}</style>
 
-      {/* Hero Section */}
-      <div className="relative overflow-hidden bg-gradient-to-r from-indigo-900/40 via-purple-900/40 to-slate-900/40 border-b border-white/5 py-6 px-6 sm:px-8 mb-8">
-        <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0 pointer-events-none">
-          <div className="absolute top-[-10%] right-[-5%] w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl"></div>
-          <div className="absolute bottom-[-10%] left-[-10%] w-80 h-80 bg-purple-600/20 rounded-full blur-3xl"></div>
-        </div>
+      {/* Main Container */}
+      <div className="max-w-7xl mx-auto space-y-6">
 
-        <div className="relative z-10 max-w-7xl mx-auto">
-          <div className="flex flex-col gap-3">
-            {/* Top Row: Badges & Action */}
-            <div className="flex items-center justify-between w-full">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 shadow-[0_0_10px_rgba(99,102,241,0.1)]">
-                  <GraduationCap className="w-3 h-3 text-indigo-400" />
-                  <span className="text-indigo-200 text-[10px] font-semibold tracking-wide uppercase">
-                    Student Portal
-                  </span>
-                </div>
-
-                <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full border shadow-sm ${socketConnected
-                  ? 'bg-emerald-500/10 border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.1)]'
-                  : 'bg-amber-500/10 border-amber-500/20'
-                  }`}>
-                  {socketConnected ? (
-                    <Wifi className="w-3 h-3 text-emerald-400" />
-                  ) : (
-                    <WifiOff className="w-3 h-3 text-amber-400" />
-                  )}
-                  <span className={`text-[10px] font-semibold tracking-wide uppercase ${socketConnected ? 'text-emerald-200' : 'text-amber-200'
-                    }`}>
-                    {socketConnected ? 'Online' : 'Syncing'}
-                  </span>
-                </div>
-              </div>
-
-              <button
-                onClick={fetchStudentData}
-                className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95 backdrop-blur-md group text-xs font-medium text-slate-300 hover:text-white"
-              >
-                <Zap className="w-3.5 h-3.5 text-yellow-400/80 group-hover:text-yellow-300 transition-colors" />
-                <span>Refresh</span>
-              </button>
+        {/* Top Header Row - Exactly aligned with Sidebar's ExamPro section */}
+        <div
+          className="flex items-center justify-between pb-5 mb-6"
+          style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.05)", minHeight: "3.5rem" }}
+        >
+          {/* Left: User Welcome aligned with ExamPro header */}
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-[#133B42] border border-[#00C4B4]/20 flex items-center justify-center flex-shrink-0">
+              <GraduationCap className="w-5 h-5 text-[#00C4B4]" />
             </div>
-
-            {/* Content Row */}
             <div>
-              <h1 className="text-3xl md:text-4xl font-bold text-white mb-1.5 tracking-tight">
-                {getGreeting()}, <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">{userName}</span>
+              <h1 className="text-base sm:text-lg font-semibold text-white tracking-tight leading-tight">
+                Welcome back, {userName}
               </h1>
-              <p className="text-slate-400 max-w-lg text-base leading-relaxed">
-                Ready to continue your learning journey? You have <span className="text-white font-semibold">{assignedTests.length}</span> active assignments.
+              <p className="text-xs text-[#7E8594] mt-0.5">
+                {getGreeting()}
               </p>
             </div>
           </div>
+
+          {/* Right Controls: Online status + Refresh pill button */}
+          <div className="flex items-center gap-3">
+            {/* Subtle System Status Pill */}
+            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-[#20242D] border border-white/[0.06] text-xs shadow-sm">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  socketConnected ? "bg-[#34D399] shadow-[0_0_8px_#34D399]" : "bg-[#FB923C]"
+                }`}
+              />
+              <span className="text-[#8E95A5] font-medium text-xs">
+                {socketConnected ? "Online" : "Syncing"}
+              </span>
+            </div>
+
+            {/* Refresh Pill Button */}
+            <button
+              onClick={fetchStudentData}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#133B42] text-[#00C4B4] border border-[#00C4B4]/30 hover:bg-[#1A4C55] hover:scale-105 active:scale-95 transition-all shadow-sm"
+            >
+              <Zap className="w-3.5 h-3.5 fill-[#00C4B4]" />
+              <span>Refresh</span>
+            </button>
+          </div>
         </div>
-      </div>
 
-      <div className="max-w-7xl mx-auto px-6 sm:px-8 space-y-8">
-
-        {/* Quick Stats Row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Quick Stats Row (styled with the screenshot's color pill accents) */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
           {/* Total Assigned */}
-          <div className="glass-card rounded-2xl p-6 relative overflow-hidden group">
-            <div className="absolute right-0 top-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-              <Target className="w-24 h-24 rotate-12" />
+          <div className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-5 hover:border-white/10 transition-all">
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="text-xs font-semibold tracking-wide text-[#7E8594] uppercase">
+                Active Examinations
+              </span>
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[#133B42] text-[#2DD4BF] border border-[#2DD4BF]/20">
+                Assigned
+              </span>
             </div>
-            <div className="relative z-10">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-2.5 bg-blue-500/20 rounded-xl text-blue-400">
-                  <BookOpen className="w-6 h-6" />
-                </div>
-                <h3 className="text-slate-400 font-medium">Total Assigned</h3>
-              </div>
-              <p className="text-4xl font-bold text-white mb-1">{assignedCount}</p>
-              <p className="text-sm text-slate-500">Tests assigned to you</p>
+            <div className="text-3xl font-bold text-white tracking-tight mb-1">
+              {assignedCount}
             </div>
+            <p className="text-xs text-[#7E8594]">Total tests awaiting completion</p>
           </div>
 
           {/* Completed Tests */}
-          <div className="glass-card rounded-2xl p-6 relative overflow-hidden group">
-            <div className="absolute right-0 top-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-              <Trophy className="w-24 h-24 rotate-12" />
+          <div className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-5 hover:border-white/10 transition-all">
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="text-xs font-semibold tracking-wide text-[#7E8594] uppercase">
+                Completed Tests
+              </span>
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[#19382C] text-[#34D399] border border-[#34D399]/20">
+                Submitted
+              </span>
             </div>
-            <div className="relative z-10">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-2.5 bg-emerald-500/20 rounded-xl text-emerald-400">
-                  <Trophy className="w-6 h-6" />
-                </div>
-                <h3 className="text-slate-400 font-medium">Completed Tests</h3>
-              </div>
-              <p className="text-4xl font-bold text-white mb-1">{completedCount}</p>
-              <p className="text-sm text-slate-500">Succesfully submitted</p>
+            <div className="text-3xl font-bold text-white tracking-tight mb-1">
+              {completedCount}
             </div>
+            <p className="text-xs text-[#7E8594]">Successfully evaluated exams</p>
           </div>
 
           {/* Average Score */}
-          <div className="glass-card rounded-2xl p-6 relative overflow-hidden group">
-            <div className="absolute right-0 top-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-              <TrendingUp className="w-24 h-24 rotate-12" />
+          <div className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-5 hover:border-white/10 transition-all">
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="text-xs font-semibold tracking-wide text-[#7E8594] uppercase">
+                Cumulative Performance
+              </span>
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[#3D271D] text-[#FB923C] border border-[#FB923C]/20">
+                Score
+              </span>
             </div>
-            <div className="relative z-10">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-2.5 bg-purple-500/20 rounded-xl text-purple-400">
-                  <TrendingUp className="w-6 h-6" />
-                </div>
-                <h3 className="text-slate-400 font-medium">Average Score</h3>
-              </div>
-              <p className="text-4xl font-bold text-white mb-1">{averageScore}%</p>
-              <p className="text-sm text-slate-500">Based on completed tests</p>
+            <div className="text-3xl font-bold text-white tracking-tight mb-1">
+              {averageScore}%
             </div>
+            <p className="text-xs text-[#7E8594]">Based on completed assessments</p>
           </div>
         </div>
 
+        {/* Main Content Grid: Upcoming Tasks & Recent Activity - EQUAL COMPACT BOX HEIGHT (340px) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+
+          {/* Upcoming Tests Section - Equal Compact Height */}
+          <div className="lg:col-span-7 flex flex-col">
+            <div className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-5 sm:p-6 flex flex-col h-[340px]">
+              {/* Box Header */}
+              <div className="flex items-center justify-between pb-3 mb-2 border-b border-white/[0.05] flex-shrink-0">
+                <div className="flex items-center gap-2.5">
+                  <Clock className="w-4.5 h-4.5 text-[#00C4B4]" />
+                  <h2 className="text-base font-bold text-white tracking-tight">
+                    Upcoming Priority
+                  </h2>
+                </div>
+                <span className="text-xs text-[#7E8594] font-medium">
+                  {assignedTests.length} Pending
+                </span>
+              </div>
+
+              {/* Scrollable Content Body */}
+              <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
+                {loading ? (
+                  <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                    <div className="w-6 h-6 rounded-full border-2 border-[#00C4B4] border-t-transparent animate-spin mb-2" />
+                    <p className="text-xs text-[#7E8594]">Loading your tests...</p>
+                  </div>
+                ) : (
+                  <UpcomingTests data={upcomingTests} />
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Recent Activity Section - Equal Compact Height */}
+          <div className="lg:col-span-5 flex flex-col">
+            <div className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-5 sm:p-6 flex flex-col h-[340px]">
+              {/* Box Header */}
+              <div className="flex items-center justify-between pb-3 mb-2 border-b border-white/[0.05] flex-shrink-0">
+                <div className="flex items-center gap-2.5">
+                  <Activity className="w-4.5 h-4.5 text-[#38BDF8]" />
+                  <h2 className="text-base font-bold text-white tracking-tight">
+                    Recent Activity
+                  </h2>
+                </div>
+                <span className="text-xs text-[#7E8594] font-medium">Latest Updates</span>
+              </div>
+
+              {/* Scrollable Content Body */}
+              <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
+                {loading ? (
+                  <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                    <div className="w-6 h-6 rounded-full border-2 border-[#38BDF8] border-t-transparent animate-spin mb-2" />
+                    <p className="text-xs text-[#7E8594]">Loading activity...</p>
+                  </div>
+                ) : (
+                  <RecentActivity data={recentActivities} />
+                )}
+              </div>
+            </div>
+          </div>
+
+        </div>
+
         {/* Analytics Section */}
-        <div>
-          <div className="flex items-center gap-2 mb-4">
-            <Activity className="w-5 h-5 text-indigo-400" />
-            <h2 className="text-xl font-bold text-slate-100">Performance Analytics</h2>
+        <div className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-5 sm:p-6">
+          <div className="flex items-center gap-2.5 mb-6 pb-3 border-b border-white/[0.05]">
+            <TrendingUp className="w-5 h-5 text-[#00C4B4]" />
+            <h2 className="text-lg font-bold text-white tracking-tight">
+              Performance Analytics
+            </h2>
           </div>
           <DashboardAnalytics assignments={allAssignments} />
         </div>
 
-        {/* Content Grid (Upcoming & Recent) */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-
-          {/* Upcoming Tests - Left Side (Larger) */}
-          <div className="lg:col-span-7 space-y-4">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <Clock className="w-5 h-5 text-amber-400" />
-                <h2 className="text-xl font-bold text-slate-100">Upcoming Priority</h2>
-              </div>
-            </div>
-
-            {loading ? (
-              <div className="glass-card rounded-2xl p-6 min-h-[200px] flex items-center justify-center">
-                <div className="flex flex-col items-center gap-3">
-                  <div className="w-8 h-8 rounded-full border-2 border-slate-600 border-t-indigo-500 animate-spin"></div>
-                  <p className="text-slate-500 text-sm">Loading tests...</p>
-                </div>
-              </div>
-            ) : (
-              <div className="glass-card rounded-2xl border-0 overflow-hidden">
-                <UpcomingTests data={upcomingTests} />
-              </div>
-            )}
-          </div>
-
-          {/* Recent Activity - Right Side (Smaller) */}
-          <div className="lg:col-span-5 space-y-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Calendar className="w-5 h-5 text-blue-400" />
-              <h2 className="text-xl font-bold text-slate-100">Recent Activity</h2>
-            </div>
-
-            {loading ? (
-              <div className="glass-card rounded-2xl p-6 min-h-[200px] flex items-center justify-center">
-                <div className="skeleton w-full h-full rounded-xl"></div>
-              </div>
-            ) : (
-              <div className="glass-card rounded-2xl p-2 border-0 overflow-hidden">
-                <RecentActivity data={recentActivities} />
-              </div>
-            )}
-          </div>
-
-        </div>
       </div>
     </div>
   );

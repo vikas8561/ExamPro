@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const Test = require("../models/Test");
 const { authenticateToken, requireRole } = require("../middleware/auth");
+const { attach } = require("../services/principals");
 const { resolveProctorStatusForTest } = require("../middleware/proctorSession");
 const { sanitizeQuestions, canSeeAnswers } = require("../services/questionSanitizer");
 const { recalculateScoresForTest } = require("../services/scoreCalculation");
@@ -137,8 +138,11 @@ router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) 
 // Get test by ID
 router.get("/:id", authenticateToken, async (req, res, next) => {
   try {
-    const test = await Test.findById(req.params.id)
-      .populate("createdBy", "name email");
+    const test = await attach(
+      await Test.findById(req.params.id),
+      "createdBy",
+      "Author"
+    );
 
     if (!test) {
       return res.status(404).json({ message: "Test not found" });
@@ -151,7 +155,8 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
       return res.json(test);
     }
 
-    const safeTest = test.toObject({ virtuals: true });
+    // attach() already returned a plain object, virtuals included.
+    const safeTest = { ...test };
 
     // The other route that hands a student real question content. Without this
     // check a student could skip the exam page entirely and fetch the paper
@@ -402,11 +407,15 @@ router.put("/:id", authenticateToken, requireRole("admin"), async (req, res, nex
       updateData.practiceTestSettings = undefined;
     }
 
-    const test = await Test.findByIdAndUpdate(
-      req.params.id,
-      updateData,
-      { new: true, runValidators: true }
-    ).populate("createdBy", "name email");
+    const test = await attach(
+      await Test.findByIdAndUpdate(
+        req.params.id,
+        updateData,
+        { new: true, runValidators: true }
+      ),
+      "createdBy",
+      "Author"
+    );
 
     if (!test) {
       return res.status(404).json({ message: "Test not found" });
@@ -500,11 +509,13 @@ router.get("/:id/results/download", authenticateToken, requireRole("admin"), asy
     const TestSubmission = require("../models/TestSubmission");
 
     // Get all submissions for this test with student names
-    const submissions = await TestSubmission.find({ testId: req.params.id })
-      .populate("userId", "name email")
-      .select("userId totalScore maxScore submittedAt")
-      .sort({ "userId.name": 1 })
-      .lean();
+    const submissions = await attach(
+      await TestSubmission.find({ testId: req.params.id })
+        .select("userId totalScore maxScore submittedAt")
+        .lean(),
+      "userId",
+      "Student"
+    );
 
     // Build results array
     const results = submissions

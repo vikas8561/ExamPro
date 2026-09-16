@@ -11,11 +11,13 @@ const Assignment = require('../models/Assignment');
 const TestSubmission = require('../models/TestSubmission');
 const {
   runAgainstCases,
+  infrastructureFailures,
   getSupportedLanguages,
   checkHealth,
   Judge0Error,
 } = require('../services/judge0');
 const { LANGUAGES, normalizeLanguageKey, LANGUAGE_KEYS } = require('../configs/languages');
+const { maxScoreForTest, marksPerTestCase, codingMarksEarned } = require('../services/grading');
 
 const OBJECT_ID = /^[0-9a-fA-F]{24}$/;
 
@@ -38,8 +40,14 @@ function sendJudgeError(res, error, fallbackMessage) {
     const isClientFault = /Unsupported language|not available|Source code is empty/.test(error.message);
     if (isClientFault) return res.status(400).json({ message: error.message });
     console.error(`❌ Judge0 unavailable: ${error.message}`);
+    // `ungraded` errors carry a student-safe message that says the submission
+    // was not scored — worth more than the generic text, so pass it through.
     return res.status(503).json({
-      message: 'The code execution service is temporarily unavailable. Please try again in a moment.',
+      message: error.ungraded
+        ? error.message
+        : 'The code execution service is temporarily unavailable. Please try again in a moment.',
+      ungraded: Boolean(error.ungraded),
+      retryable: true,
     });
   }
   console.error(`❌ ${fallbackMessage}:`, error.message);
@@ -182,6 +190,12 @@ router.post('/run', authenticateToken, executionLimiter, async (req, res) => {
 
     const results = await runAgainstCases({ sourceCode, language: languageKey, cases });
 
+    // Nothing is persisted here, but showing an outage as a failed test case
+    // would still tell the student their working code is wrong.
+    if (infrastructureFailures(results).length) {
+      throw new Judge0Error('The code execution service is unreachable.', { retryable: true });
+    }
+
     // The custom case is reported separately so it never skews the pass count.
     const customResult = hasCustomInput ? results.pop() : null;
     const passed = results.filter((result) => result.passed).length;
@@ -210,10 +224,13 @@ router.post('/run', authenticateToken, executionLimiter, async (req, res) => {
 async function gradeHiddenCases({ owned, languageKey, sourceCode, onProgress }) {
   const { assignment, test, question } = owned;
 
+  // Every hidden case is worth the same share of the question's marks, so the
+  // authored per-case `marks` is not used for scoring any more.
+  const perCase = marksPerTestCase(question);
   const hiddenCases = (question.hiddenTestCases || []).map((testCase) => ({
     input: testCase.input,
     output: testCase.output,
-    marks: testCase.marks ?? 0,
+    marks: perCase,
   }));
 
   if (hiddenCases.length === 0) {
@@ -229,9 +246,31 @@ async function gradeHiddenCases({ owned, languageKey, sourceCode, onProgress }) 
     onProgress,
   });
 
+  // If any hidden case never ran, this submission is UNGRADED. Scoring it would
+  // record a zero that is indistinguishable from a wrong answer, so refuse:
+  // persist nothing and let the student retry once the judge is back.
+  const ungraded = infrastructureFailures(results);
+  if (ungraded.length) {
+    console.error(
+      `\u274c UNGRADED coding submission — judge unreachable. ` +
+      `user=${assignment.userId} assignment=${assignment._id} question=${question._id} ` +
+      `language=${languageKey} cases=${ungraded.length}/${results.length} ` +
+      `reason="${ungraded[0].message}". No score was written.`
+    );
+    const error = new Judge0Error(
+      'Grading could not be completed because the code execution service is unreachable. ' +
+      'Your submission was not scored — please try again.',
+      { retryable: true }
+    );
+    // Distinguishes "we refused to score this" from a generic judge outage, and
+    // marks the message as safe to show verbatim (no internal host names).
+    error.ungraded = true;
+    throw error;
+  }
+
   const passedCount = results.filter((result) => result.passed).length;
-  const totalMarks = hiddenCases.reduce((sum, testCase) => sum + (testCase.marks || 0), 0);
-  const earnedMarks = results.reduce((sum, result) => sum + (result.passed ? result.marks || 0 : 0), 0);
+  // Divided once, at the end: all cases passing awards exactly `points`.
+  const earnedMarks = codingMarksEarned(question, passedCount);
   const compileError = results.find((result) => result.status.id === 6);
 
   const numeric = (value) => {
@@ -271,12 +310,9 @@ async function gradeHiddenCases({ owned, languageKey, sourceCode, onProgress }) 
     memoryKb,
   };
 
-  const maxScore = (test.questions || []).reduce((sum, q) => {
-    if (q.kind === 'coding') {
-      return sum + (q.hiddenTestCases || []).reduce((s, h) => s + (h.marks || 0), 0);
-    }
-    return sum + (q.points || 1);
-  }, 0);
+  // Same rule the submit and re-grade paths use, so maxScore can never land
+  // below a score already awarded.
+  const maxScore = maxScoreForTest(test.questions);
 
   let submission = await TestSubmission.findOne({ assignmentId: assignment._id, userId: assignment.userId });
   if (!submission) {
@@ -314,8 +350,8 @@ async function gradeHiddenCases({ owned, languageKey, sourceCode, onProgress }) 
     memoryKb,
     language: languageKey,
     compileOutput: compileError ? compileError.compileOutput : null,
-    // earnedMarks / totalMarks are deliberately not returned: the score is
-    // computed and stored, but students are not shown it during the test.
+    // The score and the question's worth are deliberately not returned: both
+    // are computed and stored, but students are not shown them during the test.
   };
 }
 
@@ -379,9 +415,14 @@ router.post('/submit', authenticateToken, executionLimiter, async (req, res) => 
       send('result', payload);
     } catch (error) {
       send('failed', {
-        message: error instanceof Judge0Error
-          ? 'The code execution service is temporarily unavailable. Please try again in a moment.'
-          : error.message || 'Code submission failed',
+        message: error.ungraded
+          ? error.message
+          : error instanceof Judge0Error
+            ? 'The code execution service is temporarily unavailable. Please try again in a moment.'
+            : error.message || 'Code submission failed',
+        // The client must not show a verdict when nothing was scored.
+        ungraded: Boolean(error.ungraded),
+        retryable: error instanceof Judge0Error,
       });
       console.error(`❌ Streaming submit failed: ${error.message}`);
     }

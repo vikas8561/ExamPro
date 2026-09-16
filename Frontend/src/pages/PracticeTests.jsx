@@ -1,123 +1,86 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import apiRequest from "../services/api";
-import '../styles/PracticeTests.mobile.css';
-
-// Add custom styles for card animations and skeleton loaders
-const cardAnimationStyles = `
-  @keyframes slideInUp {
-    from {
-      opacity: 0;
-      transform: translateY(30px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-  
-  .animate-slide-in-up {
-    animation: slideInUp 0.6s ease-out forwards;
-    opacity: 0;
-  }
-  
-  @keyframes shimmer {
-    0% {
-      background-position: -1000px 0;
-    }
-    100% {
-      background-position: 1000px 0;
-    }
-  }
-  
-  .skeleton {
-    background: linear-gradient(
-      90deg,
-      rgba(255, 255, 255, 0.05) 0%,
-      rgba(255, 255, 255, 0.1) 50%,
-      rgba(255, 255, 255, 0.05) 100%
-    );
-    background-size: 1000px 100%;
-    animation: shimmer 2s infinite;
-  }
-`;
+import {
+  BookOpen,
+  Search,
+  X,
+  SlidersHorizontal,
+  Clock,
+  HelpCircle,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  RotateCcw,
+  AlertCircle,
+  Play,
+  Eye,
+  Sparkles,
+  Layers
+} from "lucide-react";
+import "../styles/PracticeTests.mobile.css";
 
 const PracticeTests = () => {
   const [tests, setTests] = useState([]);
-  const [loading, setLoading] = useState(false); // Changed to false - don't block UI
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [subjectFilter, setSubjectFilter] = useState('all');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [subjectFilter, setSubjectFilter] = useState("all");
   const [showFilters, setShowFilters] = useState(false);
-  const [attemptedTests, setAttemptedTests] = useState(new Set()); // Track which tests have been attempted
+  const [attemptedTests, setAttemptedTests] = useState(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchPracticeTests(1); // Always start from page 1 on mount
+    fetchPracticeTests(1);
   }, []);
 
   // Reset to page 1 when search term or filter changes
   useEffect(() => {
-    if (searchTerm || subjectFilter !== 'all') {
+    if (searchTerm || subjectFilter !== "all") {
       setCurrentPage(1);
     }
   }, [searchTerm, subjectFilter]);
 
-  // OPTIMIZED: Check which tests have been attempted (non-blocking, batched)
-  const checkAttemptedTests = async () => {
-    if (tests.length === 0) return;
+  // Which of the cards on screen has this student already attempted?
+  //
+  // One request for the whole page. This used to fire a separate
+  // /practice-tests/:id/attempts call per card -- nine authenticated round
+  // trips, each with its own session lookup and query, all to fill in nine
+  // "Attempted" badges, and all of them starting only once the list itself had
+  // finished loading.
+  const checkAttemptedTests = async (list) => {
+    if (!list.length) return;
 
     try {
-      const attemptedSet = new Set();
-      // OPTIMIZED: Check all tests in parallel instead of sequentially
-      const checkPromises = tests.map(async (test) => {
-        try {
-          const response = await apiRequest(`/practice-tests/${test._id}/attempts`);
-          if (response.submissions && response.submissions.length > 0) {
-            return test._id;
-          }
-        } catch (error) {
-          // If there's an error (like 404), the test hasn't been attempted
-        }
-        return null;
-      });
-
-      const results = await Promise.all(checkPromises);
-      results.forEach(testId => {
-        if (testId) attemptedSet.add(testId);
-      });
-
-      setAttemptedTests(attemptedSet);
-    } catch (error) {
-      console.error("Error checking attempted tests:", error);
+      const ids = list.map((test) => test._id).join(",");
+      const data = await apiRequest(`/practice-tests/attempted?ids=${ids}`);
+      setAttemptedTests(new Set(data?.testIds || []));
+    } catch (err) {
+      console.error("Error checking attempted tests:", err);
     }
   };
 
-  // Check attempted tests when tests are loaded (non-blocking)
   useEffect(() => {
-    if (tests.length > 0 && !loading) {
-      // Run in background without blocking UI
-      checkAttemptedTests();
+    if (tests.length > 0) {
+      checkAttemptedTests(tests);
     }
-  }, [tests, currentPage]);
+  }, [tests]);
 
   const fetchPracticeTests = async (page = currentPage) => {
-    setLoading(true); // Set loading when starting fetch
+    setLoading(true);
     setError(null);
     try {
       const data = await apiRequest(`/practice-tests?page=${page}&limit=9`);
 
-      // Handle paginated response
       if (data && data.tests && data.pagination) {
         setTests(data.tests);
         setCurrentPage(data.pagination.currentPage);
         setTotalPages(data.pagination.totalPages);
         setTotalItems(data.pagination.totalItems);
       } else if (data && data.tests) {
-        // Fallback for non-paginated response (backward compatibility)
         setTests(data.tests);
         setTotalPages(1);
         setTotalItems(data.tests.length);
@@ -126,10 +89,10 @@ const PracticeTests = () => {
         setTotalPages(1);
         setTotalItems(0);
       }
-    } catch (error) {
-      console.error("Error fetching practice tests:", error);
+    } catch (err) {
+      console.error("Error fetching practice tests:", err);
       setTests([]);
-      setError('Failed to load practice tests. Please try again.');
+      setError("Failed to load practice tests. Please try again.");
       setTotalPages(1);
       setTotalItems(0);
     } finally {
@@ -145,65 +108,49 @@ const PracticeTests = () => {
     navigate(`/student/practice-test-results/${testId}`);
   };
 
-  // Function to refresh attempted tests (can be called after completing a test)
-  const refreshAttemptedTests = () => {
-    if (tests.length > 0) {
-      checkAttemptedTests();
-    }
-  };
-
   const filteredTests = tests.filter((test) => {
-    // Subject filter
-    if (subjectFilter !== 'all' && test.subject !== subjectFilter) {
+    if (subjectFilter !== "all" && test.subject !== subjectFilter) {
       return false;
     }
-
-    // Search filter
     if (!searchTerm) return true;
     const term = searchTerm.toLowerCase();
     return (
-      (test.title || '').toLowerCase().includes(term) ||
-      (test.subject || '').toLowerCase().includes(term) ||
-      (test.createdBy?.name || '').toLowerCase().includes(term)
+      (test.title || "").toLowerCase().includes(term) ||
+      (test.subject || "").toLowerCase().includes(term) ||
+      (test.createdBy?.name || "").toLowerCase().includes(term)
     );
   });
 
-  // Removed blocking loading screen - UI loads immediately
-
   if (error) {
     return (
-      <div className="min-h-screen bg-slate-900 text-white p-6">
-        <div className="max-w-2xl mx-auto">
-          <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-6 text-center">
-            <div className="flex items-center justify-center mb-4">
-              <svg className="h-12 w-12 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 19.5c-.77.833.192 2.5 1.732 2.5z" />
-              </svg>
-            </div>
-            <h2 className="text-xl font-semibold text-red-300 mb-2">Unable to Load Practice Tests</h2>
-            <p className="text-red-200 mb-4">{error}</p>
-            <div className="flex gap-3 justify-center">
-              <button
-                onClick={() => {
-                  setError(null);
-                  fetchPracticeTests(currentPage);
-                }}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
-              >
-                Try Again
-              </button>
-              <button
-                onClick={() => {
-                  localStorage.removeItem('token');
-                  localStorage.removeItem('user');
-                  localStorage.removeItem('userId');
-                  window.location.href = '/login';
-                }}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
-              >
-                Log In Again
-              </button>
-            </div>
+      <div className="min-h-screen bg-[#16181F] text-slate-100 font-sans p-6 lg:p-6 flex items-center justify-center">
+        <div className="max-w-md w-full bg-[#181A22] border border-red-500/20 rounded-2xl p-6 text-center shadow-xl">
+          <div className="w-12 h-12 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-4 text-red-400">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+          <h2 className="text-base font-semibold text-white mb-2">Unable to Load Practice Tests</h2>
+          <p className="text-xs text-[#8E95A5] mb-5">{error}</p>
+          <div className="flex gap-3 justify-center">
+            <button
+              onClick={() => {
+                setError(null);
+                fetchPracticeTests(currentPage);
+              }}
+              className="px-4 py-2 rounded-xl text-xs font-semibold bg-[#133B42] text-[#00C4B4] border border-[#00C4B4]/30 hover:bg-[#1A4C55] transition-all"
+            >
+              Try Again
+            </button>
+            <button
+              onClick={() => {
+                localStorage.removeItem("token");
+                localStorage.removeItem("user");
+                localStorage.removeItem("userId");
+                window.location.href = "/login";
+              }}
+              className="px-4 py-2 rounded-xl text-xs font-semibold bg-[#20242D] text-slate-300 border border-white/[0.08] hover:bg-[#282C38] transition-all"
+            >
+              Log In Again
+            </button>
           </div>
         </div>
       </div>
@@ -211,362 +158,318 @@ const PracticeTests = () => {
   }
 
   return (
-    <div className="practice-tests-mobile min-h-screen bg-slate-900 text-white p-6">
-      <style>{cardAnimationStyles}</style>
-      <div className="max-w-6xl mx-auto">
-        {/* Header Section */}
-        <div className="header-section sticky top-0 z-50 relative mb-8">
-          <div className="header-container relative bg-slate-800/95 backdrop-blur-md border border-slate-700/50 rounded-2xl p-6 shadow-lg">
-            {/* Title and Stats Row */}
-            <div className="title-section flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6 gap-4">
-              <div className="flex items-center gap-4">
-                <div className="title-icon-container p-3 bg-slate-800/70 rounded-xl shadow-sm">
-                  <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: '#FFFFFF' }}>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div className="title-text">
-                  <h1 className="text-3xl font-bold text-white">
-                    Practice Tests
-                  </h1>
-                  <p className="text-slate-400 text-sm mt-1">
-                    {totalItems > 0 ? `${totalItems} practice test${totalItems !== 1 ? 's' : ''} available` : `${tests.length} practice test${tests.length !== 1 ? 's' : ''} available`} • {filteredTests.length} showing
-                  </p>
-                </div>
-              </div>
+    <div className="practice-tests-mobile min-h-screen bg-[#16181F] text-slate-100 font-sans p-6 lg:p-6 relative">
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 5px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.02);
+          border-radius: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.12);
+          border-radius: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.25);
+        }
+        @keyframes shimmer {
+          0% { background-position: -800px 0; }
+          100% { background-position: 800px 0; }
+        }
+        .skeleton-shimmer {
+          background: linear-gradient(
+            90deg,
+            rgba(255, 255, 255, 0.03) 0%,
+            rgba(255, 255, 255, 0.07) 50%,
+            rgba(255, 255, 255, 0.03) 100%
+          );
+          background-size: 800px 100%;
+          animation: shimmer 1.8s infinite;
+        }
+      `}</style>
 
-              {/* Search Bar and Filter Button */}
-              <div className="search-filter-section flex items-center gap-3">
-                <div className="search-container relative max-w-md w-full lg:w-80">
-                  <div className="search-icon absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: '#FFFFFF' }}>
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="Search practice tests..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="search-input w-full pl-12 pr-12 py-3 rounded-xl focus:outline-none transition-all duration-300"
-                    style={{
-                      backgroundColor: '#1E293B',
-                      border: '1px solid rgba(255, 255, 255, 0.3)',
-                      color: '#FFFFFF',
-                      boxShadow: 'none'
-                    }}
-                    onFocus={(e) => {
-                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)';
-                      e.currentTarget.style.boxShadow = '0 0 0 2px rgba(255, 255, 255, 0.1)';
-                    }}
-                    onBlur={(e) => {
-                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
-                      e.currentTarget.style.boxShadow = 'none';
-                    }}
-                    onMouseEnter={(e) => {
-                      if (document.activeElement !== e.currentTarget) {
-                        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.4)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (document.activeElement !== e.currentTarget) {
-                        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
-                      }
-                    }}
-                  />
-                  <style>{`
-                    input::placeholder {
-                      color: #9CA3AF !important;
-                      opacity: 1;
-                    }
-                  `}</style>
-                  {searchTerm && (
-                    <button
-                      onClick={() => setSearchTerm('')}
-                      className="search-clear-btn absolute inset-y-0 right-0 pr-4 flex items-center transition-colors duration-200"
-                      style={{ color: '#FFFFFF' }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.color = '#E5E7EB';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.color = '#FFFFFF';
-                      }}
-                    >
-                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
+      {/* Main Container */}
+      <div className="max-w-7xl mx-auto space-y-6">
 
-                {/* Filter Button */}
+        {/* Top Header Row - Exactly aligned with Sidebar's CodingGita section */}
+        <div
+          className="flex flex-col md:flex-row md:items-center justify-between pb-5 mb-6 gap-4"
+          style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.05)", minHeight: "3.5rem" }}
+        >
+          {/* Left: Section branding aligned with Sidebar baseline */}
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-[#133B42] border border-[#00C4B4]/20 flex items-center justify-center flex-shrink-0 shadow-sm">
+              <BookOpen className="w-5 h-5 text-[#00C4B4]" />
+            </div>
+            <div>
+              <h1 className="text-base sm:text-lg font-semibold text-white tracking-tight leading-tight">
+                Practice Tests
+              </h1>
+              <p className="text-xs text-[#7E8594] mt-0.5">
+                {totalItems > 0 ? `${totalItems} assessments available` : `${tests.length} assessments`} • Self-paced preparation
+              </p>
+            </div>
+          </div>
+
+          {/* Right Controls: Search Input + Filter Toggle Pill */}
+          <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
+            {/* Search Bar */}
+            <div className="relative w-full sm:w-72">
+              <Search className="w-4 h-4 text-[#7E8594] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search practice tests..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-8 py-1.5 rounded-xl bg-[#20242D] border border-white/[0.08] text-xs text-white placeholder-[#7E8594] focus:outline-none focus:border-[#00C4B4]/40 focus:ring-1 focus:ring-[#00C4B4]/30 transition-all shadow-sm"
+              />
+              {searchTerm && (
                 <button
-                  onClick={() => setShowFilters(!showFilters)}
-                  className="filter-button flex items-center gap-2 bg-slate-700/60 hover:bg-slate-700/80 text-white px-4 py-3 rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md"
+                  onClick={() => setSearchTerm("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#7E8594] hover:text-white transition-colors"
+                  aria-label="Clear search"
                 >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-                  </svg>
-                  Filter
-                  <svg className={`h-4 w-4 transition-transform duration-200 ${showFilters ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
+                  <X className="w-3.5 h-3.5" />
                 </button>
-              </div>
+              )}
             </div>
 
-            {/* Filter Section */}
-            {showFilters && (
-              <div className="filter-section border-t border-slate-700/50 pt-6">
-                <div className="filter-items flex flex-wrap gap-4 items-center">
-                  {/* Subject Filter */}
-                  <div className="filter-item flex items-center gap-3 bg-slate-700/30 rounded-lg px-4 py-2 hover:bg-slate-700/50 transition-colors duration-200">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                      <label className="filter-label text-sm font-medium text-slate-300">Subject:</label>
-                    </div>
-                    <select
-                      value={subjectFilter}
-                      onChange={(e) => setSubjectFilter(e.target.value)}
-                      className="filter-select bg-transparent border-none text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-500/50 rounded-md px-2 py-1 transition-all duration-200"
-                    >
-                      <option value="all" className="bg-slate-700">All Subjects</option>
-                      {Array.from(new Set(tests.map(test => test.subject).filter(Boolean))).map(subject => (
-                        <option key={subject} value={subject} className="bg-slate-700">{subject}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Clear Filters Button */}
-                  {(subjectFilter !== 'all' || searchTerm) && (
-                    <button
-                      onClick={() => {
-                        setSubjectFilter('all');
-                        setSearchTerm('');
-                      }}
-                      className="clear-filters-button flex items-center gap-2 bg-slate-700/60 hover:bg-slate-700/80 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 shadow-sm hover:shadow-md"
-                    >
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                      Clear Filters
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
+            {/* Filter Toggle Button */}
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all active:scale-95 shadow-sm flex-shrink-0 ${
+                showFilters || subjectFilter !== "all"
+                  ? "bg-[#133B42] text-[#00C4B4] border-[#00C4B4]/40 shadow-[0_0_12px_rgba(0,196,180,0.15)]"
+                  : "bg-[#20242D] text-slate-300 border-white/[0.08] hover:bg-[#282C38] hover:text-white"
+              }`}
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              <span>Filters</span>
+              {subjectFilter !== "all" && (
+                <span className="w-1.5 h-1.5 rounded-full bg-[#00C4B4]" />
+              )}
+            </button>
           </div>
         </div>
 
+        {/* Expandable Subject Filter Bar */}
+        {(showFilters || subjectFilter !== "all") && (
+          <div className="p-4 rounded-2xl bg-[#181A22] border border-white/[0.06] shadow-sm transition-all">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium text-[#7E8594] mr-1">Subject:</span>
+                <button
+                  onClick={() => setSubjectFilter("all")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    subjectFilter === "all"
+                      ? "bg-[#133B42] text-[#00C4B4] border border-[#00C4B4]/30 shadow-sm"
+                      : "bg-[#20242D] text-slate-400 hover:text-white border border-white/[0.04]"
+                  }`}
+                >
+                  All Subjects
+                </button>
+                {Array.from(new Set(tests.map((test) => test.subject).filter(Boolean))).map((subj) => (
+                  <button
+                    key={subj}
+                    onClick={() => setSubjectFilter(subj)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-all ${
+                      subjectFilter === subj
+                        ? "bg-[#133B42] text-[#00C4B4] border border-[#00C4B4]/30 shadow-sm"
+                        : "bg-[#20242D] text-slate-400 hover:text-white border border-white/[0.04]"
+                    }`}
+                  >
+                    {subj}
+                  </button>
+                ))}
+              </div>
+
+              {(subjectFilter !== "all" || searchTerm) && (
+                <button
+                  onClick={() => {
+                    setSubjectFilter("all");
+                    setSearchTerm("");
+                  }}
+                  className="inline-flex items-center gap-1 text-xs text-[#7E8594] hover:text-[#00C4B4] transition-colors font-medium"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Reset filters</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* KPI Summary Overview Badges */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div className="p-3.5 rounded-2xl bg-[#181A22] border border-white/[0.05] flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-[#20242D] flex items-center justify-center text-[#00C4B4] flex-shrink-0">
+              <Layers className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] text-[#7E8594] uppercase tracking-wider font-medium">Available</p>
+              <p className="text-sm font-bold text-white leading-tight mt-0.5">{totalItems || tests.length}</p>
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-2xl bg-[#181A22] border border-white/[0.05] flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-[#20242D] flex items-center justify-center text-[#34D399] flex-shrink-0">
+              <CheckCircle2 className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] text-[#7E8594] uppercase tracking-wider font-medium">Attempted</p>
+              <p className="text-sm font-bold text-white leading-tight mt-0.5">{attemptedTests.size}</p>
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-2xl bg-[#181A22] border border-white/[0.05] flex items-center gap-3 col-span-2 sm:col-span-1">
+            <div className="w-8 h-8 rounded-xl bg-[#20242D] flex items-center justify-center text-[#FB923C] flex-shrink-0">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] text-[#7E8594] uppercase tracking-wider font-medium">Filtered</p>
+              <p className="text-sm font-bold text-white leading-tight mt-0.5">{filteredTests.length} showing</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Content Section: Cards Grid or Empty/Loading States */}
         {loading ? (
-          <div className="cards-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[...Array(9)].map((_, index) => (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {[...Array(6)].map((_, i) => (
               <div
-                key={`skeleton-${index}`}
-                className="skeleton-card relative backdrop-blur-sm rounded-2xl p-6 border overflow-hidden"
-                style={{
-                  backgroundColor: '#0B1220',
-                  borderColor: 'rgba(255, 255, 255, 0.2)',
-                }}
+                key={`skeleton-${i}`}
+                className="rounded-2xl p-5 bg-[#181A22] border border-white/[0.05] space-y-4"
               >
-                {/* Header Skeleton */}
-                <div className="mb-1" style={{ height: '85px' }}>
-                  <div className="flex items-start gap-3 h-full">
-                    <div className="p-3 rounded-xl skeleton" style={{ width: '48px', height: '48px' }}></div>
-                    <div className="flex-1 min-w-0">
-                      <div className="skeleton rounded-lg mb-2" style={{ height: '24px', width: '80%' }}></div>
-                      <div className="skeleton rounded-lg" style={{ height: '20px', width: '60%' }}></div>
-                    </div>
-                  </div>
+                <div className="flex items-center justify-between">
+                  <div className="w-20 h-5 rounded-md skeleton-shimmer" />
+                  <div className="w-16 h-5 rounded-md skeleton-shimmer" />
                 </div>
-
-                {/* Details Skeleton */}
-                <div className="space-y-2.5 mb-6">
-                  <div className="skeleton rounded-xl" style={{ height: '56px', width: '100%' }}></div>
-                  <div className="skeleton rounded-xl" style={{ height: '56px', width: '100%' }}></div>
-                  <div className="skeleton rounded-xl" style={{ height: '56px', width: '100%' }}></div>
+                <div className="w-3/4 h-5 rounded-lg skeleton-shimmer" />
+                <div className="space-y-2 pt-2">
+                  <div className="w-full h-8 rounded-xl skeleton-shimmer" />
+                  <div className="w-full h-8 rounded-xl skeleton-shimmer" />
                 </div>
-
-                {/* Button Skeleton */}
-                <div className="mt-6 pt-4" style={{ borderTop: '1px solid rgba(255, 255, 255, 0.2)' }}>
-                  <div className="skeleton rounded-lg mb-3" style={{ height: '40px', width: '100%' }}></div>
-                  <div className="skeleton rounded-lg" style={{ height: '40px', width: '100%' }}></div>
-                </div>
+                <div className="w-full h-9 rounded-xl skeleton-shimmer pt-2" />
               </div>
             ))}
           </div>
         ) : tests.length === 0 ? (
-          <div className="empty-state text-center py-12">
-            <div className="empty-state-title text-2xl text-slate-400 mb-4">No practice tests available</div>
-            <p className="empty-state-text text-slate-500">Practice tests will appear here when they are created by your instructors.</p>
+          <div className="rounded-2xl bg-[#181A22] border border-white/[0.05] p-12 text-center">
+            <div className="w-12 h-12 rounded-xl bg-[#20242D] border border-white/[0.08] flex items-center justify-center mx-auto mb-3 text-slate-400">
+              <BookOpen className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-semibold text-white mb-1">No Practice Tests Available</h3>
+            <p className="text-xs text-[#7E8594] max-w-sm mx-auto">
+              Practice assessments will appear here once they are published by instructors.
+            </p>
           </div>
         ) : filteredTests.length === 0 ? (
-          <div className="empty-state text-center py-12">
-            <div className="empty-state-title text-2xl text-slate-400 mb-4">No practice tests match your search</div>
-            <p className="empty-state-text text-slate-500">Try adjusting your search terms.</p>
+          <div className="rounded-2xl bg-[#181A22] border border-white/[0.05] p-12 text-center">
+            <div className="w-12 h-12 rounded-xl bg-[#20242D] border border-white/[0.08] flex items-center justify-center mx-auto mb-3 text-slate-400">
+              <Search className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-semibold text-white mb-1">No Tests Match Your Search</h3>
+            <p className="text-xs text-[#7E8594] mb-4">
+              Try adjusting your search terms or clearing filters.
+            </p>
+            <button
+              onClick={() => {
+                setSubjectFilter("all");
+                setSearchTerm("");
+              }}
+              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-[#133B42] text-[#00C4B4] border border-[#00C4B4]/30 hover:bg-[#1A4C55] transition-all"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reset Search</span>
+            </button>
           </div>
         ) : (
-          <div className="cards-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredTests.map((test, index) => (
-              <div
-                key={test._id}
-                className="practice-test-card group relative backdrop-blur-sm rounded-2xl p-6 border transition-all duration-300 cursor-pointer animate-slide-in-up overflow-hidden"
-                style={{
-                  animationDelay: `${index * 100}ms`,
-                  backgroundColor: '#0B1220',
-                  borderColor: 'rgba(255, 255, 255, 0.2)',
-                  boxShadow: '0 0 0 rgba(255, 255, 255, 0)'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.4)';
-                  e.currentTarget.style.boxShadow = '0 20px 25px -5px rgba(255, 255, 255, 0.1), 0 10px 10px -5px rgba(255, 255, 255, 0.04)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-                  e.currentTarget.style.boxShadow = '0 0 0 rgba(255, 255, 255, 0)';
-                }}
-              >
-                {/* Subtle gradient overlay on hover */}
-                <div className="absolute inset-0 rounded-2xl transition-all duration-300 pointer-events-none opacity-0 group-hover:opacity-100" style={{ background: 'linear-gradient(to bottom right, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.05))' }}></div>
-
-                <div className="relative z-10">
-                  {/* Header Section */}
-                  <div className="card-header mb-1" style={{ height: '85px' }}>
-                    <div className="card-header-row flex items-start gap-3 h-full">
-                      <div className="card-icon-container p-3 bg-slate-800/70 rounded-xl shadow-sm group-hover:shadow-md transition-shadow duration-300 flex-shrink-0">
-                        <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: '#FFFFFF' }}>
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      </div>
-                      <div className="card-title-container flex-1 min-w-0">
-                        <div className="card-title-row flex items-start gap-2">
-                          <div
-                            className="card-title text-xl font-bold transition-colors duration-200 flex-1"
-                            title={test.title}
-                            style={{
-                              color: '#E5E7EB',
-                              lineHeight: '1.5',
-                              minHeight: '3.75rem',
-                              maxHeight: '3.75rem',
-                              overflow: 'hidden',
-                              display: '-webkit-box',
-                              WebkitLineClamp: 2,
-                              WebkitBoxOrient: 'vertical',
-                              textOverflow: 'ellipsis',
-                              wordBreak: 'break-word',
-                              cursor: 'help'
-                            }}
-                          >
-                            {test.title}
-                          </div>
-                          {attemptedTests.has(test._id) && (
-                            <span className="card-attempted-badge px-2 py-0.5 rounded text-xs font-semibold flex-shrink-0" style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', color: '#FFFFFF', border: '1px solid rgba(255, 255, 255, 0.3)' }}>
-                              Attempted
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Test Details - Improved Design with Fixed Widths */}
-                  <div className="card-details space-y-2.5 mb-6">
-                    {/* Subject - Emerald (matches Tests.jsx) */}
-                    <div className="detail-item flex items-center justify-between p-3.5 bg-gradient-to-r from-slate-900/90 via-slate-800/90 to-slate-900/90 rounded-xl border border-slate-700/50 hover:border-emerald-500/30 transition-all duration-200 group/item">
-                      <div className="detail-item-row flex items-center gap-3 flex-1 min-w-0">
-                        <div className="detail-icon-container p-2 bg-gradient-to-br from-emerald-500/20 to-emerald-600/20 rounded-lg shadow-md flex-shrink-0">
-                          <svg className="h-4 w-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                          </svg>
-                        </div>
-                        <span className="detail-label text-slate-300 text-sm font-medium whitespace-nowrap">Subject</span>
-                      </div>
-                      <span className="detail-value px-3 py-1.5 bg-gradient-to-r from-emerald-600/30 to-emerald-700/30 text-emerald-200 rounded-lg text-sm font-semibold border border-emerald-500/30 shadow-sm min-w-[80px] text-center capitalize">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {filteredTests.map((test) => {
+              const isAttempted = attemptedTests.has(test._id);
+              return (
+                <div
+                  key={test._id}
+                  className="rounded-2xl p-5 bg-[#181A22] border border-white/[0.06] hover:border-[#00C4B4]/30 hover:bg-[#1C1F2A] transition-all duration-300 flex flex-col justify-between group shadow-sm hover:shadow-lg"
+                >
+                  <div>
+                    {/* Top Row: Subject pill + Attempted badge */}
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <span className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#133B42] text-[#00C4B4] border border-[#00C4B4]/25 capitalize tracking-wide">
                         {test.subject || "General"}
                       </span>
+
+                      {isAttempted && (
+                        <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-500/10 text-[#34D399] border border-emerald-500/20 inline-flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>Attempted</span>
+                        </span>
+                      )}
                     </div>
 
-                    {/* Time Limit - Blue (matches Tests.jsx) */}
-                    <div className="detail-item flex items-center justify-between p-3.5 bg-gradient-to-r from-slate-900/90 via-slate-800/90 to-slate-900/90 rounded-xl border border-slate-700/50 hover:border-blue-500/30 transition-all duration-200 group/item">
-                      <div className="detail-item-row flex items-center gap-3 flex-1 min-w-0">
-                        <div className="detail-icon-container p-2 bg-gradient-to-br from-blue-500/20 to-blue-600/20 rounded-lg shadow-md flex-shrink-0">
-                          <svg className="h-4 w-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                        </div>
-                        <span className="detail-label text-slate-300 text-sm font-medium whitespace-nowrap">Time Limit</span>
-                      </div>
-                      <span className="detail-value px-3 py-1.5 bg-gradient-to-r from-blue-600/30 to-blue-700/30 text-blue-200 rounded-lg text-sm font-semibold border border-blue-500/30 shadow-sm min-w-[80px] text-center">
-                        {test.timeLimit} min
-                      </span>
-                    </div>
+                    {/* Test Title */}
+                    <h3
+                      className="text-sm sm:text-base font-semibold text-white tracking-tight leading-snug line-clamp-2 mb-4 group-hover:text-[#00C4B4] transition-colors"
+                      title={test.title}
+                    >
+                      {test.title}
+                    </h3>
 
-                    {/* Questions - Purple (matches Subject in Tests.jsx for consistency) */}
-                    <div className="detail-item flex items-center justify-between p-3.5 bg-gradient-to-r from-slate-900/90 via-slate-800/90 to-slate-900/90 rounded-xl border border-slate-700/50 hover:border-purple-500/30 transition-all duration-200 group/item">
-                      <div className="detail-item-row flex items-center gap-3 flex-1 min-w-0">
-                        <div className="detail-icon-container p-2 bg-gradient-to-br from-purple-500/20 to-purple-600/20 rounded-lg shadow-md flex-shrink-0">
-                          <svg className="h-4 w-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                        </div>
-                        <span className="detail-label text-slate-300 text-sm font-medium whitespace-nowrap">Questions</span>
+                    {/* Metadata Chips Grid */}
+                    <div className="grid grid-cols-2 gap-2 mb-5">
+                      <div className="flex items-center gap-2 p-2 rounded-xl bg-[#20242D]/60 border border-white/[0.03]">
+                        <Clock className="w-3.5 h-3.5 text-[#00C4B4] flex-shrink-0" />
+                        <span className="text-xs text-slate-300 truncate font-medium">
+                          {test.timeLimit} mins
+                        </span>
                       </div>
-                      <span className="detail-value px-3 py-1.5 bg-gradient-to-r from-purple-600/30 to-purple-700/30 text-purple-200 rounded-lg text-sm font-semibold border border-purple-500/30 shadow-sm min-w-[80px] text-center">
-                        {test.questionCount || 0}
-                      </span>
+
+                      <div className="flex items-center gap-2 p-2 rounded-xl bg-[#20242D]/60 border border-white/[0.03]">
+                        <HelpCircle className="w-3.5 h-3.5 text-[#38BDF8] flex-shrink-0" />
+                        <span className="text-xs text-slate-300 truncate font-medium">
+                          {test.questionCount || 0} Questions
+                        </span>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Action Buttons Section */}
-                  <div className="action-section mt-6 pt-4" style={{ borderTop: '1px solid rgba(255, 255, 255, 0.2)' }}>
+                  {/* Actions Row */}
+                  <div className="pt-3 border-t border-white/[0.05] space-y-2">
                     <button
                       onClick={() => handleStartPracticeTest(test._id)}
-                      className="action-button w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md mb-3"
-                      style={{
-                        backgroundColor: '#FFFFFF',
-                        color: '#020617',
-                        border: '2px solid transparent'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.opacity = '0.9';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.opacity = '1';
-                      }}
+                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs bg-white hover:bg-slate-100 text-slate-900 transition-all duration-200 active:scale-95 shadow-sm"
                     >
-                      Start Practice Test
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      <span>Start Practice Test</span>
                     </button>
 
-                    {attemptedTests.has(test._id) && (
+                    {isAttempted && (
                       <button
                         onClick={() => handleViewResults(test._id)}
-                        className="action-button w-full py-2.5 px-4 rounded-lg font-semibold transition-all cursor-pointer shadow-sm hover:shadow-md"
-                        style={{
-                          backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                          color: '#FFFFFF',
-                          border: '1px solid rgba(255, 255, 255, 0.3)'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
-                        }}
+                        className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-[#20242D] hover:bg-[#282C38] text-slate-300 hover:text-white border border-white/[0.06] hover:border-white/[0.12] transition-all duration-200 active:scale-95"
                       >
-                        View Previous Results
+                        <Eye className="w-3.5 h-3.5 text-[#00C4B4]" />
+                        <span>View Previous Results</span>
                       </button>
                     )}
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
         {/* Pagination Controls */}
         {totalPages > 1 && (
-          <div className="pagination-container mt-10 flex flex-col items-center gap-4">
-            <div className="pagination-buttons pagination-row flex items-center justify-center gap-2">
+          <div className="mt-8 pt-4 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-white/[0.05]">
+            <p className="text-xs text-[#7E8594]">
+              Page <span className="text-white font-medium">{currentPage}</span> of{" "}
+              <span className="text-white font-medium">{totalPages}</span>
+            </p>
+
+            <div className="flex items-center gap-1.5">
               <button
                 onClick={() => {
                   if (currentPage > 1) {
@@ -576,39 +479,13 @@ const PracticeTests = () => {
                   }
                 }}
                 disabled={currentPage === 1}
-                className="pagination-button px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100"
-                style={{
-                  backgroundColor: currentPage === 1
-                    ? 'rgba(255, 255, 255, 0.05)'
-                    : '#FFFFFF',
-                  background: currentPage === 1
-                    ? 'rgba(255, 255, 255, 0.05)'
-                    : '#FFFFFF',
-                  color: currentPage === 1 ? '#FFFFFF' : '#000000',
-                  border: '2px solid rgba(255, 255, 255, 0.2)'
-                }}
-                onMouseEnter={(e) => {
-                  if (currentPage > 1) {
-                    e.currentTarget.style.background = '#FFFFFF';
-                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.6)';
-                    e.currentTarget.style.boxShadow = '0 8px 20px rgba(255, 255, 255, 0.3)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (currentPage > 1) {
-                    e.currentTarget.style.background = '#FFFFFF';
-                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-                    e.currentTarget.style.boxShadow = '0 4px 15px rgba(0, 0, 0, 0.2)';
-                  }
-                }}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-medium bg-[#20242D] border border-white/[0.08] text-slate-300 hover:text-white hover:bg-[#282C38] disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-                Previous
+                <ChevronLeft className="w-3.5 h-3.5" />
+                <span>Prev</span>
               </button>
 
-              <div className="pagination-numbers flex items-center gap-2 px-4 py-2 rounded-xl" style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)' }}>
+              <div className="flex items-center gap-1 px-1">
                 {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                   let pageNum;
                   if (totalPages <= 5) {
@@ -621,6 +498,7 @@ const PracticeTests = () => {
                     pageNum = currentPage - 2 + i;
                   }
 
+                  const isActive = pageNum === currentPage;
                   return (
                     <button
                       key={pageNum}
@@ -630,33 +508,11 @@ const PracticeTests = () => {
                           fetchPracticeTests(pageNum);
                         }
                       }}
-                      className="pagination-number w-11 h-11 rounded-xl font-bold transition-all duration-300 transform hover:scale-110 shadow-md hover:shadow-lg"
-                      style={{
-                        background: pageNum === currentPage
-                          ? '#FFFFFF'
-                          : 'rgba(255, 255, 255, 0.1)',
-                        color: pageNum === currentPage ? '#000000' : '#FFFFFF',
-                        border: pageNum === currentPage
-                          ? '2px solid rgba(255, 255, 255, 0.8)'
-                          : '2px solid rgba(255, 255, 255, 0.2)',
-                        boxShadow: pageNum === currentPage
-                          ? '0 4px 15px rgba(255, 255, 255, 0.4)'
-                          : '0 2px 8px rgba(0, 0, 0, 0.2)'
-                      }}
-                      onMouseEnter={(e) => {
-                        if (pageNum !== currentPage) {
-                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
-                          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.4)';
-                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(255, 255, 255, 0.2)';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (pageNum !== currentPage) {
-                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-                          e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.2)';
-                        }
-                      }}
+                      className={`w-8 h-8 rounded-xl text-xs font-bold transition-all ${
+                        isActive
+                          ? "bg-[#00C4B4] text-[#0B1220] shadow-[0_0_12px_rgba(0,196,180,0.3)]"
+                          : "bg-[#20242D] border border-white/[0.06] text-slate-400 hover:text-white hover:bg-[#282C38]"
+                      }`}
                     >
                       {pageNum}
                     </button>
@@ -673,40 +529,15 @@ const PracticeTests = () => {
                   }
                 }}
                 disabled={currentPage === totalPages}
-                className="pagination-button px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100"
-                style={{
-                  backgroundColor: currentPage === totalPages
-                    ? 'rgba(255, 255, 255, 0.05)'
-                    : '#FFFFFF',
-                  background: currentPage === totalPages
-                    ? 'rgba(255, 255, 255, 0.05)'
-                    : '#FFFFFF',
-                  color: currentPage === totalPages ? '#FFFFFF' : '#000000',
-                  border: '2px solid rgba(255, 255, 255, 0.2)'
-                }}
-                onMouseEnter={(e) => {
-                  if (currentPage < totalPages) {
-                    e.currentTarget.style.background = '#FFFFFF';
-                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.6)';
-                    e.currentTarget.style.boxShadow = '0 8px 20px rgba(255, 255, 255, 0.3)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (currentPage < totalPages) {
-                    e.currentTarget.style.background = '#FFFFFF';
-                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-                    e.currentTarget.style.boxShadow = '0 4px 15px rgba(0, 0, 0, 0.2)';
-                  }
-                }}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-medium bg-[#20242D] border border-white/[0.08] text-slate-300 hover:text-white hover:bg-[#282C38] disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm"
               >
-                Next
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
+                <span>Next</span>
+                <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
         )}
+
       </div>
     </div>
   );
