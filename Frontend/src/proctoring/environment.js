@@ -27,16 +27,46 @@ export async function detectBrave() {
   return false;
 }
 
+/**
+ * Detect Microsoft Edge.
+ * Edge is Chromium-based and reports Chrome tokens, but includes Edg/ or Edge/
+ * in its user agent or reports Edge in userAgentData brands.
+ */
+export function detectEdge() {
+  if (typeof navigator === "undefined") return false;
+  try {
+    const ua = navigator.userAgent || "";
+    const brands = navigator.userAgentData?.brands;
+
+    if (/Edg\/|Edge\/|EdgA\/|EdgiOS\//i.test(ua)) return true;
+    if (Array.isArray(brands) && brands.some((b) => /Edge|Microsoft Edge/i.test(b.brand))) {
+      return true;
+    }
+  } catch {
+    // Fail safe
+  }
+  return false;
+}
+
 /** A readable browser name, for the report and for support conversations. */
 export function detectBrowserName(isBrave) {
   if (isBrave) return "Brave";
+  if (detectEdge()) return "Edge";
+  if (typeof navigator === "undefined") return "Unknown";
 
   const ua = navigator.userAgent || "";
+  const brands = navigator.userAgentData?.brands;
 
   // Order matters: several browsers include "Chrome" in their user agent.
-  if (/Edg\//.test(ua)) return "Edge";
-  if (/OPR\//.test(ua) || /Opera/.test(ua)) return "Opera";
+  if (/Edg\/|Edge\//i.test(ua) || brands?.some((b) => /Edge/i.test(b.brand))) return "Edge";
+  if (/OPR\//.test(ua) || /Opera/.test(ua) || brands?.some((b) => /Opera/i.test(b.brand))) return "Opera";
   if (/Firefox\//.test(ua)) return "Firefox";
+  if (
+    /Chromium\//.test(ua) ||
+    (brands?.some((b) => b.brand === "Chromium") && !brands?.some((b) => b.brand === "Google Chrome"))
+  ) {
+    return "Chromium";
+  }
   if (/Chrome\//.test(ua)) return "Chrome";
   if (/Safari\//.test(ua) && /Version\//.test(ua)) return "Safari";
   return "Unknown";
@@ -44,12 +74,67 @@ export function detectBrowserName(isBrave) {
 
 /** Phones and tablets cannot meet the fullscreen and keyboard rules. */
 export function isMobileDevice() {
+  if (typeof navigator === "undefined") return false;
   if (navigator.userAgentData && typeof navigator.userAgentData.mobile === "boolean") {
     return navigator.userAgentData.mobile;
   }
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|CriOS|Mobile/i.test(
     navigator.userAgent || ""
   );
+}
+
+/**
+ * ExamPro requires desktop Google Chrome only.
+ * Explicitly rejects Brave, Edge, Opera, Firefox, Safari, Chromium, mobile and unknown browsers.
+ */
+export function isSupportedChrome(env) {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  if (!env) return false;
+  if (env.isBrave || env.isEdge || env.isMobile) return false;
+  if (env.browser && env.browser !== "Chrome" && env.browser !== "Google Chrome") return false;
+
+  if (detectEdge()) return false;
+  if (isMobileDevice()) return false;
+
+  const ua = navigator.userAgent || "";
+  const vendor = navigator.vendor || "";
+  const brands = navigator.userAgentData?.brands;
+
+  // Explicitly reject Edge
+  if (/Edg\/|Edge\/|EdgA\/|EdgiOS\//i.test(ua)) return false;
+  if (Array.isArray(brands) && brands.some((b) => /Edge|Microsoft Edge/i.test(b.brand))) {
+    return false;
+  }
+
+  // Reject browsers identifying as Opera, Firefox, Safari
+  if (
+    /OPR\//i.test(ua) ||
+    /Opera/i.test(ua) ||
+    /Firefox\//i.test(ua) ||
+    (/Safari\//i.test(ua) && /Version\//i.test(ua))
+  ) {
+    return false;
+  }
+
+  if (Array.isArray(brands) && brands.some((b) => /Opera|Brave/i.test(b.brand))) {
+    return false;
+  }
+
+  // Reject unbranded Chromium or missing Google Chrome brand
+  if (/Chromium\//i.test(ua)) return false;
+  if (Array.isArray(brands)) {
+    const hasGoogleChrome = brands.some((b) => b.brand === "Google Chrome");
+    if (!hasGoogleChrome) return false;
+  }
+
+  // Strictly require desktop Google Chrome markers
+  const hasChromeUa = /Chrome\//i.test(ua) && !/HeadlessChrome/i.test(ua);
+  const hasGoogleVendor = /Google Inc\./i.test(vendor) || Boolean(window.chrome);
+  const hasChromeBrand = Array.isArray(brands)
+    ? brands.some((b) => b.brand === "Google Chrome")
+    : true;
+
+  return Boolean(hasChromeUa && hasGoogleVendor && hasChromeBrand);
 }
 
 /**
@@ -105,14 +190,18 @@ export function detectSecondMonitor() {
  */
 export async function inspectEnvironment() {
   const isBrave = await detectBrave();
+  const isEdge = detectEdge();
   const browser = detectBrowserName(isBrave);
+  const isMobile = isMobileDevice();
 
   return {
     browser,
     isBrave,
-    platform: navigator.platform || "",
-    isMobile: isMobileDevice(),
-    isSecureContext: Boolean(window.isSecureContext),
+    isEdge,
+    isSupportedChrome: isSupportedChrome({ browser, isBrave, isEdge, isMobile }),
+    platform: typeof navigator !== "undefined" ? navigator.platform || "" : "",
+    isMobile,
+    isSecureContext: typeof window !== "undefined" ? Boolean(window.isSecureContext) : false,
     keyboardLockSupported: keyboardLockSupported(),
     screenShareSupported: screenShareSupported(),
     fullscreenSupported: fullscreenSupported(),
@@ -124,12 +213,15 @@ export async function inspectEnvironment() {
  * Things that must be true before an exam can begin at all, in plain language.
  *
  * Returns a list of blocking problems and a list of warnings. Warnings are for
- * the student's benefit — "this browser will make you re-enter fullscreen by
- * hand" — and never stop the exam.
+ * the student's benefit and never stop the exam.
  */
 export function assessReadiness(env) {
   const blockers = [];
   const warnings = [];
+
+  if (env.isEdge || !env.isSupportedChrome) {
+    blockers.push("This exam can only be taken using Google Chrome.");
+  }
 
   if (env.isMobile) {
     blockers.push(
@@ -139,25 +231,19 @@ export function assessReadiness(env) {
 
   if (!env.fullscreenSupported) {
     blockers.push(
-      "This browser cannot enter fullscreen mode, which this test requires. Please use Chrome, Edge or Brave."
+      "This browser cannot enter fullscreen mode, which this test requires. Please use Google Chrome."
     );
   }
 
   if (!env.screenShareSupported) {
     blockers.push(
-      "This browser cannot share your screen, which this test requires. Please use Chrome, Edge or Brave."
+      "This browser cannot share your screen, which this test requires. Please use Google Chrome."
     );
   }
 
   if (!env.isSecureContext) {
     warnings.push(
       "This page is not on a secure (HTTPS) connection, so some exam protections cannot be switched on."
-    );
-  }
-
-  if (!env.keyboardLockSupported) {
-    warnings.push(
-      `${env.browser} cannot lock the keyboard during the exam. Keyboard shortcuts will still be blocked, but pressing Escape may drop you out of fullscreen — you will be asked to return to it, and it will be recorded.`
     );
   }
 
