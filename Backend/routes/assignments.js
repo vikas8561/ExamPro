@@ -794,9 +794,9 @@ router.get("/check-expiration/:id", authenticateToken, async (req, res, next) =>
     }
 
     // Check test time limit if test has started
-    if (assignment.startedAt && assignment.testId?.timeLimit) {
-      const testEndTime = new Date(assignment.startedAt.getTime() + assignment.testId.timeLimit * 60000);
-      const testEndTimeWithBuffer = new Date(testEndTime.getTime() + 5000);
+    if (assignment.startedAt) {
+      const testEndTime = assignment.deadline || endTime;
+      const testEndTimeWithBuffer = new Date(new Date(testEndTime).getTime() + 5000);
 
       if (now > testEndTimeWithBuffer) {
         return res.status(400).json({ message: "Test time limit has expired.", code: "attempt_expired" });
@@ -936,8 +936,8 @@ router.post("/:id/start", authenticateToken, attachProctorStatus(), async (req, 
       const now = new Date();
       let timeRemaining = 0;
 
-      if (assignment.startedAt && assignment.testId?.timeLimit) {
-        const testEndTime = new Date(assignment.startedAt.getTime() + assignment.testId.timeLimit * 60000);
+      if (assignment.startTime && (assignment.duration || assignment.testId?.timeLimit)) {
+        const testEndTime = new Date(new Date(assignment.startTime).getTime() + (assignment.duration || assignment.testId.timeLimit) * 60000);
         const remainingMs = testEndTime.getTime() - now.getTime();
         timeRemaining = Math.max(0, Math.floor(remainingMs / 1000)); // Convert to seconds
       }
@@ -1072,9 +1072,9 @@ router.post("/:id/start", authenticateToken, attachProctorStatus(), async (req, 
     await assignment.save();
 
     // Calculate remaining time in seconds
-    // Use the stored timeLimitMinutes and startedAt
-    const startedAtTime = startedAt.getTime();
-    const testEndTime = startedAtTime + (timeLimitMinutes * 60000); // timeLimit in minutes, convert to ms
+    // Use startTime + duration so the timer is anchored to the scheduled window
+    const startTimeMs = new Date(assignment.startTime).getTime();
+    const testEndTime = startTimeMs + ((assignment.duration || timeLimitMinutes) * 60000);
     const nowTimestamp = Date.now();
     const remainingMs = testEndTime - nowTimestamp;
     const timeRemaining = Math.max(0, Math.floor(remainingMs / 1000)); // Convert to seconds
@@ -1082,7 +1082,7 @@ router.post("/:id/start", authenticateToken, attachProctorStatus(), async (req, 
     console.log('⏰ Time calculation:', {
       timeLimitMinutes,
       startedAt: startedAt.toISOString(),
-      startedAtTime,
+      startTimeMs,
       testEndTime,
       nowTimestamp,
       remainingMs,

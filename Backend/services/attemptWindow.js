@@ -42,8 +42,9 @@ function testTimeEndsAt(assignment, test) {
 }
 
 /**
- * The moment an attempt is finished: the later of the two clocks, matching the
- * submit route's "allow while either is open".
+ * The moment an attempt is finished: the earlier of the two clocks, so that
+ * the test always ends at startTime + duration regardless of when the student
+ * started.
  *
  * Returns null when neither can be determined, which is treated as "not
  * expired" everywhere -- never finalise an attempt on missing data.
@@ -53,7 +54,7 @@ function attemptEndsAt(assignment, test) {
     .filter((d) => d instanceof Date && !Number.isNaN(d.getTime()));
 
   if (ends.length === 0) return null;
-  return new Date(Math.max(...ends.map((d) => d.getTime())));
+  return new Date(Math.min(...ends.map((d) => d.getTime())));
 }
 
 /** Has the attempt run out, allowing `graceMs` of slack? */

@@ -475,12 +475,10 @@ function TakeCodingTestInner({ submitRef }) {
       setAssignment(response.assignment);
       setTest(response.test);
 
-      // Calculate timeRemaining the same way as TakeTest.jsx
+      // Calculate timeRemaining from scheduledStartTime + testDuration
       const testTimeLimit = response.test.timeLimit;
-      const totalSeconds = testTimeLimit * 60;
-      const testStartTime = new Date(
-        response.assignment.startedAt || response.assignment.startTime
-      );
+      const totalSeconds = (response.assignment.duration || testTimeLimit) * 60;
+      const testStartTime = new Date(response.assignment.startTime);
       const currentTime = serverTime; // Use server time instead of client time
       const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
       const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
@@ -531,12 +529,10 @@ function TakeCodingTestInner({ submitRef }) {
       setAssignment(assignmentData);
       setTest(assignmentData.testId);
 
-      // Calculate timeRemaining the same way as TakeTest.jsx
+      // Calculate timeRemaining from scheduledStartTime + testDuration
       const testTimeLimit = assignmentData.testId.timeLimit;
-      const totalSeconds = testTimeLimit * 60;
-      const testStartTime = new Date(
-        assignmentData.startedAt || assignmentData.startTime
-      );
+      const totalSeconds = (assignmentData.duration || testTimeLimit) * 60;
+      const testStartTime = new Date(assignmentData.startTime);
       const currentTime = serverTime;
       const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
       const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
