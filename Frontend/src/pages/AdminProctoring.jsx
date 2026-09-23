@@ -24,6 +24,10 @@ export default function AdminProctoring() {
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
 
+  // Terminated attempts state
+  const [terminated, setTerminated] = useState([]);
+  const [loadingTerminated, setLoadingTerminated] = useState(true);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -38,9 +42,22 @@ export default function AdminProctoring() {
     }
   }, []);
 
+  const loadTerminated = useCallback(async () => {
+    setLoadingTerminated(true);
+    try {
+      const data = await apiRequest("/assignments/terminated-violations");
+      setTerminated(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Failed to load terminated attempts:", err);
+    } finally {
+      setLoadingTerminated(false);
+    }
+  }, []);
+
   useEffect(() => {
     load();
-  }, [load]);
+    loadTerminated();
+  }, [load, loadTerminated]);
 
   const rotate = useCallback(async () => {
     if (
@@ -74,6 +91,25 @@ export default function AdminProctoring() {
       // Clipboard access can be refused; the code is on screen either way.
     }
   }, [otp]);
+
+  const handleReEnable = async (a) => {
+    const studentName = a.userId?.name || "the student";
+    if (
+      !window.confirm(
+        `Re-enable exam for ${studentName}?\n\n• Active violations will reset to 0.\n• All previous violation records remain saved in history.\n• The original exam timer continues (no extra time granted).\n• Student will see "Continue" on their dashboard.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await apiRequest(`/assignments/${a._id}/re-enable`, { method: "POST" });
+      alert(`Exam re-enabled for ${studentName}.`);
+      loadTerminated();
+    } catch (err) {
+      alert(err.message || "Failed to re-enable exam.");
+    }
+  };
 
   return (
     <div className="p-6">
@@ -152,6 +188,73 @@ export default function AdminProctoring() {
             <li>• Wrong guesses are rate limited, so it cannot be brute forced.</li>
           </ul>
         </div>
+      </div>
+
+      {/* Violation Terminations & Re-enable */}
+      <div className="mt-8 max-w-4xl rounded-xl border border-slate-700 bg-slate-800/50 p-6">
+        <h2 className="mb-1 text-lg font-semibold text-white">Re-enable Terminated Exams</h2>
+        <p className="mb-6 text-sm text-slate-400">
+          Exams auto-submitted because candidate reached maximum proctoring violation limits. Re-enabling resets active violations to 0 while keeping previous violation history and the original exam timer.
+        </p>
+
+        {loadingTerminated ? (
+          <p className="text-sm text-slate-500">Loading attempts…</p>
+        ) : terminated.length === 0 ? (
+          <p className="text-sm text-slate-500">No violation-terminated exams found.</p>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-slate-700">
+            <table className="w-full text-left text-xs text-slate-300">
+              <thead className="bg-slate-900 border-b border-slate-700 text-slate-400">
+                <tr>
+                  <th className="py-3 px-4">Student</th>
+                  <th className="py-3 px-4">Test</th>
+                  <th className="py-3 px-4">Violations</th>
+                  <th className="py-3 px-4">Deadline</th>
+                  <th className="py-3 px-4 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-700/60 bg-slate-800/30">
+                {terminated.map((a) => {
+                  const deadline = a.deadline || (a.startTime && a.duration ? new Date(new Date(a.startTime).getTime() + a.duration * 60000) : null);
+                  const isExpired = deadline && new Date() >= new Date(deadline);
+                  const isActive = a.status === "In Progress";
+                  const violationCount = a.tabViolations?.length || a.tabViolationCount || 0;
+
+                  return (
+                    <tr key={a._id} className="hover:bg-slate-700/20">
+                      <td className="py-3 px-4">
+                        <div className="font-semibold text-white">{a.userId?.name || "Student"}</div>
+                        <div className="text-[11px] text-slate-400">{a.userId?.email}</div>
+                      </td>
+                      <td className="py-3 px-4 font-medium text-white">{a.testId?.title || "Test"}</td>
+                      <td className="py-3 px-4">
+                        <span className="text-red-400 font-semibold">{violationCount} logged</span>
+                      </td>
+                      <td className="py-3 px-4 text-slate-400">
+                        {deadline ? new Date(deadline).toLocaleTimeString() : "—"}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        {isActive ? (
+                          <span className="text-emerald-400 font-semibold">Active (Re-enabled)</span>
+                        ) : isExpired ? (
+                          <span className="text-slate-500">Deadline Passed</span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleReEnable(a)}
+                            className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 transition-colors"
+                          >
+                            Re-enable Exam
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

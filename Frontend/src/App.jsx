@@ -90,6 +90,7 @@ const AdminLayout = () => {
           <Route path="/dsa-practice" element={<AdminDSAPractice />} />
           <Route path="/users" element={<Users />} />
           <Route path="/proctoring" element={<AdminProctoring />} />
+          <Route path="/view-test/:assignmentId" element={<ViewCompletedTest />} />
           <Route path="*" element={<div className="p-6">Not Found</div>} />
         </Routes>
       </main>
@@ -149,7 +150,7 @@ const StudentRoutes = () => {
 
   return (
     <StudentSidebarContext.Provider value={{ sidebarOpen, toggleSidebar, isCollapsed, toggleCollapse }}>
-      <div className="h-screen h-[100dvh] bg-[#16181F] text-slate-100 flex overflow-hidden">
+      <div className="h-[100dvh] bg-[#16181F] text-slate-100 flex overflow-hidden">
         {!isTakeTest && (
           <StudentSidebar
             isOpen={sidebarOpen}
@@ -159,7 +160,7 @@ const StudentRoutes = () => {
           />
         )}
         <main
-          className={`flex-1 min-w-0 h-screen h-[100dvh] overflow-y-auto ${isTakeTest ? "w-full" : ""}`}
+          className={`flex-1 min-w-0 h-[100dvh] overflow-y-auto ${isTakeTest ? "w-full" : ""}`}
           style={{
             transition: "all 0.35s cubic-bezier(0.16, 1, 0.3, 1)",
             willChange: "width, margin",

@@ -603,6 +603,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
             // Whether the attempt was cut short, and whether it submitted
             // itself, are facts about the student's own paper and stay. The
             // violation tally and log are the proctor's -- see proctorRecordFor.
+            assignmentId: submission.assignmentId || assignment._id,
             cancelledDueToViolation: submission.cancelledDueToViolation,
             autoSubmit: submission.autoSubmit,
             ...proctorRecordFor(submission)
@@ -638,6 +639,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
           },
           submission: {
             _id: submission._id,
+            assignmentId: submission.assignmentId || assignment._id,
             totalScore: null,
             maxScore: null,
             submittedAt: submission.submittedAt,

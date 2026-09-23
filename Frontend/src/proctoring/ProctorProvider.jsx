@@ -161,6 +161,12 @@ export function ProctorProvider({
         if (cancelled) return;
 
         setEnvironment(env);
+
+        if (!env.isSupportedChrome || env.isEdge || env.isBrave) {
+          setPhase("unsupported");
+          return;
+        }
+
         setReadiness(assessReadiness(env));
 
         const opened = await startSession({
@@ -494,6 +500,24 @@ export function ProctorProvider({
   return (
     <ProctorContext.Provider value={contextValue}>
       {children}
+
+      {/* Unsupported browser gate */}
+      {enabled && phase === "unsupported" && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/95 p-4">
+          <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-8 text-center">
+            <h2 className="mb-3 text-2xl font-bold text-white">Google Chrome Required</h2>
+            <p className="mb-6 text-slate-300">
+              This exam can only be taken using Google Chrome.
+            </p>
+            <div className="mb-6 rounded-md bg-slate-800 px-4 py-3 text-sm text-slate-400">
+              Current browser: <span className="font-semibold text-rose-400">{environment?.browser || "Unknown"}</span>
+            </div>
+            <p className="text-xs text-slate-400">
+              Please open this exam link in the latest version of Google Chrome.
+            </p>
+          </div>
+        </div>
+      )}
 
       {proctoringActive && phase === "gate" && (
         <ProctorGate
