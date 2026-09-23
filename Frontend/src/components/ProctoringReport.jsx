@@ -37,7 +37,7 @@ const VIOLATION_LABELS = {
 /** Violations that are recorded for context but never count against a student. */
 const UNCHARGED = new Set(["context_menu", "blocked_key", "network_lost"]);
 
-export default function ProctoringReport({ submission }) {
+export default function ProctoringReport({ submission, assignmentId, onReEnabled }) {
   const [expanded, setExpanded] = useState(false);
 
   if (!submission) return null;
@@ -46,6 +46,28 @@ export default function ProctoringReport({ submission }) {
   const count = submission.tabViolationCount || 0;
   const cancelled = submission.cancelledDueToViolation === true;
   const bypassed = submission.proctorBypassUsed === true;
+
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+  const isAdmin = user?.role === "Admin";
+  const targetAssignmentId = assignmentId || submission.assignmentId;
+
+  const handleReEnable = async () => {
+    if (
+      !window.confirm(
+        "Re-enable this candidate's exam?\n\n• Active violations reset to 0.\n• All previous violation records remain saved in history.\n• The original exam timer continues (no extra time granted).\n• Candidate will see 'Continue' on their dashboard."
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await apiRequest(`/assignments/${targetAssignmentId}/re-enable`, { method: "POST" });
+      alert("Exam re-enabled successfully.");
+      if (onReEnabled) onReEnabled();
+    } catch (err) {
+      alert(err.message || "Failed to re-enable exam.");
+    }
+  };
 
   if (count === 0 && violations.length === 0 && !cancelled && !bypassed) {
     return (
@@ -77,15 +99,27 @@ export default function ProctoringReport({ submission }) {
           </p>
         </div>
 
-        {violations.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="rounded-md border border-slate-600 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
-          >
-            {expanded ? "Hide details" : `Show all ${violations.length}`}
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {isAdmin && cancelled && targetAssignmentId && (
+            <button
+              type="button"
+              onClick={handleReEnable}
+              className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 transition-colors"
+            >
+              Re-enable Exam
+            </button>
+          )}
+
+          {violations.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="rounded-md border border-slate-600 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
+            >
+              {expanded ? "Hide details" : `Show all ${violations.length}`}
+            </button>
+          )}
+        </div>
       </div>
 
       {bypassed && (

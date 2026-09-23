@@ -332,17 +332,18 @@ const TakeTestInner = ({ submitRef }) => {
       });
       setQuestionStatuses(initialStatuses);
 
-      const assignmentDuration = response.assignment.duration;
       const testTimeLimit = response.test.timeLimit;
-
-      // Always use test.timeLimit as timer duration
-      const totalSeconds = testTimeLimit * 60;
-      const testStartTime = new Date(
-        response.assignment.startedAt || response.assignment.startTime
-      );
+      const totalSeconds = (response.assignment.duration || testTimeLimit) * 60;
+      const testStartTime = new Date(response.assignment.startTime);
       const currentTime = serverTime; // Use server time instead of client time
       const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
       const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
+
+      if (remainingSeconds <= 0) {
+        setError("This test's time has expired.");
+        setLoading(false);
+        return;
+      }
 
       setTimeRemaining(remainingSeconds);
       setTestStarted(true);
@@ -374,17 +375,18 @@ const TakeTestInner = ({ submitRef }) => {
       const assignmentData = await apiRequest(`/assignments/${assignmentId}`);
       setAssignment(assignmentData);
 
-      const assignmentDuration = assignmentData.duration;
       const testTimeLimit = assignmentData.testId.timeLimit;
-
-      // Always use test.timeLimit as timer duration
-      const totalSeconds = testTimeLimit * 60;
-      const testStartTime = new Date(
-        assignmentData.startedAt || assignmentData.startTime
-      );
+      const totalSeconds = (assignmentData.duration || testTimeLimit) * 60;
+      const testStartTime = new Date(assignmentData.startTime);
       const currentTime = serverTime; // Use server time instead of client time
       const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
       const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
+
+      if (remainingSeconds <= 0) {
+        setError("This test's time has expired.");
+        setLoading(false);
+        return;
+      }
 
 
       let answersData = [];
