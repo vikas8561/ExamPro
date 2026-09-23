@@ -96,7 +96,8 @@ const allowedOrigins = [
   "https://cg-test-app.vercel.app",
   "https://cg-test-app-dev.vercel.app",
   "exam.codinggita.in",
-  "https://exam.codinggita.in/"
+  "https://exam.codinggita.in/",
+  "https://exam.codinggita.in"
 ].filter(Boolean);
 
 // Configure CORS with more permissive settings for production
