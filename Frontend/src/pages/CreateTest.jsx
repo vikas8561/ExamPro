@@ -108,6 +108,7 @@ export default function CreateTest() {
           kind: q.kind === "theoretical" ? "theory" : q.kind,
           text: q.text,
           points: q.points,
+          expectedAnswer: q.expectedAnswer || "",
           ...(q.kind === "mcq" && {
             options: q.options.map((opt) => opt.text),
             answer: q.answer,

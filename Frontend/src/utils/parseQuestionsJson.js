@@ -30,7 +30,8 @@ export const EXAMPLE_THEORY_JSON = `{
     {
       "kind": "theory",
       "text": "Explain the difference between \`let\`, \`const\` and \`var\` in JavaScript.",
-      "points": 5
+      "points": 5,
+      "expectedAnswer": "**let**: block-scoped variable, can be reassigned.\\n**const**: block-scoped constant, cannot be reassigned.\\n**var**: function-scoped variable, can be reassigned and hoisted."
     }
   ]
 }`;
@@ -168,7 +169,10 @@ export function parseQuestionsJson(jsonData, { languageKeys = [] } = {}) {
     }
 
     if (kind === 'theory') {
-      return base;
+      return {
+        ...base,
+        expectedAnswer: toText(question.expectedAnswer ?? question.answer),
+      };
     }
 
     // --- coding -------------------------------------------------------------
