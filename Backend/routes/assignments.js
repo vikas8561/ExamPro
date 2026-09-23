@@ -12,6 +12,8 @@ const {
 } = require("../services/principals");
 const Student = require("../models/Student");
 const Mentor = require("../models/Mentor");
+const ProctorSession = require("../models/ProctorSession");
+const TestSubmission = require("../models/TestSubmission");
 const { authenticateToken, requireRole } = require("../middleware/auth");
 const { getCachedTestIds, setCachedTestIds, invalidateTestCache } = require("../utils/testCache");
 const { attachProctorStatus, mayServeQuestions } = require("../middleware/proctorSession");
@@ -674,7 +676,21 @@ router.get("/cohorts", authenticateToken, requireRole("admin"), async (req, res,
   }
 });
 
-// Assign test to specific students manually (admin only)
+// Get all assignments auto-submitted due to proctoring violations (admin only)
+router.get("/terminated-violations", authenticateToken, requireRole("admin"), async (req, res, next) => {
+  try {
+    const assignments = await Assignment.find({
+      $or: [{ cancelledDueToViolation: true }, { status: "Cancelled" }]
+    })
+      .populate("userId", "name email")
+      .populate("testId", "title type timeLimit")
+      .sort({ updatedAt: -1 })
+      .lean();
+    res.json(assignments);
+  } catch (error) {
+    next(error);
+  }
+});
 
 router.get("/:id", authenticateToken, attachProctorStatus(), async (req, res, next) => {
   try {
@@ -1122,6 +1138,51 @@ router.post("/:id/start", authenticateToken, attachProctorStatus(), async (req, 
       timeRemaining: timeRemaining,
       proctoringRequired: !mayServeQuestions(req)
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Re-enable exam after auto-submission due to maximum violations (admin only)
+router.post("/:id/re-enable", authenticateToken, requireRole("admin"), async (req, res, next) => {
+  try {
+    const assignment = await Assignment.findById(req.params.id);
+    if (!assignment) return res.status(404).json({ message: "Assignment not found" });
+
+    // Only allow for violation-terminated exams
+    if (!assignment.cancelledDueToViolation && assignment.status !== "Cancelled") {
+      return res.status(400).json({ message: "Only violation-terminated exams can be re-enabled" });
+    }
+
+    // Do not allow re-enable if original deadline has already passed
+    const deadline = assignment.deadline || (assignment.startTime && assignment.duration
+      ? new Date(new Date(assignment.startTime).getTime() + assignment.duration * 60000)
+      : null);
+    if (deadline && new Date() >= new Date(deadline)) {
+      return res.status(400).json({ message: "Cannot re-enable exam: the original deadline has passed" });
+    }
+
+    // Reopen assignment: reset active violations to 0, keep previous violations and timer untouched
+    assignment.status = "In Progress";
+    assignment.completedAt = null;
+    assignment.cancelledDueToViolation = false;
+    assignment.tabViolationCount = 0;
+    await assignment.save();
+
+    // Reactivate proctor session and test submission
+    await ProctorSession.updateOne(
+      { assignmentId: assignment._id },
+      { $set: { status: "active", terminatedReason: null, endedAt: null, violationCount: 0 } }
+    );
+    await TestSubmission.updateOne(
+      { assignmentId: assignment._id },
+      { $set: { cancelledDueToViolation: false, isFinalized: false, tabViolationCount: 0 } }
+    );
+
+    const io = req.app.get("io");
+    if (io) io.to(String(assignment.userId)).emit("assignmentUpdated", { assignmentId: assignment._id, status: "In Progress" });
+
+    res.json({ message: "Exam re-enabled successfully" });
   } catch (error) {
     next(error);
   }

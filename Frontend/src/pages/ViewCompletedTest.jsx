@@ -381,7 +381,11 @@ const ViewCompletedTest = () => {
         {/* 4. Proctoring Record (Reviewers / Mentors Only) */}
         {isReviewer && (
           <div className="bg-[#181A22] border border-white/[0.06] rounded-2xl p-4 shadow-sm">
-            <ProctoringReport submission={submission} />
+            <ProctoringReport
+              submission={submission}
+              assignmentId={assignmentId}
+              onReEnabled={() => window.location.reload()}
+            />
           </div>
         )}
 
