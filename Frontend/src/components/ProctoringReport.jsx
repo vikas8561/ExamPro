@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import apiRequest from "../services/api";
 
 /**
  * The proctoring record for a finished attempt.
@@ -32,10 +33,37 @@ const VIOLATION_LABELS = {
   heartbeat_lost: "Proctoring stopped reporting",
   page_tampered: "Exam page was modified",
   network_lost: "Lost internet connection",
+  seb_integrity_lost: "Safe Exam Browser stopped responding",
 };
 
 /** Violations that are recorded for context but never count against a student. */
-const UNCHARGED = new Set(["context_menu", "blocked_key", "network_lost"]);
+const UNCHARGED = new Set([
+  "context_menu",
+  "blocked_key",
+  "network_lost",
+  // The exam is blocked while this is true, which is the enforcement. Charging
+  // it as well would let a momentary blank from SEB's key API end an exam.
+  "seb_integrity_lost",
+]);
+
+/** How the attempt stood in relation to Safe Exam Browser. */
+const SEB_STATUS = {
+  verified: {
+    text: "Taken in Safe Exam Browser",
+    className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+  },
+  fallback: {
+    text: "Safe Exam Browser was not used",
+    className: "border-amber-500/30 bg-amber-500/10 text-amber-200",
+  },
+};
+
+const SEB_FALLBACK_REASONS = {
+  os_unsupported:
+    "Safe Exam Browser has no build for this student's operating system, so the standard browser-based proctoring applied instead.",
+  not_verified:
+    "Safe Exam Browser was required but could not be confirmed for this attempt.",
+};
 
 export default function ProctoringReport({ submission, assignmentId, onReEnabled }) {
   const [expanded, setExpanded] = useState(false);
@@ -69,6 +97,18 @@ export default function ProctoringReport({ submission, assignmentId, onReEnabled
     }
   };
 
+  // Whether the machine was actually locked down is as much a part of the record
+  // as the violation list, and it is the one thing a reviewer cannot infer from
+  // anything else on this screen.
+  const sebInfo = SEB_STATUS[submission.proctorSebStatus] || null;
+  const sebNote = SEB_FALLBACK_REASONS[submission.proctorSebFallbackReason] || null;
+  const sebLine = sebInfo ? (
+    <p className={`mt-3 rounded-md border px-3 py-2 text-xs ${sebInfo.className}`}>
+      {sebInfo.text}
+      {sebNote ? ` — ${sebNote}` : ""}
+    </p>
+  ) : null;
+
   if (count === 0 && violations.length === 0 && !cancelled && !bypassed) {
     return (
       <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-4">
@@ -76,6 +116,7 @@ export default function ProctoringReport({ submission, assignmentId, onReEnabled
         <p className="mt-1 text-xs text-slate-400">
           No violations were recorded during this attempt.
         </p>
+        {sebLine}
       </div>
     );
   }
@@ -121,6 +162,8 @@ export default function ProctoringReport({ submission, assignmentId, onReEnabled
           )}
         </div>
       </div>
+
+      {sebLine}
 
       {bypassed && (
         <p className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">

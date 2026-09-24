@@ -8,6 +8,7 @@ const Test = require("../models/Test");
 const { authenticateToken, requireRole } = require("../middleware/auth");
 const { requireProctorSession } = require("../middleware/proctorSession");
 const ProctorSession = require("../models/ProctorSession");
+const policyService = require("../services/proctorPolicy");
 const { attach } = require("../services/principals");
 
 // Gemini integration removed - mentors will grade manually
@@ -195,6 +196,11 @@ router.post("/", authenticateToken, requireProctorSession({ allowTerminated: tru
       }));
       submissionData.cancelledDueToViolation =
         proctorSession.status === "terminated" || cancelledDueToViolation === true;
+
+      Object.assign(
+        submissionData,
+        policyService.sebSubmissionStatus(proctorSession.seb)
+      );
 
       // Close the session out so a submitted attempt cannot be reopened.
       await ProctorSession.updateOne(

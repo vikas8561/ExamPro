@@ -8,6 +8,8 @@ const ProctorSetting = require("../models/ProctorSetting");
 const Assignment = require("../models/Assignment");
 const Test = require("../models/Test");
 const policyService = require("../services/proctorPolicy");
+const sebVerify = require("../services/sebVerify");
+const { buildSebConfig, computeConfigKey, optionsFor } = require("../services/sebConfig");
 
 /**
  * The referee.
@@ -32,6 +34,13 @@ function serializeSession(session) {
     bypassGranted: session.bypass?.used === true,
     bypassScope: session.bypass?.scope || [],
     terminatedReason: session.terminatedReason,
+    // What the browser needs to render the right screen. No keys, ever — only
+    // whether this attempt is running under SEB and, if not, why that was allowed.
+    seb: {
+      required: session.seb?.required === true,
+      verified: session.seb?.verified === true,
+      fallbackReason: session.seb?.fallbackReason || null,
+    },
   };
 }
 
@@ -46,6 +55,162 @@ async function loadOwnSession(req) {
   }
   return ProctorSession.findOne({ _id: sessionId, userId: req.user.userId });
 }
+
+// ───────────────────────── Safe Exam Browser ─────────────────────────
+
+/**
+ * The SEB settings are read on every heartbeat — five seconds apart, for every
+ * student sitting an exam — so they are memoised briefly. The same trick as the
+ * session lookup in middleware/auth.js, and for the same reason.
+ *
+ * A stale read is harmless: the worst case is that an admin's change to the
+ * global switch takes a few seconds to reach a running exam, and `seb.required`
+ * is frozen per session anyway.
+ */
+const SEB_CONFIG_CACHE_MS = 15000;
+let sebConfigCache = { value: null, at: 0 };
+
+async function loadSebConfig() {
+  if (sebConfigCache.value && Date.now() - sebConfigCache.at < SEB_CONFIG_CACHE_MS) {
+    return sebConfigCache.value;
+  }
+  const value = await ProctorSetting.getSebConfig();
+  sebConfigCache = { value, at: Date.now() };
+  return value;
+}
+
+/** Drop the memo so an admin's change is visible immediately after they save. */
+function invalidateSebConfigCache() {
+  sebConfigCache = { value: null, at: 0 };
+}
+
+/**
+ * The Config Key this deployment expects, as a one-item key list.
+ *
+ * Nothing is configured by hand. SEB derives the Config Key from the settings in
+ * the config file it loaded, and this server wrote that file, so it can derive
+ * the same value — the same on Windows, macOS and every SEB version. That is the
+ * reason this uses the Config Key and not the Browser Exam Key, which would have
+ * to be read out of SEB's Configuration Tool on each platform separately and
+ * re-read at every SEB release.
+ *
+ * Memoised because it only depends on two origins that do not change while the
+ * process is alive.
+ */
+const configKeyCache = new Map();
+
+function sebKeysFor(req, sebConfig) {
+  const options = optionsFor(req, sebConfig);
+  if (!options.appOrigin) return [];
+
+  const cacheKey = `${options.appOrigin}|${options.apiOrigin}|${options.urlFilter}`;
+  if (!configKeyCache.has(cacheKey)) {
+    configKeyCache.set(cacheKey, computeConfigKey(options));
+  }
+  return [{ label: "Config Key", key: configKeyCache.get(cacheKey) }];
+}
+
+/**
+ * Work out where this request stands with Safe Exam Browser.
+ *
+ * Verification hashes the Config Key against the exam URL **the server stored**
+ * for this attempt — never a URL the browser reported. Accepting a
+ * client-supplied URL would undo the whole point of the per-attempt nonce:
+ * anyone holding a hash harvested for some other URL could simply claim that
+ * URL back.
+ */
+async function resolveSebState({ req, assignment, test, sebConfig }) {
+  const state = {
+    required: false,
+    verified: false,
+    version: "",
+    platform: "",
+    matchedKeyLabel: "",
+    fallbackReason: null,
+    examUrl: "",
+  };
+
+  // Practice tests are unproctored, so SEB never applies to them.
+  if (!sebConfig.required || !policyService.isProctoredTest(test)) {
+    return state;
+  }
+
+  state.required = true;
+  state.platform = sebVerify.detectOsFromUserAgent(req.headers["user-agent"]);
+
+  const reported = (req.body && req.body.environment && req.body.environment.seb) || {};
+  state.version = clean(reported.version, 40);
+  state.examUrl = assignment.sebLaunch?.examUrl || "";
+
+  const result = sebVerify.verifyKeyHash({
+    examUrl: state.examUrl,
+    candidateHash: reported.configKeyHash,
+    keys: sebKeysFor(req, sebConfig),
+  });
+
+  if (result.ok) {
+    state.verified = true;
+    state.matchedKeyLabel = result.matchedLabel;
+    return state;
+  }
+
+  // SEB was required and could not be proved. On an operating system SEB has
+  // never shipped for there is nothing the student could have done, so the exam
+  // falls back to the ordinary browser-based proctoring and says so on the
+  // record. Everywhere else this stays unverified and the session guard blocks.
+  if (!sebVerify.sebAvailableForOs(state.platform)) {
+    state.fallbackReason = "os_unsupported";
+  }
+
+  return state;
+}
+
+/**
+ * What does this exam expect of the student's machine?
+ *
+ * Read-only, and deliberately so: the exam page has to know whether Safe Exam
+ * Browser is required *before* it can decide whether to show the launch screen,
+ * and opening a session to find out would be destructive. Creating a session
+ * carries forward the assignment's violation count and can immediately terminate
+ * the attempt, so a student who merely opened the page on a machine that cannot
+ * run SEB could lose an exam they never started.
+ */
+router.get("/policy", authenticateToken, async (req, res, next) => {
+  try {
+    const { assignmentId } = req.query || {};
+    if (!assignmentId || typeof assignmentId !== "string" || assignmentId.length !== 24) {
+      return res.status(400).json({ message: "Valid assignmentId is required" });
+    }
+
+    const assignment = await Assignment.findOne({
+      _id: assignmentId,
+      userId: req.user.userId,
+    }).select("testId");
+    if (!assignment) {
+      return res.status(404).json({ message: "Assignment not found" });
+    }
+
+    const test = await Test.findById(assignment.testId).select(
+      "type isPracticeTest practiceTestSettings"
+    );
+    if (!test) {
+      return res.status(404).json({ message: "Test not found" });
+    }
+
+    const sebConfig = await loadSebConfig();
+    const os = sebVerify.detectOsFromUserAgent(req.headers["user-agent"]);
+    const available = sebVerify.sebAvailableForOs(os);
+
+    return res.json({
+      sebRequired: sebConfig.required && policyService.isProctoredTest(test),
+      sebAvailableForOs: available,
+      os,
+      minVersion: os === "macos" ? sebConfig.minVersions.macos : sebConfig.minVersions.windows,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 // ───────────────────────── Session lifecycle ─────────────────────────
 
@@ -86,8 +251,6 @@ router.post("/session/start", authenticateToken, async (req, res, next) => {
       return res.status(404).json({ message: "Test not found" });
     }
 
-    const policy = policyService.getPolicyForTest(test);
-
     const env = environment || {};
     const environmentDoc = {
       browser: clean(env.browser, 120),
@@ -106,15 +269,59 @@ router.post("/session/start", authenticateToken, async (req, res, next) => {
       status: "active",
     });
 
+    const sebConfig = await loadSebConfig();
+    const sebState = await resolveSebState({ req, assignment, test, sebConfig });
+
     if (existing) {
       existing.lastHeartbeatAt = new Date();
       existing.environment = environmentDoc;
-      // Rules are refreshed on resume so an admin's correction takes effect,
+
+      // Sessions opened before SEB support was deployed have no `seb` block at
+      // all. They are live exams and must resume, not crash.
+      if (!existing.seb) existing.seb = {};
+
+      // `required` is frozen at creation and never raised here. An admin
+      // switching SEB on system-wide in the middle of an exam session must not
+      // lock out a student already sitting the paper — they have no way to
+      // restart inside SEB without losing their work. Lowering it is safe and
+      // happens naturally, because a session created while the switch was off
+      // simply carries `required: false`.
+      if (sebState.verified) {
+        existing.seb.verified = true;
+        existing.seb.verifiedAt = new Date();
+        existing.seb.version = sebState.version || existing.seb.version;
+        existing.seb.platform = sebState.platform || existing.seb.platform;
+        existing.seb.matchedKeyLabel = sebState.matchedKeyLabel || existing.seb.matchedKeyLabel;
+        existing.seb.examUrl = sebState.examUrl || existing.seb.examUrl;
+      }
+
+      // Evidence is append-only. A student who reloads the exam in an ordinary
+      // browser must not be able to erase the record of how it started.
+      if (!existing.seb.fallbackReason && sebState.fallbackReason) {
+        existing.seb.fallbackReason = sebState.fallbackReason;
+      }
+
+      // The rules are refreshed on resume so an admin's correction takes effect,
       // but the violation count deliberately carries over.
-      existing.policy = policy;
+      //
+      // The SEB half of the policy follows the SESSION, not this one request: an
+      // SEB session that reloads without proof must stay on the SEB rulebook and
+      // be blocked by the session guard, rather than quietly reverting to the
+      // browser rulebook and asking for a screen share SEB cannot provide.
+      existing.policy = policyService.applySebPolicy(policyService.getPolicyForTest(test), {
+        required: existing.seb.required === true,
+        verified: existing.seb.verified === true,
+        fallbackReason: existing.seb.fallbackReason,
+      });
+
       await existing.save();
       return res.json({ ...serializeSession(existing), resumed: true });
     }
+
+    const policy = policyService.applySebPolicy(
+      policyService.getPolicyForTest(test),
+      sebState
+    );
 
     // A session that was already terminated must not be reopened by reloading.
     const terminated = await ProctorSession.findOne({
@@ -136,6 +343,16 @@ router.post("/session/start", authenticateToken, async (req, res, next) => {
       testKind: testKind === "coding" ? "coding" : "assigned",
       policy,
       environment: environmentDoc,
+      seb: {
+        required: sebState.required,
+        verified: sebState.verified,
+        verifiedAt: sebState.verified ? new Date() : null,
+        version: sebState.version,
+        platform: sebState.platform,
+        matchedKeyLabel: sebState.matchedKeyLabel,
+        fallbackReason: sebState.fallbackReason,
+        examUrl: sebState.examUrl,
+      },
       // Carry forward anything already recorded on the assignment, so a student
       // who reloads after the session document expired does not start clean.
       violationCount: assignment.tabViolationCount || 0,
@@ -192,6 +409,44 @@ router.post("/session/heartbeat", authenticateToken, async (req, res, next) => {
 
     session.lastHeartbeatAt = new Date();
 
+    // Safe Exam Browser re-proves itself on every check-in.
+    //
+    // Verifying only once, when the session opens, would not gate anything: a
+    // student could pass the gate inside SEB, copy their login token and session
+    // id into an ordinary browser, and keep submitting answers for the rest of
+    // the exam. The session guard therefore trusts a session only while this
+    // proof is fresh, and this is what keeps it fresh.
+    let sebStale = false;
+    if (session.seb?.required === true && session.seb?.verified === true) {
+      const wasFresh = policyService.isSebProofFresh(session.seb);
+      const result = sebVerify.verifyKeyHash({
+        examUrl: session.seb.examUrl,
+        candidateHash: req.body?.sebKeyHash,
+        keys: sebKeysFor(req, await loadSebConfig()),
+      });
+
+      if (result.ok) {
+        session.seb.verifiedAt = new Date();
+      } else {
+        sebStale = !policyService.isSebProofFresh(session.seb);
+
+        // Recorded once per absence — on the first failing check-in after a good
+        // one — rather than every five seconds. Weight 0 on purpose: SEB's
+        // JavaScript API fills these values in asynchronously on older builds and
+        // can read back empty for a moment, and a momentary blank must never end
+        // an exam. Blocking is the session guard's job, and it undoes itself the
+        // moment SEB checks in again.
+        if (wasFresh) {
+          session.violations.push({
+            timestamp: new Date(),
+            violationType: "seb_integrity_lost",
+            details: "Safe Exam Browser stopped confirming its exam key",
+            weight: 0,
+          });
+        }
+      }
+    }
+
     // The browser went quiet and has now come back. Charge it once for the gap.
     if (silentFor > graceMs && session.policy?.enabled) {
       session.heartbeatLostCount += 1;
@@ -213,6 +468,8 @@ router.post("/session/heartbeat", authenticateToken, async (req, res, next) => {
       status: session.status,
       count: session.violationCount,
       limit: session.policy?.allowedViolations ?? -1,
+      // Lets the exam page explain itself before the next request is refused.
+      sebStale,
     });
   } catch (error) {
     next(error);
@@ -520,6 +777,114 @@ router.post(
       return res.json({
         otp: settings.bypassOtp,
         updatedAt: settings.bypassOtpUpdatedAt,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * Read the SEB settings. Admin only.
+ *
+ * Browser Exam Keys are secrets — the server needs them in cleartext to compute
+ * the expected hash — so this endpoint is the only place they are ever returned,
+ * and the admin who pasted them is the only one who sees them again.
+ */
+router.get(
+  "/settings/seb",
+  authenticateToken,
+  requireRole(["admin"]),
+  async (req, res, next) => {
+    try {
+      const settings = await ProctorSetting.getSettings();
+      const keys = sebKeysFor(req, await loadSebConfig());
+      return res.json({
+        required: settings.sebRequired === true,
+        urlFilter: settings.sebUrlFilter !== false,
+        // Shown so an admin can confirm the server has a key at all, and so a
+        // support conversation can compare it against what SEB reports. It is
+        // derived from the public config file, not a secret.
+        configKey: keys.length ? keys[0].key : null,
+        configured: keys.length > 0,
+        minVersions: {
+          windows: settings.sebMinVersions?.windows || "3.10.0",
+          macos: settings.sebMinVersions?.macos || "3.6.0",
+        },
+        updatedAt: settings.sebUpdatedAt,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * The exact .seb configuration students receive, for the admin to load into the
+ * SEB Configuration Tool and read the Browser Exam Key from.
+ *
+ * This is the step that makes the key meaningful, and it only works because the
+ * file is identical for every student: SEB derives the key from its configuration,
+ * so the file the admin measures has to be the file students actually run.
+ *
+ * Returned as JSON text rather than as a download, because a browser download
+ * cannot carry the admin's Authorization header. The admin page turns it into a
+ * file client-side.
+ */
+router.get(
+  "/settings/seb/config",
+  authenticateToken,
+  requireRole(["admin"]),
+  async (req, res, next) => {
+    try {
+      const appOrigin = (process.env.FRONTEND_URL || "").replace(/\/+$/, "");
+      if (!appOrigin) {
+        return res.status(500).json({
+          message: "FRONTEND_URL is not set on this server, so no configuration can be built.",
+        });
+      }
+      return res.json({ config: buildSebConfig(optionsFor(req, await loadSebConfig())) });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/** Change the SEB settings. Admin only. */
+router.put(
+  "/settings/seb",
+  authenticateToken,
+  requireRole(["admin"]),
+  async (req, res, next) => {
+    try {
+      const { required, urlFilter, minVersions } = req.body || {};
+
+      // Turning the switch on when the server cannot derive a Config Key would
+      // block every student on Windows and macOS out of their exams, because
+      // nothing could ever verify. FRONTEND_URL being unset is the only way that
+      // happens, and it is better caught here than during an exam.
+      if (required === true && sebKeysFor(req, await loadSebConfig()).length === 0) {
+        return res.status(400).json({
+          message:
+            "FRONTEND_URL is not set on this server, so no Safe Exam Browser " +
+            "configuration can be built and no student could be verified.",
+        });
+      }
+
+      const settings = await ProctorSetting.updateSeb(
+        { required, urlFilter, minVersions },
+        req.user.userId
+      );
+      invalidateSebConfigCache();
+
+      return res.json({
+        required: settings.sebRequired === true,
+        urlFilter: settings.sebUrlFilter !== false,
+        minVersions: {
+          windows: settings.sebMinVersions?.windows || "3.10.0",
+          macos: settings.sebMinVersions?.macos || "3.6.0",
+        },
+        updatedAt: settings.sebUpdatedAt,
       });
     } catch (error) {
       next(error);

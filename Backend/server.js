@@ -4,6 +4,7 @@ const cors = require("cors");
 const rateLimit = require("express-rate-limit");
 const morgan = require("morgan");
 const dotenv = require("dotenv");
+const { isDatabaseUnavailable } = require("./utils/databaseErrors");
 const { connectDB } = require("./configs/db.config");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -364,6 +365,7 @@ app.use("/api/debug", require("./routes/debug"));
 app.use("/api/subjects", require("./routes/subjects"));
 app.use("/api/time", require("./routes/time"));
 app.use("/api/proctor", require("./routes/proctor"));
+app.use("/api/seb", require("./routes/seb"));
 
 // Make io available to routes
 app.set('io', io);
@@ -446,13 +448,7 @@ app.use((err, req, res, next) => {
   // reported as though the request was wrong. An Atlas failover surfaces as one
   // of these, and it is transient: 503 plus Retry-After says so, where a 500
   // (or the 403 the auth middleware used to send) does not.
-  if (
-    err.name === "MongoServerSelectionError" ||
-    err.name === "MongoNetworkError" ||
-    err.name === "MongoNetworkTimeoutError" ||
-    err.name === "MongoTimeoutError" ||
-    err.name === "MongoNotConnectedError"
-  ) {
+  if (isDatabaseUnavailable(err)) {
     res.set("Retry-After", "5");
     return res.status(503).json({
       message: "The database is temporarily unavailable. Please try again in a moment.",

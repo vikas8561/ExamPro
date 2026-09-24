@@ -1,4 +1,5 @@
 import apiRequest from "../services/api";
+import { readSebKeyHash } from "./seb.js";
 
 /**
  * The line between the browser and the referee.
@@ -95,7 +96,12 @@ export function createTransport({ sessionId, onVerdict, onError }) {
       try {
         const verdict = await apiRequest("/proctor/session/heartbeat", {
           method: "POST",
-          body: JSON.stringify({ sessionId }),
+          // Safe Exam Browser re-proves itself here, on every check-in, rather
+          // than once when the session opened. The server only trusts an SEB
+          // session while this keeps arriving — otherwise a student could pass
+          // the gate inside SEB, carry their session into an ordinary browser,
+          // and simply go quiet.
+          body: JSON.stringify({ sessionId, sebKeyHash: readSebKeyHash() }),
         });
         deliver(verdict);
         return verdict;
@@ -140,6 +146,41 @@ export function createTransport({ sessionId, onVerdict, onError }) {
       queue = [];
     },
   };
+}
+
+/**
+ * What does this exam expect of this machine, before anything is started?
+ *
+ * Read-only on purpose. The page has to know whether Safe Exam Browser is
+ * required before it can decide what to show, and opening a session to find out
+ * would be destructive — creating one carries the assignment's violation count
+ * forward and can terminate the attempt outright.
+ */
+export async function fetchProctorPolicy(assignmentId) {
+  return apiRequest(`/proctor/policy?assignmentId=${encodeURIComponent(assignmentId)}`);
+}
+
+/** Ask for a link that opens this exam in Safe Exam Browser. */
+export async function requestSebLaunch(assignmentId) {
+  return apiRequest("/seb/launch", {
+    method: "POST",
+    body: JSON.stringify({ assignmentId }),
+  });
+}
+
+/**
+ * The address this attempt must be opened at inside SEB, nonce included.
+ *
+ * SEB starts every student at the assignments list — it has to, because its
+ * configuration must be identical for everyone or the Browser Exam Key would
+ * differ per student. So the exam page arrives without a nonce and reloads
+ * itself at this address, which is what SEB then hashes its key against.
+ */
+export async function fetchSebExamUrl(assignmentId) {
+  return apiRequest("/seb/exam-url", {
+    method: "POST",
+    body: JSON.stringify({ assignmentId }),
+  });
 }
 
 /** Open or resume a proctoring session. Returns the rulebook to enforce. */

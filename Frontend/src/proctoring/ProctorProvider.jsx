@@ -1,7 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { inspectEnvironment, assessReadiness } from "./environment";
-import { createTransport, startSession } from "./transport";
+import {
+  createTransport,
+  startSession,
+  fetchProctorPolicy,
+  fetchSebExamUrl,
+} from "./transport";
 import { createFocusDetector } from "./detectors/focus";
 import {
   createFullscreenDetector,
@@ -18,6 +23,7 @@ import { createNetworkDetector } from "./detectors/network";
 import { createIntegrityDetector } from "./detectors/integrity";
 import ProctorGate from "./ProctorGate";
 import ProctorOverlay from "./ProctorOverlay";
+import SebLaunchScreen from "./SebLaunchScreen";
 import { ProctorContext } from "./context";
 
 /**
@@ -41,6 +47,8 @@ import { ProctorContext } from "./context";
  * Phases:
  *   idle        proctoring is off (practice tests, or the exam has not begun)
  *   starting    opening the session with the server
+ *   seb_launch  this exam needs Safe Exam Browser and this browser is not it
+ *   unsupported this browser cannot run the exam and no lockdown is available
  *   gate        the pre-exam screen: browser check, permissions, rules
  *   active      the exam is running and monitored
  *   blocked     something must be fixed before the exam can continue
@@ -59,6 +67,8 @@ export function ProctorProvider({
   const [readiness, setReadiness] = useState({ blockers: [], warnings: [], ready: true });
   const [session, setSession] = useState(null);
   const [startError, setStartError] = useState(null);
+  // Set when the exam needs Safe Exam Browser and this browser is not it.
+  const [sebLaunchInfo, setSebLaunchInfo] = useState(null);
 
   const [violationCount, setViolationCount] = useState(0);
   const [limit, setLimit] = useState(-1);
@@ -162,7 +172,64 @@ export function ProctorProvider({
 
         setEnvironment(env);
 
-        if (!env.isSupportedChrome || env.isEdge || env.isBrave) {
+        // Inside SEB, but at an address with no nonce on it.
+        //
+        // SEB always lands here that way: its configuration file has to be
+        // byte-identical for every student, because SEB derives the Browser Exam
+        // Key from that configuration and a per-student start URL would give
+        // every student a different key. So SEB starts everyone at the
+        // assignments list, and the attempt's own address is fetched and loaded
+        // here instead.
+        //
+        // A full page load, not a router navigation: SEB recomputes its key hash
+        // when a page loads, and the whole point is to be verified against this
+        // new URL.
+        if (env.isSEB && !new URLSearchParams(window.location.search).get("n")) {
+          try {
+            const { examUrl } = await fetchSebExamUrl(assignmentId);
+            if (cancelled) return;
+            if (examUrl && examUrl !== window.location.href) {
+              window.location.replace(examUrl);
+              return;
+            }
+          } catch {
+            // Carry on unredirected. Verification will fail and the student is
+            // sent to the launch screen with an explanation, which is a better
+            // outcome than a blank page.
+          }
+        }
+
+        // Does this exam want Safe Exam Browser, and could this machine even run
+        // it? Asked before anything is started, through a read-only endpoint,
+        // because opening a session to find out would be destructive: it carries
+        // the assignment's violation count forward and can terminate the attempt
+        // outright. A student merely looking at the page on a machine that cannot
+        // run SEB must not lose an exam they never began.
+        let sebPolicy = null;
+        if (!env.isSEB) {
+          try {
+            sebPolicy = await fetchProctorPolicy(assignmentId);
+          } catch {
+            // The exam must not be unreachable because this lookup failed. The
+            // server enforces SEB on every guarded route regardless of what this
+            // returns, so falling through here loses nothing.
+          }
+          if (cancelled) return;
+        }
+
+        // SEB is required and this machine can run it: send the student to the
+        // launch screen rather than into an exam the server will refuse to serve.
+        if (sebPolicy?.sebRequired && sebPolicy?.sebAvailableForOs) {
+          setSebLaunchInfo(sebPolicy);
+          setPhase("seb_launch");
+          return;
+        }
+
+        // Safe Exam Browser is its own browser. The Chrome requirement exists to
+        // approximate a lockdown SEB provides outright, so it does not apply
+        // here — and SEB would fail it, having neither Chrome's user-agent brand
+        // nor its vendor string.
+        if (!env.isSEB && (!env.isSupportedChrome || env.isEdge || env.isBrave)) {
           setPhase("unsupported");
           return;
         }
@@ -178,6 +245,14 @@ export function ProctorProvider({
             platform: env.platform,
             keyboardLockSupported: env.keyboardLockSupported,
             secondMonitor: env.secondMonitor,
+            // The proof, not a secret: SEB's JavaScript API hands the page a
+            // hash of its Config Key and the current URL. The server checks it
+            // against the URL it stored for this attempt.
+            seb: {
+              version: env.sebVersion,
+              configKeyHash: env.sebConfigKeyHash,
+              pageUrl: env.sebPageUrl,
+            },
           },
         });
         if (cancelled) return;
@@ -188,6 +263,38 @@ export function ProctorProvider({
           setSession(opened);
           setPhase("active");
           onReady?.();
+          return;
+        }
+
+        // The server wanted Safe Exam Browser and could not confirm it. This is
+        // what a student sees if they reached the exam page directly instead of
+        // launching it, or if their SEB is configured with a different Browser
+        // Exam Key from the one the admin registered. Every guarded route will
+        // refuse them, so send them to the launch screen rather than into a gate
+        // that leads nowhere.
+        if (opened?.seb?.required && !opened.seb.verified && !opened.seb.fallbackReason) {
+          setSebLaunchInfo({
+            sebRequired: true,
+            sebAvailableForOs: env.sebAvailableForOS,
+            os: env.os,
+            unverified: env.isSEB,
+          });
+          setPhase("seb_launch");
+          return;
+        }
+
+        // Running inside SEB on an exam that is not expecting it — an old .seb
+        // file, or the system-wide switch turned off since. The rulebook still
+        // demands a screen share, and SEB cannot produce one on any platform, so
+        // the gate's Begin button would never enable. Say so instead of leaving
+        // them on a screen that can never be satisfied.
+        if (
+          env.isSEB &&
+          !opened?.seb?.verified &&
+          (opened?.policy?.requiredPermissions || []).includes("screen")
+        ) {
+          setSebLaunchInfo({ notExpected: true, os: env.os });
+          setPhase("seb_launch");
           return;
         }
 
@@ -235,6 +342,17 @@ export function ProctorProvider({
     keyboardRef.current = keyboard;
     devtoolsRef.current = devtools;
 
+    // Inside Safe Exam Browser these two are not merely redundant, they are
+    // traps. SEB supports no `getDisplayMedia` on any platform, so there is no
+    // stream to watch and the screen detector would report a share that stopped
+    // because it never started. And SEB's kiosk mode is not the Fullscreen API:
+    // `document.fullscreenElement` is empty, so the fullscreen detector would
+    // fire at once and raise a "return to fullscreen" overlay whose button
+    // cannot succeed, locking the student out of an exam they are sitting
+    // correctly. The server clears both flags for a verified SEB session.
+    const watchesScreenShare = policy.requireEntireScreenShare !== false;
+    const watchesFullscreen = policy.requireFullscreen !== false;
+
     const screen = createScreenDetector({
       report,
       isPaused,
@@ -264,19 +382,20 @@ export function ProctorProvider({
         blockContextMenu: policy.blockContextMenu !== false,
       }),
       createFocusDetector({ report, isPaused }),
-      createFullscreenDetector({
-        report,
-        isPaused,
-        onExit: () => {
-          // Only a click from the student can restore fullscreen, so the
-          // overlay asks for one rather than pretending we can do it ourselves.
-          if (phaseRef.current === "active") {
-            setPhase("blocked");
-            setBlockReason("fullscreen");
-          }
-        },
-      }),
-      screen,
+      watchesFullscreen &&
+        createFullscreenDetector({
+          report,
+          isPaused,
+          onExit: () => {
+            // Only a click from the student can restore fullscreen, so the
+            // overlay asks for one rather than pretending we can do it ourselves.
+            if (phaseRef.current === "active") {
+              setPhase("blocked");
+              setBlockReason("fullscreen");
+            }
+          },
+        }),
+      watchesScreenShare && screen,
       createPermissionsDetector({
         report,
         isPaused,
@@ -296,8 +415,9 @@ export function ProctorProvider({
         isPaused,
         getGuardedElement: () => overlayRef.current,
         enabled: policy.detectTampering !== false,
+        extensionIds: policy.blockedExtensionIds || [],
       }),
-    ];
+    ].filter(Boolean);
 
     detectors.forEach((detector) => {
       try {
@@ -361,7 +481,14 @@ export function ProctorProvider({
       mediaStreamRef.current = mediaStream || null;
 
       await transportRef.current?.reportPermissions(permissions || {});
-      await enterFullscreen();
+
+      // Safe Exam Browser is already a locked kiosk, and its window is not in
+      // Fullscreen API state — asking for fullscreen there does nothing useful
+      // and on some builds throws. The server clears this flag for a verified
+      // SEB session.
+      if (session?.policy?.requireFullscreen !== false) {
+        await enterFullscreen();
+      }
 
       setPhase("active");
       startDetectors();
@@ -371,7 +498,7 @@ export function ProctorProvider({
 
       onReady?.();
     },
-    [startDetectors, onReady]
+    [startDetectors, onReady, session]
   );
 
   /** The student clicked the button on the blocking overlay. */
@@ -471,6 +598,10 @@ export function ProctorProvider({
       readiness,
       session,
       policy: session?.policy || null,
+      // True when the exam is running inside a verified Safe Exam Browser. The
+      // exam pages use it to send SEB to its quit URL after a submit instead of
+      // leaving the student in a locked kiosk.
+      isSeb: session?.seb?.verified === true,
       violationCount,
       limit,
       warning,
@@ -500,6 +631,12 @@ export function ProctorProvider({
   return (
     <ProctorContext.Provider value={contextValue}>
       {children}
+
+      {/* This exam needs Safe Exam Browser and this browser is not it. Unlike
+          the unsupported-browser dialog below, this one has a way forward. */}
+      {enabled && phase === "seb_launch" && (
+        <SebLaunchScreen info={sebLaunchInfo} assignmentId={assignmentId} />
+      )}
 
       {/* Unsupported browser gate */}
       {enabled && phase === "unsupported" && (

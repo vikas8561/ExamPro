@@ -33,6 +33,8 @@ const VIOLATION_TYPES = [
   "heartbeat_lost",
   "page_tampered",
   "network_lost",
+  // Safe Exam Browser stopped proving it was there mid-exam.
+  "seb_integrity_lost",
 ];
 
 const VIOLATION_TYPE_SET = new Set(VIOLATION_TYPES);
@@ -110,6 +112,14 @@ const VIOLATION_WEIGHTS = {
   context_menu: 0,        // recorded for the report, never costs the student
   blocked_key: 0,         // recorded only; the key was already blocked
   network_lost: 0,        // recorded only; a dropped connection is not cheating
+
+  // SEB's key stopped verifying. Recorded, never charged — and deliberately so.
+  // The value comes from SEB's JavaScript API, which on older builds is filled in
+  // asynchronously and can read back empty for a moment. Charging this would let
+  // a transient blank end an exam irreversibly. Enforcement happens instead in
+  // middleware/proctorSession.js, which blocks the session while the proof is
+  // stale and unblocks it the moment SEB checks in again.
+  seb_integrity_lost: 0,
 };
 
 /**
@@ -207,6 +217,12 @@ const STRICT = {
   detectDevtools: true,
   detectSecondMonitor: true,
   detectTampering: true,
+  // Chrome extension ids the exam page should probe for. Empty by default: the
+  // probe only works against extensions that expose a web-accessible resource,
+  // which Manifest V3 has made the exception rather than the rule, so a
+  // hardcoded list would mostly be decoration. Populated per deployment with the
+  // ids a school actually has a problem with.
+  blockedExtensionIds: [],
   heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
   heartbeatGraceMs: HEARTBEAT_GRACE_MS,
   dedupeWindowMs: DEDUPE_WINDOW_MS,
@@ -226,6 +242,7 @@ const OFF = {
   detectDevtools: false,
   detectSecondMonitor: false,
   detectTampering: false,
+  blockedExtensionIds: [],
   heartbeatIntervalMs: 0,
   heartbeatGraceMs: 0,
   dedupeWindowMs: DEDUPE_WINDOW_MS,
@@ -272,6 +289,97 @@ function getPolicyForTest(test) {
       : 0;
 
   return { ...STRICT, allowedViolations };
+}
+
+/**
+ * How long a session may go without SEB re-proving itself before it is blocked.
+ *
+ * The browser re-sends its key hash on every heartbeat (every 5s), so four
+ * missed beats is a real absence rather than a slow network. This is what stops
+ * the obvious attack on a check done only at session start: pass the gate inside
+ * SEB, copy the login token and session id into an ordinary browser, and simply
+ * never check in again. Without a freshness window that session stays valid
+ * forever.
+ */
+const SEB_GRACE_MS = 30000;
+
+/**
+ * Has SEB proved itself recently enough for this session to be trusted?
+ *
+ * Pure, so the session guard and the heartbeat handler cannot drift apart on
+ * what "recent enough" means.
+ */
+function isSebProofFresh(seb, now = Date.now()) {
+  if (!seb || seb.verified !== true || !seb.verifiedAt) return false;
+  return now - new Date(seb.verifiedAt).getTime() <= SEB_GRACE_MS;
+}
+
+/**
+ * How this attempt should be described on the finished submission.
+ *
+ * Shared so the ordinary submit path and the background sweep that finalises
+ * abandoned attempts cannot disagree — they write the proctoring block
+ * independently, and a swept attempt losing its SEB status would quietly hide
+ * exactly the attempts most worth looking at.
+ */
+function sebSubmissionStatus(seb) {
+  if (!seb || seb.required !== true) {
+    return { proctorSebStatus: "not_required", proctorSebFallbackReason: null };
+  }
+  if (seb.fallbackReason) {
+    return { proctorSebStatus: "fallback", proctorSebFallbackReason: seb.fallbackReason };
+  }
+  if (seb.verified === true) {
+    return { proctorSebStatus: "verified", proctorSebFallbackReason: null };
+  }
+  return { proctorSebStatus: "fallback", proctorSebFallbackReason: "not_verified" };
+}
+
+/**
+ * Adjust the rulebook for a session running inside Safe Exam Browser.
+ *
+ * Most of the web-based proctoring is redundant under SEB — and several parts of
+ * it are actively impossible, which is the real reason for this function:
+ *
+ *   - SEB supports no `getDisplayMedia` on any platform, so screen sharing can
+ *     never be granted. Leaving it in `requiredPermissions` would disable the
+ *     Begin Test button permanently.
+ *   - `getUserMedia` works on SEB for macOS but silently fails on SEB for
+ *     Windows, so a camera requirement would block every Windows student.
+ *   - SEB's kiosk mode is not the Fullscreen API. `document.fullscreenElement`
+ *     is empty, so the fullscreen detector would fire immediately and show a
+ *     "return to fullscreen" overlay that can never be satisfied.
+ *   - Display count is enforced natively by SEB's own `allowedDisplaysMaxNumber`,
+ *     better than `screen.isExtended` ever managed.
+ *
+ * What stays on is everything SEB does not already cover: the keyboard allowlist
+ * (SEB blocks system shortcuts, but only this knows a textarea from a radio
+ * button), the clipboard rules, focus reporting, tamper detection and the
+ * heartbeat.
+ */
+function applySebPolicy(policy, sebState) {
+  const seb = {
+    required: sebState?.required === true,
+    verified: sebState?.verified === true,
+    fallbackReason: sebState?.fallbackReason || null,
+    graceMs: SEB_GRACE_MS,
+  };
+
+  // Not running under SEB: the web-based rules are all that stand between the
+  // student and the exam, so nothing is relaxed. This is also the Linux path.
+  if (!seb.verified) {
+    return { ...policy, seb };
+  }
+
+  return {
+    ...policy,
+    seb,
+    requiredPermissions: [],
+    bypassablePermissions: [],
+    requireFullscreen: false,
+    requireEntireScreenShare: false,
+    detectSecondMonitor: false,
+  };
 }
 
 /**
@@ -333,8 +441,12 @@ module.exports = {
   BYPASSABLE_PERMISSIONS,
   HEARTBEAT_INTERVAL_MS,
   HEARTBEAT_GRACE_MS,
+  SEB_GRACE_MS,
+  isSebProofFresh,
+  sebSubmissionStatus,
   isProctoredTest,
   getPolicyForTest,
+  applySebPolicy,
   decide,
   weightOf,
   isKnownViolationType,

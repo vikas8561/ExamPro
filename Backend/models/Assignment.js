@@ -12,7 +12,7 @@ const TabViolationSchema = new mongoose.Schema({
       "window_blur", "devtools_opened", "copy_attempt", "paste_attempt", "context_menu",
       "blocked_key", "screen_share_stopped", "screen_share_wrong_surface",
       "second_monitor_detected", "permission_revoked", "heartbeat_lost",
-      "page_tampered", "network_lost"],
+      "page_tampered", "network_lost", "seb_integrity_lost"],
     required: true
   },
   details: {
@@ -132,6 +132,20 @@ const AssignmentSchema = new mongoose.Schema({
   permissions: {
     type: PermissionSchema,
     default: null
+  },
+  // Safe Exam Browser launch details for this attempt.
+  //
+  // SEB hashes its Browser Exam Key with the URL of the page it is showing, so
+  // that hash is a fixed value per URL. Giving every attempt its own nonce — and
+  // therefore its own exam URL — is what stops one student reading the hash once
+  // and the rest of the class replaying it from an ordinary browser.
+  //
+  // Minted once and then reused for the whole attempt: rotating it would break
+  // verification for a student whose machine restarted and relaunched SEB.
+  sebLaunch: {
+    nonce: { type: String, default: null },
+    examUrl: { type: String, default: null },
+    issuedAt: { type: Date, default: null }
   }
 }, { timestamps: true });
 

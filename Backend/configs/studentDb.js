@@ -22,8 +22,18 @@ function getStudentConnection() {
     // them forever. Idle connections are cheap; the handshakes are not.
     maxIdleTimeMS: 600000,
     serverSelectionTimeoutMS: 15000,
-    socketTimeoutMS: 45000,
     connectTimeoutMS: 20000,
+
+    // No `socketTimeoutMS`. It used to be 45 seconds here, against the ten
+    // minute idle time above, and this connection felt it worst of all: nothing
+    // touches it except a student signing in, so it was almost always idle for
+    // longer than 45 seconds. The socket was destroyed while the pool still
+    // considered the connection usable, and the next login wrote to a dead
+    // socket and failed with `EPIPE` in a few milliseconds.
+    //
+    // Admin and mentor logins were unaffected — they read from the ExamPro
+    // database on the other connection — so it looked like students specifically
+    // could not sign in, intermittently, with the database plainly up.
     retryWrites: false,
     retryReads: true,
     readPreference: "primary",

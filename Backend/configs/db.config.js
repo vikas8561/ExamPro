@@ -34,8 +34,19 @@ async function connectDB(uri) {
     maxConnecting: 10,
 
     // Timeouts.
+    //
+    // `socketTimeoutMS` is deliberately absent, and removing it fixed a real
+    // failure. It destroys a socket after that long without traffic, but
+    // `maxIdleTimeMS` above keeps the connection in the pool for ten minutes —
+    // so the driver would hand out a connection whose socket had already been
+    // torn down, write to it, and get `EPIPE` back instantly. It presents as a
+    // request failing in five milliseconds rather than timing out, and it only
+    // bites a pool that has been idle, which makes it look intermittent and
+    // unrelated to load.
+    //
+    // The driver's own monitoring and TCP keepalive handle dead connections; an
+    // inactivity timeout shorter than the idle time is only a way to create them.
     serverSelectionTimeoutMS: 15000,
-    socketTimeoutMS: 90000,
     connectTimeoutMS: 20000,
 
     // Reads come straight from the primary, which is where every write lands,

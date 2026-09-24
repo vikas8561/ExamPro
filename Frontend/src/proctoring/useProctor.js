@@ -23,6 +23,7 @@ const INERT = {
   readiness: { blockers: [], warnings: [], ready: true },
   session: null,
   policy: null,
+  isSeb: false,
   violationCount: 0,
   limit: -1,
   warning: null,

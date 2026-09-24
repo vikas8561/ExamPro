@@ -10,6 +10,7 @@
     "performance-test": "node scripts/performanceMonitor.js",
     "check-judge0": "node scripts/checkJudge0.js",
     "test:security": "node scripts/security/answer-leak-audit.js && node scripts/security/answer-access-regression.js",
+    "test:seb": "node scripts/security/seb-verification-check.js",
     "test:shuffle": "node scripts/exam/shuffle-order-check.js",
     "test:edit": "node scripts/exam/edit-preserves-answers-check.js",
     "test:exam": "npm run test:shuffle && npm run test:edit && npm run test:autosubmit && npm run test:kinds && npm run test:deep && npm run test:reported",
@@ -17,7 +18,8 @@
     "test:kinds": "node scripts/exam/submit-all-kinds-check.js",
     "test:deep": "node scripts/exam/deep-audit-check.js",
     "test:reported": "node scripts/exam/reported-issues-check.js",
-    "audit-coding-marks": "node scripts/auditCodingMarks.js"
+    "audit-coding-marks": "node scripts/auditCodingMarks.js",
+    "test:db-errors": "node scripts/database-error-check.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

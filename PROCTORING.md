@@ -45,13 +45,28 @@ those before the browser ever sees them. There is also no browser API that lists
 or blocks extensions — an extension runs *above* the page and can read and change
 anything it renders.
 
-Only a native lockdown application (Safe Exam Browser, or a custom kiosk app) can
-close those gaps. That was considered and deliberately not built. The system
-compensates by catching the consequence: you cannot alt-tab away without the exam
-noticing you left and recording it.
+Only a native lockdown application can close those gaps. **Safe Exam Browser
+support now exists and is documented below**, switched off by default. With it
+on, the extension and alt-tab rows above become 🟢. The last row does not: a
+phone on the desk is out of reach of SEB too.
 
-**Do not describe this system as making cheating impossible.** It makes cheating
-cost more than it is worth, which is the honest and achievable goal.
+Where SEB cannot run — Linux, chiefly — `integrity.js` does what a page can.
+Three signals, all scored 0 and all reported for the reviewer rather than acted
+on: content injected into the exam, a panel mounted inside a shadow root (how
+current AI sidebars hide from a plain DOM scan), and `fetch`, `XMLHttpRequest` or
+`attachShadow` having been replaced (how an extension reads or rewrites what the
+exam sends). It can also probe for specific extension ids via
+`policy.blockedExtensionIds`, though Manifest V3 lets extensions randomise those
+URLs, so a silent result means "not detected", never "not installed".
+
+None of it stops an extension that wants to hide. It raises the cost.
+
+With SEB off, the system compensates by catching the consequence — you cannot
+alt-tab away without the exam noticing you left and recording it.
+
+**Do not describe this system as making cheating impossible**, with or without
+SEB. It makes cheating cost more than it is worth, which is the honest and
+achievable goal.
 
 ## Privacy
 
@@ -140,7 +155,7 @@ a check later means adding one file.
 | `screen.js` | Screen sharing stopped, wrong share type, second monitor |
 | `permissions.js` | Camera / microphone / location revoked mid-exam |
 | `network.js` | Connection loss (recorded, never charged) |
-| `integrity.js` | Injected extension content, removed overlay |
+| `integrity.js` | Injected extension content, hidden shadow-DOM panels, patched page functions, removed overlay |
 
 The keyboard detector uses an **allowlist**: every key is blocked unless
 explicitly permitted. The system it replaced used a blocklist, so anything the
@@ -150,6 +165,7 @@ list forgot still worked.
 
 | Browser | Status |
 |---|---|
+| **Safe Exam Browser** | Windows 3.10+ / macOS 3.6+. See the SEB section below |
 | Chrome, Edge, **Brave** | Full support, including keyboard locking |
 | Firefox, Safari | Works, but no Keyboard Lock — `Escape` can leave fullscreen; it is detected, recorded, and the student is asked to return |
 | Phones and tablets | Blocked with an explanation |
@@ -186,6 +202,94 @@ mandatory, and its use is recorded on the student's submission.
 
 To make screen sharing waivable too, add `"screen"` to `BYPASSABLE_PERMISSIONS`
 in `proctorPolicy.js`.
+
+## Safe Exam Browser
+
+Off by default. Switched on system-wide at **Admin → Proctoring**, where the
+Browser Exam Keys also live.
+
+### What it changes
+
+SEB is a separate, locked-down browser. It blocks other applications, browser
+extensions, `Alt+Tab`, `Print Screen`, virtual machines and additional displays
+at the operating-system level, which is where a web page cannot reach.
+
+### What it cannot change
+
+SEB exists for **Windows and macOS only. There has never been a Linux build.**
+Linux students fall back to the browser-based proctoring above, and their
+submission records `proctorSebStatus: "fallback"` so a reviewer can tell the
+difference. And a phone on the desk defeats SEB exactly as it defeats everything
+else here.
+
+### How a student is verified
+
+SEB's HTTP headers stopped being usable around 2020 — neither WebKit nor Chromium
+lets it add headers to cross-origin requests, and this app's API is a different
+origin from its frontend. Verification uses SEB's JavaScript API instead, which
+hands the page `SHA256(page URL + Config Key)`. The server recomputes that and
+compares.
+
+Two details carry the whole design:
+
+1. **Each attempt has its own exam URL.** The hash is a fixed value per URL, so
+   without a per-attempt nonce a student could open a classmate's exam address
+   inside SEB, read the hash the API reports for it, and hand it over. The nonce
+   lives in the `?n=` query string, which is why `ProtectedRoute` and the login
+   page preserve the destination across sign-in.
+
+   **The nonce is never in the `.seb` file.** SEB derives the Browser Exam Key
+   from its own configuration, so anything student-specific in that file would
+   give every student a different key and no key an admin pasted could match. The
+   config is byte-identical for everyone and starts at the assignments list; the
+   exam page then reloads itself at its nonced address, and SEB recomputes the
+   hash on that page load. `npm run test:seb` asserts the config cannot vary.
+2. **The proof expires.** SEB re-proves itself on every heartbeat, and
+   `resolveProctorStatus` refuses a session whose proof is older than
+   `SEB_GRACE_MS`. Verifying only at session start would be bypassable in one
+   move: sit the gate in SEB, copy the token and session id into Chrome, and stop
+   checking in.
+
+Losing the proof **blocks** the exam and never terminates it — `seb_integrity_lost`
+is weight 0. SEB's key API answers asynchronously on older builds and can read
+back empty for a moment, and a momentary blank must not end someone's paper. The
+block lifts the instant SEB checks in again.
+
+### What runs where
+
+| File | Job |
+|---|---|
+| `Backend/services/sebVerify.js` | Key verification, launch tokens, platform detection |
+| `Backend/services/sebConfig.js` | Generates the `.seb` plist handed to the student |
+| `Backend/routes/seb.js` | `POST /api/seb/launch`, `GET /api/seb/config/:id.seb` |
+| `Frontend/src/proctoring/seb.js` | Reads SEB's JavaScript API |
+| `Frontend/src/proctoring/SebLaunchScreen.jsx` | "Start in Safe Exam Browser" |
+
+Under a verified SEB session the policy drops screen sharing, camera, microphone
+and the Fullscreen API requirement — SEB supports none of them, and the fullscreen
+detector would otherwise raise an overlay the student could never satisfy. The
+keyboard allowlist, clipboard rules, focus reporting and tamper detection all stay
+on, because only the page knows a textarea from a radio button.
+
+### Keys — there is nothing to configure
+
+Verification uses SEB's **Config Key**, which is derived from the settings in the
+config file. Since this server writes that file, it derives the same key itself.
+One value, identical on Windows and macOS and across SEB releases.
+
+The alternative, SEB's Browser Exam Key, also hashes SEB's own binary — so it
+differs per platform and per release, and can only be read out of SEB's
+Configuration Tool by hand. That means owning a machine of each kind and redoing
+it at every SEB update. Not worth it when the Config Key is free.
+
+The canonical serialisation is exact and unforgiving. `services/sebConfig.js`
+implements it, `npm run test:seb` asserts each rule separately — sorted
+case-insensitively, no whitespace, and **no character escaping**, which is where
+`JSON.stringify` would silently produce the wrong hash.
+
+```bash
+cd Backend && npm run test:seb
+```
 
 ## Reviewing an attempt
 

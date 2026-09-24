@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "test:focus": "node scripts/focus-detector-scenarios.mjs",
     "test:detectors": "node scripts/detector-scenarios.mjs",
-    "test:proctoring": "npm run test:focus && npm run test:detectors"
+    "test:seb": "node scripts/seb-scenarios.mjs",
+    "test:proctoring": "npm run test:focus && npm run test:detectors && npm run test:seb && npm run test:integrity",
+    "test:integrity": "node scripts/integrity-scenarios.mjs"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",

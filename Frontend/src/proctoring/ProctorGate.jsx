@@ -258,6 +258,23 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
           </div>
         )}
 
+        {/* Inside Safe Exam Browser there are no permissions to ask for: the
+            lockdown is native, and SEB supports neither screen capture nor, on
+            Windows, the camera. An empty list would otherwise read as a mistake,
+            so say plainly what is protecting the exam instead. */}
+        {session?.seb?.verified && (
+          <div className="mb-6 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4">
+            <p className="text-sm font-semibold text-emerald-300">
+              Safe Exam Browser confirmed
+            </p>
+            <p className="mt-1 text-sm text-emerald-200/80">
+              Your computer is locked to this exam. Other applications, browser
+              extensions and additional screens are blocked for its duration, so no
+              camera or screen-sharing permissions are needed.
+            </p>
+          </div>
+        )}
+
         {/* Permissions */}
         <div className="mb-6 space-y-3">
           {required.map((key) => {

@@ -345,7 +345,10 @@ function TakeCodingTestInner({ submitRef }) {
       await proctor.endSession();
 
       setIsSubmitting(false);
-      nav(`/student/assignments`);
+      // Under Safe Exam Browser the exit page is its configured quit URL, so
+      // arriving there closes SEB and hands the machine back. Sending them to
+      // the assignments list instead would leave them in a locked kiosk.
+      nav(proctor.isSeb ? `/student/seb-exit` : `/student/assignments`);
     } catch (error) {
       console.error('Error submitting test:', error);
       setIsSubmitting(false);

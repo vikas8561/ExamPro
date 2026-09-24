@@ -8,6 +8,7 @@ import "./styles/StudentSidebar.mobile.css";
 
 import CreateTest from "./pages/CreateTest";
 import Login from "./pages/Login";
+import SebExit from "./pages/SebExit";
 import StudentDashboard from "./pages/StudentDashboard";
 import StudentAssignments from "./pages/StudentAssignments";
 import StudentResults from "./pages/StudentResults";
@@ -31,12 +32,21 @@ import AdminDSAPractice from "./pages/AdminDSAPractice";
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const token = localStorage.getItem('token');
   const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const location = useLocation();
+
+  // Where to send them back to once they have signed in. This matters more than
+  // convenience for Safe Exam Browser: SEB opens the exam in its own browser
+  // with no saved session, so the student always lands on the login page first,
+  // and the exam URL carries the per-attempt nonce that SEB's exam key is hashed
+  // against. Losing the query string here would lose the nonce, and verification
+  // would fail for every SEB student.
+  const returnTo = `${location.pathname}${location.search}`;
 
   // Must have a token to be authenticated. Identity is checked on `_id`, not
   // email: students sign in with a UniversityUID or roll number and many have
   // no email address recorded at all.
   if (!token || !user._id) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to={`/login?redirect=${encodeURIComponent(returnTo)}`} replace />;
   }
 
   // Read role from JWT payload (can't be tampered without the secret key)
@@ -49,7 +59,7 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
       }
     } catch {
       // Invalid token format — redirect to login
-      return <Navigate to="/login" replace />;
+      return <Navigate to={`/login?redirect=${encodeURIComponent(returnTo)}`} replace />;
     }
   }
 
@@ -230,6 +240,12 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+
+      {/* Where Safe Exam Browser is sent after a submit, so it closes itself and
+          hands the machine back. Deliberately outside ProtectedRoute: SEB
+          watches for this exact URL, and a bounce to /login would change it and
+          leave the student stuck in a locked kiosk. */}
+      <Route path="/student/seb-exit" element={<SebExit />} />
 
       {/* Admin Routes */}
       <Route

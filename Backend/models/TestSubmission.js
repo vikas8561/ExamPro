@@ -39,8 +39,8 @@ const TabViolationSchema = new mongoose.Schema({
       "window_blur", "devtools_opened", "copy_attempt", "paste_attempt", "context_menu",
       "blocked_key", "screen_share_stopped", "screen_share_wrong_surface",
       "second_monitor_detected", "permission_revoked", "heartbeat_lost",
-      "page_tampered", "network_lost"],
-    required: true 
+      "page_tampered", "network_lost", "seb_integrity_lost"],
+    required: true
   },
   details: { 
     type: String, 
@@ -119,6 +119,21 @@ const TestSubmissionSchema = new mongoose.Schema({
   proctorBypassUsed: {
     type: Boolean,
     default: false
+  },
+  // How this attempt stood in relation to Safe Exam Browser, so a reviewer can
+  // tell a genuine locked-down attempt from one that fell back to the ordinary
+  // browser-based proctoring:
+  //   not_required — SEB was switched off system-wide when this was taken
+  //   verified     — ran inside SEB and proved it on every check-in
+  //   fallback     — SEB was required but unavailable; see proctorSebFallbackReason
+  proctorSebStatus: {
+    type: String,
+    enum: ["not_required", "verified", "fallback"],
+    default: "not_required"
+  },
+  proctorSebFallbackReason: {
+    type: String,
+    default: null
   },
   autoSubmit: {
     type: Boolean,

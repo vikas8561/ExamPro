@@ -7,6 +7,10 @@
  * on. It never blocks an honest student, and it never invents a violation.
  */
 
+// Explicit extension so this module also loads under plain Node, which is how
+// scripts/seb-scenarios.mjs exercises assessReadiness without a bundler.
+import { detectSEB } from "./seb.js";
+
 /**
  * Brave has to be detected on purpose: it reports itself as Chrome in the user
  * agent and only admits what it is through this promise-based check.
@@ -70,6 +74,55 @@ export function detectBrowserName(isBrave) {
   if (/Chrome\//.test(ua)) return "Chrome";
   if (/Safari\//.test(ua) && /Version\//.test(ua)) return "Safari";
   return "Unknown";
+}
+
+/**
+ * Which operating system is this?
+ *
+ * Needed because Safe Exam Browser has never existed for Linux, so a student
+ * there has to be offered the ordinary browser-based proctoring rather than an
+ * instruction they cannot follow.
+ *
+ * `navigator.platform` is deprecated and lies on some browsers, so the modern
+ * `userAgentData.platform` is preferred where it exists. This answer is only
+ * used to shape what the student is shown — the server works the operating
+ * system out for itself, from the User-Agent header, before it decides whether
+ * anyone is allowed to skip SEB.
+ */
+export function detectOS() {
+  if (typeof navigator === "undefined") return "unknown";
+
+  try {
+    const modern = navigator.userAgentData?.platform;
+    if (typeof modern === "string" && modern) {
+      const value = modern.toLowerCase();
+      if (value.includes("win")) return "windows";
+      if (value.includes("mac")) return "macos";
+      if (value.includes("linux") || value.includes("chrome os")) return "linux";
+      if (value.includes("android")) return "android";
+      if (value.includes("ios")) return "ios";
+    }
+  } catch {
+    // Fall through to the user agent.
+  }
+
+  const ua = navigator.userAgent || "";
+  // Order matters: iPadOS and Android both mention Linux in their user agent.
+  if (/iPhone|iPad|iPod/i.test(ua)) return "ios";
+  if (/Android/i.test(ua)) return "android";
+  if (/Windows NT|Win64|WOW64/i.test(ua)) return "windows";
+  if (/Mac OS X|Macintosh/i.test(ua)) return "macos";
+  if (/Linux|X11|CrOS/i.test(ua)) return "linux";
+  return "unknown";
+}
+
+/**
+ * Safe Exam Browser ships for Windows, macOS and iOS only — there has never been
+ * a Linux build and none is planned. Phones and tablets are blocked from exams
+ * for unrelated reasons, so on the desktop these two are the whole list.
+ */
+export function sebAvailableForOS(os) {
+  return os === "windows" || os === "macos";
 }
 
 /** Phones and tablets cannot meet the fullscreen and keyboard rules. */
@@ -193,6 +246,8 @@ export async function inspectEnvironment() {
   const isEdge = detectEdge();
   const browser = detectBrowserName(isBrave);
   const isMobile = isMobileDevice();
+  const seb = await detectSEB();
+  const os = detectOS();
 
   return {
     browser,
@@ -200,12 +255,20 @@ export async function inspectEnvironment() {
     isEdge,
     isSupportedChrome: isSupportedChrome({ browser, isBrave, isEdge, isMobile }),
     platform: typeof navigator !== "undefined" ? navigator.platform || "" : "",
+    os,
+    sebAvailableForOS: sebAvailableForOS(os),
     isMobile,
     isSecureContext: typeof window !== "undefined" ? Boolean(window.isSecureContext) : false,
     keyboardLockSupported: keyboardLockSupported(),
     screenShareSupported: screenShareSupported(),
     fullscreenSupported: fullscreenSupported(),
     secondMonitor: detectSecondMonitor(),
+    // Safe Exam Browser, when the exam is running inside it.
+    isSEB: seb.isSEB,
+    sebVersion: seb.version,
+    sebBrowserExamKeyHash: seb.browserExamKeyHash,
+    sebConfigKeyHash: seb.configKeyHash,
+    sebPageUrl: seb.pageUrl,
   };
 }
 
@@ -219,7 +282,18 @@ export function assessReadiness(env) {
   const blockers = [];
   const warnings = [];
 
-  if (env.isEdge || !env.isSupportedChrome) {
+  // Inside Safe Exam Browser two of the checks below are not just wrong but
+  // unsatisfiable, so they are skipped rather than softened:
+  //
+  //   - SEB is not Google Chrome and never will be. It is a purpose-built
+  //     lockdown browser, and the lockdown is stronger than anything the Chrome
+  //     requirement was there to approximate.
+  //   - SEB supports no `getDisplayMedia` on any platform, so screen sharing can
+  //     never be granted. Demanding it would block every SEB student forever.
+  //
+  // Everything SEB does not cover — a phone pretending to be a desktop, a
+  // missing Fullscreen API — is still checked exactly as before.
+  if (!env.isSEB && (env.isEdge || !env.isSupportedChrome)) {
     blockers.push("This exam can only be taken using Google Chrome.");
   }
 
@@ -229,13 +303,13 @@ export function assessReadiness(env) {
     );
   }
 
-  if (!env.fullscreenSupported) {
+  if (!env.isSEB && !env.fullscreenSupported) {
     blockers.push(
       "This browser cannot enter fullscreen mode, which this test requires. Please use Google Chrome."
     );
   }
 
-  if (!env.screenShareSupported) {
+  if (!env.isSEB && !env.screenShareSupported) {
     blockers.push(
       "This browser cannot share your screen, which this test requires. Please use Google Chrome."
     );

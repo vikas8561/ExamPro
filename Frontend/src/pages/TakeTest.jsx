@@ -279,7 +279,10 @@ const TakeTestInner = ({ submitRef }) => {
       await proctor.endSession();
 
       setIsSubmitting(false);
-      navigate(`/student/assignments`);
+      // Under Safe Exam Browser the exit page is its configured quit URL, so
+      // arriving there closes SEB and hands the machine back. Sending them to
+      // the assignments list instead would leave them in a locked kiosk.
+      navigate(proctor.isSeb ? `/student/seb-exit` : `/student/assignments`);
     } catch (error) {
       console.error("Test submission failed:", error);
       setIsSubmitting(false);
@@ -742,9 +745,10 @@ const TakeTestInner = ({ submitRef }) => {
       setAutoSubmitPhase('success');
       setIsSubmitting(false);
 
-      // Navigate after a brief success display
+      // Navigate after a brief success display. Under SEB this address is its
+      // quit URL, so arriving there closes the kiosk.
       await new Promise(resolve => setTimeout(resolve, 1000));
-      navigate(`/student/assignments`);
+      navigate(proctor.isSeb ? `/student/seb-exit` : `/student/assignments`);
 
     } catch (error) {
       console.error("Auto-submit failed:", error);
