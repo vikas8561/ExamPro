@@ -103,7 +103,16 @@ function sebKeysFor(req, sebConfig) {
   const options = optionsFor(req, sebConfig);
   if (!options.appOrigin) return [];
 
-  const cacheKey = `${options.appOrigin}|${options.apiOrigin}|${options.urlFilter}`;
+  // Every input to the config must appear here. A value that changes the file
+  // but not this key would leave the server verifying against a Config Key for a
+  // configuration no student is running — and the only symptom would be that
+  // everyone suddenly fails verification.
+  const cacheKey = [
+    options.appOrigin,
+    options.apiOrigin,
+    options.urlFilter,
+    options.quitPasswordHash,
+  ].join("|");
   if (!configKeyCache.has(cacheKey)) {
     configKeyCache.set(cacheKey, computeConfigKey(options));
   }
@@ -825,6 +834,9 @@ router.get(
       return res.json({
         required: settings.sebRequired === true,
         urlFilter: settings.sebUrlFilter !== false,
+        // Admin-only, like the bypass code. An invigilator has to be able to
+        // read this off a screen to let a student out of a locked exam.
+        quitPassword: settings.sebQuitPassword,
         // Shown so an admin can confirm the server has a key at all, and so a
         // support conversation can compare it against what SEB reports. It is
         // derived from the public config file, not a secret.
@@ -867,6 +879,25 @@ router.get(
         });
       }
       return res.json({ config: buildSebConfig(optionsFor(req, await loadSebConfig())) });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/** Issue a new Safe Exam Browser quit password. Admin only. */
+router.post(
+  "/settings/seb/quit-password/rotate",
+  authenticateToken,
+  requireRole(["admin"]),
+  async (req, res, next) => {
+    try {
+      const settings = await ProctorSetting.rotateSebQuitPassword(req.user.userId);
+      invalidateSebConfigCache();
+      return res.json({
+        quitPassword: settings.sebQuitPassword,
+        updatedAt: settings.sebUpdatedAt,
+      });
     } catch (error) {
       next(error);
     }

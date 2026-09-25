@@ -17,6 +17,9 @@ export default function SebSettingsCard() {
   const [required, setRequired] = useState(false);
   const [urlFilter, setUrlFilter] = useState(true);
   const [configKey, setConfigKey] = useState(null);
+  const [quitPassword, setQuitPassword] = useState(null);
+  const [quitVisible, setQuitVisible] = useState(false);
+  const [rotating, setRotating] = useState(false);
   const [configured, setConfigured] = useState(false);
   const [minVersions, setMinVersions] = useState({ windows: "3.10.0", macos: "3.6.0" });
   const [updatedAt, setUpdatedAt] = useState(null);
@@ -34,6 +37,7 @@ export default function SebSettingsCard() {
       setRequired(data.required === true);
       setUrlFilter(data.urlFilter !== false);
       setConfigKey(data.configKey || null);
+      setQuitPassword(data.quitPassword || null);
       setConfigured(data.configured === true);
       setMinVersions(data.minVersions || { windows: "3.10.0", macos: "3.6.0" });
       setUpdatedAt(data.updatedAt);
@@ -68,6 +72,30 @@ export default function SebSettingsCard() {
       setSaving(false);
     }
   }, [required, urlFilter, minVersions]);
+
+  const rotateQuitPassword = useCallback(async () => {
+    if (
+      !window.confirm(
+        "Issue a new quit password?\n\nThe current one stops working as soon as students download a fresh configuration. Anyone mid-exam keeps using the old one until they relaunch."
+      )
+    ) {
+      return;
+    }
+    setRotating(true);
+    setError(null);
+    try {
+      const data = await apiRequest("/proctor/settings/seb/quit-password/rotate", {
+        method: "POST",
+      });
+      setQuitPassword(data.quitPassword);
+      setQuitVisible(true);
+      await load();
+    } catch (err) {
+      setError(err.message || "Could not issue a new quit password.");
+    } finally {
+      setRotating(false);
+    }
+  }, [load]);
 
   /**
    * Fetched as JSON and turned into a file here rather than linked directly: a
@@ -179,6 +207,36 @@ export default function SebSettingsCard() {
                 this on.
               </p>
             )}
+          </div>
+
+          <div className="mb-6 rounded-lg border border-slate-600 bg-slate-900 p-4">
+            <p className="mb-1 text-sm font-semibold text-slate-200">Quit password</p>
+            <p className="mb-3 text-xs text-slate-400">
+              Without this a student can press Quit, look something up, and relaunch.
+              With it, leaving Safe Exam Browser mid-exam needs an invigilator. Read
+              it out only to let somebody out of an exam — never before one.
+              Submitting normally still closes Safe Exam Browser without any prompt.
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <code className="rounded bg-slate-800 px-3 py-2 font-mono text-sm tracking-widest text-white">
+                {quitVisible ? quitPassword || "—" : "••••••••••••"}
+              </code>
+              <button
+                type="button"
+                onClick={() => setQuitVisible((v) => !v)}
+                className="rounded-md border border-slate-600 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800"
+              >
+                {quitVisible ? "Hide" : "Show"}
+              </button>
+              <button
+                type="button"
+                onClick={rotateQuitPassword}
+                disabled={rotating}
+                className="rounded-md border border-slate-600 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+              >
+                {rotating ? "Issuing…" : "New password"}
+              </button>
+            </div>
           </div>
 
           <div className="mb-6 grid grid-cols-2 gap-3">

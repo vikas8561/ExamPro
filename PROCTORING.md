@@ -214,6 +214,23 @@ SEB is a separate, locked-down browser. It blocks other applications, browser
 extensions, `Alt+Tab`, `Print Screen`, virtual machines and additional displays
 at the operating-system level, which is where a web page cannot reach.
 
+### Leaving mid-exam
+
+SEB is configured with a **quit password**, so a student cannot press Quit, look
+something up, and relaunch. Leaving needs an invigilator, who reads the password
+from **Admin → Proctoring**. Submitting normally still closes SEB without any
+prompt, because SEB exits on reaching its `quitURL` regardless.
+
+The file students download contains only the password's SHA-256, so opening it
+tells them nothing.
+
+What that still does not stop is powering the machine off. That path costs them:
+the exam clock is `startedAt + timeLimit` on the server and keeps running, every
+guarded route refuses them within `SEB_GRACE_MS` of SEB going quiet, and the gap
+is charged as `heartbeat_lost` and shown on the report. They lose time and gain a
+violation — but a determined student can still do it, and no web application can
+prevent that.
+
 ### What it cannot change
 
 SEB exists for **Windows and macOS only. There has never been a Linux build.**

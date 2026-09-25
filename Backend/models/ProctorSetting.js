@@ -74,6 +74,15 @@ const ProctorSettingSchema = new mongoose.Schema(
     // first use rather than configured, so there is no new env var to forget.
     sebLaunchSecret: { type: String, default: null },
 
+    // The password that lets somebody quit Safe Exam Browser mid-exam.
+    //
+    // Stored in plain text for the same reason the bypass code above is: an
+    // invigilator has to be able to read it off a screen and type it on a
+    // student's machine. It is admin-only and never reaches a student payload.
+    // What goes into the .seb file is its SHA-256, so the config a student can
+    // open reveals nothing — hashing is the entire point.
+    sebQuitPassword: { type: String, default: null },
+
     sebUpdatedAt: { type: Date, default: null },
     sebUpdatedBy: { type: mongoose.Schema.Types.ObjectId, default: null },
   },
@@ -93,6 +102,22 @@ function generateLaunchSecret() {
 }
 
 /**
+ * Short enough for an invigilator to read aloud and type, random enough that the
+ * SHA-256 in the config file cannot be worked backwards. Ambiguous characters
+ * are left out so nobody loses an exam to an O read as a 0.
+ */
+function generateQuitPassword() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = crypto.randomBytes(12);
+  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
+}
+
+/** What SEB expects in `hashedQuitPassword`: lowercase hex SHA-256. */
+function hashQuitPassword(password) {
+  return crypto.createHash("sha256").update(String(password), "utf8").digest("hex");
+}
+
+/**
  * Fetch the settings document, creating it with a fresh OTP on first use so the
  * system is never in a state where no bypass code exists.
  */
@@ -105,6 +130,7 @@ ProctorSettingSchema.statics.getSettings = async function () {
       bypassOtp: generateOtp(),
       bypassOtpUpdatedAt: new Date(),
       sebLaunchSecret: generateLaunchSecret(),
+      sebQuitPassword: generateQuitPassword(),
     });
   } else {
     let dirty = false;
@@ -118,6 +144,11 @@ ProctorSettingSchema.statics.getSettings = async function () {
     // Back-fills the secret on documents created before SEB support existed.
     if (!settings.sebLaunchSecret) {
       settings.sebLaunchSecret = generateLaunchSecret();
+      dirty = true;
+    }
+
+    if (!settings.sebQuitPassword) {
+      settings.sebQuitPassword = generateQuitPassword();
       dirty = true;
     }
 
@@ -168,6 +199,11 @@ ProctorSettingSchema.statics.getSebConfig = async function () {
       macos: settings.sebMinVersions?.macos || "3.6.0",
     },
     launchSecret: settings.sebLaunchSecret,
+    quitPassword: settings.sebQuitPassword,
+    // What actually goes into the .seb file. The password itself never does.
+    quitPasswordHash: settings.sebQuitPassword
+      ? hashQuitPassword(settings.sebQuitPassword)
+      : "",
   };
 };
 
@@ -196,5 +232,17 @@ ProctorSettingSchema.statics.updateSeb = async function (changes, adminUserId) {
   await settings.save();
   return settings;
 };
+
+/** Replace the quit password with a new one. Admin action. */
+ProctorSettingSchema.statics.rotateSebQuitPassword = async function (adminUserId) {
+  const settings = await this.getSettings();
+  settings.sebQuitPassword = generateQuitPassword();
+  settings.sebUpdatedAt = new Date();
+  settings.sebUpdatedBy = adminUserId || null;
+  await settings.save();
+  return settings;
+};
+
+ProctorSettingSchema.statics.hashQuitPassword = hashQuitPassword;
 
 module.exports = mongoose.model("ProctorSetting", ProctorSettingSchema);

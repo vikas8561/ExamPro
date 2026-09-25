@@ -41,7 +41,7 @@ const crypto = require("crypto");
  *
  * `startURL` is the assignments list, never a per-student address — see above.
  */
-function buildSebSettings({ appOrigin, apiOrigin, urlFilter = true }) {
+function buildSebSettings({ appOrigin, apiOrigin, urlFilter = true, quitPasswordHash = "" }) {
   return {
     startURL: `${appOrigin}/student/assignments`,
 
@@ -66,6 +66,18 @@ function buildSebSettings({ appOrigin, apiOrigin, urlFilter = true }) {
     // has submitted is not left in a locked kiosk.
     quitURL: `${appOrigin}/student/seb-exit`,
     allowQuit: true,
+
+    // Quitting mid-exam now takes a password the student does not have.
+    //
+    // Without this a student can press Quit, look something up, and relaunch.
+    // The exam clock keeps running and the absence is recorded, but nothing
+    // actually stops them. With it, leaving needs an invigilator.
+    //
+    // Safe to ship in a file the student can open, because this is the SHA-256 of
+    // the password and not the password. Submitting normally still quits without
+    // any prompt — SEB exits on reaching `quitURL` above, which is where the exam
+    // page sends them once their paper is in.
+    ...(quitPasswordHash ? { hashedQuitPassword: quitPasswordHash } : {}),
 
     allowedDisplaysMaxNumber: 1,
     allowVirtualMachine: false,
@@ -258,6 +270,7 @@ function optionsFor(req, sebConfig) {
     appOrigin: (process.env.FRONTEND_URL || "").replace(/\/+$/, ""),
     apiOrigin: `${req.protocol}://${req.get("host")}`,
     urlFilter: sebConfig?.urlFilter !== false,
+    quitPasswordHash: sebConfig?.quitPasswordHash || "",
   };
 }
 

@@ -282,6 +282,28 @@ check(
 );
 check("no attempt id has leaked into the config", !/[0-9a-f]{24}/.test(config));
 check("no nonce has leaked into the config", !config.includes("?n="));
+
+// The quit password stops a student pressing Quit, cheating, and relaunching.
+// What lands in the file is its SHA-256 — the password itself never does, which
+// is what makes it safe to ship in a file the student can open.
+const QUIT_PW = "ABCD23456789";
+const QUIT_HASH = require("crypto").createHash("sha256").update(QUIT_PW).digest("hex");
+const guarded = buildSebConfig({ ...ORIGINS, quitPasswordHash: QUIT_HASH });
+check("the quit password hash is written to the config", guarded.includes(QUIT_HASH));
+check("the quit password itself never is", !guarded.includes(QUIT_PW));
+check("quitting is still permitted, just protected", guarded.includes("<key>allowQuit</key>\n  <true/>"));
+check(
+  "the quit URL still exits without a password, so a finished exam closes cleanly",
+  guarded.includes("<string>https://exam.test/student/seb-exit</string>")
+);
+check(
+  "changing the quit password changes the Config Key",
+  computeConfigKey({ ...ORIGINS, quitPasswordHash: QUIT_HASH }) !== computeConfigKey(ORIGINS)
+);
+check(
+  "no hashedQuitPassword key at all when none is set",
+  !buildSebConfig(ORIGINS).includes("hashedQuitPassword")
+);
 check("every opened dict is closed", (config.match(/<dict>/g) || []).length === (config.match(/<\/dict>/g) || []).length);
 check("every opened array is closed", (config.match(/<array>/g) || []).length === (config.match(/<\/array>/g) || []).length);
 check("every opened string is closed", (config.match(/<string>/g) || []).length === (config.match(/<\/string>/g) || []).length);
