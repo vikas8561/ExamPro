@@ -210,10 +210,30 @@ export function ProctorProvider({
     if (phaseRef.current !== "idle") return;
 
     let cancelled = false;
+    let finished = false;
+    // Where the start got to, so a failure can say so instead of spinning.
+    let step = "checking this browser";
     setPhase("starting");
+
+    /**
+     * Never spin forever.
+     *
+     * Opening a session involves several awaits — inspecting the browser,
+     * waiting for Safe Exam Browser's API, two or three network calls — and if
+     * any of them never settles the student is left on "Loading test…" with
+     * nothing to do and nothing to report. A hang has to become a message.
+     */
+    const watchdog = setTimeout(() => {
+      if (cancelled || finished) return;
+      setStartError(
+        `Starting the exam timed out while ${step}. Reload the page to try again.`
+      );
+      setPhase("idle");
+    }, 25000);
 
     (async () => {
       try {
+        step = "checking this browser";
         const env = await inspectEnvironment();
         if (cancelled) return;
 
@@ -233,6 +253,7 @@ export function ProctorProvider({
         // new URL.
         if (env.isSEB && !new URLSearchParams(window.location.search).get("n")) {
           try {
+            step = "preparing the Safe Exam Browser address";
             const { examUrl } = await fetchSebExamUrl(assignmentId);
             if (cancelled) return;
             if (examUrl && examUrl !== window.location.href) {
@@ -255,6 +276,7 @@ export function ProctorProvider({
         let sebPolicy = null;
         if (!env.isSEB) {
           try {
+            step = "asking what this exam requires";
             sebPolicy = await fetchProctorPolicy(assignmentId);
           } catch {
             // The exam must not be unreachable because this lookup failed. The
@@ -289,6 +311,7 @@ export function ProctorProvider({
 
         setReadiness(assessReadiness(env));
 
+        step = "opening the proctoring session";
         const opened = await startSession({
           assignmentId,
           testKind,
@@ -367,14 +390,29 @@ export function ProctorProvider({
       } catch (error) {
         if (cancelled) return;
         setStartError(
-          error?.message || "Proctoring could not be started. Please reload and try again."
+          error?.message || `Proctoring could not be started while ${step}. Please reload and try again.`
         );
         setPhase("idle");
+      } finally {
+        finished = true;
+        clearTimeout(watchdog);
       }
     })();
 
     return () => {
       cancelled = true;
+      clearTimeout(watchdog);
+
+      // Let a re-run actually run.
+      //
+      // The guard at the top refuses to start unless the phase is "idle". If
+      // this effect re-runs while an attempt is still in flight — any dependency
+      // changing is enough — the cleanup cancels that attempt, and without this
+      // the replacement would hit the guard, return immediately, and leave the
+      // student on "Loading test…" with nothing in flight and nothing to retry.
+      if (!finished && phaseRef.current === "starting") {
+        phaseRef.current = "idle";
+      }
     };
   }, [enabled, assignmentId, testKind, handleVerdict, onReady]);
 
