@@ -70,6 +70,7 @@ export default function ProctoringReport({ submission, assignmentId, onReEnabled
   const [expanded, setExpanded] = useState(false);
   const [shots, setShots] = useState([]);
   const [openShot, setOpenShot] = useState(null);
+  const [openShotUrl, setOpenShotUrl] = useState(null);
 
   if (!submission) return null;
 
@@ -96,6 +97,39 @@ export default function ProctoringReport({ submission, assignmentId, onReEnabled
     } catch {
       setShots([]);
     }
+  };
+
+  /**
+   * Fetch the image with the reviewer's token and hand the browser a blob URL.
+   *
+   * An <img src> cannot carry an Authorization header — the browser issues that
+   * request on its own, with no way to attach one — so pointing it straight at
+   * an authenticated route produces a 401 and a broken-image icon. The bytes
+   * have to be fetched in JavaScript, where the header can be set, and handed
+   * over as an object URL instead.
+   *
+   * The same constraint is why the .seb config download is built from JSON
+   * rather than linked directly.
+   */
+  const openCapture = async (shot) => {
+    setOpenShot(shot);
+    setOpenShotUrl(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/proctor/screenshots/image/${shot.id}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+      if (!response.ok) throw new Error(String(response.status));
+      setOpenShotUrl(URL.createObjectURL(await response.blob()));
+    } catch {
+      setOpenShotUrl(null);
+    }
+  };
+
+  const closeCapture = () => {
+    // Object URLs pin their blob in memory until revoked, and these are images.
+    if (openShotUrl) URL.revokeObjectURL(openShotUrl);
+    setOpenShotUrl(null);
+    setOpenShot(null);
   };
 
   const handleReEnable = async () => {
@@ -215,7 +249,7 @@ export default function ProctoringReport({ submission, assignmentId, onReEnabled
                   <button
                     key={shot.id}
                     type="button"
-                    onClick={() => setOpenShot(shot)}
+                    onClick={() => openCapture(shot)}
                     className="rounded-md border border-slate-600 px-3 py-1.5 text-left text-xs text-slate-300 hover:bg-slate-800"
                   >
                     <span className="block">
@@ -235,7 +269,7 @@ export default function ProctoringReport({ submission, assignmentId, onReEnabled
       {openShot && (
         <div
           className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/95 p-4"
-          onClick={() => setOpenShot(null)}
+          onClick={closeCapture}
         >
           <div className="max-h-full w-full max-w-5xl overflow-auto rounded-xl border border-slate-700 bg-slate-900 p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
@@ -247,17 +281,24 @@ export default function ProctoringReport({ submission, assignmentId, onReEnabled
               </p>
               <button
                 type="button"
-                onClick={() => setOpenShot(null)}
+                onClick={closeCapture}
                 className="rounded-md border border-slate-600 px-3 py-1 text-xs text-slate-300 hover:bg-slate-800"
               >
                 Close
               </button>
             </div>
-            <img
-              src={`${API_BASE_URL}/proctor/screenshots/image/${openShot.id}`}
-              alt="Screen at the moment the violation was recorded"
-              className="w-full rounded-md border border-slate-700"
-            />
+            {openShotUrl ? (
+              <img
+                src={openShotUrl}
+                alt="Screen at the moment the violation was recorded"
+                className="w-full rounded-md border border-slate-700"
+              />
+            ) : (
+              <p className="rounded-md border border-slate-700 px-4 py-8 text-center text-sm text-slate-400">
+                Loading the capture… If it does not appear, it has passed its
+                72-hour expiry and been deleted.
+              </p>
+            )}
           </div>
         </div>
       )}
