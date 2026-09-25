@@ -40,6 +40,31 @@ export function isSebPresent() {
   return sebGlobal() !== null;
 }
 
+/**
+ * Does the user agent claim SEB even though the JavaScript API is absent?
+ *
+ * Normally the user agent is the wrong thing to trust — SEB's own documentation
+ * says so, because any browser can be made to claim anything. It is exactly
+ * right for this one question though, because the answer is never used to *grant*
+ * anything. It only distinguishes two failures that look identical to a student:
+ *
+ *   - not running SEB at all      → offer the launch button
+ *   - running SEB, but no API     → the button cannot help, and pressing it again
+ *                                   just reloads into the same state, forever
+ *
+ * The second happens when SEB is using its classic WebView, which has no
+ * JavaScript API. On macOS that is what `sendBrowserExamKey` does unless the
+ * config also asks for the modern engine — see services/sebConfig.js.
+ */
+export function looksLikeSebWithoutApi() {
+  if (isSebPresent()) return false;
+  try {
+    return /\bSEB[/ ]/i.test(navigator.userAgent || "");
+  } catch {
+    return false;
+  }
+}
+
 function readKeys() {
   const seb = sebGlobal();
   if (!seb) return { browserExamKeyHash: "", configKeyHash: "" };

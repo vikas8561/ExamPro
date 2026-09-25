@@ -220,7 +220,12 @@ export function ProctorProvider({
         // SEB is required and this machine can run it: send the student to the
         // launch screen rather than into an exam the server will refuse to serve.
         if (sebPolicy?.sebRequired && sebPolicy?.sebAvailableForOs) {
-          setSebLaunchInfo(sebPolicy);
+          setSebLaunchInfo({
+            ...sebPolicy,
+            // Already inside SEB, so the launch button is not the answer and
+            // pressing it again would loop straight back here.
+            apiMissing: env.sebWithoutApi === true,
+          });
           setPhase("seb_launch");
           return;
         }

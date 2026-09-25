@@ -56,6 +56,31 @@ export default function SebLaunchScreen({ info, assignmentId }) {
     }
   }, [assignmentId]);
 
+  // Inside SEB, but SEB is not exposing the JavaScript API the exam needs. No
+  // button helps here: relaunching lands in exactly the same place.
+  if (info?.apiMissing) {
+    return (
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/95 p-4">
+        <div className="w-full max-w-lg rounded-xl border border-slate-700 bg-slate-900 p-8">
+          <h2 className="mb-3 text-2xl font-bold text-white">
+            Safe Exam Browser needs updating
+          </h2>
+          <p className="mb-6 text-slate-300">
+            Safe Exam Browser is running, but this version cannot confirm itself to
+            the exam. Quit Safe Exam Browser and tell your administrator — the exam
+            cannot be started until it is sorted out.
+          </p>
+          <div className="rounded-md border border-slate-600 bg-slate-800 px-4 py-3 text-xs text-slate-400">
+            For the administrator: SEB is using its classic browser engine, which
+            has no JavaScript API. The exam configuration needs
+            <code className="mx-1 text-slate-300">browserWindowWebView</code>
+            set to Prefer Modern, and the URL content filter left off.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Running inside SEB on an exam that is not set up for it. The exam still
   // expects a screen share, which SEB cannot produce on any platform, so there
   // is no button that would help — only a clear instruction.

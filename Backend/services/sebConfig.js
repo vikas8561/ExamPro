@@ -48,6 +48,20 @@ function buildSebSettings({ appOrigin, apiOrigin, urlFilter = true }) {
     // Without this SEB sends no keys and nothing can ever be verified.
     sendBrowserExamKey: true,
 
+    // "Prefer Modern" — and this one line is load-bearing on macOS.
+    //
+    // SEB for macOS has two browser engines. The classic WebView can put the keys
+    // in HTTP headers but has **no JavaScript API**; the modern WebView (WKWebView)
+    // is the reverse — no headers, but the API this whole integration depends on.
+    // And for backward compatibility, `sendBrowserExamKey: true` above makes SEB
+    // pick the *classic* one unless told otherwise.
+    //
+    // The result, if this is omitted: `window.SafeExamBrowser` simply does not
+    // exist. The exam page concludes it is not running under SEB, shows the
+    // "launch Safe Exam Browser" screen to a student who is already inside Safe
+    // Exam Browser, and loops there with nothing in any log to explain why.
+    browserWindowWebView: 3,
+
     // Arriving here makes SEB close and hand the machine back, so a student who
     // has submitted is not left in a locked kiosk.
     quitURL: `${appOrigin}/student/seb-exit`,
@@ -65,6 +79,9 @@ function buildSebSettings({ appOrigin, apiOrigin, urlFilter = true }) {
     enableLogging: false,
 
     URLFilterEnable: urlFilter,
+    // Must stay false. Enabling the content filter forces SEB back to the classic
+    // WebView regardless of `browserWindowWebView` above, which takes the
+    // JavaScript API away again and breaks verification on macOS.
     URLFilterEnableContentFilter: false,
     URLFilterRules: urlFilter
       ? [filterRule(`${hostPattern(appOrigin)}/*`), filterRule(`${hostPattern(apiOrigin)}/*`)]

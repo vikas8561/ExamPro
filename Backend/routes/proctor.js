@@ -154,6 +154,29 @@ async function resolveSebState({ req, assignment, test, sebConfig }) {
     return state;
   }
 
+  // A student sitting inside SEB who fails this check sees only "Safe Exam
+  // Browser required", which tells whoever is helping them nothing at all. There
+  // are two quite different causes and this separates them at a glance: a URL
+  // that does not match what the key was hashed against, or a key that genuinely
+  // differs. Neither value is secret — both are derived from the config file any
+  // student can download.
+  const keys = sebKeysFor(req, sebConfig);
+  console.warn("SEB verification failed:", {
+    reason: result.reason,
+    sebVersion: state.version || "(none reported)",
+    platform: state.platform,
+    urlTheServerHashedAgainst: state.examUrl || "(no launch recorded for this attempt)",
+    urlTheBrowserWasOn: clean(reported.pageUrl, 300) || "(not reported)",
+    urlsMatch: Boolean(state.examUrl) && state.examUrl === reported.pageUrl,
+    hashFromSeb: reported.configKeyHash
+      ? String(reported.configKeyHash).slice(0, 16) + "…"
+      : "(SEB sent no Config Key)",
+    hashExpected: keys.length
+      ? sebVerify.computeExpectedHash(state.examUrl, keys[0].key).slice(0, 16) + "…"
+      : "(no key — is FRONTEND_URL set?)",
+    configKey: keys.length ? keys[0].key.slice(0, 16) + "…" : "(none)",
+  });
+
   // SEB was required and could not be proved. On an operating system SEB has
   // never shipped for there is nothing the student could have done, so the exam
   // falls back to the ordinary browser-based proctoring and says so on the

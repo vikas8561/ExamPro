@@ -9,7 +9,7 @@
 
 // Explicit extension so this module also loads under plain Node, which is how
 // scripts/seb-scenarios.mjs exercises assessReadiness without a bundler.
-import { detectSEB } from "./seb.js";
+import { detectSEB, looksLikeSebWithoutApi } from "./seb.js";
 
 /**
  * Brave has to be detected on purpose: it reports itself as Chrome in the user
@@ -265,6 +265,10 @@ export async function inspectEnvironment() {
     secondMonitor: detectSecondMonitor(),
     // Safe Exam Browser, when the exam is running inside it.
     isSEB: seb.isSEB,
+    // Running inside SEB, but with no JavaScript API to prove it. Distinguished
+    // so the exam page can explain the misconfiguration instead of offering a
+    // launch button that reloads into the same dead end.
+    sebWithoutApi: looksLikeSebWithoutApi(),
     sebVersion: seb.version,
     sebBrowserExamKeyHash: seb.browserExamKeyHash,
     sebConfigKeyHash: seb.configKeyHash,
