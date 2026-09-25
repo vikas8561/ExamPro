@@ -214,23 +214,95 @@ const StudentRoutes = () => {
   );
 };
 
+// Mentor Sidebar Context for desktop collapse and mobile drawer
+export const MentorSidebarContext = React.createContext({
+  sidebarOpen: false,
+  toggleSidebar: () => {},
+  isCollapsed: false,
+  toggleCollapse: () => {},
+});
+
+export const useMentorSidebar = () => React.useContext(MentorSidebarContext);
+
 // Mentor Layout Component with routes
 const MentorRoutes = () => {
+  const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const [isCollapsed, setIsCollapsed] = React.useState(() => {
+    try {
+      return localStorage.getItem("mentor_sidebar_collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleSidebar = () => {
+    setSidebarOpen(!sidebarOpen);
+  };
+
+  const toggleCollapse = () => {
+    setIsCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("mentor_sidebar_collapsed", String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  // Keyboard shortcut Cmd+B / Ctrl+B for macOS / Windows
+  React.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        toggleCollapse();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   return (
-    <div className="h-screen bg-slate-900 text-white flex overflow-hidden">
-      <div className="sticky top-0 h-screen flex-shrink-0">
-        <MentorLayout />
+    <MentorSidebarContext.Provider value={{ sidebarOpen, toggleSidebar, isCollapsed, toggleCollapse }}>
+      <div className="h-[100dvh] bg-[#16181F] text-slate-100 flex overflow-hidden">
+        <MentorLayout
+          isOpen={sidebarOpen}
+          onToggle={toggleSidebar}
+          isCollapsed={isCollapsed}
+          onToggleCollapse={toggleCollapse}
+        />
+        <main
+          className="flex-1 min-w-0 h-[100dvh] overflow-y-auto"
+          style={{
+            transition: "all 0.35s cubic-bezier(0.16, 1, 0.3, 1)",
+            willChange: "width, margin",
+          }}
+        >
+          {/* Mobile Header with Hamburger */}
+          <div className="mobile-header lg:hidden bg-[#191B22] p-4 border-b border-white/5">
+            <div className="flex items-center justify-between">
+              <h1 className="mobile-header-title text-lg font-bold">Mentor Portal</h1>
+              <button
+                onClick={toggleSidebar}
+                className="mobile-hamburger-btn p-2 hover:bg-slate-700 rounded-md"
+                aria-label="Open menu"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <Routes>
+            <Route path="/" element={<MentorDashboard />} />
+            <Route path="/assignments" element={<MentorAssignments />} />
+            <Route path="/submissions" element={<MentorSubmissions />} />
+            <Route path="/view-test/:assignmentId" element={<ViewCompletedTest />} />
+            <Route path="*" element={<div className="p-6">Not Found</div>} />
+          </Routes>
+        </main>
       </div>
-      <main className="flex-1 overflow-y-auto">
-        <Routes>
-          <Route path="/" element={<MentorDashboard />} />
-          <Route path="/assignments" element={<MentorAssignments />} />
-          <Route path="/submissions" element={<MentorSubmissions />} />
-          <Route path="/view-test/:assignmentId" element={<ViewCompletedTest />} />
-          <Route path="*" element={<div className="p-6">Not Found</div>} />
-        </Routes>
-      </main>
-    </div>
+    </MentorSidebarContext.Provider>
   );
 };
 

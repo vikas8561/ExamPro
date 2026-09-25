@@ -1,7 +1,30 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import apiRequest from "../services/api";
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import "../styles/StudentDashboard.mobile.css";
+import {
+  FileCheck,
+  Search,
+  X,
+  Zap,
+  ChevronDown,
+  ChevronUp,
+  ChevronRight,
+  User,
+  CheckCircle2,
+  Clock,
+  Award,
+  Users,
+  BookOpen,
+  ArrowRight,
+  TrendingUp,
+  Layers,
+  Code2,
+  HelpCircle,
+  Eye
+} from "lucide-react";
 
 const MentorSubmissions = () => {
   const [students, setStudents] = useState([]);
@@ -9,6 +32,8 @@ const MentorSubmissions = () => {
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [studentSubmissions, setStudentSubmissions] = useState([]);
   const [expandedStudents, setExpandedStudents] = useState(new Set());
+  const [searchTerm, setSearchTerm] = useState("");
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchSubmissions();
@@ -16,8 +41,8 @@ const MentorSubmissions = () => {
 
   const fetchSubmissions = async (page = 1) => {
     try {
+      setLoading(true);
       const data = await apiRequest(`/mentor/submissions?page=${page}&limit=50`);
-      // Handle both old format (array) and new format (object with students array)
       if (Array.isArray(data)) {
         setStudents(data);
       } else {
@@ -25,7 +50,6 @@ const MentorSubmissions = () => {
       }
     } catch (error) {
       console.error("Error fetching submissions:", error);
-      alert("Failed to load submissions");
     } finally {
       setLoading(false);
     }
@@ -34,23 +58,20 @@ const MentorSubmissions = () => {
   const fetchStudentSubmissions = async (studentId) => {
     try {
       const data = await apiRequest(`/mentor/student/${studentId}/submissions`);
-      setStudentSubmissions(data);
+      setStudentSubmissions(data || []);
     } catch (error) {
       console.error("Error fetching student submissions:", error);
-      alert("Failed to load student submissions");
     }
   };
 
   const openStudentProfile = async (studentData) => {
     setSelectedStudent(studentData);
-    await fetchStudentSubmissions(studentData.student._id);
-  };
-
-  useEffect(() => {
-    if (selectedStudent) {
-      // Student data loaded
+    if (studentData?.student?._id) {
+      await fetchStudentSubmissions(studentData.student._id);
+    } else if (studentData?.userId?._id) {
+      await fetchStudentSubmissions(studentData.userId._id);
     }
-  }, [selectedStudent]);
+  };
 
   const closeStudentProfile = () => {
     setSelectedStudent(null);
@@ -58,324 +79,674 @@ const MentorSubmissions = () => {
   };
 
   const toggleStudentExpansion = (studentId) => {
-    const newExpanded = new Set(expandedStudents);
-    if (newExpanded.has(studentId)) {
-      newExpanded.delete(studentId);
-    } else {
-      newExpanded.add(studentId);
-    }
-    setExpandedStudents(newExpanded);
+    setExpandedStudents((prev) => {
+      const next = new Set(prev);
+      if (next.has(studentId)) {
+        next.delete(studentId);
+      } else {
+        next.add(studentId);
+      }
+      return next;
+    });
   };
 
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
-    return new Date(dateString).toLocaleDateString();
+    return new Date(dateString).toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
   };
 
-  // Calculate total statistics
-  const totalSubmissions = students.reduce((total, student) => total + student.totalSubmissions, 0);
-  const passingSubmissions = students.reduce((total, student) => {
-    return total + student.submissions.filter(s => (s.totalScore || 0) >= 70).length;
-  }, 0);
-  
-  // Calculate overall average score correctly
-  const totalScoreSum = students.reduce((total, student) => {
-    return total + student.submissions.reduce((sum, submission) => sum + (submission.totalScore || 0), 0);
-  }, 0);
-  const averageScore = totalSubmissions > 0 
-    ? Math.round(totalScoreSum / totalSubmissions)
-    : 0;
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-900 text-white p-6">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-xl">Loading submissions...</div>
-        </div>
-      </div>
+  // KPI Calculations
+  const stats = useMemo(() => {
+    const totalStudents = students.length;
+    const totalSubmissions = students.reduce(
+      (total, s) => total + (s.totalSubmissions || 0),
+      0
     );
-  }
+    const passingSubmissions = students.reduce((total, s) => {
+      return (
+        total +
+        (s.submissions || []).filter((sub) => (sub.totalScore || 0) >= 70).length
+      );
+    }, 0);
+    const totalScoreSum = students.reduce((total, s) => {
+      return (
+        total +
+        (s.submissions || []).reduce(
+          (sum, sub) => sum + (sub.totalScore || 0),
+          0
+        )
+      );
+    }, 0);
+    const averageScore =
+      totalSubmissions > 0 ? Math.round(totalScoreSum / totalSubmissions) : 0;
+    const passingRate =
+      totalSubmissions > 0
+        ? Math.round((passingSubmissions / totalSubmissions) * 100)
+        : 0;
+
+    return { totalStudents, totalSubmissions, passingSubmissions, averageScore, passingRate };
+  }, [students]);
+
+  // Search filtering
+  const filteredStudents = useMemo(() => {
+    if (!searchTerm.trim()) return students;
+    const q = searchTerm.toLowerCase();
+    return students.filter((s) => {
+      const name = (s.student?.name || "").toLowerCase();
+      const email = (s.student?.email || "").toLowerCase();
+      const hasMatchingTest = (s.submissions || []).some((sub) => {
+        const title = (
+          sub.testId?.title ||
+          sub.assignmentId?.testId?.title ||
+          ""
+        ).toLowerCase();
+        return title.includes(q);
+      });
+      return name.includes(q) || email.includes(q) || hasMatchingTest;
+    });
+  }, [students, searchTerm]);
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white p-6">
-      <div className="max-w-6xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8">Student Submissions</h1>
+    <div className="student-dashboard-mobile min-h-screen bg-[#16181F] text-slate-100 font-sans p-6 lg:p-6 relative">
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 5px;
+          height: 5px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.02);
+          border-radius: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.12);
+          border-radius: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.25);
+        }
+      `}</style>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-slate-800 p-6 rounded-lg border border-slate-700">
-            <div className="text-2xl font-bold text-blue-400">{totalSubmissions}</div>
-            <div className="text-slate-400">Total Submissions</div>
-          </div>
-          <div className="bg-slate-800 p-6 rounded-lg border border-slate-700">
-            <div className="text-2xl font-bold text-green-400">
-              {passingSubmissions}
+      {/* Main Container */}
+      <div className="max-w-7xl mx-auto space-y-6">
+
+        {/* Top Header Row - Synchronized 3.5rem baseline matching Sidebar */}
+        <div
+          className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 mb-6 gap-4"
+          style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.05)", minHeight: "3.5rem" }}
+        >
+          {/* Left: Title & Icon */}
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-[#133B42] border border-[#00C4B4]/20 flex items-center justify-center flex-shrink-0">
+              <FileCheck className="w-5 h-5 text-[#00C4B4]" />
             </div>
-            <div className="text-slate-400">Passing Scores</div>
-          </div>
-          <div className="bg-slate-800 p-6 rounded-lg border border-slate-700">
-            <div className="text-2xl font-bold text-yellow-400">
-              {averageScore} / 100
+            <div>
+              <h1 className="text-base sm:text-lg font-semibold text-white tracking-tight leading-tight">
+                Student Submissions
+              </h1>
+              <p className="text-xs text-[#7E8594] mt-0.5">
+                Review student test performances, submitted answer scripts, and grading analytics
+              </p>
             </div>
-            <div className="text-slate-400">Average Score</div>
+          </div>
+
+          {/* Right Controls: Search & Refresh */}
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            {/* Search Input */}
+            <div className="relative flex-1 sm:w-72">
+              <Search className="w-4 h-4 text-[#7E8594] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search students or tests..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-[#20242D] border border-white/[0.06] rounded-xl pl-9 pr-9 py-2 text-xs text-white placeholder-[#7E8594] focus:outline-none focus:border-[#00C4B4]/50 focus:ring-1 focus:ring-[#00C4B4]/50 transition-all"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#7E8594] hover:text-white transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Refresh Pill Button */}
+            <button
+              onClick={() => fetchSubmissions()}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-[#133B42] text-[#00C4B4] border border-[#00C4B4]/30 hover:bg-[#1A4C55] hover:scale-105 active:scale-95 transition-all shadow-sm cursor-pointer disabled:opacity-50 flex-shrink-0"
+            >
+              <Zap className={`w-3.5 h-3.5 fill-[#00C4B4] ${loading ? "animate-spin" : ""}`} />
+              <span className="hidden sm:inline">{loading ? "Syncing..." : "Refresh"}</span>
+            </button>
           </div>
         </div>
 
-        {students.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="text-2xl text-slate-400 mb-4">No students found</div>
-            <p className="text-slate-500">No students have submitted tests yet.</p>
+        {/* 4-Card KPI Overview Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+          {/* Total Submissions */}
+          <div className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-5 hover:border-white/10 transition-all">
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="text-xs font-semibold tracking-wide text-[#7E8594] uppercase">
+                Total Submissions
+              </span>
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[#133B42] text-[#2DD4BF] border border-[#2DD4BF]/20">
+                Logged
+              </span>
+            </div>
+            <div className="text-3xl font-bold text-white tracking-tight mb-1">
+              {stats.totalSubmissions}
+            </div>
+            <p className="text-xs text-[#7E8594]">Total evaluation instances</p>
           </div>
-        ) : (
-          <div className="max-h-[600px] overflow-y-auto space-y-4">
-            {students.map((studentData) => (
-              <div key={studentData.student._id} className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
-                {/* Student Header */}
-                <div 
-                  className="p-4 cursor-pointer hover:bg-slate-700/50 transition-colors"
-                  onClick={() => toggleStudentExpansion(studentData.student._id)}
+
+          {/* Active Students Evaluated */}
+          <div className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-5 hover:border-white/10 transition-all">
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="text-xs font-semibold tracking-wide text-[#7E8594] uppercase">
+                Active Candidates
+              </span>
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[#1E293B] text-[#94A3B8] border border-white/10">
+                Students
+              </span>
+            </div>
+            <div className="text-3xl font-bold text-white tracking-tight mb-1">
+              {stats.totalStudents}
+            </div>
+            <p className="text-xs text-[#7E8594]">Distinct candidate submissions</p>
+          </div>
+
+          {/* Passing Submissions */}
+          <div className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-5 hover:border-white/10 transition-all">
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="text-xs font-semibold tracking-wide text-[#7E8594] uppercase">
+                Passing Submissions
+              </span>
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[#19382C] text-[#34D399] border border-[#34D399]/20">
+                ≥ 70%
+              </span>
+            </div>
+            <div className="text-3xl font-bold text-emerald-400 tracking-tight mb-1">
+              {stats.passingSubmissions}
+            </div>
+            <p className="text-xs text-[#7E8594]">{stats.passingRate}% overall pass rate</p>
+          </div>
+
+          {/* Average Performance */}
+          <div className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-5 hover:border-white/10 transition-all">
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="text-xs font-semibold tracking-wide text-[#7E8594] uppercase">
+                Average Score
+              </span>
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[#3D271D] text-[#FB923C] border border-[#FB923C]/20">
+                Cumulative
+              </span>
+            </div>
+            <div className="text-3xl font-bold text-white tracking-tight mb-1">
+              {stats.averageScore}%
+            </div>
+            <p className="text-xs text-[#7E8594]">Average score across all tests</p>
+          </div>
+        </div>
+
+        {/* Student Submissions List / Accordion */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Layers className="w-4.5 h-4.5 text-[#00C4B4]" />
+              <h2 className="text-base font-bold text-white tracking-tight">
+                Candidate Registry ({filteredStudents.length})
+              </h2>
+            </div>
+            <span className="text-xs text-[#7E8594]">
+              Click any card to expand test history
+            </span>
+          </div>
+
+          {loading ? (
+            <div className="p-16 text-center text-slate-400 bg-[#20242D] border border-white/[0.06] rounded-2xl">
+              <div className="w-8 h-8 rounded-full border-2 border-[#00C4B4] border-t-transparent animate-spin mx-auto mb-3" />
+              <p className="text-xs text-[#7E8594]">Loading student submissions...</p>
+            </div>
+          ) : filteredStudents.length === 0 ? (
+            <div className="p-16 text-center text-slate-400 bg-[#20242D] border border-white/[0.06] rounded-2xl">
+              <div className="w-12 h-12 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mx-auto mb-3">
+                <Users className="w-6 h-6 text-[#7E8594]" />
+              </div>
+              <p className="text-sm font-semibold text-white">No student submissions found</p>
+              <p className="text-xs text-[#7E8594] mt-1 max-w-sm mx-auto">
+                {searchTerm
+                  ? `No students or tests match "${searchTerm}".`
+                  : "No students have submitted examinations yet."}
+              </p>
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm("")}
+                  className="mt-3 text-xs text-[#00C4B4] hover:underline"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="font-medium text-lg">{studentData.student.name}</div>
-                      <div className="text-sm text-slate-400">{studentData.student.email}</div>
-                      <div className="text-sm text-slate-400 mt-1">
-                        {studentData.totalSubmissions} submission{studentData.totalSubmissions !== 1 ? 's' : ''} • 
-                        Avg Score: <span className={`font-medium ${
-                          studentData.averageScore >= 70 ? 'text-green-400' : 
-                          studentData.averageScore >= 50 ? 'text-yellow-400' : 'text-red-400'
-                        }`}>
-                          {studentData.averageScore} / 100
-                        </span>
+                  Clear search filter
+                </button>
+              )}
+            </div>
+          ) : (
+            filteredStudents.map((studentData) => {
+              const student = studentData.student || {};
+              const studentName = student.name || "Student";
+              const studentEmail = student.email || "No email";
+              const studentUID = student.universityUID || student.rollno || "";
+              const isExpanded = expandedStudents.has(student._id);
+              const avgScore = studentData.averageScore ?? 0;
+              const subCount = studentData.totalSubmissions || 0;
+
+              return (
+                <div
+                  key={student._id || Math.random()}
+                  className="bg-[#20242D] border border-white/[0.06] hover:border-white/15 rounded-2xl overflow-hidden transition-all shadow-sm"
+                >
+                  {/* Student Header Bar */}
+                  <div
+                    onClick={() => toggleStudentExpansion(student._id)}
+                    className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer hover:bg-white/[0.02] transition-colors"
+                  >
+                    {/* Left: Avatar & Info */}
+                    <div className="flex items-center gap-3.5 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-white/[0.05] border border-white/10 flex items-center justify-center font-bold text-sm text-[#00C4B4] flex-shrink-0">
+                        {studentName.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-sm sm:text-base font-semibold text-white tracking-tight truncate">
+                            {studentName}
+                          </h3>
+                          {studentUID && (
+                            <span className="text-[10px] font-mono text-[#00C4B4] bg-[#133B42] px-2 py-0.5 rounded-full border border-[#00C4B4]/20 hidden sm:inline truncate">
+                              {studentUID}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-[#8E95A5] truncate mt-0.5">
+                          {studentEmail} •{" "}
+                          <span className="text-white font-medium">
+                            {subCount} {subCount === 1 ? "submission" : "submissions"}
+                          </span>
+                        </p>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-4">
-                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        studentData.averageScore >= 70 ? 'bg-green-900/50 text-green-300' :
-                        studentData.averageScore >= 50 ? 'bg-yellow-900/50 text-yellow-300' :
-                        'bg-red-900/50 text-red-300'
-                      }`}>
-                        {studentData.averageScore} / 100
+
+                    {/* Right: Score Pill & Action Buttons */}
+                    <div className="flex items-center gap-3 flex-shrink-0 self-end sm:self-auto">
+                      {/* Avg Score Pill */}
+                      <span
+                        className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
+                          avgScore >= 70
+                            ? "bg-[#19382C] text-[#34D399] border border-[#34D399]/20"
+                            : avgScore >= 50
+                            ? "bg-[#3D271D] text-[#FB923C] border border-[#FB923C]/20"
+                            : "bg-red-500/15 text-[#F87171] border border-red-500/30"
+                        }`}
+                      >
+                        Avg: {avgScore}%
                       </span>
+
+                      {/* White Button for View Profile / Analysis */}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          openStudentProfile(studentData.submissions[0]);
+                          if (studentData.submissions && studentData.submissions.length > 0) {
+                            openStudentProfile(studentData.submissions[0]);
+                          } else {
+                            openStudentProfile(studentData);
+                          }
                         }}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-950 font-semibold text-xs transition-all shadow-sm active:scale-95 cursor-pointer"
                       >
-                        View Profile
+                        <User className="w-3.5 h-3.5 text-slate-950" />
+                        <span className="hidden sm:inline">View Profile</span>
                       </button>
-                      <svg
-                        className={`w-5 h-5 text-slate-400 transform transition-transform ${
-                          expandedStudents.has(studentData.student._id) ? 'rotate-180' : ''
-                        }`}
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
+
+                      {/* Accordion Chevron */}
+                      <div className="p-1 rounded-lg bg-white/[0.04] text-[#8E95A5]">
+                        {isExpanded ? (
+                          <ChevronUp className="w-4 h-4 text-white" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4" />
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Student Submissions (Collapsible) */}
-                {expandedStudents.has(studentData.student._id) && (
-                  <div className="border-t border-slate-700">
-                    <table className="w-full">
-                      <thead className="bg-slate-700">
-                        <tr>
-                          <th className="p-4 text-left text-slate-300">Test</th>
-                          <th className="p-4 text-left text-slate-300">Score</th>
-                          <th className="p-4 text-left text-slate-300">Submitted</th>
-                          <th className="p-4 text-left text-slate-300">Time Spent</th>
-                          <th className="p-4 text-left text-slate-300">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {studentData.submissions.map((submission) => (
-                          <tr key={submission._id} className="border-b border-slate-700 hover:bg-slate-700/50">
-                            <td className="p-4 font-medium">{submission.testId?.title || submission.assignmentId?.testId?.title || "Test"}</td>
-                            <td className="p-4">
-                              <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                                (submission.totalScore || 0) >= 70
-                                  ? 'bg-green-900/50 text-green-300'
-                                  : (submission.totalScore || 0) >= 50
-                                  ? 'bg-yellow-900/50 text-yellow-300'
-                                  : 'bg-red-900/50 text-red-300'
-                              }`}>
-                                {submission.totalScore || 0} / {submission.maxScore || 0}
-                              </span>
-                            </td>
-                            <td className="p-4 text-slate-400">{formatDate(submission.submittedAt)}</td>
-                            <td className="p-4 text-slate-400">
-                              {Math.floor((submission.timeSpent || 0) / 60)}m {(submission.timeSpent || 0) % 60}s
-                            </td>
-                            <td className="p-4">
-                              <span className="px-2 py-1 rounded text-xs bg-blue-900/50 text-blue-300">
-                                Completed
-                              </span>
-                            </td>
+                  {/* Expanded Submissions Table */}
+                  {isExpanded && (
+                    <div className="border-t border-white/[0.05] bg-[#181A22]/50 overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="border-b border-white/[0.05] bg-[#181A22]/80 text-[#7E8594] text-[11px] font-semibold uppercase tracking-wider">
+                            <th className="py-3 px-5">Examination</th>
+                            <th className="py-3 px-5">Score</th>
+                            <th className="py-3 px-5">Submitted Date</th>
+                            <th className="py-3 px-5">Time Spent</th>
+                            <th className="py-3 px-5 text-right">Action</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+                        </thead>
+                        <tbody className="divide-y divide-white/[0.04]">
+                          {(studentData.submissions || []).map((submission) => {
+                            const testTitle =
+                              submission.testId?.title ||
+                              submission.assignmentId?.testId?.title ||
+                              "Assessment";
+                            const targetAssignmentId =
+                              submission.assignmentId?._id ||
+                              submission.assignmentId ||
+                              submission._id;
+                            const totalScore = submission.totalScore ?? 0;
+                            const maxScore = submission.maxScore ?? 0;
+                            const scorePct =
+                              maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : totalScore;
+                            const timeSpentMinutes = Math.floor(
+                              (submission.timeSpent || 0) / 60
+                            );
+                            const timeSpentSeconds = (submission.timeSpent || 0) % 60;
 
-        {/* Student Profile Modal */}
-        {selectedStudent && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-slate-800 rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-              <h2 className="text-xl font-bold mb-4">Student Profile: {selectedStudent.userId?.name}</h2>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                <div>
-                  <h3 className="text-lg font-semibold mb-3">Student Information</h3>
+                            return (
+                              <tr
+                                key={submission._id}
+                                className="hover:bg-white/[0.02] transition-colors"
+                              >
+                                {/* Test Title */}
+                                <td className="py-3.5 px-5">
+                                  <div className="flex items-center gap-2.5">
+                                    <BookOpen className="w-4 h-4 text-[#00C4B4] flex-shrink-0" />
+                                    <span className="text-xs font-semibold text-white truncate">
+                                      {testTitle}
+                                    </span>
+                                  </div>
+                                </td>
+
+                                {/* Score */}
+                                <td className="py-3.5 px-5">
+                                  <span
+                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                                      scorePct >= 70
+                                        ? "bg-[#19382C] text-[#34D399] border border-[#34D399]/20"
+                                        : scorePct >= 50
+                                        ? "bg-[#3D271D] text-[#FB923C] border border-[#FB923C]/20"
+                                        : "bg-red-500/15 text-[#F87171] border border-red-500/30"
+                                    }`}
+                                  >
+                                    {totalScore} / {maxScore} pts
+                                  </span>
+                                </td>
+
+                                {/* Submitted Date */}
+                                <td className="py-3.5 px-5 text-xs text-[#8E95A5]">
+                                  {formatDate(submission.submittedAt)}
+                                </td>
+
+                                {/* Time Spent */}
+                                <td className="py-3.5 px-5">
+                                  <span className="inline-flex items-center gap-1 text-xs text-[#8E95A5]">
+                                    <Clock className="w-3.5 h-3.5 text-[#7E8594]" />
+                                    <span>
+                                      {timeSpentMinutes}m {timeSpentSeconds}s
+                                    </span>
+                                  </span>
+                                </td>
+
+                                {/* Green Button for View Test */}
+                                <td className="py-3.5 px-5 text-right">
+                                  <button
+                                    onClick={() =>
+                                      navigate(`/mentor/view-test/${targetAssignmentId}`)
+                                    }
+                                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-xs transition-all shadow-sm active:scale-95 cursor-pointer"
+                                  >
+                                    <span>View Test</span>
+                                    <ChevronRight className="w-3.5 h-3.5" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+      </div>
+
+      {/* Student Profile Modal */}
+      {selectedStudent && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4 sm:p-6 animate-fade-in">
+          <div className="bg-[#181A22] border border-white/10 rounded-2xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-5 sm:p-6 border-b border-white/[0.06] flex items-center justify-between flex-shrink-0 bg-[#20242D]/50">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-[#133B42] border border-[#00C4B4]/20 flex items-center justify-center flex-shrink-0">
+                  <User className="w-5 h-5 text-[#00C4B4]" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-base sm:text-lg font-bold text-white tracking-tight truncate">
+                    Candidate Profile: {selectedStudent.userId?.name || selectedStudent.student?.name || "Student"}
+                  </h3>
+                  <p className="text-xs text-[#7E8594] mt-0.5 truncate">
+                    Comprehensive Submission & Answer Script Analysis
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={closeStudentProfile}
+                className="p-2 rounded-xl bg-white/[0.04] hover:bg-white/10 text-[#8E95A5] hover:text-white border border-white/[0.06] transition-all cursor-pointer"
+                aria-label="Close"
+              >
+                <X className="w-4.5 h-4.5" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-5 sm:p-6 overflow-y-auto custom-scrollbar flex-1 space-y-6">
+              {/* Dual Info Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Candidate Info */}
+                <div className="p-4 sm:p-5 rounded-2xl bg-[#20242D] border border-white/[0.06]">
+                  <h4 className="text-xs font-semibold text-[#7E8594] uppercase tracking-wider mb-3">
+                    Student Details
+                  </h4>
                   <div className="space-y-2">
                     <div>
-                      <label className="block text-sm font-medium text-slate-300">Name</label>
-                      <div className="text-white">{selectedStudent.userId?.name || "Unknown"}</div>
+                      <span className="text-xs text-[#7E8594]">Full Name</span>
+                      <p className="text-sm font-semibold text-white">
+                        {selectedStudent.userId?.name || selectedStudent.student?.name || "Unknown"}
+                      </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-300">Email</label>
-                      <div className="text-white">{selectedStudent.userId?.email || "N/A"}</div>
+                      <span className="text-xs text-[#7E8594]">Email Address</span>
+                      <p className="text-sm text-[#8E95A5]">
+                        {selectedStudent.userId?.email || selectedStudent.student?.email || "N/A"}
+                      </p>
                     </div>
+                    {(selectedStudent.userId?.universityUID || selectedStudent.userId?.rollno) && (
+                      <div>
+                        <span className="text-xs text-[#7E8594]">Student ID / Roll</span>
+                        <p className="text-sm font-mono text-[#00C4B4]">
+                          {selectedStudent.userId?.universityUID || selectedStudent.userId?.rollno}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                <div>
-                  <h3 className="text-lg font-semibold mb-3">Submission Details</h3>
+                {/* Latest Submission Info */}
+                <div className="p-4 sm:p-5 rounded-2xl bg-[#20242D] border border-white/[0.06]">
+                  <h4 className="text-xs font-semibold text-[#7E8594] uppercase tracking-wider mb-3">
+                    Selected Assessment Details
+                  </h4>
                   <div className="space-y-2">
                     <div>
-                      <label className="block text-sm font-medium text-slate-300">Test</label>
-                      <div className="text-white">{selectedStudent.assignmentId?.testId?.title || "Test"}</div>
+                      <span className="text-xs text-[#7E8594]">Assessment Title</span>
+                      <p className="text-sm font-semibold text-white truncate">
+                        {selectedStudent.assignmentId?.testId?.title ||
+                          selectedStudent.testId?.title ||
+                          "Assessment"}
+                      </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-300">Score</label>
-                      <div className="text-blue-400 font-medium">{selectedStudent.totalScore || 0} / {selectedStudent.maxScore || 0}</div>
+                      <span className="text-xs text-[#7E8594]">Achieved Score</span>
+                      <p className="text-sm font-semibold text-emerald-400">
+                        {selectedStudent.totalScore ?? 0} / {selectedStudent.maxScore ?? 0} pts
+                      </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-300">Submitted</label>
-                      <div className="text-slate-400">{formatDate(selectedStudent.submittedAt)}</div>
+                      <span className="text-xs text-[#7E8594]">Submission Timestamp</span>
+                      <p className="text-sm text-[#8E95A5]">
+                        {formatDate(selectedStudent.submittedAt)}
+                      </p>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Student Answers */}
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold mb-3">Student Answers</h3>
-                {studentSubmissions.length > 0 && studentSubmissions[0].assignmentId?.testId?.questions?.length > 0 ? (
+              {/* Student Answers Breakdown */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <HelpCircle className="w-4.5 h-4.5 text-[#00C4B4]" />
+                  <h4 className="text-sm font-semibold text-white tracking-tight">
+                    Candidate Responses & Questions
+                  </h4>
+                </div>
+
+                {studentSubmissions.length > 0 &&
+                studentSubmissions[0].assignmentId?.testId?.questions?.length > 0 ? (
                   <div className="space-y-4">
-                    {/*
-                      Walk the test's own question list and pull each student
-                      response in by id, rather than walking the responses.
-                      The number shown is then the question's position in the
-                      paper, so "Question 3" means the same question for every
-                      student -- including students who sat a shuffled paper,
-                      and regardless of what order their responses were stored
-                      in. Walking the responses made the number a position in
-                      that array, which is not the same thing.
-                    */}
                     {studentSubmissions[0].assignmentId.testId.questions.map((question, index) => {
-                      const response = (studentSubmissions[0].responses || []).find(
-                        r => r.questionId?.toString() === question._id.toString()
-                      ) || {};
+                      const response =
+                        (studentSubmissions[0].responses || []).find(
+                          (r) => r.questionId?.toString() === question._id.toString()
+                        ) || {};
 
                       const isCorrect = response.isCorrect;
                       const isMCQ = question.kind === "mcq";
                       const isCoding = question.kind === "coding";
-                      const isTheory = question.kind === "theory";
-                      
-                      let studentAnswer = isMCQ 
-                        ? (response.selectedOption || "Not answered")
-                        : (response.textAnswer || "No answer provided");
-                      let correctAnswer = isMCQ ? (question.answer || "N/A") : null;
-
-                      // Get language from response (should be stored there)
-                      const answerLanguage = response.language || (isCoding ? question.language : null) || 'python';
+                      const studentAnswer = isMCQ
+                        ? response.selectedOption || "Not answered"
+                        : response.textAnswer || "No answer provided";
+                      const correctAnswer = isMCQ ? question.answer || "N/A" : null;
+                      const answerLanguage =
+                        response.language || (isCoding ? question.language : null) || "python";
 
                       return (
-                        <div key={question._id} className="bg-slate-700 rounded-lg p-4">
-                          <div className="mb-2">
-                            <span className="text-sm font-medium text-slate-300">Question {index + 1}:</span>
-                            <p className="text-white mt-1">{question.text}</p>
-                            <span className={`inline-block mt-2 px-2 py-1 rounded text-xs ${
-                              isMCQ ? 'bg-blue-900/50 text-blue-300' :
-                              isCoding ? 'bg-purple-900/50 text-purple-300' :
-                              'bg-pink-900/50 text-pink-300'
-                            }`}>
-                              {isMCQ ? 'MCQ' : isCoding ? 'Coding' : 'Theory'}
-                            </span>
-                            {isCoding && response.language && (
-                              <span className="ml-2 px-2 py-1 rounded text-xs bg-slate-600 text-slate-300">
-                                Language: {response.language}
+                        <div
+                          key={question._id || index}
+                          className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-4 sm:p-5 space-y-3"
+                        >
+                          {/* Question header */}
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <span className="text-xs font-semibold text-[#00C4B4] uppercase tracking-wider">
+                                Question {index + 1}
                               </span>
-                            )}
+                              <p className="text-sm font-medium text-white mt-1 leading-relaxed">
+                                {question.text}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <span
+                                className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold ${
+                                  isMCQ
+                                    ? "bg-[#133B42] text-[#2DD4BF] border border-[#2DD4BF]/20"
+                                    : isCoding
+                                    ? "bg-purple-500/15 text-purple-300 border border-purple-500/20"
+                                    : "bg-pink-500/15 text-pink-300 border border-pink-500/20"
+                                }`}
+                              >
+                                {isMCQ ? "MCQ" : isCoding ? "Coding" : "Theory"}
+                              </span>
+                              {isCoding && response.language && (
+                                <span className="px-2 py-0.5 rounded-md text-[10px] bg-white/[0.05] text-[#8E95A5]">
+                                  {response.language}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <div className={isMCQ ? "grid grid-cols-1 md:grid-cols-2 gap-4" : ""}>
-                            <div>
-                              <span className="text-sm font-medium text-slate-300">Student Answer:</span>
-                              {isMCQ ? (
-                                <p className={`mt-1 ${isCorrect ? 'text-green-400' : 'text-red-400'}`}>
-                                  {studentAnswer}
-                                </p>
-                              ) : (
-                                <div className="mt-1 border border-slate-600 rounded-lg overflow-hidden">
+
+                          {/* Answer display */}
+                          <div className="pt-2 border-t border-white/[0.04]">
+                            {isMCQ ? (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                                <div className="p-3 rounded-xl bg-[#181A22] border border-white/[0.04]">
+                                  <span className="text-[#7E8594] block text-[11px] mb-1">
+                                    Candidate Choice:
+                                  </span>
+                                  <span
+                                    className={`font-semibold ${
+                                      isCorrect ? "text-emerald-400" : "text-red-400"
+                                    }`}
+                                  >
+                                    {studentAnswer}
+                                  </span>
+                                </div>
+                                <div className="p-3 rounded-xl bg-[#181A22] border border-white/[0.04]">
+                                  <span className="text-[#7E8594] block text-[11px] mb-1">
+                                    Correct Option:
+                                  </span>
+                                  <span className="font-semibold text-[#00C4B4]">
+                                    {correctAnswer}
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="space-y-1.5">
+                                <span className="text-xs text-[#7E8594]">
+                                  Candidate Solution:
+                                </span>
+                                <div className="rounded-xl overflow-hidden border border-white/10 text-xs">
                                   <SyntaxHighlighter
                                     language={answerLanguage}
                                     style={vscDarkPlus}
                                     customStyle={{
                                       margin: 0,
-                                      padding: '16px',
-                                      borderRadius: '8px',
-                                      fontSize: '14px',
-                                      lineHeight: '1.5',
-                                      minHeight: '200px',
-                                      maxHeight: '400px',
-                                      overflow: 'auto',
-                                      backgroundColor: '#1e1e1e'
+                                      padding: "14px",
+                                      borderRadius: "12px",
+                                      fontSize: "12px",
+                                      lineHeight: "1.5",
+                                      maxHeight: "300px",
+                                      overflow: "auto",
+                                      backgroundColor: "#101218",
                                     }}
                                     showLineNumbers={true}
-                                    lineNumberStyle={{
-                                      minWidth: '3em',
-                                      paddingRight: '1em',
-                                      color: '#858585',
-                                      backgroundColor: '#252526'
-                                    }}
                                   >
                                     {studentAnswer}
                                   </SyntaxHighlighter>
                                 </div>
-                              )}
-                            </div>
-                            {isMCQ && (
-                              <div>
-                                <span className="text-sm font-medium text-slate-300">Correct Answer:</span>
-                                <p className="text-blue-400 mt-1">{correctAnswer}</p>
                               </div>
                             )}
                           </div>
-                          <div className="mt-2">
-                            {isMCQ && (
-                              <span className={`px-2 py-1 rounded text-xs ${
-                                isCorrect ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'
-                              }`}>
-                                {isCorrect ? 'Correct' : 'Incorrect'}
+
+                          {/* Bottom points pill */}
+                          <div className="flex items-center justify-between text-xs pt-1">
+                            <span className="text-[#7E8594]">
+                              Score Awarded:{" "}
+                              <span className="text-white font-semibold">
+                                {response.points ?? 0} / {question.points ?? 1} pts
                               </span>
-                            )}
-                            <span className="ml-2 text-sm text-slate-400">
-                              Points: {response.points || 0} / {question.points || 1}
                             </span>
-                            {!isMCQ && (
-                              <span className="ml-2 text-xs text-slate-500">
-                                (Pending mentor review)
+                            {isMCQ && (
+                              <span
+                                className={`text-[11px] font-semibold ${
+                                  isCorrect ? "text-emerald-400" : "text-red-400"
+                                }`}
+                              >
+                                {isCorrect ? "✓ Correct" : "✗ Incorrect"}
                               </span>
                             )}
                           </div>
@@ -384,69 +755,86 @@ const MentorSubmissions = () => {
                     })}
                   </div>
                 ) : (
-                  <p className="text-slate-400">No answers available for this submission.</p>
+                  <div className="p-8 text-center bg-[#20242D] border border-white/[0.06] rounded-2xl">
+                    <p className="text-xs text-[#7E8594]">
+                      Detailed question responses are not available for this record.
+                    </p>
+                  </div>
                 )}
               </div>
 
-              {/* All Student Submissions */}
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold mb-3">All Test Submissions</h3>
+              {/* All Candidate Submissions Table */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold text-white tracking-tight">
+                  All Examinations Taken by this Student
+                </h4>
                 {studentSubmissions.length === 0 ? (
-                  <p className="text-slate-400">No other submissions found for this student.</p>
+                  <p className="text-xs text-[#7E8594]">No other submissions found.</p>
                 ) : (
-                  <div className="bg-slate-700 rounded-lg p-4">
-                    <table className="w-full">
+                  <div className="bg-[#20242D] border border-white/[0.06] rounded-2xl overflow-hidden">
+                    <table className="w-full text-left border-collapse">
                       <thead>
-                        <tr className="text-left text-slate-300">
-                          <th className="p-2">Test</th>
-                          <th className="p-2">Score</th>
-                          <th className="p-2">Submitted</th>
-                          <th className="p-2">Status</th>
+                        <tr className="border-b border-white/[0.05] bg-[#181A22]/50 text-[#7E8594] text-[11px] font-semibold uppercase">
+                          <th className="py-2.5 px-4">Test</th>
+                          <th className="py-2.5 px-4">Score</th>
+                          <th className="py-2.5 px-4">Submitted</th>
+                          <th className="py-2.5 px-4 text-right">Action</th>
                         </tr>
                       </thead>
-                      <tbody>
-                        {studentSubmissions.map((submission) => (
-                          <tr key={submission._id} className="border-b border-slate-600">
-                            <td className="p-2">{submission.testId?.title || submission.assignmentId?.testId?.title || "Test"}</td>
-                            <td className="p-2">
-                              <span className={`px-2 py-1 rounded text-xs ${
-                                (submission.totalScore || 0) >= 70 
-                                  ? 'bg-green-900/50 text-green-300'
-                                  : (submission.totalScore || 0) >= 50
-                                  ? 'bg-yellow-900/50 text-yellow-300'
-                                  : 'bg-red-900/50 text-red-300'
-                              }`}>
-                                {submission.totalScore || 0} / {submission.maxScore || 0}
-                              </span>
-                            </td>
-                            <td className="p-2 text-slate-400">{formatDate(submission.submittedAt)}</td>
-                            <td className="p-2">
-                              <span className="px-2 py-1 rounded text-xs bg-blue-900/50 text-blue-300">
-                                Completed
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
+                      <tbody className="divide-y divide-white/[0.04]">
+                        {studentSubmissions.map((sub) => {
+                          const targetId =
+                            sub.assignmentId?._id || sub.assignmentId || sub._id;
+                          return (
+                            <tr key={sub._id} className="hover:bg-white/[0.02] text-xs">
+                              <td className="py-3 px-4 font-semibold text-white">
+                                {sub.testId?.title ||
+                                  sub.assignmentId?.testId?.title ||
+                                  "Assessment"}
+                              </td>
+                              <td className="py-3 px-4 text-emerald-400 font-semibold">
+                                {sub.totalScore ?? 0} / {sub.maxScore ?? 0}
+                              </td>
+                              <td className="py-3 px-4 text-[#8E95A5]">
+                                {formatDate(sub.submittedAt)}
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                <button
+                                  onClick={() => {
+                                    closeStudentProfile();
+                                    navigate(`/mentor/view-test/${targetId}`);
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-[11px] transition-all cursor-pointer"
+                                >
+                                  <span>View Test</span>
+                                  <ChevronRight className="w-3 h-3" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
                 )}
               </div>
+            </div>
 
-              <div className="flex justify-end">
-                <button
-                  onClick={closeStudentProfile}
-                  className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-md font-medium"
-                >
-                  Close
-                </button>
-              </div>
+            {/* Modal Footer */}
+            <div className="p-4 sm:p-5 border-t border-white/[0.06] bg-[#20242D]/50 flex justify-end">
+              <button
+                onClick={closeStudentProfile}
+                className="px-5 py-2 rounded-xl bg-[#2A2E39] hover:bg-[#323744] text-white font-medium text-xs transition-all cursor-pointer"
+              >
+                Close Profile
+              </button>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
 
 export default MentorSubmissions;
+
