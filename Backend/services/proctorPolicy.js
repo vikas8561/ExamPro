@@ -217,6 +217,10 @@ const STRICT = {
   detectDevtools: true,
   detectSecondMonitor: true,
   detectTampering: true,
+  // Capture a frame of the screen alongside each violation, from the share the
+  // student already granted. Reverses this system's original "no images ever"
+  // position, so it is written down here rather than hidden in a component.
+  captureOnViolation: true,
   // Chrome extension ids the exam page should probe for. Empty by default: the
   // probe only works against extensions that expose a web-accessible resource,
   // which Manifest V3 has made the exception rather than the rule, so a
@@ -242,6 +246,7 @@ const OFF = {
   detectDevtools: false,
   detectSecondMonitor: false,
   detectTampering: false,
+  captureOnViolation: false,
   blockedExtensionIds: [],
   heartbeatIntervalMs: 0,
   heartbeatGraceMs: 0,
@@ -379,6 +384,10 @@ function applySebPolicy(policy, sebState) {
     requireFullscreen: false,
     requireEntireScreenShare: false,
     detectSecondMonitor: false,
+    // There is no screen share inside SEB — it supports no `getDisplayMedia` on
+    // any platform — so there is nothing to capture from. SEB's own lockdown is
+    // what replaces the evidence here.
+    captureOnViolation: false,
   };
 }
 

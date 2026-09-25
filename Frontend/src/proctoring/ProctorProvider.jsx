@@ -6,6 +6,7 @@ import {
   startSession,
   fetchProctorPolicy,
   fetchSebExamUrl,
+  uploadScreenshot,
 } from "./transport";
 import { createFocusDetector } from "./detectors/focus";
 import {
@@ -21,6 +22,7 @@ import { createScreenDetector, requestScreenShare } from "./detectors/screen";
 import { createPermissionsDetector } from "./detectors/permissions";
 import { createNetworkDetector } from "./detectors/network";
 import { createIntegrityDetector } from "./detectors/integrity";
+import { captureScreenFrame, releaseCapture } from "./screenshot";
 import ProctorGate from "./ProctorGate";
 import ProctorOverlay from "./ProctorOverlay";
 import SebLaunchScreen from "./SebLaunchScreen";
@@ -92,10 +94,19 @@ export function ProctorProvider({
   const heartbeatRef = useRef(null);
   const terminatedRef = useRef(false);
   const phaseRef = useRef("idle");
+  // Read inside `report`, which is created once and must not close over stale
+  // state. Kept as refs for the same reason `phaseRef` is.
+  const sessionRef = useRef(null);
+  const captureOnViolationRef = useRef(false);
 
   useEffect(() => {
     phaseRef.current = phase;
   }, [phase]);
+
+  useEffect(() => {
+    sessionRef.current = session;
+    captureOnViolationRef.current = session?.policy?.captureOnViolation === true;
+  }, [session]);
 
   /**
    * Violation reporting pauses while a blocking overlay is up or the gate is
@@ -109,9 +120,31 @@ export function ProctorProvider({
     return current !== "active";
   }, []);
 
-  const report = useCallback((violationType, details) => {
-    transportRef.current?.report(violationType, details);
-  }, []);
+  const report = useCallback(
+    (violationType, details) => {
+      transportRef.current?.report(violationType, details);
+
+      // Capture what was on screen, if this exam is configured to.
+      //
+      // Started rather than awaited: reporting the violation is what matters and
+      // must not wait on a canvas draw, an upload, or either of them failing.
+      // The server enforces its own minimum gap and per-session cap, because a
+      // browser sending too many is exactly the browser not to trust.
+      if (!captureOnViolationRef.current) return;
+      const sessionId = sessionRef.current?.sessionId;
+      if (!sessionId) return;
+
+      captureScreenFrame(() => screenStreamRef.current)
+        .then((image) => {
+          if (!image) return;
+          return uploadScreenshot({ sessionId, image, violationType, details });
+        })
+        .catch(() => {
+          // Never surfaced. A missing capture is not the student's problem.
+        });
+    },
+    []
+  );
 
   // ── Reacting to the server's verdict ───────────────────────────────────
 
@@ -462,6 +495,7 @@ export function ProctorProvider({
     detectorsRef.current = [];
     keyboardRef.current = null;
     devtoolsRef.current = null;
+    releaseCapture();
   }, []);
 
   // ── The heartbeat ──────────────────────────────────────────────────────

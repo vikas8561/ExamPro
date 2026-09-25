@@ -70,19 +70,51 @@ achievable goal.
 
 ## Privacy
 
-**No video, audio, screenshots or screen recordings are captured or stored at any
-point.** There is no face recognition anywhere in the system — it was removed
-entirely, including the stored face descriptors.
+**A frame of the student's screen is captured and stored when a violation is
+recorded.** This reverses what this system originally promised, and the reversal
+was deliberate — but it is the single most sensitive thing here, so read this
+section before changing anything near it.
 
-Camera, microphone and location are a permission gate: they are requested, the
-grant is recorded as plain text, and access is held open only so that revoking it
-mid-exam can be noticed. Nothing is read through them. Screen sharing works the
-same way: it verifies the student shared their whole screen rather than a single
-tab, and notices if they stop, but no frame is ever read.
+No video, audio or screen *recording* is captured, and there is no face
+recognition anywhere — that was removed entirely, including the stored face
+descriptors.
 
-The only thing stored is a text list of violations — timestamp, type, and a short
-description — saved on the submission. Working session records clear themselves
-after two days.
+Camera, microphone and location remain a permission gate: requested, the grant
+recorded as plain text, access held open only so revoking it mid-exam is noticed.
+**Nothing is read through them.**
+
+Screen sharing is now different. The share is still verified as a whole screen
+rather than a tab, but frames **are** read from it — on every violation,
+including the weight-0 ones.
+
+### What that means in practice
+
+A whole-screen capture is *whole screen*. Whatever else the student had open is
+in the frame. It cannot be narrowed to the exam window without becoming useless,
+because the evidence is precisely what else was in front of them.
+
+Four things constrain it, and all four are code rather than policy:
+
+| | |
+|---|---|
+| Deletion | A MongoDB TTL index on `ProctorScreenshot` removes them after **72 hours**. Not a cron job somebody has to remember |
+| Size | Downscaled to 1280px, JPEG quality 0.5 — enough to identify an application, not to read correspondence |
+| Rate | Minimum 5s between captures, maximum 60 per sitting, enforced **server-side** — a browser sending more is the one not to trust |
+| Access | Admins and mentors, loaded on an explicit click, never with the report itself |
+
+Students are told before they consent, on the pre-exam screen. The screen-share
+row used to end *"Nothing is recorded or saved"*; that sentence was removed, and
+a plain statement put in its place. A permission granted for monitoring is not
+consent to be photographed, and the gate is the only place that consent can
+honestly be taken.
+
+Captures are off inside Safe Exam Browser — it supports no `getDisplayMedia` on
+any platform, so there is no share to read. SEB's own lockdown is what replaces
+the evidence there.
+
+Besides the images, the only thing stored is a text list of violations —
+timestamp, type, and a short description — saved on the submission. Working
+session records clear themselves after two days.
 
 *Trade-off to be aware of:* because the camera stream is held open, the camera
 indicator light stays on for the exam even though nothing is looking through it.

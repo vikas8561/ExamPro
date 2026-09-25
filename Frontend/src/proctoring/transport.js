@@ -191,6 +191,24 @@ export async function startSession({ assignmentId, testKind, environment }) {
   });
 }
 
+/**
+ * Send a captured frame alongside a violation.
+ *
+ * Deliberately fire-and-forget and deliberately silent on failure: a capture
+ * that does not arrive must never affect the exam, and the violation it belongs
+ * to has already been recorded by the time this runs.
+ */
+export async function uploadScreenshot({ sessionId, image, violationType, details, charged }) {
+  try {
+    return await apiRequest("/proctor/session/screenshot", {
+      method: "POST",
+      body: JSON.stringify({ sessionId, image, violationType, details, charged }),
+    });
+  } catch {
+    return null;
+  }
+}
+
 /** Redeem the global bypass code for camera, microphone and location. */
 export async function redeemBypass({ sessionId, otp }) {
   return apiRequest("/proctor/session/bypass", {

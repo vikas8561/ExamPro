@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import apiRequest from "../services/api";
+import { API_BASE_URL } from "../config/api";
 
 /**
  * The proctoring record for a finished attempt.
@@ -67,6 +68,8 @@ const SEB_FALLBACK_REASONS = {
 
 export default function ProctoringReport({ submission, assignmentId, onReEnabled }) {
   const [expanded, setExpanded] = useState(false);
+  const [shots, setShots] = useState([]);
+  const [openShot, setOpenShot] = useState(null);
 
   if (!submission) return null;
 
@@ -78,6 +81,22 @@ export default function ProctoringReport({ submission, assignmentId, onReEnabled
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const isAdmin = user?.role === "Admin";
   const targetAssignmentId = assignmentId || submission.assignmentId;
+
+  /**
+   * Fetched on demand, never with the report.
+   *
+   * These are pictures of a student's whole screen. Loading them because a
+   * reviewer happened to open a paper would mean routinely displaying private
+   * content nobody asked to see — so it takes a deliberate click.
+   */
+  const loadShots = async () => {
+    try {
+      const data = await apiRequest(`/proctor/screenshots/${targetAssignmentId}`);
+      setShots(Array.isArray(data) ? data : []);
+    } catch {
+      setShots([]);
+    }
+  };
 
   const handleReEnable = async () => {
     if (
@@ -170,6 +189,77 @@ export default function ProctoringReport({ submission, assignmentId, onReEnabled
           The access code was used for this attempt: the camera, microphone and location checks
           were waived. All other exam rules still applied.
         </p>
+      )}
+
+      {/* Captures, behind a click, with their expiry stated so nobody files a
+          bug when a week-old attempt has none. */}
+      {targetAssignmentId && (
+        <div className="mt-3 border-t border-slate-700/50 pt-3">
+          {shots.length === 0 ? (
+            <button
+              type="button"
+              onClick={loadShots}
+              className="rounded-md border border-slate-600 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
+            >
+              Load screen captures
+            </button>
+          ) : (
+            <>
+              <p className="mb-2 text-xs text-slate-400">
+                {shots.length} capture{shots.length === 1 ? "" : "s"} — whole-screen
+                images taken when a violation was recorded. Deleted automatically 72
+                hours after the exam.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {shots.map((shot) => (
+                  <button
+                    key={shot.id}
+                    type="button"
+                    onClick={() => setOpenShot(shot)}
+                    className="rounded-md border border-slate-600 px-3 py-1.5 text-left text-xs text-slate-300 hover:bg-slate-800"
+                  >
+                    <span className="block">
+                      {VIOLATION_LABELS[shot.violationType] || shot.violationType}
+                    </span>
+                    <span className="block text-slate-500">
+                      {new Date(shot.takenAt).toLocaleTimeString()}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {openShot && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/95 p-4"
+          onClick={() => setOpenShot(null)}
+        >
+          <div className="max-h-full w-full max-w-5xl overflow-auto rounded-xl border border-slate-700 bg-slate-900 p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <p className="text-sm text-slate-200">
+                {VIOLATION_LABELS[openShot.violationType] || openShot.violationType}
+                <span className="ml-2 text-xs text-slate-500">
+                  {new Date(openShot.takenAt).toLocaleString()}
+                </span>
+              </p>
+              <button
+                type="button"
+                onClick={() => setOpenShot(null)}
+                className="rounded-md border border-slate-600 px-3 py-1 text-xs text-slate-300 hover:bg-slate-800"
+              >
+                Close
+              </button>
+            </div>
+            <img
+              src={`${API_BASE_URL}/proctor/screenshots/image/${openShot.id}`}
+              alt="Screen at the moment the violation was recorded"
+              className="w-full rounded-md border border-slate-700"
+            />
+          </div>
+        </div>
       )}
 
       {expanded && violations.length > 0 && (

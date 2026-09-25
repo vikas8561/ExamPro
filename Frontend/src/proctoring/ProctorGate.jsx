@@ -20,7 +20,7 @@ import { redeemBypass } from "./transport";
 const PERMISSION_LABELS = {
   screen: {
     title: "Screen sharing",
-    detail: 'You must share your ENTIRE screen — not a window or a tab. Nothing is recorded or saved.',
+    detail: 'You must share your ENTIRE screen — not a window or a tab.',
   },
   camera: {
     title: "Camera",
@@ -255,6 +255,27 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
                 {note}
               </p>
             ))}
+          </div>
+        )}
+
+        {/* Consent has to be informed, and this is the screen where it is given.
+            The permission row above used to end "Nothing is recorded or saved",
+            which stopped being true the moment captures were introduced. A
+            student agreeing to share their screen for monitoring has not thereby
+            agreed to have it photographed, so they are told before they click
+            Begin — not in a policy document somewhere. */}
+        {policy.captureOnViolation && required.includes("screen") && (
+          <div className="mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
+            <p className="mb-1 text-sm font-semibold text-amber-200">
+              Your screen is photographed if a rule is broken
+            </p>
+            <p className="text-sm text-amber-200/80">
+              If the exam records a violation — switching away, leaving fullscreen,
+              copying, or a browser extension interfering — a picture of your whole
+              screen is saved at that moment, including anything else you have open.
+              Close anything private before you begin. Images are visible only to
+              staff reviewing your paper.
+            </p>
           </div>
         )}
 

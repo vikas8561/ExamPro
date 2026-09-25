@@ -4,6 +4,7 @@ const router = express.Router();
 
 const { authenticateToken, requireRole } = require("../middleware/auth");
 const ProctorSession = require("../models/ProctorSession");
+const ProctorScreenshot = require("../models/ProctorScreenshot");
 const ProctorSetting = require("../models/ProctorSetting");
 const Assignment = require("../models/Assignment");
 const Test = require("../models/Test");
@@ -792,6 +793,154 @@ router.post("/session/bypass", authenticateToken, bypassLimiter, async (req, res
     next(error);
   }
 });
+
+// ───────────────────────── Violation screenshots ─────────────────────────
+
+/**
+ * The smallest gap allowed between two captures in one session.
+ *
+ * Captures are taken on every violation, including the weight-0 ones — and those
+ * are weight 0 precisely because they misfire. A single extension the student
+ * cannot see can trip `page_tampered` repeatedly; without a floor, one student
+ * with an ad blocker would write thousands of images. Two frames five seconds
+ * apart show the same screen anyway.
+ */
+const SCREENSHOT_MIN_GAP_MS = 5000;
+
+/** Nothing legitimate needs more than this from one sitting. */
+const SCREENSHOT_MAX_PER_SESSION = 60;
+
+/** Downscaled JPEG; anything larger than this is not a frame we asked for. */
+const SCREENSHOT_MAX_BYTES = 400 * 1024;
+
+/**
+ * Store a frame of the student's screen, captured alongside a violation.
+ *
+ * Every rule here fails closed. An oversized body, an unrecognised format, a
+ * capture too soon after the last one, or a session that is not the caller's own
+ * is dropped silently with a 200 — the browser is told nothing useful either
+ * way, and a failed capture must never interrupt somebody's exam.
+ */
+router.post("/session/screenshot", authenticateToken, async (req, res, next) => {
+  try {
+    const session = await loadOwnSession(req);
+    if (!session || session.status !== "active") {
+      return res.json({ stored: false, reason: "no_active_session" });
+    }
+
+    const { image, violationType, details, charged } = req.body || {};
+    if (typeof image !== "string" || !image.startsWith("data:image/jpeg;base64,")) {
+      return res.json({ stored: false, reason: "unsupported_format" });
+    }
+
+    const buffer = Buffer.from(image.slice("data:image/jpeg;base64,".length), "base64");
+    if (buffer.length === 0 || buffer.length > SCREENSHOT_MAX_BYTES) {
+      return res.json({ stored: false, reason: "bad_size" });
+    }
+
+    // The gap is enforced here rather than in the browser, because a browser
+    // that has been tampered with is exactly the one sending too many.
+    const newest = await ProctorScreenshot.findOne({ sessionId: session._id })
+      .sort({ takenAt: -1 })
+      .select("takenAt")
+      .lean();
+
+    if (newest && Date.now() - new Date(newest.takenAt).getTime() < SCREENSHOT_MIN_GAP_MS) {
+      return res.json({ stored: false, reason: "too_soon" });
+    }
+
+    const taken = await ProctorScreenshot.countDocuments({ sessionId: session._id });
+    if (taken >= SCREENSHOT_MAX_PER_SESSION) {
+      return res.json({ stored: false, reason: "session_limit" });
+    }
+
+    await ProctorScreenshot.create({
+      sessionId: session._id,
+      assignmentId: session.assignmentId,
+      userId: session.userId,
+      violationType: clean(violationType, 60) || "unknown",
+      details: clean(details, 300),
+      charged: charged === true,
+      image: buffer,
+      bytes: buffer.length,
+      takenAt: new Date(),
+    });
+
+    return res.json({ stored: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * What was captured during one attempt. Admins and mentors only — never the
+ * student, and never anyone unconnected to marking the paper.
+ *
+ * Returns metadata only. The images themselves come one at a time from the route
+ * below, so opening a report does not pull a dozen screenshots of somebody's
+ * desktop over the wire.
+ */
+router.get(
+  "/screenshots/:assignmentId",
+  authenticateToken,
+  requireRole(["admin", "mentor"]),
+  async (req, res, next) => {
+    try {
+      const { assignmentId } = req.params;
+      if (!assignmentId || assignmentId.length !== 24) {
+        return res.status(400).json({ message: "Valid assignmentId is required" });
+      }
+
+      const shots = await ProctorScreenshot.find({ assignmentId })
+        .sort({ takenAt: 1 })
+        .select("violationType details charged takenAt bytes")
+        .lean();
+
+      return res.json(
+        shots.map((shot) => ({
+          id: shot._id,
+          violationType: shot.violationType,
+          details: shot.details,
+          charged: shot.charged === true,
+          takenAt: shot.takenAt,
+          bytes: shot.bytes,
+        }))
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/** One captured frame. Admins and mentors only. */
+router.get(
+  "/screenshots/image/:id",
+  authenticateToken,
+  requireRole(["admin", "mentor"]),
+  async (req, res, next) => {
+    try {
+      const { id } = req.params;
+      if (!id || id.length !== 24) {
+        return res.status(400).json({ message: "Valid id is required" });
+      }
+
+      const shot = await ProctorScreenshot.findById(id).select("image contentType").lean();
+      if (!shot) {
+        // Most likely the 72-hour expiry rather than a bad id, and saying so
+        // saves a reviewer hunting for a bug that is not there.
+        return res.status(404).json({
+          message: "This screenshot has expired. Captures are deleted automatically after 72 hours.",
+        });
+      }
+
+      res.setHeader("Content-Type", shot.contentType || "image/jpeg");
+      res.setHeader("Cache-Control", "no-store, private");
+      return res.send(shot.image);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 // ───────────────────────── Admin settings ─────────────────────────
 
