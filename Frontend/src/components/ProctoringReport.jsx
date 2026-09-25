@@ -71,6 +71,7 @@ export default function ProctoringReport({ submission, assignmentId, onReEnabled
   const [shots, setShots] = useState([]);
   const [openShot, setOpenShot] = useState(null);
   const [openShotUrl, setOpenShotUrl] = useState(null);
+  const [shotError, setShotError] = useState(null);
 
   if (!submission) return null;
 
@@ -114,14 +115,36 @@ export default function ProctoringReport({ submission, assignmentId, onReEnabled
   const openCapture = async (shot) => {
     setOpenShot(shot);
     setOpenShotUrl(null);
+    setShotError(null);
     try {
       const response = await fetch(`${API_BASE_URL}/proctor/screenshots/image/${shot.id}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
-      if (!response.ok) throw new Error(String(response.status));
-      setOpenShotUrl(URL.createObjectURL(await response.blob()));
-    } catch {
-      setOpenShotUrl(null);
+
+      if (!response.ok) {
+        setShotError(`The server refused the image (HTTP ${response.status}).`);
+        return;
+      }
+
+      const blob = await response.blob();
+
+      // A 200 is not proof of an image. If anything upstream answered with JSON
+      // — an error body, or a buffer that was serialised rather than sent as
+      // bytes — the browser would show a broken icon and say nothing about why.
+      if (!blob.type.startsWith("image/")) {
+        setShotError(`The server returned ${blob.type || "an unknown type"} instead of an image.`);
+        return;
+      }
+      if (blob.size === 0) {
+        setShotError("The server returned an empty image.");
+        return;
+      }
+
+      setOpenShotUrl(URL.createObjectURL(blob));
+    } catch (err) {
+      // Most often CORS or a dropped connection, and worth saying so rather
+      // than leaving a reviewer staring at a blank panel.
+      setShotError(err?.message || "The image could not be fetched.");
     }
   };
 
@@ -129,6 +152,7 @@ export default function ProctoringReport({ submission, assignmentId, onReEnabled
     // Object URLs pin their blob in memory until revoked, and these are images.
     if (openShotUrl) URL.revokeObjectURL(openShotUrl);
     setOpenShotUrl(null);
+    setShotError(null);
     setOpenShot(null);
   };
 
@@ -293,10 +317,17 @@ export default function ProctoringReport({ submission, assignmentId, onReEnabled
                 alt="Screen at the moment the violation was recorded"
                 className="w-full rounded-md border border-slate-700"
               />
+            ) : shotError ? (
+              <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-4 py-6 text-center text-sm text-rose-200">
+                <p className="font-semibold">This capture could not be shown</p>
+                <p className="mt-1 text-rose-200/80">{shotError}</p>
+                <p className="mt-2 text-xs text-rose-200/60">
+                  Captures are deleted automatically 72 hours after they are taken.
+                </p>
+              </div>
             ) : (
               <p className="rounded-md border border-slate-700 px-4 py-8 text-center text-sm text-slate-400">
-                Loading the capture… If it does not appear, it has passed its
-                72-hour expiry and been deleted.
+                Loading the capture…
               </p>
             )}
           </div>

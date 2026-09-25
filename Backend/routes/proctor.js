@@ -924,7 +924,7 @@ router.get(
         return res.status(400).json({ message: "Valid id is required" });
       }
 
-      const shot = await ProctorScreenshot.findById(id).select("image contentType").lean();
+      const shot = await ProctorScreenshot.findById(id).select("image contentType");
       if (!shot) {
         // Most likely the 72-hour expiry rather than a bad id, and saying so
         // saves a reviewer hunting for a bug that is not there.
@@ -933,9 +933,24 @@ router.get(
         });
       }
 
+      // Coerce explicitly rather than trusting what comes back. A Buffer field
+      // can arrive as a driver Binary depending on how the document was read,
+      // and `res.send` would then JSON-encode it — which reaches the browser as
+      // a valid 200 containing text, and renders as a broken image with nothing
+      // in any log to say why.
+      const raw = shot.image;
+      const bytes = Buffer.isBuffer(raw)
+        ? raw
+        : Buffer.from(raw?.buffer || raw?.value?.() || raw || []);
+
+      if (!bytes.length) {
+        return res.status(404).json({ message: "This screenshot is empty or has expired." });
+      }
+
       res.setHeader("Content-Type", shot.contentType || "image/jpeg");
+      res.setHeader("Content-Length", bytes.length);
       res.setHeader("Cache-Control", "no-store, private");
-      return res.send(shot.image);
+      return res.end(bytes);
     } catch (error) {
       next(error);
     }
