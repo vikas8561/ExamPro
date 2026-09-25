@@ -24,6 +24,21 @@
 /** How long to wait for older SEB builds to populate the keys asynchronously. */
 const UPDATE_KEYS_TIMEOUT_MS = 1500;
 
+/**
+ * How long to wait for `window.SafeExamBrowser` to turn up at all.
+ *
+ * Checking once, the moment the exam page mounts, assumes SEB has already
+ * injected its API by then — and there is no guarantee of that. React mounts
+ * fast, injection happens on SEB's own schedule, and losing that race makes a
+ * perfectly good SEB look like an ordinary browser. The student is then told to
+ * launch Safe Exam Browser while already sitting inside it.
+ *
+ * Only ever waited when the user agent says SEB, so no ordinary Chrome student
+ * is delayed by a single millisecond.
+ */
+const API_APPEAR_TIMEOUT_MS = 3000;
+const API_POLL_INTERVAL_MS = 100;
+
 function sebGlobal() {
   try {
     return typeof window !== "undefined" && window.SafeExamBrowser
@@ -151,6 +166,26 @@ function updateKeys() {
 }
 
 /**
+ * Wait, briefly, for SEB to inject its API.
+ *
+ * Returns the moment it appears, so a browser that already has it pays nothing,
+ * and returns false immediately for anything whose user agent is not SEB — which
+ * is every ordinary student. Only a browser claiming to be SEB but not yet
+ * showing its API is worth waiting on, and then only for a few seconds.
+ */
+async function waitForSebApi() {
+  if (isSebPresent()) return true;
+  if (!looksLikeSebWithoutApi()) return false;
+
+  const deadline = Date.now() + API_APPEAR_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, API_POLL_INTERVAL_MS));
+    if (isSebPresent()) return true;
+  }
+  return false;
+}
+
+/**
  * Everything the exam page and the server need to know about SEB, in one call.
  *
  * `pageUrl` is reported for diagnostics only. The server deliberately ignores it
@@ -159,7 +194,7 @@ function updateKeys() {
  * one student's proof being replayed by another.
  */
 export async function detectSEB() {
-  if (!isSebPresent()) {
+  if (!(await waitForSebApi())) {
     return {
       isSEB: false,
       version: "",

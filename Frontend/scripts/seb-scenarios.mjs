@@ -129,6 +129,53 @@ check("a missing version reads as empty string", result.version === "");
 setWindow({});
 check("an API with no security block does not throw", readSebKeyHash() === "");
 
+console.log("\n════ Waiting for a late-arriving JavaScript API ════\n");
+
+// The failure seen on SEB for Windows 3.10.2: the API is real and supported, but
+// the exam page checked for it before SEB had injected it, concluded it was an
+// ordinary browser, and told a student already inside SEB to launch SEB.
+{
+  setNavigator({ userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0.0.0 SEB/3.10.2" });
+  globalThis.window = { location: { href: "https://exam.test/student/take-test/1?n=abc" } };
+
+  // SEB injects 400ms after the page mounts.
+  setTimeout(() => {
+    globalThis.window.SafeExamBrowser = {
+      version: "3.10.2",
+      security: { browserExamKey: "b".repeat(64), configKey: HASH },
+    };
+  }, 400);
+
+  const startedAt = Date.now();
+  const late = await detectSEB();
+  const waited = Date.now() - startedAt;
+  check("an API that arrives late is still detected", late.isSEB === true, JSON.stringify(late));
+  check("its key hash is read once it appears", late.configKeyHash === HASH);
+  check("it returns as soon as the API appears, not after the full timeout", waited < 1500, waited + "ms");
+}
+
+{
+  // An ordinary browser must never be delayed by that wait.
+  setNavigator({ userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0.0.0" });
+  globalThis.window = { location: { href: "https://exam.test/" } };
+  const startedAt = Date.now();
+  const plain = await detectSEB();
+  check("an ordinary browser is not SEB", plain.isSEB === false);
+  check("and is not delayed at all", Date.now() - startedAt < 100, Date.now() - startedAt + "ms");
+}
+
+{
+  // A user agent claiming SEB that never produces an API gives up, rather than
+  // hanging the exam page forever.
+  setNavigator({ userAgent: "Mozilla/5.0 (Windows NT 10.0) Chrome/126.0.0.0 SEB/3.10.2" });
+  globalThis.window = { location: { href: "https://exam.test/" } };
+  const startedAt = Date.now();
+  const never = await detectSEB();
+  const waited = Date.now() - startedAt;
+  check("a claimed SEB with no API eventually gives up", never.isSEB === false);
+  check("after roughly the timeout, not forever", waited >= 2500 && waited < 6000, waited + "ms");
+}
+
 console.log("\n════ Operating system: where SEB can and cannot run ════\n");
 
 const AGENTS = {
