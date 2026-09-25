@@ -66,47 +66,101 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   return children;
 };
 
+// Admin Sidebar Context for desktop collapse and mobile drawer
+export const AdminSidebarContext = React.createContext({
+  sidebarOpen: false,
+  toggleSidebar: () => {},
+  isCollapsed: false,
+  toggleCollapse: () => {},
+});
+
+export const useAdminSidebar = () => React.useContext(AdminSidebarContext);
+
 // Admin Layout Component
 const AdminLayout = () => {
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const [isCollapsed, setIsCollapsed] = React.useState(() => {
+    try {
+      return localStorage.getItem("admin_sidebar_collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen);
   };
 
-  return (
-    <div className="min-h-screen bg-slate-900 text-white flex">
-      <AdminSidebar isOpen={sidebarOpen} onToggle={toggleSidebar} />
-      <main className="flex-1">
-        {/* Mobile Header with Hamburger */}
-        <div className="lg:hidden bg-slate-800 p-4 border-b border-slate-700">
-          <div className="flex items-center justify-between">
-            <h1 className="text-lg font-bold">Admin Panel</h1>
-            <button
-              onClick={toggleSidebar}
-              className="p-2 hover:bg-slate-700 rounded-md"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
-          </div>
-        </div>
+  const toggleCollapse = () => {
+    setIsCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("admin_sidebar_collapsed", String(next));
+      } catch {}
+      return next;
+    });
+  };
 
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/tests" element={<Tests />} />
-          <Route path="/tests/create" element={<CreateTest />} />
-          <Route path="/dsa-practice" element={<AdminDSAPractice />} />
-          <Route path="/users" element={<Users />} />
-          <Route path="/proctoring" element={<AdminProctoring />} />
-          <Route path="/view-test/:assignmentId" element={<ViewCompletedTest />} />
-          <Route path="*" element={<div className="p-6">Not Found</div>} />
-        </Routes>
-      </main>
-    </div>
+  // Keyboard shortcut Cmd+B / Ctrl+B for macOS / Windows
+  React.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        toggleCollapse();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  return (
+    <AdminSidebarContext.Provider value={{ sidebarOpen, toggleSidebar, isCollapsed, toggleCollapse }}>
+      <div className="h-[100dvh] bg-[#16181F] text-slate-100 flex overflow-hidden">
+        <AdminSidebar
+          isOpen={sidebarOpen}
+          onToggle={toggleSidebar}
+          isCollapsed={isCollapsed}
+          onToggleCollapse={toggleCollapse}
+        />
+        <main
+          className="flex-1 min-w-0 h-[100dvh] overflow-y-auto"
+          style={{
+            transition: "all 0.35s cubic-bezier(0.16, 1, 0.3, 1)",
+            willChange: "width, margin",
+          }}
+        >
+          {/* Mobile Header with Hamburger */}
+          <div className="mobile-header lg:hidden bg-[#191B22] p-4 border-b border-white/5">
+            <div className="flex items-center justify-between">
+              <h1 className="mobile-header-title text-lg font-bold">Admin Portal</h1>
+              <button
+                onClick={toggleSidebar}
+                className="mobile-hamburger-btn p-2 hover:bg-slate-700 rounded-md cursor-pointer"
+                aria-label="Open menu"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/tests" element={<Tests />} />
+            <Route path="/tests/create" element={<CreateTest />} />
+            <Route path="/dsa-practice" element={<AdminDSAPractice />} />
+            <Route path="/users" element={<Users />} />
+            <Route path="/proctoring" element={<AdminProctoring />} />
+            <Route path="/view-test/:assignmentId" element={<ViewCompletedTest />} />
+            <Route path="*" element={<div className="p-6">Not Found</div>} />
+          </Routes>
+        </main>
+      </div>
+    </AdminSidebarContext.Provider>
   );
 };
+
 
 // Student Sidebar Context for desktop collapse and mobile drawer
 export const StudentSidebarContext = React.createContext({

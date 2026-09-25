@@ -1,11 +1,29 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Search, X as CloseIcon, Users, Globe, Building, UserCheck } from "lucide-react";
-import StatusPill from "../components/StatusPill";
+import {
+  Search,
+  X as CloseIcon,
+  Users,
+  Globe,
+  Building,
+  UserCheck,
+  ClipboardList,
+  Plus,
+  Clock,
+  Download,
+  Edit3,
+  Trash2,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  Check,
+  Zap,
+  BookOpen,
+  Code2,
+  FileCheck2,
+  AlertCircle
+} from "lucide-react";
 import apiRequest from "../services/api";
-
-// No animations
-const cardAnimationStyles = ``;
 
 export default function Tests() {
   const [tests, setTests] = useState([]);
@@ -15,8 +33,6 @@ export default function Tests() {
   const [startTime, setStartTime] = useState("");
   const [duration, setDuration] = useState("");
   const [assigning, setAssigning] = useState(false);
-  // Cohort keys come from the backend (all, ru, su702, su714, cglab3, cglab4,
-  // ssiu) plus the local "manual" mode.
   const [assignmentMode, setAssignmentMode] = useState("all");
   const [cohorts, setCohorts] = useState([]);
   const [selectedStudents, setSelectedStudents] = useState([]);
@@ -28,7 +44,8 @@ export default function Tests() {
     totalPages: 1,
     totalTests: 0,
     hasNextPage: false,
-    hasPrevPage: false
+    hasPrevPage: false,
+    currentPage: 1
   });
   const [downloadingResults, setDownloadingResults] = useState({});
   const searchDebounceRef = useRef(null);
@@ -49,17 +66,14 @@ export default function Tests() {
 
     apiRequest(`/tests?${params.toString()}`)
       .then((data) => {
-        console.log("Fetched tests data:", data);
         if (data.tests && Array.isArray(data.tests)) {
           setTests(data.tests);
           if (data.pagination) {
             setPagination(data.pagination);
           }
         } else if (Array.isArray(data)) {
-          // Fallback for old format
           setTests(data);
         } else {
-          console.error("Data format unexpected:", data);
           setTests([]);
         }
       })
@@ -81,35 +95,28 @@ export default function Tests() {
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
-      fetchTests(1, ""); // Fetch immediately on mount
+      fetchTests(1, "");
       return;
     }
   }, []);
 
-  // Debounced search and pagination (only for subsequent changes)
+  // Debounced search and pagination
   useEffect(() => {
-    // Skip debounce on initial mount
-    if (isInitialMount.current) {
-      return;
-    }
+    if (isInitialMount.current) return;
 
-    // Clear previous debounce timer
     if (searchDebounceRef.current) {
       clearTimeout(searchDebounceRef.current);
     }
 
-    // Debounce search to make it smooth (only for search changes)
     searchDebounceRef.current = setTimeout(() => {
       fetchTests(currentPage, searchTerm);
-    }, 300); // 300ms debounce delay
+    }, 300);
 
-    // Cleanup function
     return () => {
       if (searchDebounceRef.current) {
         clearTimeout(searchDebounceRef.current);
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, searchTerm]);
 
   // Fetch students when manual assignment mode is selected
@@ -119,7 +126,7 @@ export default function Tests() {
     }
   }, [assignmentMode, showAssignModal]);
 
-  // Cohorts (with live student counts) for the assignment mode cards.
+  // Fetch cohorts when modal opens
   useEffect(() => {
     if (!showAssignModal) return;
     apiRequest("/assignments/cohorts")
@@ -133,44 +140,30 @@ export default function Tests() {
   const fetchStudents = async () => {
     try {
       const data = await apiRequest("/users");
-      const studentUsers = data.filter(user => user.role === "Student");
+      const studentUsers = data.filter((user) => user.role === "Student");
       setStudents(studentUsers);
     } catch (err) {
       console.error("Error fetching students:", err);
     }
   };
 
-  // Delete a test
-  const deleteTest = async (id) => {
+  // Delete a test with confirmation
+  const deleteTest = async (id, title) => {
+    if (!window.confirm(`Are you sure you want to delete test "${title || 'this test'}"? This action cannot be undone.`)) {
+      return;
+    }
     try {
       await apiRequest(`/tests/${id}`, {
         method: "DELETE",
       });
-      // Refresh the list to maintain pagination consistency
       fetchTests(currentPage, searchTerm);
     } catch (err) {
       console.error("Error deleting test:", err);
+      alert("Failed to delete test.");
     }
   };
 
-  // Toggle status (Active / Scheduled)
-  const updateTest = async (id, updatedFields) => {
-    try {
-      const updatedTest = await apiRequest(`/tests/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updatedFields),
-      });
-      setTests((prev) =>
-        prev.map((t) => (t._id === id ? updatedTest : t))
-      );
-    } catch (err) {
-      console.error("Error updating test:", err);
-    }
-  };
-
-  // Assign test to a whole cohort. The cohort list is served by the backend
-  // (see services/principals COHORTS) so the campuses stay defined in one place.
+  // Assign test to a cohort
   const assignTestToCohort = async () => {
     if (!selectedTest || !startTime || !duration) return;
 
@@ -186,7 +179,7 @@ export default function Tests() {
           testId: selectedTest,
           cohort: cohort.key,
           startTime: new Date(startTime).toISOString(),
-          duration: parseInt(duration)
+          duration: parseInt(duration, 10),
         }),
       });
 
@@ -195,8 +188,7 @@ export default function Tests() {
       setSelectedTest(null);
       setStartTime("");
       setDuration("");
-      // Refresh tests list to update status from "Draft" to "Active"
-      fetchTests();
+      fetchTests(currentPage, searchTerm);
     } catch (err) {
       console.error("Error assigning test:", err);
       alert(err.message || `Failed to assign test to ${cohort.label}`);
@@ -205,6 +197,7 @@ export default function Tests() {
     }
   };
 
+  // Assign test to selected students
   const assignTestToSelected = async () => {
     if (!selectedTest || !startTime || !duration || selectedStudents.length === 0) return;
 
@@ -217,7 +210,7 @@ export default function Tests() {
           testId: selectedTest,
           studentIds: selectedStudents,
           startTime: new Date(startTime).toISOString(),
-          duration: parseInt(duration)
+          duration: parseInt(duration, 10),
         }),
       });
 
@@ -228,8 +221,7 @@ export default function Tests() {
       setDuration("");
       setSelectedStudents([]);
       setAssignmentMode("all");
-      // Refresh tests list to update status from "Draft" to "Active"
-      fetchTests();
+      fetchTests(currentPage, searchTerm);
     } catch (err) {
       console.error("Error assigning test:", err);
       alert("Failed to assign test to selected students");
@@ -238,39 +230,34 @@ export default function Tests() {
     }
   };
 
-  // Toggle student selection
   const toggleStudentSelection = (studentId) => {
-    setSelectedStudents(prev =>
+    setSelectedStudents((prev) =>
       prev.includes(studentId)
-        ? prev.filter(id => id !== studentId)
+        ? prev.filter((id) => id !== studentId)
         : [...prev, studentId]
     );
   };
 
-  // Select all students
   const selectAllStudents = () => {
-    const filteredStudentIds = filteredStudents.map(student => student._id);
+    const filteredStudentIds = filteredStudents.map((s) => s._id);
     setSelectedStudents(filteredStudentIds);
   };
 
-  // Clear all selections
   const clearAllSelections = () => {
     setSelectedStudents([]);
   };
 
-  // Filter students based on search query
-  const filteredStudents = students.filter(
-    (student) =>
-      student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      student.email.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  // Tests are already filtered by backend, no need for client-side filtering
-  const filteredTests = tests;
+  const filteredStudents = useMemo(() => {
+    return students.filter(
+      (student) =>
+        student.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        student.email?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [students, searchQuery]);
 
   // Download test results as CSV
   const downloadTestResults = async (testId, testTitle) => {
-    setDownloadingResults(prev => ({ ...prev, [testId]: true }));
+    setDownloadingResults((prev) => ({ ...prev, [testId]: true }));
     try {
       const data = await apiRequest(`/tests/${testId}/results/download`);
 
@@ -279,32 +266,24 @@ export default function Tests() {
         return;
       }
 
-      // Build CSV content
       const headers = ["S.No.", "Student Name", "Marks Obtained", "Maximum Marks", "Percentage"];
       const rows = data.results.map((r, i) => {
-        const percentage = r.maxScore > 0
-          ? ((r.totalScore / r.maxScore) * 100).toFixed(2) + "%"
-          : "0.00%";
+        const percentage =
+          r.maxScore > 0 ? ((r.totalScore / r.maxScore) * 100).toFixed(2) + "%" : "0.00%";
         return [
           i + 1,
-          `"${r.name.replace(/"/g, '""')}"`,  // Escape quotes in names
+          `"${r.name ? r.name.replace(/"/g, '""') : "Unknown"}"`,
           r.totalScore,
           r.maxScore,
-          percentage
+          percentage,
         ];
       });
 
-      const csvContent = [
-        headers.join(","),
-        ...rows.map(row => row.join(","))
-      ].join("\n");
-
-      // Add BOM for proper Excel encoding
+      const csvContent = [headers.join(","), ...rows.map((row) => row.join(","))].join("\n");
       const BOM = "\uFEFF";
       const blob = new Blob([BOM + csvContent], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
 
-      // Trigger download
       const link = document.createElement("a");
       const safeName = testTitle.replace(/[^a-zA-Z0-9 ]/g, "").replace(/\s+/g, "_");
       link.href = url;
@@ -317,529 +296,579 @@ export default function Tests() {
       console.error("Error downloading results:", err);
       alert("Failed to download results. " + (err.message || ""));
     } finally {
-      setDownloadingResults(prev => ({ ...prev, [testId]: false }));
+      setDownloadingResults((prev) => ({ ...prev, [testId]: false }));
     }
   };
 
+  // Compute live KPIs
+  const totalTestsCount = pagination.totalTests || tests.length;
+  const activeCount = useMemo(() => tests.filter((t) => t.status === "Active").length, [tests]);
+  const scheduledCount = useMemo(() => tests.filter((t) => t.status === "Scheduled").length, [tests]);
+  const totalSubmissionsCount = useMemo(
+    () => tests.reduce((acc, t) => acc + (t.participants || 0), 0),
+    [tests]
+  );
+
   return (
     <div
-      className="p-6 min-h-screen flex flex-col"
-      style={{ backgroundColor: "#0B1220" }}
+      className="p-4 sm:p-6 lg:p-8 min-h-screen flex flex-col font-sans"
+      style={{ backgroundColor: "#16181F" }}
     >
-      <style
-        dangerouslySetInnerHTML={{
-          __html:
-            ".scroll-hide::-webkit-scrollbar { display: none; } .scroll-hide { -ms-overflow-style: none; scrollbar-width: none; }",
-        }}
-      />
-      <style>{cardAnimationStyles}</style>
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 5px;
+          height: 5px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.02);
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.12);
+          border-radius: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.25);
+        }
+      `}</style>
 
-      {/* Navbar with Heading, Search Bar, and Create Test Button */}
-      <div className="sticky top-0 z-50 relative mb-8">
-        <div className="relative bg-slate-800/95 backdrop-blur-md border border-slate-700/50 rounded-2xl p-6 shadow-lg">
-          {/* Title and Actions Row */}
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-            {/* Section Heading */}
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-slate-700/60 rounded-xl">
-                <svg className="h-8 w-8 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold text-white">
-                  Tests
-                </h1>
-                <p className="text-slate-400 text-sm mt-1">
-                  {pagination.totalTests || tests.length} total tests • Page {pagination.currentPage || currentPage} of {pagination.totalPages || 1}
-                </p>
-              </div>
+      {/* Main Container */}
+      <div className="max-w-7xl mx-auto w-full space-y-6 flex-1 flex flex-col">
+
+        {/* Top Header Row - Synchronized 3.5rem baseline matching Sidebar */}
+        <div
+          className="flex flex-col md:flex-row md:items-center justify-between pb-5 mb-2 gap-4"
+          style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.05)", minHeight: "3.5rem" }}
+        >
+          {/* Left: Branding & Subtitle */}
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-[#133B42] border border-[#00C4B4]/20 flex items-center justify-center flex-shrink-0">
+              <ClipboardList className="w-5 h-5 text-[#00C4B4]" />
             </div>
+            <div>
+              <h1 className="text-base sm:text-lg font-semibold text-white tracking-tight leading-tight">
+                Tests Management
+              </h1>
+              <p className="text-xs text-[#7E8594] mt-0.5">
+                Author, schedule, assign cohorts & export examination results
+              </p>
+            </div>
+          </div>
 
-            {/* Search Bar and Create Test Button */}
-            <div className="flex items-center gap-3">
-              <div className="relative max-w-md w-full lg:w-80 group">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Search className="h-5 w-5 transition-colors duration-200" style={{ color: "#FFFFFF" }} />
-                </div>
-                <input
-                  type="text"
-                  placeholder="Search tests..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-12 pr-12 py-3 rounded-xl focus:outline-none transition-all duration-300"
-                  style={{
-                    backgroundColor: "#1E293B",
-                    border: "1px solid rgba(255, 255, 255, 0.3)",
-                    color: "#FFFFFF",
-                    boxShadow: "none",
-                  }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.5)";
-                    e.currentTarget.style.boxShadow = "0 0 0 2px rgba(255, 255, 255, 0.1)";
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
-                    e.currentTarget.style.boxShadow = "none";
-                  }}
-                  onMouseEnter={(e) => {
-                    if (document.activeElement !== e.currentTarget) {
-                      e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.4)";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (document.activeElement !== e.currentTarget) {
-                      e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
-                    }
-                  }}
-                />
-                <style>{`
-                  input::placeholder {
-                    color: #9CA3AF !important;
-                    opacity: 1;
-                  }
-                `}</style>
-                {/* Always render clear button to prevent layout shift, but make it invisible when no text */}
+          {/* Right: Search, Refresh & Create Test White Button */}
+          <div className="flex items-center flex-wrap gap-3">
+            {/* Search Input */}
+            <div className="relative w-full sm:w-64">
+              <Search className="w-4 h-4 text-[#7E8594] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search tests..."
+                className="w-full bg-[#20242D] border border-white/[0.08] rounded-xl pl-9 pr-9 py-2 text-xs sm:text-sm text-white placeholder-[#7E8594] focus:outline-none focus:border-[#00C4B4]/50 focus:ring-1 focus:ring-[#00C4B4]/50 transition-all"
+              />
+              {searchTerm && (
                 <button
                   onClick={() => setSearchTerm("")}
-                  className="absolute inset-y-0 right-0 pr-4 flex items-center transition-all duration-200"
-                  style={{
-                    color: searchTerm ? "#FFFFFF" : "transparent",
-                    pointerEvents: searchTerm ? "auto" : "none",
-                    cursor: searchTerm ? "pointer" : "default"
-                  }}
-                  onMouseEnter={(e) => {
-                    if (searchTerm) {
-                      e.currentTarget.style.color = "#E5E7EB";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (searchTerm) {
-                      e.currentTarget.style.color = "#FFFFFF";
-                    }
-                  }}
-                  aria-label="Clear search"
-                  tabIndex={searchTerm ? 0 : -1}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#7E8594] hover:text-white transition-colors"
                 >
-                  <CloseIcon className="h-5 w-5" />
+                  <CloseIcon className="w-3.5 h-3.5" />
                 </button>
-              </div>
-
-              {/* Create Test Button */}
-              <Link
-                to="/admin/tests/create"
-                className="group inline-flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-300 shadow-sm hover:shadow-md"
-                style={{
-                  backgroundColor: "rgba(255, 255, 255, 0.1)",
-                  color: "#FFFFFF",
-                  border: "1px solid rgba(255, 255, 255, 0.3)",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.2)";
-                  e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.5)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
-                  e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
-                }}
-              >
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                <span>Create Test</span>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Tests Grid - cards styled like Assigned Tests in student panel */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 overflow-y-auto flex-grow scroll-hide">
-        {filteredTests.map((t, index) => (
-          <div
-            key={t._id}
-            className="relative backdrop-blur-sm rounded-2xl p-5 border overflow-hidden flex flex-col justify-between min-h-[400px]"
-            style={{
-              backgroundColor: "rgba(15, 23, 42, 0.9)",
-              borderColor: "rgba(148, 163, 184, 0.2)",
-              boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2)",
-            }}
-          >
-
-            <div className="relative z-10">
-              {/* Title Section */}
-              <div className="mb-4">
-                <h3
-                  className="text-xl font-bold mb-1 truncate"
-                  style={{ color: "#F1F5F9" }}
-                >
-                  {t.title}
-                </h3>
-              </div>
-              {/* Details rows styled similarly */}
-              <div className="space-y-2.5 mb-4">
-                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-slate-800/80 via-slate-900/80 to-slate-800/80 rounded-xl border border-slate-700/50 shadow-sm group/item">
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className="p-2 bg-gradient-to-br from-purple-500/20 to-purple-600/20 rounded-lg shadow-md flex-shrink-0">
-                      <svg
-                        className="h-4 w-4 text-purple-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
-                        />
-                      </svg>
-                    </div>
-                    <span className="text-slate-300 text-sm font-semibold whitespace-nowrap">
-                      Subject
-                    </span>
-                  </div>
-                  <span className="px-3 py-1.5 bg-gradient-to-r from-purple-600/30 to-purple-700/30 text-purple-200 rounded-lg text-xs font-bold border border-purple-500/30 shadow-md min-w-[80px] text-center truncate">
-                    {t.subject || "N/A"}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-slate-800/80 via-slate-900/80 to-slate-800/80 rounded-xl border border-slate-700/50 shadow-sm group/item">
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className="p-2 bg-gradient-to-br from-blue-500/20 to-blue-600/20 rounded-lg shadow-md flex-shrink-0">
-                      <svg
-                        className="h-4 w-4 text-blue-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                    </div>
-                    <span className="text-slate-300 text-sm font-semibold whitespace-nowrap">
-                      Time Limit
-                    </span>
-                  </div>
-                  <span className="px-3 py-1.5 bg-gradient-to-r from-blue-600/30 to-blue-700/30 text-blue-200 rounded-lg text-xs font-bold border border-blue-500/30 shadow-md min-w-[80px] text-center">
-                    {t.timeLimit} min
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-slate-800/80 via-slate-900/80 to-slate-800/80 rounded-xl border border-slate-700/50 shadow-sm group/item">
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className="p-2 bg-gradient-to-br from-emerald-500/20 to-emerald-600/20 rounded-lg shadow-md flex-shrink-0">
-                      <svg
-                        className="h-4 w-4 text-emerald-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                    </div>
-                    <span className="text-slate-300 text-sm font-semibold whitespace-nowrap">
-                      Type
-                    </span>
-                  </div>
-                  <span className="px-3 py-1.5 bg-gradient-to-r from-emerald-600/30 to-emerald-700/30 text-emerald-200 rounded-lg text-xs font-bold border border-emerald-500/30 shadow-md min-w-[80px] text-center capitalize">
-                    {t.type}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-slate-800/80 via-slate-900/80 to-slate-800/80 rounded-xl border border-slate-700/50 shadow-sm group/item">
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className="p-2 bg-gradient-to-br from-amber-500/20 to-amber-600/20 rounded-lg shadow-md flex-shrink-0">
-                      <svg
-                        className="h-4 w-4 text-amber-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 11c0 1.657-1.343 3-3 3S6 12.657 6 11s1.343-3 3-3 3 1.343 3 3zM19.5 11.5a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0zM12 13.5c-2.33 0-7 1.17-7 3.5V19h7"
-                        />
-                      </svg>
-                    </div>
-                    <span className="text-slate-300 text-sm font-semibold whitespace-nowrap">
-                      Status
-                    </span>
-                  </div>
-                  <span className={`px-3 py-1.5 rounded-lg text-xs font-bold border shadow-md min-w-[80px] text-center ${t.status === "Active"
-                    ? 'bg-gradient-to-r from-green-600/30 to-green-700/30 text-green-200 border-green-500/30'
-                    : t.status === "Scheduled"
-                      ? 'bg-gradient-to-r from-blue-600/30 to-blue-700/30 text-blue-200 border-blue-500/30'
-                      : 'bg-gradient-to-r from-slate-700/50 to-slate-800/50 text-slate-300 border-slate-600/30'
-                    }`}>
-                    {t.status}
-                  </span>
-                </div>
-
-              </div>
+              )}
             </div>
 
-            <div className="relative z-10 flex flex-col gap-2.5 mt-auto pt-4" style={{ borderTop: "1px solid rgba(148, 163, 184, 0.2)" }}>
-              {/* Download Results Button */}
-              <button
-                onClick={() => downloadTestResults(t._id, t.title)}
-                disabled={(!t.participants || t.participants === 0) || downloadingResults[t._id]}
-                className={`w-full px-4 py-2.5 rounded-lg text-xs font-semibold border shadow-md transition-all duration-300 flex items-center justify-center gap-2 ${(!t.participants || t.participants === 0)
-                    ? 'bg-slate-800/40 text-slate-500 border-slate-700/30 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-emerald-600/20 to-emerald-700/20 hover:from-emerald-600/30 hover:to-emerald-700/30 text-emerald-300 border-emerald-500/30 hover:shadow-lg hover:scale-[1.02]'
-                  }`}
-                title={(!t.participants || t.participants === 0) ? "No results available — test has no submissions yet" : `Download results for ${t.participants} student(s)`}
-              >
-                {downloadingResults[t._id] ? (
-                  <>
-                    <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Downloading...
-                  </>
-                ) : (
-                  <>
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    Download Results {t.participants > 0 ? `(${t.participants})` : ''}
-                  </>
-                )}
-              </button>
-
-              {/* Action Buttons Row */}
-              <div className="flex justify-between gap-2.5">
-                <button
-                  onClick={() => nav(`/admin/tests/create?id=${t._id}`)}
-                  className="px-4 py-2 bg-gradient-to-r from-slate-700/80 to-slate-800/80 hover:from-slate-600/90 hover:to-slate-700/90 text-gray-100 rounded-lg text-xs font-semibold border border-slate-600/50 shadow-md hover:shadow-lg transition-all duration-300 hover:scale-105 flex-1 text-center flex items-center justify-center gap-1.5"
-                >
-                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                  Edit
-                </button>
-                <button
-                  onClick={() => {
-                    setSelectedTest(t._id);
-                    setShowAssignModal(true);
-                  }}
-                  className="px-4 py-2 bg-gradient-to-r from-blue-600/20 to-blue-700/20 hover:from-blue-600/30 hover:to-blue-700/30 text-blue-300 rounded-lg text-xs font-semibold border border-blue-500/30 shadow-md hover:shadow-lg transition-all duration-300 hover:scale-105 flex-1 text-center flex items-center justify-center gap-1.5"
-                >
-                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Assign
-                </button>
-                <button
-                  onClick={() => deleteTest(t._id)}
-                  className="px-4 py-2 bg-gradient-to-r from-red-600/20 to-red-700/20 hover:from-red-600/30 hover:to-red-700/30 text-red-300 rounded-lg text-xs font-semibold border border-red-500/30 shadow-md hover:shadow-lg transition-all duration-300 hover:scale-105 flex-1 text-center flex items-center justify-center gap-1.5"
-                >
-                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
-        {loading ? (
-          <div className="col-span-full text-center py-8 text-sm" style={{ color: "#9CA3AF" }}>
-            Loading tests...
-          </div>
-        ) : filteredTests.length === 0 ? (
-          <div className="col-span-full text-center py-8 text-sm" style={{ color: "#9CA3AF" }}>
-            {searchTerm ? "No tests match your search." : "No tests found."}
-          </div>
-        ) : null}
-      </div>
-
-      {/* Pagination Controls */}
-      {!loading && pagination.totalPages > 1 && (
-        <div className="mt-8 flex flex-col items-center gap-4">
-          <div className="flex items-center justify-center gap-2">
+            {/* Refresh Sync Button */}
             <button
-              onClick={() => {
-                if (currentPage > 1) {
-                  setCurrentPage(currentPage - 1);
-                }
-              }}
-              disabled={!pagination.hasPrevPage || currentPage === 1}
-              className="px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100"
-              style={{
-                backgroundColor: !pagination.hasPrevPage || currentPage === 1
-                  ? 'rgba(255, 255, 255, 0.05)'
-                  : '#FFFFFF',
-                color: !pagination.hasPrevPage || currentPage === 1 ? '#FFFFFF' : '#000000',
-                border: '2px solid rgba(255, 255, 255, 0.2)'
-              }}
-              onMouseEnter={(e) => {
-                if (pagination.hasPrevPage && currentPage > 1) {
-                  e.currentTarget.style.background = '#FFFFFF';
-                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.6)';
-                  e.currentTarget.style.boxShadow = '0 8px 20px rgba(255, 255, 255, 0.3)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (pagination.hasPrevPage && currentPage > 1) {
-                  e.currentTarget.style.background = '#FFFFFF';
-                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-                  e.currentTarget.style.boxShadow = '0 4px 15px rgba(0, 0, 0, 0.2)';
-                }
-              }}
+              onClick={() => fetchTests(currentPage, searchTerm)}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-[#133B42] text-[#00C4B4] border border-[#00C4B4]/30 hover:bg-[#1A4C55] transition-all cursor-pointer disabled:opacity-50"
+              title="Refresh tests"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              Previous
+              <Zap className={`w-3.5 h-3.5 fill-[#00C4B4] ${loading ? "animate-spin" : ""}`} />
+              <span className="hidden sm:inline">Refresh</span>
             </button>
 
-            <div className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)' }}>
-              {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
-                let pageNum;
-                if (pagination.totalPages <= 5) {
-                  pageNum = i + 1;
-                } else if (currentPage <= 3) {
-                  pageNum = i + 1;
-                } else if (currentPage >= pagination.totalPages - 2) {
-                  pageNum = pagination.totalPages - 4 + i;
-                } else {
-                  pageNum = currentPage - 2 + i;
-                }
+            {/* ⚪ White Button: Create Test */}
+            <Link
+              to="/admin/tests/create"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-white hover:bg-slate-100 text-slate-950 shadow-sm transition-all hover:scale-105 active:scale-95 cursor-pointer"
+            >
+              <Plus className="w-4 h-4 stroke-[2.5]" />
+              <span>Create Test</span>
+            </Link>
+          </div>
+        </div>
+
+        {/* 4-Card KPI Overview Row */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
+          {/* Total Tests */}
+          <div className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-4 sm:p-5 hover:border-white/10 transition-all shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] sm:text-xs font-semibold tracking-wide text-[#7E8594] uppercase">
+                Total Tests
+              </span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-medium bg-[#133B42] text-[#2DD4BF] border border-[#2DD4BF]/20">
+                Catalog
+              </span>
+            </div>
+            <div className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+              {totalTestsCount}
+            </div>
+            <p className="text-[11px] text-[#7E8594] mt-1 flex items-center gap-1">
+              <ClipboardList className="w-3 h-3 text-[#2DD4BF]" />
+              Created assessments
+            </p>
+          </div>
+
+          {/* Active Tests */}
+          <div className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-4 sm:p-5 hover:border-white/10 transition-all shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] sm:text-xs font-semibold tracking-wide text-[#7E8594] uppercase">
+                Active Tests
+              </span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-medium bg-[#19382C] text-[#34D399] border border-[#34D399]/20">
+                Live
+              </span>
+            </div>
+            <div className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+              {activeCount}
+            </div>
+            <p className="text-[11px] text-[#7E8594] mt-1 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#34D399]" />
+              Currently accessible
+            </p>
+          </div>
+
+          {/* Scheduled Tests */}
+          <div className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-4 sm:p-5 hover:border-white/10 transition-all shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] sm:text-xs font-semibold tracking-wide text-[#7E8594] uppercase">
+                Scheduled
+              </span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-medium bg-[#1E293B] text-[#38BDF8] border border-[#38BDF8]/20">
+                Upcoming
+              </span>
+            </div>
+            <div className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+              {scheduledCount}
+            </div>
+            <p className="text-[11px] text-[#7E8594] mt-1 flex items-center gap-1">
+              <Clock className="w-3 h-3 text-[#38BDF8]" />
+              Scheduled for cohorts
+            </p>
+          </div>
+
+          {/* Total Submissions in view */}
+          <div className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-4 sm:p-5 hover:border-white/10 transition-all shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] sm:text-xs font-semibold tracking-wide text-[#7E8594] uppercase">
+                Participants
+              </span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-medium bg-[#37233B] text-[#F472B6] border border-[#F472B6]/20">
+                Submissions
+              </span>
+            </div>
+            <div className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+              {totalSubmissionsCount}
+            </div>
+            <p className="text-[11px] text-[#7E8594] mt-1 flex items-center gap-1">
+              <Users className="w-3 h-3 text-[#F472B6]" />
+              Candidate attempts
+            </p>
+          </div>
+        </div>
+
+        {/* Tests Grid */}
+        <div className="flex-1">
+          {loading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {[1, 2, 3, 4, 5, 6].map((n) => (
+                <div
+                  key={n}
+                  className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-6 h-[340px] animate-pulse flex flex-col justify-between"
+                >
+                  <div className="space-y-4">
+                    <div className="h-5 bg-white/[0.05] rounded-lg w-3/4" />
+                    <div className="h-4 bg-white/[0.03] rounded-lg w-1/2" />
+                    <div className="space-y-2 pt-4">
+                      <div className="h-10 bg-white/[0.04] rounded-xl" />
+                      <div className="h-10 bg-white/[0.04] rounded-xl" />
+                    </div>
+                  </div>
+                  <div className="h-10 bg-white/[0.05] rounded-xl" />
+                </div>
+              ))}
+            </div>
+          ) : tests.length === 0 ? (
+            <div className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-12 text-center my-8">
+              <div className="w-14 h-14 rounded-2xl bg-[#133B42] border border-[#00C4B4]/20 flex items-center justify-center mx-auto mb-4">
+                <AlertCircle className="w-7 h-7 text-[#00C4B4]" />
+              </div>
+              <h3 className="text-base font-bold text-white">No Tests Found</h3>
+              <p className="text-xs text-[#7E8594] mt-1.5 max-w-sm mx-auto">
+                {searchTerm
+                  ? `No assessments match your search query "${searchTerm}". Try resetting search filters.`
+                  : "No tests are currently configured in the platform catalog."}
+              </p>
+              {searchTerm ? (
+                <button
+                  onClick={() => setSearchTerm("")}
+                  className="mt-4 px-4 py-2 bg-white/10 hover:bg-white/15 text-white text-xs font-semibold rounded-xl transition-all cursor-pointer"
+                >
+                  Clear Search
+                </button>
+              ) : (
+                <Link
+                  to="/admin/tests/create"
+                  className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-100 text-slate-950 text-xs font-semibold rounded-xl transition-all cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Create Your First Test</span>
+                </Link>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {tests.map((t) => {
+                const isDownloading = downloadingResults[t._id];
+                const hasParticipants = t.participants && t.participants > 0;
 
                 return (
-                  <button
-                    key={pageNum}
-                    onClick={() => setCurrentPage(pageNum)}
-                    className={`px-4 py-2 rounded-lg font-semibold transition-all duration-300 ${currentPage === pageNum
-                      ? 'bg-white text-black shadow-lg transform scale-105'
-                      : 'text-white hover:bg-white/20 hover:scale-105'
-                      }`}
+                  <div
+                    key={t._id}
+                    className="bg-[#20242D] border border-white/[0.06] hover:border-[#00C4B4]/30 rounded-2xl p-5 sm:p-6 transition-all duration-200 flex flex-col justify-between shadow-sm group hover:-translate-y-0.5"
                   >
-                    {pageNum}
-                  </button>
+                    <div>
+                      {/* Card Top: Title & Status Badge */}
+                      <div className="flex items-start justify-between gap-3 mb-4">
+                        <div className="flex-1 min-w-0">
+                          <h3
+                            className="text-base font-bold text-white tracking-tight truncate group-hover:text-[#00C4B4] transition-colors"
+                            title={t.title}
+                          >
+                            {t.title}
+                          </h3>
+                          <p className="text-[11px] text-[#7E8594] mt-0.5 truncate">
+                            {t.subject || "General Assessment"}
+                          </p>
+                        </div>
+
+                        {/* Status Pill */}
+                        <span
+                          className={`px-2.5 py-1 rounded-full text-[11px] font-semibold flex-shrink-0 border ${
+                            t.status === "Active"
+                              ? "bg-[#19382C] text-[#34D399] border-[#34D399]/30"
+                              : t.status === "Scheduled"
+                              ? "bg-[#1E293B] text-[#38BDF8] border-[#38BDF8]/30"
+                              : "bg-white/[0.04] text-[#8E95A5] border-white/10"
+                          }`}
+                        >
+                          {t.status}
+                        </span>
+                      </div>
+
+                      {/* Detail Metrics Matrix */}
+                      <div className="grid grid-cols-2 gap-2.5 mb-5">
+                        {/* Time Limit */}
+                        <div className="bg-[#181A22] border border-white/[0.04] rounded-xl p-2.5 flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-lg bg-[#133B42] flex items-center justify-center flex-shrink-0">
+                            <Clock className="w-3.5 h-3.5 text-[#00C4B4]" />
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-[10px] text-[#7E8594] uppercase tracking-wider block">
+                              Duration
+                            </span>
+                            <span className="text-xs font-semibold text-white truncate block">
+                              {t.timeLimit} mins
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Type */}
+                        <div className="bg-[#181A22] border border-white/[0.04] rounded-xl p-2.5 flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-lg bg-[#1E293B] flex items-center justify-center flex-shrink-0">
+                            {t.type?.toLowerCase().includes("code") ? (
+                              <Code2 className="w-3.5 h-3.5 text-[#38BDF8]" />
+                            ) : (
+                              <BookOpen className="w-3.5 h-3.5 text-[#38BDF8]" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-[10px] text-[#7E8594] uppercase tracking-wider block">
+                              Type
+                            </span>
+                            <span className="text-xs font-semibold text-white capitalize truncate block">
+                              {t.type || "MCQ"}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Submissions / Turnout */}
+                        <div className="bg-[#181A22] border border-white/[0.04] rounded-xl p-2.5 flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-lg bg-[#37233B] flex items-center justify-center flex-shrink-0">
+                            <Users className="w-3.5 h-3.5 text-[#F472B6]" />
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-[10px] text-[#7E8594] uppercase tracking-wider block">
+                              Turnout
+                            </span>
+                            <span className="text-xs font-semibold text-white truncate block">
+                              {t.participants || 0} students
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Subject Badge */}
+                        <div className="bg-[#181A22] border border-white/[0.04] rounded-xl p-2.5 flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-lg bg-[#3A2B18] flex items-center justify-center flex-shrink-0">
+                            <FileCheck2 className="w-3.5 h-3.5 text-[#FBBF24]" />
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-[10px] text-[#7E8594] uppercase tracking-wider block">
+                              Subject
+                            </span>
+                            <span className="text-xs font-semibold text-white truncate block">
+                              {t.subject || "General"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Card Actions Bottom Section */}
+                    <div className="pt-4 border-t border-white/[0.05] space-y-2.5">
+                      {/* Download Results CSV Button */}
+                      <button
+                        onClick={() => downloadTestResults(t._id, t.title)}
+                        disabled={!hasParticipants || isDownloading}
+                        className={`w-full py-2 px-3 rounded-xl text-xs font-semibold border flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                          !hasParticipants
+                            ? "bg-white/[0.02] text-[#555C6D] border-white/[0.04] cursor-not-allowed"
+                            : "bg-[#19382C] text-[#34D399] border-[#34D399]/30 hover:bg-[#1F4637] shadow-sm active:scale-95"
+                        }`}
+                        title={
+                          !hasParticipants
+                            ? "No results available — test has no submissions yet"
+                            : `Download CSV marksheet for ${t.participants} candidate(s)`
+                        }
+                      >
+                        {isDownloading ? (
+                          <>
+                            <Zap className="w-3.5 h-3.5 animate-spin" />
+                            <span>Exporting Data...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download className="w-3.5 h-3.5" />
+                            <span>
+                              Download Results {hasParticipants ? `(${t.participants})` : ""}
+                            </span>
+                          </>
+                        )}
+                      </button>
+
+                      {/* Primary Actions: Edit, Assign & Delete */}
+                      <div className="grid grid-cols-3 gap-2">
+                        {/* Edit Button */}
+                        <button
+                          onClick={() => nav(`/admin/tests/create?id=${t._id}`)}
+                          className="py-2 px-2 rounded-xl text-xs font-semibold bg-[#2A2E39] hover:bg-[#323744] text-white border border-white/10 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <Edit3 className="w-3.5 h-3.5 text-[#8E95A5]" />
+                          <span>Edit</span>
+                        </button>
+
+                        {/* Assign Button */}
+                        <button
+                          onClick={() => {
+                            setSelectedTest(t._id);
+                            setShowAssignModal(true);
+                          }}
+                          className="py-2 px-2 rounded-xl text-xs font-semibold bg-[#133B42] hover:bg-[#1A4C55] text-[#00C4B4] border border-[#00C4B4]/30 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <UserCheck className="w-3.5 h-3.5" />
+                          <span>Assign</span>
+                        </button>
+
+                        {/* Delete Button */}
+                        <button
+                          onClick={() => deleteTest(t._id, t.title)}
+                          className="py-2 px-2 rounded-xl text-xs font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Delete</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 );
               })}
             </div>
-
-            <button
-              onClick={() => {
-                if (currentPage < pagination.totalPages) {
-                  setCurrentPage(currentPage + 1);
-                }
-              }}
-              disabled={!pagination.hasNextPage || currentPage >= pagination.totalPages}
-              className="px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100"
-              style={{
-                backgroundColor: !pagination.hasNextPage || currentPage >= pagination.totalPages
-                  ? 'rgba(255, 255, 255, 0.05)'
-                  : '#FFFFFF',
-                color: !pagination.hasNextPage || currentPage >= pagination.totalPages ? '#FFFFFF' : '#000000',
-                border: '2px solid rgba(255, 255, 255, 0.2)'
-              }}
-              onMouseEnter={(e) => {
-                if (pagination.hasNextPage && currentPage < pagination.totalPages) {
-                  e.currentTarget.style.background = '#FFFFFF';
-                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.6)';
-                  e.currentTarget.style.boxShadow = '0 8px 20px rgba(255, 255, 255, 0.3)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (pagination.hasNextPage && currentPage < pagination.totalPages) {
-                  e.currentTarget.style.background = '#FFFFFF';
-                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-                  e.currentTarget.style.boxShadow = '0 4px 15px rgba(0, 0, 0, 0.2)';
-                }
-              }}
-            >
-              Next
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          </div>
+          )}
         </div>
-      )}
 
-      {/* Assignment Modal - ULTRA MODERN REDESIGN */}
+        {/* Minimal Dark Pagination Controls */}
+        {!loading && pagination.totalPages > 1 && (
+          <div className="mt-8 pt-4 border-t border-white/[0.05] flex flex-col sm:flex-row items-center justify-between gap-4">
+            <span className="text-xs text-[#7E8594]">
+              Showing page <span className="font-semibold text-white">{currentPage}</span> of{" "}
+              <span className="font-semibold text-white">{pagination.totalPages}</span> (
+              {pagination.totalTests} total tests)
+            </span>
+
+            <div className="flex items-center gap-1.5">
+              {/* Previous */}
+              <button
+                onClick={() => currentPage > 1 && setCurrentPage(currentPage - 1)}
+                disabled={!pagination.hasPrevPage || currentPage === 1}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-300 bg-[#20242D] border border-white/[0.06] hover:bg-white/[0.05] disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                <span>Prev</span>
+              </button>
+
+              {/* Page numbers */}
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                  let pageNum;
+                  if (pagination.totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1;
+                  } else if (currentPage >= pagination.totalPages - 2) {
+                    pageNum = pagination.totalPages - 4 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
+
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`w-7 h-7 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                        currentPage === pageNum
+                          ? "bg-white text-slate-950 font-bold"
+                          : "text-[#8E95A5] hover:text-white hover:bg-white/[0.05]"
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Next */}
+              <button
+                onClick={() =>
+                  currentPage < pagination.totalPages && setCurrentPage(currentPage + 1)
+                }
+                disabled={!pagination.hasNextPage || currentPage >= pagination.totalPages}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-300 bg-[#20242D] border border-white/[0.06] hover:bg-white/[0.05] disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+              >
+                <span>Next</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Assignment Modal - Standardized Elevated Glassmorphism */}
       {showAssignModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           {/* Backdrop */}
           <div
-            className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm transition-opacity"
+            className="absolute inset-0 bg-black/75 backdrop-blur-sm transition-opacity"
             onClick={() => setShowAssignModal(false)}
-          ></div>
+          />
 
           <div
-            className="relative w-full max-w-2xl bg-slate-900/90 backdrop-blur-xl rounded-2xl border border-slate-700/50 shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-200"
-            style={{ boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)" }}
+            className="relative w-full max-w-2xl bg-[#181A22] rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] z-10 animate-in fade-in zoom-in-95 duration-200"
           >
-            {/* Header */}
-            <div className="px-6 py-4 border-b border-slate-700/50 flex items-center justify-between bg-slate-800/30">
-              <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                <span className="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-400">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                </span>
-                Assign Test
-              </h3>
+            {/* Header - Synchronized 3.5rem Baseline */}
+            <div
+              className="px-6 py-4 flex items-center justify-between"
+              style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.05)", minHeight: "3.5rem" }}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-[#133B42] border border-[#00C4B4]/20 flex items-center justify-center flex-shrink-0">
+                  <UserCheck className="w-5 h-5 text-[#00C4B4]" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white tracking-tight">
+                    Assign Assessment
+                  </h3>
+                  <p className="text-xs text-[#7E8594] mt-0.5">
+                    Schedule cohort dispatch or select individual students
+                  </p>
+                </div>
+              </div>
+
               <button
                 onClick={() => setShowAssignModal(false)}
-                className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-full transition-colors"
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-[#7E8594] hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
+                aria-label="Close modal"
               >
-                <CloseIcon className="w-5 h-5" />
+                <CloseIcon className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-6 overflow-y-auto custom-scrollbar">
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto custom-scrollbar space-y-6">
               {/* Assignment Mode Selection */}
-              <div className="mb-8">
-                <label className="block text-sm font-medium text-slate-400 mb-3 uppercase tracking-wider text-xs">
-                  Assignment Mode
+              <div>
+                <label className="block text-xs font-semibold text-[#7E8594] mb-3 uppercase tracking-wider">
+                  Target Audience / Cohort
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {[
                     ...cohorts.map((c) => ({
                       id: c.key,
                       label: c.label,
-                      icon: c.key === 'all' ? Globe : Building,
-                      desc: `${c.description} \u00b7 ${c.count} student${c.count === 1 ? '' : 's'}`,
+                      icon: c.key === "all" ? Globe : Building,
+                      desc: `${c.description || "Cohort"} \u00b7 ${c.count || 0} student${c.count === 1 ? "" : "s"}`,
                     })),
-                    { id: 'manual', label: 'Specific Students', icon: UserCheck, desc: 'Select manually' },
+                    {
+                      id: "manual",
+                      label: "Specific Students",
+                      icon: UserCheck,
+                      desc: "Select students manually from list",
+                    },
                   ].map((mode) => (
                     <button
                       key={mode.id}
+                      type="button"
                       onClick={() => setAssignmentMode(mode.id)}
-                      className={`relative p-4 rounded-xl text-left border transition-all duration-200 group ${assignmentMode === mode.id
-                        ? 'bg-indigo-600/20 border-indigo-500/50 ring-1 ring-indigo-500/50'
-                        : 'bg-slate-800/50 border-slate-700/50 hover:bg-slate-800 hover:border-slate-600'
-                        }`}
+                      className={`relative p-3.5 rounded-xl text-left border transition-all duration-200 cursor-pointer ${
+                        assignmentMode === mode.id
+                          ? "bg-[#133B42] border-[#00C4B4]/60 ring-1 ring-[#00C4B4]/50 shadow-sm"
+                          : "bg-[#20242D] border-white/[0.06] hover:border-white/15 hover:bg-[#252A35]"
+                      }`}
                     >
                       <div className="flex items-start gap-3">
-                        <div className={`p-2.5 rounded-lg ${assignmentMode === mode.id ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'bg-slate-700 text-slate-400 group-hover:bg-slate-600 group-hover:text-slate-200'
-                          } transition-colors`}>
-                          <mode.icon className="w-5 h-5" />
+                        <div
+                          className={`p-2 rounded-lg ${
+                            assignmentMode === mode.id
+                              ? "bg-[#00C4B4] text-slate-950 font-bold shadow-md shadow-[#00C4B4]/20"
+                              : "bg-[#16181F] text-[#8E95A5]"
+                          }`}
+                        >
+                          <mode.icon className="w-4 h-4" />
                         </div>
-                        <div>
-                          <p className={`font-semibold ${assignmentMode === mode.id ? 'text-white' : 'text-slate-300 group-hover:text-white'}`}>
+                        <div className="min-w-0 flex-1">
+                          <p
+                            className={`text-xs font-bold truncate ${
+                              assignmentMode === mode.id ? "text-white" : "text-[#D1D5DB]"
+                            }`}
+                          >
                             {mode.label}
                           </p>
-                          <p className="text-xs text-slate-500 mt-1">{mode.desc}</p>
+                          <p className="text-[11px] text-[#7E8594] mt-0.5 truncate">
+                            {mode.desc}
+                          </p>
                         </div>
                       </div>
                       {assignmentMode === mode.id && (
-                        <div className="absolute top-2 right-2 w-2 h-2 bg-indigo-500 rounded-full shadow-[0_0_8px_rgba(99,102,241,0.6)]"></div>
+                        <div className="absolute top-2.5 right-2.5 w-2 h-2 bg-[#00C4B4] rounded-full shadow-[0_0_8px_#00C4B4]" />
                       )}
                     </button>
                   ))}
@@ -848,142 +877,170 @@ export default function Tests() {
 
               {/* Student Selection List (Manual Mode) */}
               {assignmentMode === "manual" && (
-                <div className="mb-6 animate-in fade-in slide-in-from-top-2 duration-300">
-                  <div className="flex justify-between items-center mb-3">
-                    <label className="block text-sm font-medium text-slate-400 uppercase tracking-wider text-xs">
+                <div className="space-y-3 pt-2">
+                  <div className="flex justify-between items-center">
+                    <label className="block text-xs font-semibold text-[#7E8594] uppercase tracking-wider">
                       Select Students
                     </label>
-                    <div className="flex gap-2 text-xs">
+                    <div className="flex items-center gap-2 text-xs">
                       <button
+                        type="button"
                         onClick={selectAllStudents}
-                        className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors"
+                        className="text-[#00C4B4] hover:underline font-semibold cursor-pointer"
                       >
                         Select All
                       </button>
-                      <span className="text-slate-600">|</span>
+                      <span className="text-[#4B5563]">|</span>
                       <button
+                        type="button"
                         onClick={clearAllSelections}
-                        className="text-slate-400 hover:text-slate-300 transition-colors"
+                        className="text-[#7E8594] hover:text-white transition-colors cursor-pointer"
                       >
                         Clear
                       </button>
                     </div>
                   </div>
 
-                  {/* Search Students */}
-                  <div className="relative mb-3">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                  {/* Student Search */}
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-[#7E8594] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <input
                       type="text"
-                      placeholder="Search students..."
+                      placeholder="Search students by name or email..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all"
+                      className="w-full bg-[#16181F] border border-white/[0.08] rounded-xl pl-9 pr-4 py-2 text-xs text-white placeholder-[#7E8594] focus:outline-none focus:border-[#00C4B4]/50 focus:ring-1 focus:ring-[#00C4B4]/50 transition-all"
                     />
                   </div>
 
-                  <div className="border border-slate-700/50 rounded-xl overflow-hidden bg-slate-800/20 max-h-60 overflow-y-auto custom-scrollbar">
+                  {/* Student List */}
+                  <div className="border border-white/[0.06] rounded-xl overflow-hidden bg-[#16181F] max-h-56 overflow-y-auto custom-scrollbar">
                     {filteredStudents.length === 0 ? (
-                      <div className="p-8 text-center text-slate-500 text-sm">
+                      <div className="p-8 text-center text-[#7E8594] text-xs">
                         No students found matching your search.
                       </div>
                     ) : (
-                      <div className="divide-y divide-slate-700/50">
-                        {filteredStudents.map((student) => (
-                          <div
-                            key={student._id}
-                            onClick={() => toggleStudentSelection(student._id)}
-                            className={`p-3 flex items-center justify-between cursor-pointer transition-colors ${selectedStudents.includes(student._id)
-                              ? 'bg-indigo-900/20 hover:bg-indigo-900/30'
-                              : 'hover:bg-slate-800/50'
+                      <div className="divide-y divide-white/[0.04]">
+                        {filteredStudents.map((student) => {
+                          const isSelected = selectedStudents.includes(student._id);
+                          return (
+                            <div
+                              key={student._id}
+                              onClick={() => toggleStudentSelection(student._id)}
+                              className={`p-2.5 flex items-center justify-between cursor-pointer transition-colors ${
+                                isSelected
+                                  ? "bg-[#133B42]/50 hover:bg-[#133B42]/70"
+                                  : "hover:bg-white/[0.02]"
                               }`}
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${selectedStudents.includes(student._id)
-                                ? 'bg-indigo-500 text-white'
-                                : 'bg-slate-700 text-slate-400'
-                                }`}>
-                                {student.name.charAt(0)}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div
+                                  className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                                    isSelected
+                                      ? "bg-[#00C4B4] text-slate-950"
+                                      : "bg-[#20242D] text-[#8E95A5]"
+                                  }`}
+                                >
+                                  {student.name?.charAt(0) || "S"}
+                                </div>
+                                <div className="min-w-0">
+                                  <p
+                                    className={`text-xs font-medium truncate ${
+                                      isSelected ? "text-[#00C4B4]" : "text-slate-200"
+                                    }`}
+                                  >
+                                    {student.name}
+                                  </p>
+                                  <p className="text-[11px] text-[#7E8594] truncate">
+                                    {student.email}
+                                  </p>
+                                </div>
                               </div>
-                              <div>
-                                <p className={`text-sm font-medium ${selectedStudents.includes(student._id) ? 'text-indigo-200' : 'text-slate-200'}`}>
-                                  {student.name}
-                                </p>
-                                <p className="text-xs text-slate-500">{student.email}</p>
+
+                              <div
+                                className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all ${
+                                  isSelected
+                                    ? "bg-[#00C4B4] border-[#00C4B4]"
+                                    : "border-white/20"
+                                }`}
+                              >
+                                {isSelected && <Check className="w-3 h-3 text-slate-950 stroke-[3]" />}
                               </div>
                             </div>
-                            <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-all ${selectedStudents.includes(student._id)
-                              ? 'bg-indigo-500 border-indigo-500'
-                              : 'border-slate-600'
-                              }`}>
-                              {selectedStudents.includes(student._id) && (
-                                <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
-                              )}
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
-                  <div className="mt-2 text-right text-xs text-slate-400">
-                    <span className="text-indigo-400 font-semibold">{selectedStudents.length}</span> students selected
+                  <div className="text-right text-[11px] text-[#7E8594]">
+                    <span className="text-[#00C4B4] font-semibold">
+                      {selectedStudents.length}
+                    </span>{" "}
+                    students selected
                   </div>
                 </div>
               )}
 
               {/* Timing Controls */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                 <div>
-                  <label className="block text-sm font-medium text-slate-400 mb-2 uppercase tracking-wider text-xs">
+                  <label className="block text-xs font-semibold text-[#7E8594] mb-2 uppercase tracking-wider">
                     Start Time *
                   </label>
                   <input
                     type="datetime-local"
                     value={startTime}
                     onChange={(e) => setStartTime(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all [color-scheme:dark]"
+                    className="w-full bg-[#16181F] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-[#7E8594] focus:outline-none focus:border-[#00C4B4]/50 focus:ring-1 focus:ring-[#00C4B4]/50 transition-all [color-scheme:dark]"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-400 mb-2 uppercase tracking-wider text-xs">
-                    Duration (minutes) *
+                  <label className="block text-xs font-semibold text-[#7E8594] mb-2 uppercase tracking-wider">
+                    Duration (Minutes) *
                   </label>
                   <input
                     type="number"
-                    placeholder="Enter minutes (e.g. 60)"
+                    placeholder="e.g. 60"
                     value={duration}
                     onChange={(e) => setDuration(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all"
+                    className="w-full bg-[#16181F] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-[#7E8594] focus:outline-none focus:border-[#00C4B4]/50 focus:ring-1 focus:ring-[#00C4B4]/50 transition-all"
                   />
                 </div>
               </div>
             </div>
 
-            {/* Footer */}
-            <div className="px-6 py-4 border-t border-slate-700/50 bg-slate-800/30 flex justify-end gap-3">
+            {/* Modal Footer */}
+            <div
+              className="px-6 py-4 flex items-center justify-end gap-3"
+              style={{ borderTop: "1px solid rgba(255, 255, 255, 0.05)" }}
+            >
               <button
+                type="button"
                 onClick={() => setShowAssignModal(false)}
-                className="px-5 py-2.5 rounded-xl text-sm font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-colors"
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-[#8E95A5] hover:text-white hover:bg-white/[0.05] transition-colors cursor-pointer"
               >
                 Cancel
               </button>
+
+              {/* 🟢 Green Button: Confirm Assignment */}
               <button
+                type="button"
                 onClick={() => {
                   if (assignmentMode === "manual") assignTestToSelected();
                   else assignTestToCohort();
                 }}
-                disabled={assigning}
-                className="px-6 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                disabled={assigning || !startTime || !duration}
+                className="px-5 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold rounded-xl text-xs shadow-lg shadow-emerald-500/20 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer"
               >
                 {assigning ? (
                   <>
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    <Zap className="w-3.5 h-3.5 animate-spin" />
                     <span>Assigning...</span>
                   </>
                 ) : (
                   <>
+                    <Check className="w-4 h-4 stroke-[2.5]" />
                     <span>Confirm Assignment</span>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
                   </>
                 )}
               </button>

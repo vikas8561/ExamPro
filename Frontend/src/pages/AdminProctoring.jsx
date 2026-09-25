@@ -2,20 +2,6 @@ import React, { useCallback, useEffect, useState } from "react";
 import apiRequest from "../services/api";
 import SebSettingsCard from "../components/SebSettingsCard";
 
-/**
- * Proctoring settings.
- *
- * The one place the global bypass code lives. It replaces the old per-test OTP,
- * which was generated for every test, printed in the admin test list, and
- * searchable through the tests API — so in practice it was neither secret nor
- * revocable.
- *
- * There is now a single code for the whole system. It is admin-only, never sent
- * to a student, and it waives the camera, microphone and location checks and
- * nothing else: fullscreen, tab switching, keyboard and clipboard rules stay in
- * force for a student who uses it, and the fact that it was used is recorded on
- * their submission.
- */
 export default function AdminProctoring() {
   const [otp, setOtp] = useState(null);
   const [updatedAt, setUpdatedAt] = useState(null);
@@ -89,7 +75,7 @@ export default function AdminProctoring() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Clipboard access can be refused; the code is on screen either way.
+      // Clipboard access fallback
     }
   }, [otp]);
 
@@ -113,151 +99,184 @@ export default function AdminProctoring() {
   };
 
   return (
-    <div className="p-6">
-      <h1 className="mb-2 text-2xl font-bold text-white">Proctoring</h1>
-      <p className="mb-8 text-sm text-slate-400">
-        Settings that apply to every proctored test.
-      </p>
-
-      <div className="max-w-2xl rounded-xl border border-slate-700 bg-slate-800/50 p-6">
-        <h2 className="mb-1 text-lg font-semibold text-white">Access code</h2>
-        <p className="mb-6 text-sm text-slate-400">
-          Give this to a student whose camera, microphone or location is not working, so they can
-          still sit the test. There is one code for the whole system.
-        </p>
-
-        {error && (
-          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
-            {error}
+    <div
+      className="p-4 sm:p-6 lg:p-8 min-h-screen font-sans"
+      style={{ backgroundColor: "#16181F" }}
+    >
+      <div className="max-w-6xl mx-auto w-full space-y-6">
+        {/* Header Row - Synchronized 3.5rem baseline matching Sidebar */}
+        <div
+          className="flex items-center justify-between pb-5 mb-2"
+          style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.05)", minHeight: "3.5rem" }}
+        >
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+              Proctoring
+            </h1>
+            <p className="text-xs text-[#7E8594] mt-0.5">
+              Settings that apply to every proctored test.
+            </p>
           </div>
-        )}
+        </div>
 
-        <div className="mb-6 rounded-lg border border-slate-600 bg-slate-900 p-6 text-center">
-          {loading ? (
-            <p className="text-slate-500">Loading…</p>
-          ) : (
-            <>
-              <div className="mb-4 font-mono text-4xl font-bold tracking-[0.3em] text-white">
-                {visible ? otp : "••••••"}
+        {/* Card 1: Access code */}
+        <div className="w-full rounded-2xl border border-white/[0.06] bg-[#20242D] p-5 sm:p-6 shadow-sm">
+          <div className="mb-4">
+            <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">Access code</h2>
+            <p className="text-xs text-[#7E8594] mt-0.5 leading-relaxed">
+              Give this to a student whose camera, microphone or location is not working, so they can
+              still sit the test. There is one code for the whole system.
+            </p>
+          </div>
+
+          {error && (
+            <div className="mb-4 rounded-xl border border-rose-500/20 bg-rose-500/10 p-3 text-xs text-rose-300">
+              {error}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+            {/* Left Column: Code display and controls */}
+            <div className="lg:col-span-6 rounded-xl border border-white/[0.06] bg-[#181A22] p-5 sm:p-6 flex flex-col justify-between text-center min-h-[190px]">
+              <div>
+                <div className="text-[11px] font-medium text-[#7E8594] uppercase tracking-wider mb-1">
+                  System Access Code
+                </div>
+                {loading ? (
+                  <p className="text-xs text-[#7E8594] py-4">Loading…</p>
+                ) : (
+                  <div className="font-mono text-3xl sm:text-4xl font-bold tracking-[0.25em] text-white my-3">
+                    {visible ? otp : "••••••"}
+                  </div>
+                )}
               </div>
-              <div className="flex justify-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setVisible((v) => !v)}
-                  className="rounded-md border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
-                >
-                  {visible ? "Hide" : "Show"}
-                </button>
-                {visible && (
+
+              <div>
+                <div className="flex justify-center flex-wrap gap-2.5">
                   <button
                     type="button"
-                    onClick={copy}
-                    className="rounded-md border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
+                    onClick={() => setVisible((v) => !v)}
+                    className="rounded-xl border border-white/10 bg-[#2A2E39] hover:bg-[#343946] px-4 py-2 text-xs font-semibold text-white transition-all cursor-pointer"
                   >
-                    {copied ? "Copied" : "Copy"}
+                    {visible ? "Hide" : "Show"}
                   </button>
+                  {visible && (
+                    <button
+                      type="button"
+                      onClick={copy}
+                      className="rounded-xl border border-white/10 bg-[#2A2E39] hover:bg-[#343946] px-4 py-2 text-xs font-semibold text-white transition-all cursor-pointer"
+                    >
+                      {copied ? "Copied" : "Copy"}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={rotate}
+                    disabled={rotating}
+                    className="rounded-xl bg-white hover:bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-950 transition-all shadow-sm active:scale-95 disabled:opacity-50 cursor-pointer"
+                  >
+                    {rotating ? "Generating…" : "Generate new code"}
+                  </button>
+                </div>
+
+                {updatedAt && (
+                  <p className="mt-3 text-[11px] text-[#7E8594]">
+                    Last changed: {new Date(updatedAt).toLocaleString()}
+                  </p>
                 )}
-                <button
-                  type="button"
-                  onClick={rotate}
-                  disabled={rotating}
-                  className="rounded-md bg-white/90 px-4 py-2 text-sm font-semibold text-black hover:bg-white disabled:opacity-50"
-                >
-                  {rotating ? "Generating…" : "Generate new code"}
-                </button>
               </div>
-            </>
+            </div>
+
+            {/* Right Column: Explanatory / What this code does */}
+            <div className="lg:col-span-6 rounded-xl border border-amber-500/20 bg-amber-500/5 p-5 flex flex-col justify-center">
+              <p className="mb-2 text-xs font-bold text-amber-200">What this code does</p>
+              <ul className="space-y-1.5 text-xs text-[#8E95A5] leading-relaxed">
+                <li>• Skips the camera, microphone and location checks only.</li>
+                <li>
+                  • Does <strong>not</strong> relax anything else. Fullscreen, tab switching, keyboard
+                  and clipboard rules stay fully active.
+                </li>
+                <li>• Screen sharing is still required and cannot be skipped.</li>
+                <li>• Its use is recorded on the student's submission for the reviewer to see.</li>
+                <li>• Wrong guesses are rate limited, so it cannot be brute forced.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 2: Safe Exam Browser Card */}
+        <SebSettingsCard />
+
+        {/* Card 3: Violation Terminations & Re-enable */}
+        <div className="w-full rounded-2xl border border-white/[0.06] bg-[#20242D] p-5 sm:p-6 shadow-sm">
+          <div className="mb-4">
+            <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">Re-enable Terminated Exams</h2>
+            <p className="text-xs text-[#7E8594] mt-0.5 leading-relaxed">
+              Exams auto-submitted because candidate reached maximum proctoring violation limits. Re-enabling resets active violations to 0 while keeping previous violation history and the original exam timer.
+            </p>
+          </div>
+
+          {loadingTerminated ? (
+            <p className="text-xs text-[#7E8594] py-4">Loading attempts…</p>
+          ) : terminated.length === 0 ? (
+            <div className="rounded-xl border border-white/[0.06] bg-[#181A22] p-6 text-center text-xs text-[#7E8594]">
+              No violation-terminated exams found.
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-white/[0.06] bg-[#181A22]">
+              <table className="w-full text-left text-xs text-[#8E95A5]">
+                <thead className="bg-[#14161D] border-b border-white/[0.06] text-[#7E8594] uppercase tracking-wider text-[10px] font-semibold">
+                  <tr>
+                    <th className="py-3 px-4">Student</th>
+                    <th className="py-3 px-4">Test</th>
+                    <th className="py-3 px-4">Violations</th>
+                    <th className="py-3 px-4">Deadline</th>
+                    <th className="py-3 px-4 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/[0.04]">
+                  {terminated.map((a) => {
+                    const deadline = a.deadline || (a.startTime && a.duration ? new Date(new Date(a.startTime).getTime() + a.duration * 60000) : null);
+                    const isExpired = deadline && new Date() >= new Date(deadline);
+                    const isActive = a.status === "In Progress";
+                    const violationCount = a.tabViolations?.length || a.tabViolationCount || 0;
+
+                    return (
+                      <tr key={a._id} className="hover:bg-white/[0.02] transition-colors">
+                        <td className="py-3 px-4">
+                          <div className="font-semibold text-white">{a.userId?.name || "Student"}</div>
+                          <div className="text-[11px] text-[#7E8594]">{a.userId?.email}</div>
+                        </td>
+                        <td className="py-3 px-4 font-medium text-white">{a.testId?.title || "Test"}</td>
+                        <td className="py-3 px-4">
+                          <span className="text-rose-400 font-semibold">{violationCount} logged</span>
+                        </td>
+                        <td className="py-3 px-4 text-[#7E8594]">
+                          {deadline ? new Date(deadline).toLocaleTimeString() : "—"}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          {isActive ? (
+                            <span className="text-emerald-400 font-semibold">Active (Re-enabled)</span>
+                          ) : isExpired ? (
+                            <span className="text-[#555C6D]">Deadline Passed</span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleReEnable(a)}
+                              className="rounded-xl bg-white hover:bg-slate-100 text-slate-950 px-3.5 py-1.5 text-xs font-semibold shadow-sm transition-all active:scale-95 cursor-pointer"
+                            >
+                              Re-enable Exam
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
-
-        {updatedAt && (
-          <p className="mb-6 text-xs text-slate-500">
-            Last changed: {new Date(updatedAt).toLocaleString()}
-          </p>
-        )}
-
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
-          <p className="mb-2 text-sm font-semibold text-amber-200">What this code does</p>
-          <ul className="space-y-1.5 text-sm text-slate-300">
-            <li>• Skips the camera, microphone and location checks only.</li>
-            <li>
-              • Does <strong>not</strong> relax anything else. Fullscreen, tab switching, keyboard
-              and clipboard rules stay fully active.
-            </li>
-            <li>• Screen sharing is still required and cannot be skipped.</li>
-            <li>• Its use is recorded on the student's submission for the reviewer to see.</li>
-            <li>• Wrong guesses are rate limited, so it cannot be brute forced.</li>
-          </ul>
-        </div>
-      </div>
-
-      <SebSettingsCard />
-
-      {/* Violation Terminations & Re-enable */}
-      <div className="mt-8 max-w-4xl rounded-xl border border-slate-700 bg-slate-800/50 p-6">
-        <h2 className="mb-1 text-lg font-semibold text-white">Re-enable Terminated Exams</h2>
-        <p className="mb-6 text-sm text-slate-400">
-          Exams auto-submitted because candidate reached maximum proctoring violation limits. Re-enabling resets active violations to 0 while keeping previous violation history and the original exam timer.
-        </p>
-
-        {loadingTerminated ? (
-          <p className="text-sm text-slate-500">Loading attempts…</p>
-        ) : terminated.length === 0 ? (
-          <p className="text-sm text-slate-500">No violation-terminated exams found.</p>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border border-slate-700">
-            <table className="w-full text-left text-xs text-slate-300">
-              <thead className="bg-slate-900 border-b border-slate-700 text-slate-400">
-                <tr>
-                  <th className="py-3 px-4">Student</th>
-                  <th className="py-3 px-4">Test</th>
-                  <th className="py-3 px-4">Violations</th>
-                  <th className="py-3 px-4">Deadline</th>
-                  <th className="py-3 px-4 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-700/60 bg-slate-800/30">
-                {terminated.map((a) => {
-                  const deadline = a.deadline || (a.startTime && a.duration ? new Date(new Date(a.startTime).getTime() + a.duration * 60000) : null);
-                  const isExpired = deadline && new Date() >= new Date(deadline);
-                  const isActive = a.status === "In Progress";
-                  const violationCount = a.tabViolations?.length || a.tabViolationCount || 0;
-
-                  return (
-                    <tr key={a._id} className="hover:bg-slate-700/20">
-                      <td className="py-3 px-4">
-                        <div className="font-semibold text-white">{a.userId?.name || "Student"}</div>
-                        <div className="text-[11px] text-slate-400">{a.userId?.email}</div>
-                      </td>
-                      <td className="py-3 px-4 font-medium text-white">{a.testId?.title || "Test"}</td>
-                      <td className="py-3 px-4">
-                        <span className="text-red-400 font-semibold">{violationCount} logged</span>
-                      </td>
-                      <td className="py-3 px-4 text-slate-400">
-                        {deadline ? new Date(deadline).toLocaleTimeString() : "—"}
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        {isActive ? (
-                          <span className="text-emerald-400 font-semibold">Active (Re-enabled)</span>
-                        ) : isExpired ? (
-                          <span className="text-slate-500">Deadline Passed</span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleReEnable(a)}
-                            className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 transition-colors"
-                          >
-                            Re-enable Exam
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
     </div>
   );
