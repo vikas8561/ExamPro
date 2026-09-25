@@ -65,6 +65,23 @@ export function looksLikeSebWithoutApi() {
   }
 }
 
+/**
+ * The version SEB puts in its user agent, e.g. "3.9.0" from `… SEB/3.9.0`.
+ *
+ * The only way to learn the version when the JavaScript API is absent — and the
+ * version is usually the reason it is absent, since the API arrived in SEB 3.3.2
+ * for Windows and 3.0 for macOS. Without it the error screen can only say
+ * "something is wrong", which helps nobody.
+ */
+export function sebVersionFromUserAgent() {
+  try {
+    const match = /\bSEB[/ ]([0-9][0-9.]*)/i.exec(navigator.userAgent || "");
+    return match ? match[1] : "";
+  } catch {
+    return "";
+  }
+}
+
 function readKeys() {
   const seb = sebGlobal();
   if (!seb) return { browserExamKeyHash: "", configKeyHash: "" };

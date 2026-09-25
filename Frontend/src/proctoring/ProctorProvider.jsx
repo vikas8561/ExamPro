@@ -225,6 +225,7 @@ export function ProctorProvider({
             // Already inside SEB, so the launch button is not the answer and
             // pressing it again would loop straight back here.
             apiMissing: env.sebWithoutApi === true,
+            detectedVersion: env.sebUserAgentVersion,
           });
           setPhase("seb_launch");
           return;

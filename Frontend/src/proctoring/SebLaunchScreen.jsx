@@ -71,10 +71,37 @@ export default function SebLaunchScreen({ info, assignmentId }) {
             cannot be started until it is sorted out.
           </p>
           <div className="rounded-md border border-slate-600 bg-slate-800 px-4 py-3 text-xs text-slate-400">
-            For the administrator: SEB is using its classic browser engine, which
-            has no JavaScript API. The exam configuration needs
-            <code className="mx-1 text-slate-300">browserWindowWebView</code>
-            set to Prefer Modern, and the URL content filter left off.
+            <p className="mb-2 font-semibold text-slate-300">For the administrator</p>
+            <p className="mb-2">
+              Safe Exam Browser is not exposing its JavaScript API, so the exam
+              cannot confirm it.{" "}
+              {info.detectedVersion ? (
+                <>
+                  Detected version:{" "}
+                  <code className="text-slate-300">SEB {info.detectedVersion}</code>.
+                </>
+              ) : (
+                <>No version could be read from the browser.</>
+              )}
+            </p>
+            {/* The cause is genuinely different per platform, and giving macOS
+                advice to a Windows administrator wastes their afternoon. */}
+            {os === "windows" ? (
+              <p>
+                On Windows the API exists from <strong>SEB 3.3.2</strong> onwards. If
+                the version above is older, the student needs to update. If it is
+                newer, the running Safe Exam Browser is not using this exam&apos;s
+                configuration — it must be started from the launch link, not opened
+                on its own.
+              </p>
+            ) : (
+              <p>
+                On macOS this means SEB is using its classic browser engine. The exam
+                configuration needs{" "}
+                <code className="text-slate-300">browserWindowWebView</code> set to
+                Prefer Modern, and the URL content filter left off.
+              </p>
+            )}
           </div>
         </div>
       </div>
