@@ -67,8 +67,20 @@ function buildExamUrl(assignment, test, nonce) {
  * a student whose machine restarted and relaunched SEB mid-exam.
  */
 async function getOrCreateLaunch(assignment, test) {
-  if (assignment.sebLaunch?.nonce && assignment.sebLaunch?.examUrl) {
-    return assignment.sebLaunch;
+  const origin = frontendOrigin();
+  const stored = assignment.sebLaunch;
+
+  // Reuse it only if it still points at this deployment.
+  //
+  // A stored address outlives the setting it was built from. An attempt whose
+  // launch was minted while FRONTEND_URL pointed somewhere else — a laptop
+  // running http://localhost:5173 against the same database, most obviously —
+  // keeps that address for ever, and the exam page then sends the student's
+  // browser to a host that is not there. Nothing reports it: the page navigates
+  // away, its JavaScript stops, and the student watches a loading spinner that
+  // will never finish.
+  if (stored?.nonce && stored?.examUrl && origin && stored.examUrl.startsWith(`${origin}/`)) {
+    return stored;
   }
 
   const nonce = sebVerify.generateNonce();

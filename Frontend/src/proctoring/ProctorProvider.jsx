@@ -256,9 +256,28 @@ export function ProctorProvider({
             step = "preparing the Safe Exam Browser address";
             const { examUrl } = await fetchSebExamUrl(assignmentId);
             if (cancelled) return;
-            if (examUrl && examUrl !== window.location.href) {
-              window.location.replace(examUrl);
-              return;
+            // Never leave this origin.
+            //
+            // The address comes from the server, and a stale one — minted when
+            // FRONTEND_URL pointed at a developer's laptop, say — would send the
+            // browser to a host that is not there. That failure is invisible:
+            // the page navigates away, its JavaScript stops, and the student is
+            // left on a loading spinner with no error, no timeout and nothing in
+            // any log. Refusing the jump turns it into something readable.
+            if (examUrl) {
+              const sameOrigin = examUrl.startsWith(`${window.location.origin}/`);
+              if (!sameOrigin) {
+                setStartError(
+                  `This exam is configured with an address on another site (${examUrl}). ` +
+                    "Ask your administrator to check FRONTEND_URL on the server."
+                );
+                setPhase("idle");
+                return;
+              }
+              if (examUrl !== window.location.href) {
+                window.location.replace(examUrl);
+                return;
+              }
             }
           } catch {
             // Carry on unredirected. Verification will fail and the student is
