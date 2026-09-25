@@ -551,6 +551,10 @@ router.post("/session/event", authenticateToken, async (req, res, next) => {
     // A cause arriving in the same batch as its consequences has to count as
     // already seen, or the order the browser happened to send them in would
     // decide what the student pays.
+    // Weight-0 events from this batch, so the browser can tell the student what
+    // was noticed without treating it as a warning.
+    const recorded = [];
+
     const causeSeenAt = new Map();
     for (const causeGroup of policyService.causeGroups()) {
       const previous = session.lastViolationByType?.get(causeGroup);
@@ -594,23 +598,34 @@ router.post("/session/event", authenticateToken, async (req, res, next) => {
           break;
         }
       }
+      const recordedDetails = clean(event?.details, 300);
       session.violations.push({
         timestamp: new Date(),
         violationType,
-        details: clean(event?.details, 300),
+        details: recordedDetails,
         weight,
       });
       session.violationCount += weight;
       if (weight > 0) charged = true;
+      else recorded.push({ violationType, details: recordedDetails });
     }
 
-    // Nothing new was actually charged — acknowledge without interrupting.
+    // Nothing was charged, so nothing interrupts the exam — but the student is
+    // still told what was seen.
+    //
+    // These are the weight-0 signals: an extension injecting into the page, a
+    // blocked shortcut, a second display. They are deliberately never allowed to
+    // warn or cancel, because they misfire differently on every platform. That
+    // is not a reason to keep them secret. A student who is never told that
+    // their AI sidebar was noticed finds out for the first time in a misconduct
+    // meeting, having had no chance to close it.
     if (!charged) {
       await session.save();
       return res.json({
         action: "continue",
         count: session.violationCount,
         limit: policy.allowedViolations ?? -1,
+        recorded,
       });
     }
 

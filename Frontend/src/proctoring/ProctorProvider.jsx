@@ -74,6 +74,9 @@ export function ProctorProvider({
   const [limit, setLimit] = useState(-1);
   const [warning, setWarning] = useState(null);
   const [blockReason, setBlockReason] = useState(null);
+  // Recorded-only violations: shown to the student as a passing notice, never
+  // as a warning, because they are never charged.
+  const [notice, setNotice] = useState(null);
   const [offline, setOffline] = useState(false);
 
   // Streams are held, never read. See detectors/permissions.js for why.
@@ -136,6 +139,17 @@ export function ProctorProvider({
         setTimeout(() => {
           onTerminate?.(true);
         }, 2500);
+        return;
+      }
+
+      // Nothing was charged, but something was seen. An extension injecting into
+      // the page, a blocked shortcut, a second display: all deliberately weight
+      // 0, so they must not warn — but staying silent means the first a student
+      // hears of it is a misconduct meeting, long after they could have closed
+      // the offending thing.
+      if (verdict.action === "continue" && Array.isArray(verdict.recorded) && verdict.recorded.length > 0) {
+        const last = verdict.recorded[verdict.recorded.length - 1];
+        setNotice({ id: Date.now(), message: last.details || "A proctoring event was recorded." });
         return;
       }
 
@@ -486,15 +500,23 @@ export function ProctorProvider({
       screenStreamRef.current = screenStream || null;
       mediaStreamRef.current = mediaStream || null;
 
-      await transportRef.current?.reportPermissions(permissions || {});
-
-      // Safe Exam Browser is already a locked kiosk, and its window is not in
-      // Fullscreen API state — asking for fullscreen there does nothing useful
-      // and on some builds throws. The server clears this flag for a verified
-      // SEB session.
+      // Fullscreen FIRST, before anything is awaited.
+      //
+      // `requestFullscreen` only works while the browser still considers the
+      // student's click "recent". Awaiting a network round-trip first — which is
+      // what reporting permissions is — spends that window, and the request is
+      // then refused. It fails silently, because requestFullscreen swallows the
+      // rejection, so the exam simply starts in a window and the fullscreen
+      // detector has nothing to detect.
+      //
+      // Safe Exam Browser is skipped: it is already a locked kiosk, its window
+      // is not in Fullscreen API state, and asking throws on some builds. The
+      // server clears this flag for a verified SEB session.
       if (session?.policy?.requireFullscreen !== false) {
         await enterFullscreen();
       }
+
+      await transportRef.current?.reportPermissions(permissions || {});
 
       setPhase("active");
       startDetectors();
@@ -611,6 +633,7 @@ export function ProctorProvider({
       violationCount,
       limit,
       warning,
+      notice,
       offline,
       startError,
       requestFullscreen: enterFullscreen,
@@ -626,6 +649,7 @@ export function ProctorProvider({
       violationCount,
       limit,
       warning,
+      notice,
       offline,
       startError,
       endSession,
@@ -676,6 +700,8 @@ export function ProctorProvider({
           ref={overlayRef}
           phase={phase}
           warning={warning}
+          notice={notice}
+          onDismissNotice={() => setNotice(null)}
           blockReason={blockReason}
           offline={offline}
           isDevtoolsOpen={() => devtoolsRef.current?.isOpen() === true}
