@@ -717,14 +717,6 @@ export function ProctorProvider({
       readiness,
       session,
       policy: session?.policy || null,
-      // True when the exam is running inside Safe Exam Browser at all — not
-      // only when verification succeeded.
-      //
-      // The exam pages use this to send SEB to its quit URL after a submit. A
-      // student whose SEB never verified is still sitting inside a locked kiosk
-      // with a quit password they do not have, so tying this to `verified` left
-      // exactly the people already having a bad time unable to get out.
-      isSeb: environment?.isSEB === true || session?.seb?.verified === true,
       violationCount,
       limit,
       warning,

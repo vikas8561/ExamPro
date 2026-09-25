@@ -282,15 +282,7 @@ const TakeTestInner = ({ submitRef }) => {
       // Under Safe Exam Browser the exit page is its configured quit URL, so
       // arriving there closes SEB and hands the machine back. Sending them to
       // the assignments list instead would leave them in a locked kiosk.
-      if (proctor.isSeb) {
-        // A real page load, not a router navigation. Safe Exam Browser quits
-        // when it *loads* its configured quit URL; `navigate` only rewrites the
-        // address with history.pushState, which SEB never sees — so the student
-        // was left in the kiosk needing the quit password they do not have.
-        window.location.assign(`${window.location.origin}/student/seb-exit`);
-      } else {
-        navigate(`/student/assignments`);
-      }
+      navigate(`/student/assignments`);
     } catch (error) {
       console.error("Test submission failed:", error);
       setIsSubmitting(false);
@@ -756,15 +748,7 @@ const TakeTestInner = ({ submitRef }) => {
       // Navigate after a brief success display. Under SEB this address is its
       // quit URL, so arriving there closes the kiosk.
       await new Promise(resolve => setTimeout(resolve, 1000));
-      if (proctor.isSeb) {
-        // A real page load, not a router navigation. Safe Exam Browser quits
-        // when it *loads* its configured quit URL; `navigate` only rewrites the
-        // address with history.pushState, which SEB never sees — so the student
-        // was left in the kiosk needing the quit password they do not have.
-        window.location.assign(`${window.location.origin}/student/seb-exit`);
-      } else {
-        navigate(`/student/assignments`);
-      }
+      navigate(`/student/assignments`);
 
     } catch (error) {
       console.error("Auto-submit failed:", error);

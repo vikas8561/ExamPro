@@ -348,15 +348,7 @@ function TakeCodingTestInner({ submitRef }) {
       // Under Safe Exam Browser the exit page is its configured quit URL, so
       // arriving there closes SEB and hands the machine back. Sending them to
       // the assignments list instead would leave them in a locked kiosk.
-      if (proctor.isSeb) {
-        // A real page load, not a router navigation. Safe Exam Browser quits
-        // when it *loads* its configured quit URL; `nav` only rewrites the
-        // address with history.pushState, which SEB never sees — so the student
-        // was left in the kiosk needing the quit password they do not have.
-        window.location.assign(`${window.location.origin}/student/seb-exit`);
-      } else {
-        nav(`/student/assignments`);
-      }
+      nav(`/student/assignments`);
     } catch (error) {
       console.error('Error submitting test:', error);
       setIsSubmitting(false);
