@@ -161,6 +161,13 @@ TestSubmissionSchema.index({ mentorReviewed: 1, reviewStatus: 1 });
 // Validation: givenMarks (points) must not exceed totalMarks for any response
 TestSubmissionSchema.pre('save', function(next) {
   for (const response of this.responses || []) {
+    // Null entries exist in stored submissions -- a sparse array serializes
+    // its holes as null -- and reading a field off one threw here, so those
+    // documents could not be save()d AT ALL. Every path that goes through
+    // save() hit it: a mentor recording a review, a re-grade after a test
+    // edit, the coding re-grade audit. An empty slot carries no marks, so
+    // there is nothing here to validate.
+    if (!response) continue;
     if (response.totalMarks > 0 && response.points > response.totalMarks) {
       return next(new Error(
         `Given marks (${response.points}) cannot exceed total marks (${response.totalMarks}) for question ${response.questionId}`

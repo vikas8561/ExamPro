@@ -22,6 +22,7 @@
     "test:coding-persistence": "node scripts/exam/coding-persistence-check.js",
     "audit-coding-marks": "node scripts/auditCodingMarks.js",
     "audit-coding-verdicts": "node scripts/auditCodingVerdicts.js",
+    "audit-ungraded-coding": "node scripts/auditUngradedCoding.js",
     "test:db-errors": "node scripts/database-error-check.js"
   },
   "dependencies": {

@@ -45,8 +45,21 @@ router.post("/", authenticateToken, requireProctorSession({ allowTerminated: tru
       return res.status(400).json({ message: "Responses must be an array" });
     }
 
-    // Validate each response
-    for (const response of responses) {
+    // Validate each response.
+    //
+    // A null entry used to throw here (reading .questionId of null), turning a
+    // student's final submit into a 500 with their paper unsaved. Two stored
+    // submissions carry such entries -- a sparse array serializes its holes as
+    // null -- so this is a shape that reaches the server in practice, not a
+    // hypothetical. Null entries are dropped rather than rejected: they carry
+    // no answer, so there is nothing to lose by ignoring them and everything
+    // to lose by refusing the submission.
+    const cleanResponses = responses.filter((response) => response != null);
+    if (cleanResponses.length !== responses.length) {
+      console.warn(`⚠️ Dropped ${responses.length - cleanResponses.length} empty response entr(ies) from a submission`);
+    }
+
+    for (const response of cleanResponses) {
       if (!response.questionId || typeof response.questionId !== 'string' || response.questionId.length !== 24) {
         console.error("❌ Invalid questionId in response:", response.questionId);
         return res.status(400).json({ message: "Invalid question ID format in responses" });
@@ -153,7 +166,7 @@ router.post("/", authenticateToken, requireProctorSession({ allowTerminated: tru
     // attempts grades them by exactly the same rules rather than its own copy.
     const { processedResponses, totalScore, maxScore } = gradeSubmission({
       test: assignmentWithTest.testId,
-      responses,
+      responses: cleanResponses,
       priorAutoGraded,
     });
 

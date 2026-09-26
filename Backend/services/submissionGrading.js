@@ -23,7 +23,12 @@ const { maxMarksForQuestion, isAnswered, markMcq } = require("./grading");
  */
 function gradeSubmission({ test, responses, priorAutoGraded = new Map() }) {
   const questions = Array.isArray(test?.questions) ? test.questions : [];
-  const given = Array.isArray(responses) ? responses : [];
+  // Null entries reach this in real data -- a sparse array serializes its
+  // holes as null -- and `String(null.questionId)` throws, which would take
+  // down the whole submission rather than skipping one empty slot. The sweep
+  // that finalises abandoned attempts shares this function, so it has to hold
+  // here too, not only at the route.
+  const given = (Array.isArray(responses) ? responses : []).filter((r) => r != null);
   const negativeMarkingPercent = test?.negativeMarkingPercent || 0;
 
   let totalScore = 0;
