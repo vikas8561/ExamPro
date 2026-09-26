@@ -52,6 +52,7 @@ const OPTIONS = {
   rerun: flag('rerun'),
   apply: flag('apply'),
   includeReviewed: flag('include-reviewed'),
+  includeCancelled: flag('include-cancelled'),
   limit: Number(value('limit', Infinity)),
 };
 
@@ -84,7 +85,8 @@ async function collect() {
   }
 
   const submissions = await TestSubmission.find({})
-    .select('assignmentId userId testId responses mentorReviewed reviewStatus isFinalized')
+    .select('assignmentId userId testId responses mentorReviewed reviewStatus isFinalized '
+      + 'autoSubmit cancelledDueToViolation')
     .lean();
 
   const gradeable = [];
@@ -198,11 +200,17 @@ async function regrade(gradeable) {
 
   const scoring = outcomes.filter((o) => o.verdict === 'scores');
   const recovered = scoring.reduce((sum, o) => sum + (o.points - (o.response.points || 0)), 0);
+  const autoSubmitted = scoring.filter((o) => o.submission.autoSubmit).length;
+  const cancelled = scoring.filter((o) => o.submission.cancelledDueToViolation).length;
+  const reviewed = scoring.filter((o) => o.submission.mentorReviewed).length;
   console.log(`\ngraded    : ${outcomes.length}`);
   console.log(`would score: ${scoring.length}`);
   console.log(`still zero : ${outcomes.filter((o) => o.verdict === 'zero').length}`);
   console.log(`skipped    : ${outcomes.filter((o) => o.verdict === 'skipped').length}`);
   console.log(`\nMarks that would be awarded: ${Math.round(recovered * 100) / 100}`);
+  console.log(`  of those, on papers auto-submitted when time ran out : ${autoSubmitted}`);
+  console.log(`  on papers cancelled for proctoring violations        : ${cancelled}  (held back by default)`);
+  console.log(`  on mentor-reviewed papers                            : ${reviewed}  (held back by default)`);
   console.log('\nThese are marks for code that was never submitted for grading.');
   console.log('Awarding them is a policy decision — --apply writes them, nothing else does.');
 
@@ -212,13 +220,21 @@ async function regrade(gradeable) {
 async function apply(outcomes) {
   const eligible = outcomes.filter((outcome) => {
     if (outcome.verdict !== 'scores') return false;
+    // A paper cancelled for proctoring violations must not be quietly marked
+    // UP by a maintenance script. Whether a cancelled attempt deserves marks
+    // at all is a disciplinary decision, not a grading one.
+    if (outcome.submission.cancelledDueToViolation && !OPTIONS.includeCancelled) return false;
     if (outcome.submission.mentorReviewed && !OPTIONS.includeReviewed) return false;
     return true;
   });
-  const held = outcomes.filter((o) => o.verdict === 'scores').length - eligible.length;
+
+  const scoring = outcomes.filter((o) => o.verdict === 'scores');
+  const heldCancelled = scoring.filter((o) => o.submission.cancelledDueToViolation && !OPTIONS.includeCancelled).length;
+  const heldReviewed = scoring.length - eligible.length - heldCancelled;
 
   console.log(`\nApplying ${eligible.length} score(s).`);
-  if (held) console.log(`Holding back ${held} on reviewed papers — pass --include-reviewed for those.`);
+  if (heldCancelled) console.log(`Holding back ${heldCancelled} on papers CANCELLED for violations — --include-cancelled to override.`);
+  if (heldReviewed) console.log(`Holding back ${heldReviewed} on mentor-reviewed papers — --include-reviewed for those.`);
 
   let written = 0;
   for (const outcome of eligible) {
