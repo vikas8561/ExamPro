@@ -29,6 +29,19 @@ import SebLaunchScreen from "./SebLaunchScreen";
 import { ProctorContext } from "./context";
 
 /**
+ * Weight-0 events the student is not told about as they happen.
+ *
+ * Everything else scored zero is worth a quiet notice -- a blocked shortcut or
+ * an extension injecting into the page is something the student can act on, and
+ * finding out for the first time in a misconduct meeting helps nobody. Pasting
+ * their own code back into the editor is not in that category: it is ordinary
+ * editing, it happens constantly, and a toast on every paste would be noise
+ * that trains students to ignore the notices that matter. It stays on the
+ * report either way.
+ */
+const SILENT_VIOLATIONS = new Set(["paste_internal"]);
+
+/**
  * The one thing an exam page mounts.
  *
  * Everything the old system spread across a 1681-line component and two
@@ -181,8 +194,11 @@ export function ProctorProvider({
       // hears of it is a misconduct meeting, long after they could have closed
       // the offending thing.
       if (verdict.action === "continue" && Array.isArray(verdict.recorded) && verdict.recorded.length > 0) {
-        const last = verdict.recorded[verdict.recorded.length - 1];
-        setNotice({ id: Date.now(), message: last.details || "A proctoring event was recorded." });
+        const speakable = verdict.recorded.filter((entry) => !SILENT_VIOLATIONS.has(entry.violationType));
+        const last = speakable[speakable.length - 1];
+        if (last) {
+          setNotice({ id: Date.now(), message: last.details || "A proctoring event was recorded." });
+        }
         return;
       }
 
@@ -490,6 +506,7 @@ export function ProctorProvider({
         report,
         isPaused,
         blockContextMenu: policy.blockContextMenu !== false,
+        allowInternalClipboard: policy.allowInternalClipboard !== false,
       }),
       createFocusDetector({ report, isPaused }),
       watchesFullscreen &&

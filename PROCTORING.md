@@ -24,7 +24,9 @@ blocking — all of it bypassed in one request. That hole is now closed.
 | Direct API call to fetch questions or submit answers | 🟢 **Blocked** |
 | Switching browser tabs | 🟢 Blocked + recorded |
 | Leaving fullscreen | 🟢 Blocked + recorded |
-| Copy / paste / right-click | 🟢 Blocked + recorded |
+| Pasting an answer in from outside | 🟢 Blocked + recorded |
+| Copying the question text out | 🟢 Blocked — question text cannot be selected |
+| Right-click | 🟢 Blocked + recorded |
 | Browser keyboard shortcuts | 🟢 Blocked |
 | Editing the page to fake the violation count | 🟢 Useless — the server keeps the count |
 | Closing the tab, killing JS, cutting the network | 🟢 Caught by the heartbeat |
@@ -182,7 +184,7 @@ a check later means adding one file.
 | `focus.js` | Tab switch, window switch, `Cmd+Tab`, minimise |
 | `fullscreen.js` | Leaving fullscreen |
 | `keyboard.js` | All keys, via an allowlist, plus the Keyboard Lock API |
-| `clipboard.js` | Copy, cut, paste, right-click, drag |
+| `clipboard.js` | Copy, cut, paste, right-click, drag — and whether a paste came from inside the exam |
 | `devtools.js` | Developer tools, via three independent signals |
 | `screen.js` | Screen sharing stopped, wrong share type, second monitor |
 | `permissions.js` | Camera / microphone / location revoked mid-exam |
@@ -223,9 +225,25 @@ blocks the student, and never invents a violation.
 - `0` — cancel on the first violation
 - `n` — warn up to `n`, cancel on `n+1`
 
-Violations are weighted (`Backend/services/proctorPolicy.js`). Opening devtools
-costs 2 because nobody does it by accident; right-click, blocked keys and network
-loss cost 0 and are recorded for context only.
+Violations are weighted (`Backend/services/proctorPolicy.js`). Right-click,
+blocked keys and network loss cost 0 and are recorded for context only.
+
+Pasting is weighted in two halves, which is worth knowing about before changing
+it. A paste of text the student copied from somewhere else costs a violation. A
+paste of text they copied from inside their own answer costs nothing — moving a
+block of code around is how code gets written, and with the default allowance of
+zero, charging it cancelled coding tests on the student's first refactor. The
+browser tells the two apart by remembering what it saw copied and matching it
+against what arrives; the decision is still the server's, which simply sees
+`paste_internal` at weight 0 instead of `paste_attempt` at weight 1. Both appear
+on the report, so a paper assembled by pasting still looks like one.
+
+The cost of this is that a copy inside an answer field now genuinely reaches the
+system clipboard, so a student can carry their own answer text out of the exam.
+The question text cannot go with it — it stays unselectable. A deployment that
+would rather keep the clipboard shut in both directions can set
+`allowInternalClipboard: false` in `proctorPolicy.js`, and should expect coding
+tests to become considerably harder to sit.
 
 **The access code** lives at **Admin → Proctoring**. One code for the whole
 system. It waives camera, microphone and location only — fullscreen, tab

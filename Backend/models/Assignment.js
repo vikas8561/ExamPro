@@ -9,7 +9,8 @@ const TabViolationSchema = new mongoose.Schema({
     type: String,
     // Extended, never renamed, so historical assignments still load.
     enum: ["tab_switch", "window_open", "tab_close", "browser_switch", "fullscreen_exit",
-      "window_blur", "devtools_opened", "copy_attempt", "paste_attempt", "context_menu",
+      "window_blur", "devtools_opened", "copy_attempt", "paste_attempt", "paste_internal",
+      "context_menu",
       "blocked_key", "screen_share_stopped", "screen_share_wrong_surface",
       "second_monitor_detected", "permission_revoked", "heartbeat_lost",
       "page_tampered", "network_lost", "seb_integrity_lost"],

@@ -24,7 +24,8 @@ const VIOLATION_LABELS = {
   window_blur: "Left the exam window",
   devtools_opened: "Opened developer tools",
   copy_attempt: "Tried to copy",
-  paste_attempt: "Tried to paste",
+  paste_attempt: "Tried to paste from outside the exam",
+  paste_internal: "Pasted their own copied text",
   context_menu: "Opened the right-click menu",
   blocked_key: "Pressed a blocked shortcut",
   screen_share_stopped: "Stopped sharing their screen",
@@ -42,6 +43,9 @@ const UNCHARGED = new Set([
   "context_menu",
   "blocked_key",
   "network_lost",
+  // Cut-and-paste within the student's own answer. Shown, because a paper
+  // assembled by pasting is worth seeing, but it is ordinary editing.
+  "paste_internal",
   // The exam is blocked while this is true, which is the enforcement. Charging
   // it as well would let a momentary blank from SEB's key API end an exam.
   "seb_integrity_lost",

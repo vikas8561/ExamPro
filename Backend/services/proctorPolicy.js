@@ -24,6 +24,7 @@ const VIOLATION_TYPES = [
   "devtools_opened",
   "copy_attempt",
   "paste_attempt",
+  "paste_internal",
   "context_menu",
   "blocked_key",
   "screen_share_stopped",
@@ -70,8 +71,12 @@ const VIOLATION_WEIGHTS = {
   browser_switch: 1,
   fullscreen_exit: 1,
   copy_attempt: 1,
-  paste_attempt: 1,
   screen_share_wrong_surface: 1,
+
+  // A paste of text that did not come from inside the exam. Still charged: the
+  // clipboard events are spec-defined and identical on every operating system,
+  // and content arriving from outside is the thing this detector exists for.
+  paste_attempt: 1,
 
   // A capture track actually ending is unambiguous. Scored 1 rather than 2
   // because the exam is already blocked until the student shares again — the
@@ -108,6 +113,14 @@ const VIOLATION_WEIGHTS = {
   // Heuristic pattern-matching on injected DOM. Browser extensions a student
   // has no idea are installed can trip it.
   page_tampered: 0,
+
+  // A paste of text the student had copied from inside the exam themselves.
+  // Cut-and-paste inside a code editor is how code gets written, not how an
+  // answer gets smuggled in, and charging it ended coding attempts on the first
+  // refactor. The browser decides internal from external by matching what was
+  // pasted against what it saw copied; see detectors/clipboard.js. Recorded in
+  // full, so a reviewer still sees a paper that was assembled by pasting.
+  paste_internal: 0,
 
   context_menu: 0,        // recorded for the report, never costs the student
   blocked_key: 0,         // recorded only; the key was already blocked
@@ -214,6 +227,11 @@ const STRICT = {
   blockKeyboard: true,
   blockClipboard: true,
   blockContextMenu: true,
+  // Let a student copy and paste within their own answer. Turning this off
+  // restores a clipboard that is shut in both directions, at the cost of making
+  // coding tests very hard to sit -- see detectors/clipboard.js for the
+  // trade-off this setting picks between.
+  allowInternalClipboard: true,
   detectDevtools: true,
   detectSecondMonitor: true,
   detectTampering: true,
@@ -243,6 +261,7 @@ const OFF = {
   blockKeyboard: false,
   blockClipboard: false,
   blockContextMenu: false,
+  allowInternalClipboard: true,
   detectDevtools: false,
   detectSecondMonitor: false,
   detectTampering: false,
