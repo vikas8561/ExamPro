@@ -5,6 +5,7 @@ const { authenticateToken, requireRole } = require("../middleware/auth");
 const { attach } = require("../services/principals");
 const { resolveProctorStatusForTest } = require("../middleware/proctorSession");
 const { sanitizeQuestions, canSeeAnswers } = require("../services/questionSanitizer");
+const { sanitizeCodingQuestion } = require("../services/testCases");
 const { recalculateScoresForTest } = require("../services/scoreCalculation");
 const { resolveOrderedQuestions } = require("../services/questionOrder");
 const Assignment = require("../models/Assignment");
@@ -226,15 +227,10 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
       // and a client-supplied one could only collide. Mongoose mints them.
       const { _id, ...q } = rawQuestion;
       if (q.kind === 'coding') {
-        return {
-          ...q,
-          visibleTestCases: (q.visibleTestCases || []).filter(tc =>
-            tc && tc.input && tc.input.trim() && tc.output && tc.output.trim()
-          ),
-          hiddenTestCases: (q.hiddenTestCases || []).filter(tc =>
-            tc && tc.input && tc.input.trim() && tc.output && tc.output.trim()
-          )
-        };
+        // Shared rule -- see services/testCases.js. The hand-written filter
+        // this replaces dropped any case with an empty input or an empty
+        // expected output, which are both legitimate.
+        return sanitizeCodingQuestion(q);
       }
 
       if (q.kind === 'theory') {
@@ -369,16 +365,9 @@ router.put("/:id", authenticateToken, requireRole("admin"), async (req, res, nex
         const keepId = Boolean(candidate) && idsOnThisTest.has(candidate) && !alreadyClaimed.has(candidate);
         if (keepId) alreadyClaimed.add(candidate);
 
+        // Same shared rule the create path uses -- services/testCases.js.
         const processed = question.kind === 'coding'
-          ? {
-            ...question,
-            visibleTestCases: (question.visibleTestCases || []).filter(tc =>
-              tc && tc.input && tc.input.trim() && tc.output && tc.output.trim()
-            ),
-            hiddenTestCases: (question.hiddenTestCases || []).filter(tc =>
-              tc && tc.input && tc.input.trim() && tc.output && tc.output.trim()
-            )
-          }
+          ? sanitizeCodingQuestion(question)
           : question;
 
         return keepId ? { ...processed, _id: candidate } : processed;

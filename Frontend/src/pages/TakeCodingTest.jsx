@@ -88,11 +88,29 @@ function CustomDropdown({ value, onChange, options, className = "" }) {
 // Judge0 status ids (GET /statuses). Colours follow LeetCode's verdict palette.
 const ACCEPTED = 3;
 
+const WRONG_ANSWER = 4;
 const verdictColor = (statusId) => (statusId === ACCEPTED ? 'text-[#28c244]' : 'text-[#ef4743]');
 
 const verdictLabel = (statusId, description) => {
   if (statusId === ACCEPTED) return 'Accepted';
   return description || 'Wrong Answer';
+};
+
+/**
+ * The verdict to show for a submission.
+ *
+ * The headline and the pass count must tell the same story. The judge reports
+ * Accepted on its own comparison, so an "Accepted" sitting beside
+ * "3 / 5 testcases passed" was possible; the count is what the score was
+ * computed from, so the count wins.
+ */
+const submitVerdict = (result) => {
+  const verdict = result?.verdict || { id: WRONG_ANSWER, description: 'Wrong Answer' };
+  const allPassed = result?.totalHidden > 0 && result.passedCount === result.totalHidden;
+  if (verdict.id === ACCEPTED && !allPassed) {
+    return { id: WRONG_ANSWER, description: 'Wrong Answer' };
+  }
+  return verdict;
 };
 
 const DIFFICULTY_COLOR = {
@@ -822,15 +840,31 @@ function TakeCodingTestInner({ submitRef }) {
   }, [assignmentId]);
 
 
+  /**
+   * Tidy whitespace. Deliberately NOT a reformatter.
+   *
+   * This used to run `line.trim()` over every line, which strips leading
+   * indentation -- pressing Format silently destroyed any Python submission
+   * and reduced C-family code to one flat block. There is no formatter for
+   * six languages on the client, so this does only what is provably safe:
+   * normalise line endings, drop trailing whitespace, collapse runs of blank
+   * lines, and end the file with a single newline. Indentation is untouched.
+   */
   const formatCode = async () => {
     if (!activeQ) return;
     setIsFormatting(true);
     try {
-      // Simulate code formatting (in real app, this would use a formatter API)
       const currentCode = codeByQ[activeQ._id] || '';
-      // Simple formatting simulation - in real app, use prettier, black, etc.
-      const formattedCode = currentCode.split('\n').map(line => line.trim()).join('\n');
-      setCodeByQ(prev => ({ ...prev, [activeQ._id]: formattedCode }));
+      const formattedCode = currentCode
+        .replace(/\r\n/g, '\n')
+        .split('\n')
+        .map((line) => line.replace(/[ \t]+$/, ''))
+        .join('\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .replace(/\s*$/, '\n');
+      if (formattedCode !== currentCode) {
+        setCodeByQ(prev => ({ ...prev, [activeQ._id]: formattedCode }));
+      }
     } catch (e) {
       console.error('Formatting failed', e);
     } finally {
@@ -1075,8 +1109,8 @@ function TakeCodingTestInner({ submitRef }) {
                     <div>
                       {/* ---- verdict ---- */}
                       <div className="flex items-baseline gap-3 mb-1">
-                        <span className={`text-[22px] font-medium ${verdictColor(activeSubmitResult.verdict?.id)}`}>
-                          {verdictLabel(activeSubmitResult.verdict?.id, activeSubmitResult.verdict?.description)}
+                        <span className={`text-[22px] font-medium ${verdictColor(submitVerdict(activeSubmitResult).id)}`}>
+                          {verdictLabel(submitVerdict(activeSubmitResult).id, submitVerdict(activeSubmitResult).description)}
                         </span>
                         <span className="text-[13px] text-white/50">
                           {activeSubmitResult.passedCount} / {activeSubmitResult.totalHidden} testcases passed
@@ -1381,6 +1415,12 @@ function TakeCodingTestInner({ submitRef }) {
                         </div>
                       ) : sampleCases[selectedCase] ? (
                         <div>
+                          {!activeQ?.visibleTestCases?.length && (
+                            <div className="text-[12px] text-[#ffb800] mb-2">
+                              Illustration from the question — Run has no sample cases to execute for this
+                              question. Use Custom input to try your code.
+                            </div>
+                          )}
                           <LcBox label="Input" value={sampleCases[selectedCase].input} />
                           <LcBox label="Expected" value={sampleCases[selectedCase].output} />
                         </div>
@@ -1398,17 +1438,17 @@ function TakeCodingTestInner({ submitRef }) {
                       {lastAction === 'submit' && activeSubmitResult && (
                         <div>
                           <div className="flex items-baseline gap-3 mb-1">
-                            <span className={`text-[18px] font-medium ${verdictColor(activeSubmitResult.verdict?.id)}`}>
-                              {verdictLabel(activeSubmitResult.verdict?.id, activeSubmitResult.verdict?.description)}
+                            <span className={`text-[18px] font-medium ${verdictColor(submitVerdict(activeSubmitResult).id)}`}>
+                              {verdictLabel(submitVerdict(activeSubmitResult).id, submitVerdict(activeSubmitResult).description)}
                             </span>
-                            {activeSubmitResult.verdict?.id !== 3 && (
+                            {submitVerdict(activeSubmitResult).id !== ACCEPTED && (
                               <span className="text-[13px] text-white/50">
                                 {activeSubmitResult.passedCount} / {activeSubmitResult.totalHidden} testcases passed
                               </span>
                             )}
                           </div>
 
-                          {activeSubmitResult.verdict?.id === 3 && (
+                          {submitVerdict(activeSubmitResult).id === ACCEPTED && (
                             <div className="text-[13px] text-white/50 mb-3">
                               {activeSubmitResult.passedCount} / {activeSubmitResult.totalHidden} testcases passed
                             </div>
@@ -1451,9 +1491,27 @@ function TakeCodingTestInner({ submitRef }) {
                       {lastAction === 'run' && activeRunResult && (
                         <div>
                           <div className="mb-3">
-                            <span className={`text-[18px] font-medium ${verdictColor(activeRunResult.passed === activeRunResult.total ? 3 : 4)}`}>
-                              {activeRunResult.passed === activeRunResult.total ? 'Accepted' : 'Wrong Answer'}
-                            </span>
+                            {/* `total === 0` means nothing was checked against an
+                                expectation -- a question with no visible test
+                                cases, or a custom-input-only run. Calling that
+                                "Accepted" told students their code had passed
+                                when not a single case had run. */}
+                            {activeRunResult.total === 0 ? (
+                              <span className="text-[18px] font-medium text-white/60">
+                                {activeRunResult.customResult
+                                  ? 'Ran with your input'
+                                  : 'No sample test cases to run'}
+                              </span>
+                            ) : (
+                              <span className={`text-[18px] font-medium ${verdictColor(activeRunResult.passed === activeRunResult.total ? ACCEPTED : WRONG_ANSWER)}`}>
+                                {activeRunResult.passed === activeRunResult.total ? 'Accepted' : 'Wrong Answer'}
+                              </span>
+                            )}
+                            {activeRunResult.total > 0 && (
+                              <span className="ml-2 text-[13px] text-white/50">
+                                {activeRunResult.passed}/{activeRunResult.total} sample cases passed
+                              </span>
+                            )}
                           </div>
 
                           <div className="flex items-center gap-2 mb-3 flex-wrap">
@@ -1494,6 +1552,13 @@ function TakeCodingTestInner({ submitRef }) {
                                   <LcBox label="Compile Error" value={shown.compileOutput} tone="text-[#ef4743]" />
                                 ) : (
                                   <>
+                                    {selectedCase !== -1 && (
+                                      <div className="mb-3 text-[13px]">
+                                        <span className={shown.passed ? 'text-[#28c244]' : 'text-[#ef4743]'}>
+                                          {shown.passed ? 'Accepted' : (shown.status?.description || 'Wrong Answer')}
+                                        </span>
+                                      </div>
+                                    )}
                                     <LcBox label="Input" value={shown.input} />
                                     <LcBox label="Output" value={shown.stdout} />
                                     {selectedCase !== -1 && <LcBox label="Expected" value={shown.expected} />}

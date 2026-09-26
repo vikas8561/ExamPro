@@ -13,12 +13,15 @@
     "test:seb": "node scripts/security/seb-verification-check.js",
     "test:shuffle": "node scripts/exam/shuffle-order-check.js",
     "test:edit": "node scripts/exam/edit-preserves-answers-check.js",
-    "test:exam": "npm run test:shuffle && npm run test:edit && npm run test:autosubmit && npm run test:kinds && npm run test:deep && npm run test:reported",
+    "test:exam": "npm run test:shuffle && npm run test:edit && npm run test:autosubmit && npm run test:kinds && npm run test:deep && npm run test:reported && npm run test:output-matching",
     "test:autosubmit": "node scripts/exam/auto-submit-check.js",
     "test:kinds": "node scripts/exam/submit-all-kinds-check.js",
     "test:deep": "node scripts/exam/deep-audit-check.js",
     "test:reported": "node scripts/exam/reported-issues-check.js",
+    "test:output-matching": "node scripts/exam/output-matching-check.js",
+    "test:coding-persistence": "node scripts/exam/coding-persistence-check.js",
     "audit-coding-marks": "node scripts/auditCodingMarks.js",
+    "audit-coding-verdicts": "node scripts/auditCodingVerdicts.js",
     "test:db-errors": "node scripts/database-error-check.js"
   },
   "dependencies": {

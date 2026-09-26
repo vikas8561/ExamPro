@@ -13,19 +13,24 @@ const ExampleSchema = new mongoose.Schema(
   { _id: false }
 );
 
-// Test case schemas for coding questions
+// Test case schemas for coding questions.
+//
+// `input` and `output` are NOT `required`. Mongoose treats "" as missing on a
+// required String, which made two ordinary cases unsaveable: a question that
+// reads nothing from stdin, and a case whose correct answer is empty output.
+// Blank rows are dropped before they get here -- see services/testCases.js.
 const VisibleTestCaseSchema = new mongoose.Schema(
   {
-    input: { type: String, required: true },
-    output: { type: String, required: true }
+    input: { type: String, default: "" },
+    output: { type: String, default: "" }
   },
   { _id: true }
 );
 
 const HiddenTestCaseSchema = new mongoose.Schema(
   {
-    input: { type: String, required: true },
-    output: { type: String, required: true },
+    input: { type: String, default: "" },
+    output: { type: String, default: "" },
     marks: { type: Number, default: 1, min: 0 }
   },
   { _id: true }

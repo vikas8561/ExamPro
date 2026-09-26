@@ -12,10 +12,14 @@ const FONT_SIZES = [12, 13, 14, 15, 16, 18, 20, 22, 24, 25, 28, 30];
 
 // Judge0 status ids (GET /statuses). Colours match the coding-test page.
 const ACCEPTED = 3;
-const statusClass = (statusId, passed) =>
-  (statusId === ACCEPTED || (statusId === undefined && passed))
+// Green means the case PASSED, never just "the judge's status id was 3".
+// Keying off the status alone painted a failed case green and labelled it
+// "Accepted" whenever Judge0's own comparison disagreed with ours.
+const passClass = (didPass) =>
+  didPass
     ? 'border-[#28c244]/40 bg-[#28c244]/10 text-[#28c244]'
     : 'border-[#ef4743]/40 bg-[#ef4743]/10 text-[#ef4743]';
+const statusClass = (statusId) => passClass(statusId === ACCEPTED);
 const verdictColor = (statusId) => (statusId === ACCEPTED ? 'text-[#28c244]' : 'text-[#ef4743]');
 
 const Metric = ({ label, value }) =>
@@ -195,15 +199,26 @@ export default function Judge0CodeEditor({
           </select>
 
           {runResults && (
-            <span className="px-2 py-1 text-xs rounded-full bg-emerald-900/30 border border-emerald-700 text-emerald-300">
-              Sample: {runResults.passed}/{runResults.total}
+            <span className={`px-2 py-1 text-xs rounded-full border ${
+              runResults.total > 0 && runResults.passed === runResults.total
+                ? 'bg-emerald-900/30 border-emerald-700 text-emerald-300'
+                : 'bg-slate-800/60 border-slate-600 text-slate-300'
+            }`}>
+              {runResults.total > 0 ? `Sample: ${runResults.passed}/${runResults.total}` : 'No sample cases'}
             </span>
           )}
-          {submitResults && (
-            <span className={`px-2 py-1 text-xs rounded-full border ${statusClass(submitResults.verdict?.id)}`}>
-              {submitResults.verdict?.id === ACCEPTED ? 'Accepted' : (submitResults.verdict?.description || 'Wrong Answer')}
-            </span>
-          )}
+          {submitResults && (() => {
+            // Green only when every hidden case passed -- the count is what the
+            // score was computed from, so it, not the judge's status id, decides.
+            const allPassed = submitResults.totalHidden > 0
+              && submitResults.passedCount === submitResults.totalHidden;
+            const accepted = submitResults.verdict?.id === ACCEPTED && allPassed;
+            return (
+              <span className={`px-2 py-1 text-xs rounded-full border ${passClass(accepted)}`}>
+                {accepted ? 'Accepted' : (submitResults.verdict?.description || 'Wrong Answer')}
+              </span>
+            );
+          })()}
         </div>
       </div>
 
@@ -272,13 +287,13 @@ export default function Judge0CodeEditor({
                   Sample test cases — passed {runResults.passed}/{runResults.total}
                 </div>
                 {runResults.results.map((result, index) => (
-                  <div key={index} className={`p-2 rounded border text-xs ${statusClass(result.status?.id, result.passed)}`}>
+                  <div key={index} className={`p-2 rounded border text-xs ${passClass(result.passed)}`}>
                     <div className="flex justify-between items-center gap-2 flex-wrap">
                       <span className="font-medium">Case {index + 1}</span>
                       <span className="flex items-center gap-3">
                         <Metric label="time" value={result.time ? `${result.time}s` : null} />
                         <Metric label="mem" value={result.memory ? `${result.memory} KB` : null} />
-                        <span>{result.status?.description || (result.passed ? 'Passed' : 'Failed')}</span>
+                        <span>{result.passed ? 'Accepted' : (result.status?.description || 'Wrong Answer')}</span>
                       </span>
                     </div>
                     <OutputBlock label="Input" value={result.input} tone="text-slate-300" />
@@ -294,7 +309,7 @@ export default function Judge0CodeEditor({
 
             {/* Custom input run */}
             {runResults?.customResult && (
-              <div className={`p-2 rounded border text-xs ${statusClass(runResults.customResult.status?.id, true)}`}>
+              <div className={`p-2 rounded border text-xs ${statusClass(runResults.customResult.status?.id)}`}>
                 <div className="flex justify-between items-center gap-2 flex-wrap">
                   <span className="font-medium">Custom input</span>
                   <span className="flex items-center gap-3">

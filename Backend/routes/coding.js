@@ -15,9 +15,11 @@ const {
   getSupportedLanguages,
   checkHealth,
   Judge0Error,
+  STATUS,
 } = require('../services/judge0');
 const { LANGUAGES, normalizeLanguageKey, LANGUAGE_KEYS } = require('../configs/languages');
 const { maxScoreForTest, marksPerTestCase, codingMarksEarned } = require('../services/grading');
+const { persistCodingResponse } = require('../services/codingSubmission');
 
 const OBJECT_ID = /^[0-9a-fA-F]{24}$/;
 
@@ -184,8 +186,19 @@ router.post('/run', authenticateToken, executionLimiter, async (req, res) => {
     const hasCustomInput = typeof customInput === 'string' && customInput.length > 0;
     if (hasCustomInput) cases.push({ input: customInput, output: null, marks: 0 });
 
+    // `total` is the number of cases that were checked against an expectation
+    // — the custom case is not one of them. With no visible cases that is 0,
+    // and "0 of 0 passed" must not be read as success: the page used to render
+    // a green "Accepted" for a question that had no sample cases to run at all.
     if (cases.length === 0) {
-      return res.json({ results: [], passed: 0, total: 0, message: 'No visible test cases available' });
+      return res.json({
+        results: [],
+        passed: 0,
+        total: 0,
+        customResult: null,
+        language: languageKey,
+        message: 'No visible test cases available',
+      });
     }
 
     const results = await runAgainstCases({ sourceCode, language: languageKey, cases });
@@ -206,6 +219,7 @@ router.post('/run', authenticateToken, executionLimiter, async (req, res) => {
       total: results.length,
       customResult: customResult ? { ...customResult, isCustom: true } : null,
       language: languageKey,
+      ...(results.length === 0 ? { message: 'No visible test cases available' } : {}),
     });
   } catch (error) {
     return sendJudgeError(res, error, 'Code execution failed');
@@ -271,7 +285,7 @@ async function gradeHiddenCases({ owned, languageKey, sourceCode, onProgress }) 
   const passedCount = results.filter((result) => result.passed).length;
   // Divided once, at the end: all cases passing awards exactly `points`.
   const earnedMarks = codingMarksEarned(question, passedCount);
-  const compileError = results.find((result) => result.status.id === 6);
+  const compileError = results.find((result) => result.status.id === STATUS.COMPILATION_ERROR);
 
   const numeric = (value) => {
     const parsed = Number(value);
@@ -283,7 +297,12 @@ async function gradeHiddenCases({ owned, languageKey, sourceCode, onProgress }) 
   const memoryKb = memories.length ? Math.max(...memories) : null;
 
   const firstFailure = results.find((result) => !result.passed);
-  const verdict = firstFailure ? firstFailure.status : { id: 3, description: 'Accepted' };
+  // toResult never labels a failed case "Accepted", so the first failure's
+  // status is a verdict the student can be shown as-is. STATUS.ACCEPTED rather
+  // than a bare 3, so the id can only ever mean one thing.
+  const verdict = firstFailure
+    ? firstFailure.status
+    : { id: STATUS.ACCEPTED, description: 'Accepted' };
   const accepted = !firstFailure;
 
   // Safe projection: verdict only.
@@ -314,32 +333,7 @@ async function gradeHiddenCases({ owned, languageKey, sourceCode, onProgress }) 
   // below a score already awarded.
   const maxScore = maxScoreForTest(test.questions);
 
-  let submission = await TestSubmission.findOne({ assignmentId: assignment._id, userId: assignment.userId });
-  if (!submission) {
-    submission = await TestSubmission.create({
-      assignmentId: assignment._id,
-      testId: test._id,
-      userId: assignment.userId,
-      responses: [response],
-      totalScore: earnedMarks,
-      maxScore,
-      timeSpent: 0,
-      mentorReviewed: false,
-      reviewStatus: 'Pending',
-      // The student is still mid-test; the final submit flips this.
-      isFinalized: false,
-    });
-  } else {
-    const index = submission.responses.findIndex(
-      (existing) => existing.questionId.toString() === String(question._id)
-    );
-    if (index >= 0) submission.responses[index] = response;
-    else submission.responses.push(response);
-
-    submission.totalScore = submission.responses.reduce((sum, r) => sum + (r.points || 0), 0);
-    submission.maxScore = maxScore;
-    await submission.save();
-  }
+  await persistCodingResponse({ assignment, test, response, maxScore, earnedMarks });
 
   return {
     results: safeResults,

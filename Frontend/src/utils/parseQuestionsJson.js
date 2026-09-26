@@ -95,6 +95,15 @@ function parseTestCases(list, { withMarks }, label, index, warnings) {
 
     const parsed = { input: toText(testCase.input), output: toText(testCase.output) };
 
+    // Both of these are legal and are stored as given (see
+    // Backend/services/testCases.js) -- but each is far more often a slip than
+    // a deliberate choice, so neither should pass unremarked.
+    if (parsed.input.trim() === '' && parsed.output.trim() === '') {
+      warnings.push(`${where} has an empty input AND an empty expected output — it will be dropped when the test is saved.`);
+    } else if (parsed.output === '') {
+      warnings.push(`${where} expects empty output — the program must print nothing to pass.`);
+    }
+
     if (withMarks) {
       const marks = testCase.marks === undefined ? NaN : Number(testCase.marks);
       if (!Number.isFinite(marks) || marks < 0) {
