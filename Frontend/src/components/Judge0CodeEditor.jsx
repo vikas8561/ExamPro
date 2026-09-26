@@ -20,6 +20,21 @@ const passClass = (didPass) =>
     ? 'border-[#28c244]/40 bg-[#28c244]/10 text-[#28c244]'
     : 'border-[#ef4743]/40 bg-[#ef4743]/10 text-[#ef4743]';
 const statusClass = (statusId) => passClass(statusId === ACCEPTED);
+/**
+ * The clock time a submission was accepted, as the student's own clock reads it.
+ *
+ * The instant is the server's -- the browser's clock belongs to the student --
+ * rendered in their locale so it matches the clock they are looking at. Null
+ * rather than a placeholder when absent, so an older result shows no time
+ * instead of "Invalid Date".
+ */
+const submittedAtLabel = (iso) => {
+  if (!iso) return null;
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return null;
+  return at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+};
+
 const verdictColor = (statusId) => (statusId === ACCEPTED ? 'text-[#28c244]' : 'text-[#ef4743]');
 
 const Metric = ({ label, value }) =>
@@ -324,7 +339,10 @@ export default function Judge0CodeEditor({
               </div>
             )}
 
-            {/* Hidden test cases — verdicts only, never the data */}
+            {/* Hidden test cases — the counts only.
+                Never the data, never which case failed, never why: the server
+                does not send any of it. See the submit payload in
+                Backend/routes/coding.js for the reasoning. */}
             {submitResults && (
               <div className="space-y-2">
                 <div className="flex items-baseline gap-3">
@@ -335,23 +353,27 @@ export default function Judge0CodeEditor({
                     {submitResults.passedCount} / {submitResults.totalHidden} testcases passed
                   </span>
                 </div>
-                <div className="flex items-center gap-6 text-xs text-slate-400">
-                  {submitResults.runtimeMs !== null && submitResults.runtimeMs !== undefined && (
-                    <span>Runtime <span className="text-slate-200">{submitResults.runtimeMs} ms</span></span>
-                  )}
-                  {submitResults.memoryKb !== null && submitResults.memoryKb !== undefined && (
-                    <span>Memory <span className="text-slate-200">{(submitResults.memoryKb / 1024).toFixed(1)} MB</span></span>
-                  )}
+                <div className="text-xs text-slate-500">
+                  Submitted in {submitResults.language}
+                  {submittedAtLabel(submitResults.submittedAt)
+                    ? ` at ${submittedAtLabel(submitResults.submittedAt)}`
+                    : ''}
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {submitResults.results?.map((result, index) => (
-                    <span
-                      key={index}
-                      title={result.status?.description}
-                      className={`w-2 h-2 rounded-full ${result.passed ? 'bg-[#28c244]' : 'bg-[#ef4743]'}`}
-                    />
-                  ))}
-                </div>
+                {/* Best-wins: persistCodingResponse keeps whichever attempt passed
+                    more cases, so resubmitting can only help. When an earlier
+                    attempt still stands, name its score -- otherwise the count
+                    above reads as the student's grade when it is not. */}
+                {submitResults.graded && !submitResults.graded.isThisAttempt ? (
+                  <div className="text-xs text-[#28c244] rounded bg-slate-800/60 px-2.5 py-1.5">
+                    Your best attempt is the one graded: {submitResults.graded.passedCount} /{' '}
+                    {submitResults.graded.totalHidden} testcases. This attempt did not beat it.
+                  </div>
+                ) : (
+                  <div className="text-xs text-slate-400 rounded bg-slate-800/60 px-2.5 py-1.5">
+                    Your best submission is the one graded. Submitting again can only improve
+                    your result, never lower it.
+                  </div>
+                )}
                 <OutputBlock label="Compiler" value={submitResults.compileOutput} tone="text-orange-300" />
               </div>
             )}

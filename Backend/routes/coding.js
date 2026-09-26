@@ -19,7 +19,11 @@ const {
 } = require('../services/judge0');
 const { LANGUAGES, normalizeLanguageKey, LANGUAGE_KEYS } = require('../configs/languages');
 const { maxScoreForTest, marksPerTestCase, codingMarksEarned } = require('../services/grading');
-const { persistCodingResponse } = require('../services/codingSubmission');
+const {
+  persistCodingResponse,
+  readGradedAttempt,
+  studentSubmissionView,
+} = require('../services/codingSubmission');
 
 const OBJECT_ID = /^[0-9a-fA-F]{24}$/;
 
@@ -305,12 +309,11 @@ async function gradeHiddenCases({ owned, languageKey, sourceCode, onProgress }) 
     : { id: STATUS.ACCEPTED, description: 'Accepted' };
   const accepted = !firstFailure;
 
-  // Safe projection: verdict only.
-  const safeResults = results.map((result) => ({
-    index: result.index,
-    passed: result.passed,
-    status: result.status,
-  }));
+  // One instant, taken once: the same value is stored and handed back, so the
+  // receipt a student is looking at cannot drift from the record a mentor sees.
+  // The server's clock, never the browser's -- the browser's belongs to the
+  // student and can be set to anything.
+  const submittedAt = new Date();
 
   const response = {
     questionId: String(question._id),
@@ -327,6 +330,9 @@ async function gradeHiddenCases({ owned, languageKey, sourceCode, onProgress }) 
     topicRecommendations: [],
     runtimeMs,
     memoryKb,
+    submittedAt,
+    passedCount,
+    totalHidden: hiddenCases.length,
   };
 
   // Same rule the submit and re-grade paths use, so maxScore can never land
@@ -335,18 +341,24 @@ async function gradeHiddenCases({ owned, languageKey, sourceCode, onProgress }) 
 
   await persistCodingResponse({ assignment, test, response, maxScore, earnedMarks });
 
-  return {
-    results: safeResults,
+  // Which attempt actually counts now. Best-wins means this submission may have
+  // been set aside in favour of a better earlier one, and the student has to be
+  // told that rather than left to read a lower number as their grade.
+  const graded = await readGradedAttempt({ assignment, questionId: question._id });
+
+  // The allowlist lives in services/codingSubmission.js, where a test asserts
+  // its exact key set. Everything this function computed that is not in that
+  // list -- the per-case results, the statuses, the runtime, the memory -- is
+  // stored and never sent.
+  return studentSubmissionView({
     verdict,
     passedCount,
     totalHidden: hiddenCases.length,
-    runtimeMs,
-    memoryKb,
     language: languageKey,
     compileOutput: compileError ? compileError.compileOutput : null,
-    // The score and the question's worth are deliberately not returned: both
-    // are computed and stored, but students are not shown them during the test.
-  };
+    submittedAt,
+    graded,
+  });
 }
 
 router.post('/submit', authenticateToken, executionLimiter, async (req, res) => {
@@ -434,80 +446,28 @@ router.post('/submit', authenticateToken, executionLimiter, async (req, res) => 
 });
 
 /**
- * Runtime / memory distribution for one question, so a student can see where
- * their accepted submission sits — the chart shown after submitting.
+ * The runtime / memory distribution endpoint used to live here.
  *
- * Aggregated and anonymous: counts only, never other students' identities,
- * code or scores.
+ * It returned, for one question, a histogram of every accepted submission's
+ * runtime and memory plus the share this student beat -- the chart shown after
+ * submitting. Removed rather than hidden, because the leak was in the data and
+ * not in the drawing of it:
+ *
+ *   - Aggregated over every student's submissions, it reported on a cohort that
+ *     is still sitting the exam. "1 accepted" told a student how many of their
+ *     classmates had solved the question so far; the histogram told them how
+ *     fast. Anonymous in identity, not in signal.
+ *   - It was authenticated but otherwise ungated, so dropping the chart from the
+ *     page would have left the numbers one fetch away from any student taking
+ *     the test.
+ *
+ * It was also wrong on its own terms: the caller's own submission sat inside the
+ * comparison set, so nobody could beat 100% and the first student to solve a
+ * question was always told they beat 0%.
+ *
+ * If a practice mode ever wants this back, it belongs behind a check that the
+ * question's test is not proctored -- not merely behind a conditional render.
  */
-router.get('/distribution/:questionId', authenticateToken, async (req, res) => {
-  try {
-    const { questionId } = req.params;
-    if (!OBJECT_ID.test(questionId)) {
-      return res.status(400).json({ message: 'Invalid questionId format' });
-    }
-
-    const rows = await TestSubmission.aggregate([
-      { $unwind: '$responses' },
-      {
-        $match: {
-          'responses.questionId': new mongoose.Types.ObjectId(questionId),
-          'responses.autoGraded': true,
-          'responses.isCorrect': true,
-          'responses.runtimeMs': { $ne: null },
-        },
-      },
-      {
-        $project: {
-          userId: 1,
-          runtimeMs: '$responses.runtimeMs',
-          memoryKb: '$responses.memoryKb',
-        },
-      },
-    ]);
-
-    const mine = rows.find((row) => String(row.userId) === String(req.user.userId)) || null;
-
-    // Bucket a set of values into a small histogram and work out what share of
-    // submissions the given value beats (i.e. is strictly better than).
-    const summarize = (values, myValue, bucketCount = 12) => {
-      const clean = values.filter((v) => Number.isFinite(v));
-      if (clean.length === 0) return null;
-
-      const min = Math.min(...clean);
-      const max = Math.max(...clean);
-      const span = max - min || 1;
-      const step = span / bucketCount;
-
-      const buckets = Array.from({ length: bucketCount }, (_, i) => ({
-        value: Math.round((min + step * i) * 100) / 100,
-        count: 0,
-      }));
-      clean.forEach((v) => {
-        const slot = Math.min(bucketCount - 1, Math.floor((v - min) / step));
-        buckets[slot].count += 1;
-      });
-      buckets.forEach((bucket) => {
-        bucket.percent = Math.round((bucket.count / clean.length) * 1000) / 10;
-      });
-
-      const beats = myValue === null || myValue === undefined
-        ? null
-        : Math.round((clean.filter((v) => v > myValue).length / clean.length) * 1000) / 10;
-
-      return { buckets, beats, mine: myValue ?? null, sampleSize: clean.length };
-    };
-
-    return res.json({
-      runtime: summarize(rows.map((r) => r.runtimeMs), mine?.runtimeMs ?? null),
-      memory: summarize(rows.map((r) => r.memoryKb), mine?.memoryKb ?? null),
-      sampleSize: rows.length,
-    });
-  } catch (error) {
-    console.error('❌ Distribution lookup failed:', error.message);
-    return res.status(500).json({ message: 'Could not load submission statistics' });
-  }
-});
 
 // ---------------------------------------------------------------------------
 // Admin smoke test

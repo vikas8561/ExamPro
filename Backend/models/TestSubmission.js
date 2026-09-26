@@ -20,10 +20,43 @@ const ResponseSchema = new mongoose.Schema({
     enum: ["Pending", "Evaluating", "Evaluated", "Failed"],
     default: "Pending"
   },
-  // Judge0 measurements for coding answers, used to build the runtime and
-  // memory distributions shown after a submission.
+  // Judge0 measurements for coding answers. Recorded for the mentor's report
+  // and for auditing a judge that may have been slow or starved of memory --
+  // deliberately NOT sent back to the student, who is shown a verdict and a
+  // pass count and nothing that invites re-submitting to shave off a
+  // millisecond.
   runtimeMs: { type: Number, default: null },
-  memoryKb: { type: Number, default: null }
+  memoryKb: { type: Number, default: null },
+
+  // How the best attempt scored, in cases rather than marks.
+  //
+  // Stored because grading a coding question is best-wins: deciding which of two
+  // attempts to keep means comparing them, and comparing marks is a worse
+  // question than comparing cases -- marks shift if an admin edits the
+  // question's weight mid-test, cases do not. Also what the mentor's report
+  // shows, instead of re-deriving a count from a score.
+  passedCount: { type: Number, default: null },
+  totalHidden: { type: Number, default: null },
+
+  // The code the student is currently writing, which is NOT what was graded.
+  //
+  // Coding answers are graded best-wins, so `textAnswer` holds the attempt that
+  // earned `points` and must survive the student carrying on typing. Autosave
+  // therefore writes here once an answer has been graded, which keeps crash
+  // recovery working without letting a work-in-progress draft quietly replace
+  // the source behind a score. Null for MCQ and theory answers, where
+  // `textAnswer` is simply the answer.
+  draftAnswer: { type: String, default: null },
+
+  // When the attempt that earned `points` was submitted.
+  //
+  // The document already carries a `submittedAt`, but that one belongs to the
+  // paper as a whole and only means anything once the test is handed in. A
+  // coding answer is submitted, graded and replaced repeatedly while the test
+  // is still running, so it needs its own, and the student is shown it as their
+  // receipt. Defaulted rather than required so the answers already in the
+  // database keep loading.
+  submittedAt: { type: Date, default: Date.now }
 }, { _id: false });
 
 const TabViolationSchema = new mongoose.Schema({

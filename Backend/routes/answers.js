@@ -75,11 +75,31 @@ router.post("/", authenticateToken, requireProctorSession(), async (req, res, ne
     if (existingResponseIndex !== -1) {
       // Update existing response
       console.log("📝 Updating existing response");
-      submission.responses[existingResponseIndex].selectedOption = selectedOption;
-      submission.responses[existingResponseIndex].textAnswer = textAnswer;
+      const existing = submission.responses[existingResponseIndex];
+      existing.selectedOption = selectedOption;
+
+      // A coding answer that has already been graded keeps its source.
+      //
+      // Coding questions are graded best-wins, so `textAnswer` holds the attempt
+      // that earned the marks -- and the student carries on editing afterwards.
+      // Writing the live draft over it would leave a score attached to code that
+      // never earned it: the mentor would review work in progress, and the
+      // re-grade audit would score something different from what was awarded.
+      // The draft still has to be saved, or a closed laptop loses the work, so it
+      // goes to its own field and the graded source is left alone.
+      //
+      // Only `autoGraded` answers are protected. Before a first submission, and
+      // for every MCQ and theory answer, `textAnswer` IS the answer and autosave
+      // owns it exactly as before.
+      if (existing.autoGraded === true) {
+        existing.draftAnswer = textAnswer;
+      } else {
+        existing.textAnswer = textAnswer;
+      }
+
       // Only when the client actually sends one, so an MCQ autosave cannot wipe
       // the language recorded against a coding answer.
-      if (language) submission.responses[existingResponseIndex].language = language;
+      if (language) existing.language = language;
     } else {
       // Add new response
       console.log("➕ Adding new response");
