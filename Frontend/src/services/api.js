@@ -80,7 +80,13 @@ const apiRequest = async (endpoint, options = {}) => {
     const optimizedConfig = {
       ...config,
       signal: controller.signal,
-      keepalive: true, // Keep connection alive for faster subsequent requests
+      // No `keepalive` here. It does NOT mean "reuse the TCP connection" -- the
+      // browser already does that on its own. It means "let this request outlive
+      // the page", and the Fetch spec caps such a request's body at 64 KiB: past
+      // that the browser rejects it with `TypeError: Failed to fetch` before any
+      // request is sent, which surfaced as a bogus "network error" when creating
+      // a test with enough questions. Only unload-time beacons should set it (see
+      // the handleUnload in TakeCodingTest.jsx), and only with a small body.
       cache: 'no-cache', // Don't cache to avoid stale data
       credentials: 'include', // Include credentials for CORS
     };
