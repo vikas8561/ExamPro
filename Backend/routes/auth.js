@@ -99,7 +99,7 @@ router.post("/login", async (req, res, next) => {
         hash = admin.password;
       } else {
         const mentor = await withDbRetry(() =>
-          Mentor.findOne({ email }).select("name email password").lean()
+          Mentor.findOne({ email }).select("name email password subjects batches").populate("subjects", "name").lean()
         );
         if (mentor) {
           principal = normalizeMentor(mentor);

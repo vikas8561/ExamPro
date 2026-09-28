@@ -4,21 +4,218 @@ const mongoose = require("mongoose");
 const Assignment = require("../models/Assignment");
 const Test = require("../models/Test");
 const TestSubmission = require("../models/TestSubmission");
+const Mentor = require("../models/Mentor");
+const Subject = require("../models/Subject");
 const { authenticateToken, requireRole } = require("../middleware/auth");
-const { attach } = require("../services/principals");
+const { attach, cohortCounts, getStudentIdsForBatches } = require("../services/principals");
 
-// Test endpoint removed for security - was publicly accessible
+// Get mentor's assigned subjects (for filtering what they can create)
+router.get("/me/subjects", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res) => {
+  try {
+    const mentor = await Mentor.findById(req.user.userId)
+      .populate("subjects", "name description")
+      .lean();
+
+    if (!mentor) {
+      return res.status(404).json({ message: "Mentor profile not found" });
+    }
+
+    res.json({ subjects: mentor.subjects || [] });
+  } catch (err) {
+    console.error("Error fetching mentor subjects:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get mentor's assigned batches (for filtering students and assignments)
+router.get("/me/batches", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res) => {
+  try {
+    const mentor = await Mentor.findById(req.user.userId).select("batches").lean();
+    if (!mentor) {
+      return res.status(404).json({ message: "Mentor profile not found" });
+    }
+
+    const allCohorts = await cohortCounts();
+    const mentorBatches = mentor.batches || [];
+    const detailedBatches = allCohorts.filter((c) => mentorBatches.includes(c.key));
+
+    res.json({
+      batches: mentorBatches,
+      details: detailedBatches
+    });
+  } catch (err) {
+    console.error("Error fetching mentor batches:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Resolves the query criteria for a mentor:
+ * Access rule for Mentor = Assigned Subjects + Assigned Batches + Their Own Tests
+ *
+ * For admins, returns isAdmin: true (unrestricted).
+ */
+async function getMentorScope(user) {
+  const role = String(user?.role || "").toLowerCase();
+  if (role !== "mentor") {
+    return {
+      isAdmin: true,
+      assignmentFilter: {},
+      submissionFilter: {},
+      validAssignmentIds: null,
+      validTestIds: null,
+      allowedStudentIds: null,
+    };
+  }
+
+  const mentorId = user.userId;
+  const mentor = await Mentor.findById(mentorId).populate("subjects", "name").lean();
+
+  // If mentor has no subjects OR no batches, they have zero access
+  if (
+    !mentor ||
+    !mentor.subjects ||
+    mentor.subjects.length === 0 ||
+    !mentor.batches ||
+    mentor.batches.length === 0
+  ) {
+    return {
+      isAdmin: false,
+      assignmentFilter: { _id: { $in: [] } },
+      submissionFilter: { _id: { $in: [] } },
+      validAssignmentIds: [],
+      validTestIds: [],
+      subjectNames: [],
+      batches: mentor?.batches || [],
+      allowedStudentIds: [],
+    };
+  }
+
+  const subjectNames = mentor.subjects
+    .map((s) => (typeof s === "string" ? s : s?.name || "").trim())
+    .filter(Boolean);
+
+  if (subjectNames.length === 0) {
+    return {
+      isAdmin: false,
+      assignmentFilter: { _id: { $in: [] } },
+      submissionFilter: { _id: { $in: [] } },
+      validAssignmentIds: [],
+      validTestIds: [],
+      subjectNames: [],
+      batches: mentor.batches || [],
+      allowedStudentIds: [],
+    };
+  }
+
+  // 1. Resolve student IDs in mentor's assigned batches
+  const allowedStudentIds = await getStudentIdsForBatches(mentor.batches);
+  if (!allowedStudentIds || allowedStudentIds.length === 0) {
+    return {
+      isAdmin: false,
+      assignmentFilter: { _id: { $in: [] } },
+      submissionFilter: { _id: { $in: [] } },
+      validAssignmentIds: [],
+      validTestIds: [],
+      subjectNames,
+      batches: mentor.batches,
+      allowedStudentIds: [],
+    };
+  }
+
+  const hasAllSubject = subjectNames.some((s) => s.toUpperCase() === "ALL");
+  const subjectRegexes = subjectNames.map(
+    (name) => new RegExp(`^\\s*${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "i")
+  );
+
+  // 2. Find tests belonging to mentor's subjects
+  const subjectCondition = hasAllSubject ? {} : { subject: { $in: subjectRegexes } };
+  const testsInSubjects = await Test.find(subjectCondition).select("_id createdBy subject").lean();
+
+  const mentorObjectId = mongoose.Types.ObjectId.isValid(mentorId)
+    ? new mongoose.Types.ObjectId(mentorId)
+    : null;
+
+  const mentorIdVariants = mentorObjectId ? [mentorObjectId, String(mentorId)] : [mentorId];
+
+  // Tests created by this mentor
+  const mentorCreatedTestIds = testsInSubjects
+    .filter((t) => String(t.createdBy) === String(mentorId))
+    .map((t) => t._id);
+
+  // Tests in mentor's subjects created by others (e.g. admin) but conducted by mentor
+  const otherTestIds = testsInSubjects
+    .filter((t) => String(t.createdBy) !== String(mentorId))
+    .map((t) => t._id);
+
+  const orConditions = [];
+  if (mentorCreatedTestIds.length > 0) {
+    orConditions.push({ testId: { $in: mentorCreatedTestIds } });
+  }
+  if (otherTestIds.length > 0) {
+    orConditions.push({
+      testId: { $in: otherTestIds },
+      mentorId: { $in: mentorIdVariants },
+    });
+  }
+
+  if (orConditions.length === 0) {
+    return {
+      isAdmin: false,
+      assignmentFilter: { _id: { $in: [] } },
+      submissionFilter: { _id: { $in: [] } },
+      validAssignmentIds: [],
+      validTestIds: [],
+      subjectNames,
+      batches: mentor.batches,
+      allowedStudentIds,
+    };
+  }
+
+  // Assignment Filter = (Tests conducted by mentor in assigned subjects) AND (Student belongs to mentor's assigned batches)
+  const assignmentFilter = {
+    $and: [
+      { $or: orConditions },
+      { userId: { $in: allowedStudentIds } }
+    ]
+  };
+
+  // Pre-fetch matching assignment IDs
+  const matchingAssignments = await Assignment.find(assignmentFilter).select("_id testId userId").lean();
+
+  const validAssignmentIds = matchingAssignments.map((a) => a._id);
+  const validTestIds = Array.from(new Set(matchingAssignments.map((a) => String(a.testId))))
+    .map((id) => new mongoose.Types.ObjectId(id));
+
+  // Submission Filter = (Assignment is valid for this mentor) AND (Student is in assigned batches)
+  const submissionFilter = {
+    assignmentId: { $in: validAssignmentIds },
+    userId: { $in: allowedStudentIds }
+  };
+
+  return {
+    isAdmin: false,
+    assignmentFilter,
+    submissionFilter,
+    validAssignmentIds,
+    validTestIds,
+    subjectNames,
+    batches: mentor.batches,
+    allowedStudentIds,
+  };
+}
 
 // Get mentor dashboard data (mentor/admin only)
 router.get("/dashboard", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res) => {
   try {
-    const mentorId = req.user.userId;
-    // console.log('Fetching dashboard for mentor:', mentorId);
-    
-    // Get all assignments so mentors can see all student submissions
+    const scope = await getMentorScope(req.user);
+    const assignQuery = scope.isAdmin ? {} : scope.assignmentFilter;
+    const subQuery = scope.isAdmin ? {} : scope.submissionFilter;
+
+    // Get assignments filtered to tests the mentor conducts in their subjects
     const assignments = await attach(
-      await Assignment.find({})
-        .populate("testId", "title type instructions timeLimit")
+      await Assignment.find(assignQuery)
+        .populate("testId", "title type subject instructions timeLimit")
         .sort({ createdAt: -1 })
         .lean(),
       "userId",
@@ -27,19 +224,22 @@ router.get("/dashboard", authenticateToken, requireRole(["Mentor", "Admin"]), as
 
     const activeAssignments = assignments.filter(a => a.status === "In Progress");
     const completedAssignments = assignments.filter(a => a.status === "Completed");
-    
-    // Get test submissions for monitoring (with limit to avoid performance issues)
+
+    // Get test submissions for monitoring (filtered to mentor's conducted tests)
     const submissions = await attach(
-      await TestSubmission.find({ isFinalized: { $ne: false } })
+      await TestSubmission.find({
+        ...subQuery,
+        isFinalized: { $ne: false }
+      })
         .populate({
           path: "assignmentId",
           populate: {
             path: "testId",
-            select: "title"
+            select: "title subject"
           }
         })
         .sort({ submittedAt: -1 })
-        .limit(10) // Limit to 10 most recent submissions
+        .limit(10)
         .lean(),
       "userId",
       "Student"
@@ -61,25 +261,24 @@ router.get("/dashboard", authenticateToken, requireRole(["Mentor", "Admin"]), as
 // Get assignments assigned to mentor - ULTRA FAST VERSION (mentor/admin only)
 router.get("/assignments", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res) => {
   try {
-    const mentorId = req.user.userId;
-    // console.log('🚀 ULTRA FAST: Fetching assignments for mentor:', mentorId);
-    
+    const scope = await getMentorScope(req.user);
+    const assignQuery = scope.isAdmin ? {} : scope.assignmentFilter;
+
     const startTime = Date.now();
-    
+
     // MEMORY OPTIMIZED: Add pagination to prevent memory issues
     const page = parseInt(req.query.page) || 0;
-    const limit = Math.min(parseInt(req.query.limit) || 200, 500); // Max 500 records to show all SU students
+    const limit = Math.min(parseInt(req.query.limit) || 200, 2000); // Allow up to 2000 records
     const skip = page * limit;
 
-    // ULTRA FAST: Get assignments with MINIMAL population (NO questions!)
-    // Show ALL assignments so mentors can see all student submissions
-    const rawAssignments = await Assignment.find({})
-      .populate("testId", "title type instructions timeLimit") // NO questions!
+    // Filter assignments to only those the mentor conducts for their subjects
+    const rawAssignments = await Assignment.find(assignQuery)
+      .populate("testId", "title type subject instructions timeLimit")
       .select("testId userId mentorId status startTime duration deadline startedAt completedAt score autoScore mentorScore mentorFeedback reviewStatus timeSpent createdAt")
       .sort({ createdAt: -1 })
       .limit(limit)
       .skip(skip)
-      .lean(); // Use lean() for 2x faster queries
+      .lean();
 
     const assignments = await attach(rawAssignments, "userId", "Student");
 
@@ -179,22 +378,25 @@ router.get("/assignments", authenticateToken, requireRole(["Mentor", "Admin"]), 
 // Get test submissions for monitoring - grouped by student (mentor/admin only)
 router.get("/submissions", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res) => {
   try {
+    const scope = await getMentorScope(req.user);
+    const subQuery = scope.isAdmin ? {} : scope.submissionFilter;
+
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 50;
     const skip = (page - 1) * limit;
 
-    // Use optimized query with pagination
+    // Use optimized query with pagination filtered for mentor
     const submissions = await attach(
-      await TestSubmission.find({ isFinalized: { $ne: false } })
+      await TestSubmission.find({
+        ...subQuery,
+        isFinalized: { $ne: false }
+      })
+        .populate("testId", "title subject type")
         .populate({
           path: "assignmentId",
           populate: {
             path: "testId",
-            select: "title questions",
-            populate: {
-              path: "questions",
-              select: "kind text options answer answers guidelines examples points"
-            }
+            select: "title subject type"
           }
         })
         .sort({ submittedAt: -1 })
@@ -241,13 +443,16 @@ router.get("/submissions", authenticateToken, requireRole(["Mentor", "Admin"]), 
     }));
 
     // Get total count for pagination info
-    const totalCount = await TestSubmission.countDocuments();
+    const totalCount = await TestSubmission.countDocuments({
+      ...subQuery,
+      isFinalized: { $ne: false }
+    });
     
     res.json({
       students: groupedStudents,
       pagination: {
         currentPage: page,
-        totalPages: Math.ceil(totalCount / limit),
+        totalPages: Math.ceil(totalCount / limit) || 1,
         totalCount,
         hasNext: page < Math.ceil(totalCount / limit),
         hasPrev: page > 1
@@ -263,16 +468,20 @@ router.get("/submissions", authenticateToken, requireRole(["Mentor", "Admin"]), 
 router.get("/student/:studentId/submissions", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res) => {
   try {
     const { studentId } = req.params;
-    const startTime = Date.now();
-    // console.log('🚀 ULTRA FAST: Fetching submissions for student:', studentId);
+    const scope = await getMentorScope(req.user);
+    const subQuery = scope.isAdmin
+      ? { userId: studentId }
+      : { userId: studentId, ...scope.submissionFilter };
 
-    // ✅ Fixed: Add pagination to prevent memory issues
+    const startTime = Date.now();
+
+    // MEMORY OPTIMIZED: Add pagination to prevent memory issues
     const page = parseInt(req.query.page) || 0;
     const limit = Math.min(parseInt(req.query.limit) || 50, 100); // Max 100 records
     const skip = page * limit;
 
-    // ULTRA FAST: Get submissions with MINIMAL data (NO questions upfront!)
-    const submissions = await TestSubmission.find({ userId: studentId })
+    // Filter submissions for this student to tests the mentor conducts in their subjects
+    const submissions = await TestSubmission.find(subQuery)
       .select("assignmentId testId userId responses totalScore maxScore submittedAt timeSpent mentorReviewed mentorScore mentorFeedback reviewStatus reviewedAt")
       .populate({
         path: "assignmentId",
@@ -280,7 +489,7 @@ router.get("/student/:studentId/submissions", authenticateToken, requireRole(["M
       })
       .populate({
         path: "testId",
-        select: "title type instructions timeLimit negativeMarkingPercent" // NO questions!
+        select: "title type subject instructions timeLimit negativeMarkingPercent" // NO questions!
       })
       .sort({ submittedAt: -1 })
       .limit(limit)
@@ -294,10 +503,11 @@ router.get("/student/:studentId/submissions", authenticateToken, requireRole(["M
     // Get unique test IDs to avoid duplicate queries
     const uniqueTestIds = [...new Set(submissions
       .filter(sub => sub.assignmentId?.testId && sub.responses?.length > 0)
-      .map(sub => sub.testId._id.toString())
+      .map(sub => (sub.testId?._id || sub.testId)?.toString())
+      .filter(Boolean)
     )];
 
-    // ✅ Fixed: Batch load all required tests (single query instead of N+1)
+    // Batch load all required tests (single query instead of N+1)
     const testsMap = new Map();
     if (uniqueTestIds.length > 0) {
       const tests = await Test.find({ _id: { $in: uniqueTestIds } })
@@ -311,15 +521,19 @@ router.get("/student/:studentId/submissions", authenticateToken, requireRole(["M
 
     // Process submissions with pre-loaded tests
     for (const submission of submissions) {
-      if (submission.assignmentId?.testId && submission.responses?.length > 0) {
-        const needsRecalculation = 
-          !submission.totalScore || 
-          submission.totalScore === 0 ||
-          submission.updatedAt > fiveMinutesAgo;
-        
-        if (needsRecalculation) {
-          const testWithQuestions = testsMap.get(submission.testId._id.toString());
-          if (testWithQuestions) {
+      const testIdStr = (submission.testId?._id || submission.testId || submission.assignmentId?.testId?._id || submission.assignmentId?.testId)?.toString();
+      const testWithQuestions = testsMap.get(testIdStr);
+      if (testWithQuestions) {
+        if (submission.assignmentId && typeof submission.assignmentId === "object") {
+          submission.assignmentId.testId = testWithQuestions;
+        }
+        if (submission.responses?.length > 0) {
+          const needsRecalculation = 
+            !submission.totalScore || 
+            submission.totalScore === 0 ||
+            submission.updatedAt > fiveMinutesAgo;
+          
+          if (needsRecalculation) {
             await recalculateSubmissionScore(submission, testWithQuestions);
           }
         }
@@ -327,7 +541,6 @@ router.get("/student/:studentId/submissions", authenticateToken, requireRole(["M
     }
 
     const totalTime = Date.now() - startTime;
-    // console.log(`✅ ULTRA FAST student submissions completed in ${totalTime}ms - Found ${submissions.length} submissions`);
 
     res.json(submissions);
   } catch (err) {
@@ -340,6 +553,14 @@ router.get("/student/:studentId/submissions", authenticateToken, requireRole(["M
 router.get("/monitor/:assignmentId", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res) => {
   try {
     const { assignmentId } = req.params;
+    const scope = await getMentorScope(req.user);
+
+    if (!scope.isAdmin) {
+      const allowed = scope.validAssignmentIds.some(id => String(id) === String(assignmentId));
+      if (!allowed) {
+        return res.status(403).json({ error: "You are not authorized to monitor this assignment." });
+      }
+    }
     
     const assignment = await attach(
       await Assignment.findById(assignmentId).populate("testId").lean(),
@@ -378,6 +599,15 @@ router.get("/monitor/:assignmentId", authenticateToken, requireRole(["Mentor", "
 router.put("/assignments/:id/review", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res) => {
   try {
     const { notes, status } = req.body;
+    const scope = await getMentorScope(req.user);
+
+    if (!scope.isAdmin) {
+      const allowed = scope.validAssignmentIds.some(id => String(id) === String(req.params.id));
+      if (!allowed) {
+        return res.status(403).json({ message: "Not authorized to review this assignment" });
+      }
+    }
+
     const assignment = await attach(
       await Assignment.findByIdAndUpdate(
         req.params.id,
@@ -397,15 +627,12 @@ router.put("/assignments/:id/review", authenticateToken, requireRole(["Mentor", 
 // Get submissions pending mentor review (mentor/admin only)
 router.get("/submissions/pending", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res, next) => {
   try {
-    const mentorId = req.user.userId;
-    // console.log(`Fetching pending submissions for mentor: ${mentorId}`);
+    const scope = await getMentorScope(req.user);
+    const assignQuery = scope.isAdmin ? {} : scope.assignmentFilter;
 
-    // Find all assignments so mentors can see all pending submissions
-    const assignments = await Assignment.find({});
-    // console.log(`Found ${assignments.length} assignments for mentor ${mentorId}`);
-    
+    // Find assignments this mentor conducts for their subjects
+    const assignments = await Assignment.find(assignQuery).select("_id");
     const assignmentIds = assignments.map(a => a._id);
-    // console.log(`Assignment IDs: ${assignmentIds}`);
 
     const submissions = await TestSubmission.find({
       assignmentId: { $in: assignmentIds },
@@ -413,7 +640,7 @@ router.get("/submissions/pending", authenticateToken, requireRole(["Mentor", "Ad
       // Skip records the judge created while the student is still working.
       isFinalized: { $ne: false }
     })
-    .populate("testId", "title")
+    .populate("testId", "title subject")
     .populate({
       path: "assignmentId",
       select: "mentorId status deadline"
@@ -421,7 +648,6 @@ router.get("/submissions/pending", authenticateToken, requireRole(["Mentor", "Ad
     .sort({ submittedAt: -1 })
     .lean();
 
-    // console.log(`Found ${submissions.length} pending submissions for review`);
     res.json(await attach(submissions, "userId", "Student"));
   } catch (error) {
     console.error("Error fetching mentor pending submissions:", error);
@@ -434,7 +660,6 @@ router.put("/submissions/:submissionId/review", authenticateToken, requireRole([
   try {
     const { submissionId } = req.params;
     const { mentorScore, mentorFeedback } = req.body;
-    const mentorId = req.user.userId;
 
     if (!mentorScore || mentorScore < 0 || mentorScore > 100) {
       return res.status(400).json({ message: "Valid mentor score (0-100) is required" });
@@ -448,10 +673,13 @@ router.put("/submissions/:submissionId/review", authenticateToken, requireRole([
       return res.status(404).json({ message: "Submission not found" });
     }
 
-    // Verify mentor is assigned to this assignment
-    const assignment = await Assignment.findById(submission.assignmentId._id);
-    if (!assignment || assignment.mentorId?.toString() !== mentorId) {
-      return res.status(403).json({ message: "Not authorized to review this submission" });
+    const scope = await getMentorScope(req.user);
+    if (!scope.isAdmin) {
+      const assignmentIdStr = String(submission.assignmentId?._id || submission.assignmentId);
+      const allowed = scope.validAssignmentIds.some(id => String(id) === assignmentIdStr);
+      if (!allowed) {
+        return res.status(403).json({ message: "Not authorized to review this submission" });
+      }
     }
 
     // Update submission with mentor review
@@ -468,7 +696,8 @@ router.put("/submissions/:submissionId/review", authenticateToken, requireRole([
     );
 
     // Update assignment with final score
-    await Assignment.findByIdAndUpdate(submission.assignmentId._id, {
+    const targetAssignmentId = submission.assignmentId?._id || submission.assignmentId;
+    await Assignment.findByIdAndUpdate(targetAssignmentId, {
       mentorScore,
       mentorFeedback,
       reviewStatus: "Reviewed"
@@ -484,3 +713,4 @@ router.put("/submissions/:submissionId/review", authenticateToken, requireRole([
 });
 
 module.exports = router;
+module.exports.getMentorScope = getMentorScope;

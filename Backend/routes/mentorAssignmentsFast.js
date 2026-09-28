@@ -4,25 +4,27 @@ const Assignment = require("../models/Assignment");
 const TestSubmission = require("../models/TestSubmission");
 const { authenticateToken, requireRole } = require("../middleware/auth");
 const { attach } = require("../services/principals");
+const { getMentorScope } = require("./mentor");
+
 // ULTRA-FAST assignments endpoint - optimized for 30+ second loading issue (mentor/admin only)
 router.get("/assignments", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res) => {
   try {
-    const mentorId = req.user.userId;
-    // console.log('🚀 Fast assignments fetch for mentor:', mentorId);
+    const scope = await getMentorScope(req.user);
+    const assignQuery = scope.isAdmin ? {} : scope.assignmentFilter;
     
     const startTime = Date.now();
     
     // MEMORY OPTIMIZED: Add pagination to prevent memory issues
     const page = parseInt(req.query.page) || 0;
-    const limit = Math.min(parseInt(req.query.limit) || 50, 100); // Max 100 records
+    const limit = Math.min(parseInt(req.query.limit) || 50, 500);
     const skip = page * limit;
 
     // STEP 1: Get assignments with MINIMAL population (no questions!)
-    // Show ALL assignments so mentors can see all student submissions
-    const assignments = await Assignment.find({})
+    // Scoped to tests conducted by mentor for their subjects
+    const assignments = await Assignment.find(assignQuery)
       .populate({
         path: "testId",
-        select: "title type instructions timeLimit",
+        select: "title type instructions timeLimit subject",
         match: { type: { $ne: "practice" } } // Exclude practice tests from mentor assignments
       })
       .sort({ createdAt: -1 })
@@ -88,6 +90,14 @@ router.get("/assignments", authenticateToken, requireRole(["Mentor", "Admin"]), 
 router.get("/assignments/:assignmentId/test-details", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res) => {
   try {
     const { assignmentId } = req.params;
+    const scope = await getMentorScope(req.user);
+
+    if (!scope.isAdmin) {
+      const allowed = scope.validAssignmentIds.some((id) => String(id) === String(assignmentId));
+      if (!allowed) {
+        return res.status(403).json({ error: "Not authorized to view test details for this assignment" });
+      }
+    }
     
     const assignment = await Assignment.findById(assignmentId)
       .populate({
