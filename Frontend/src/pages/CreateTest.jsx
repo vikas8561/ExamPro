@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -91,6 +91,86 @@ export default function CreateTest() {
   const [allowedTabSwitchesError, setAllowedTabSwitchesError] = useState("");
   const nav = useNavigate();
 
+  // ── Role-awareness: detect if the user is a Mentor or Admin ──
+  const [userRole, setUserRole] = useState("Admin");
+  const [mentorSubjects, setMentorSubjects] = useState([]); // mentor's assigned subject names (lowercase)
+  const [mentorSubjectList, setMentorSubjectList] = useState([]); // mentor's assigned subject objects
+  const isMentor = String(userRole || "").toLowerCase() === "mentor";
+
+  // Dynamic back and navigation path depending on role
+  const testsPath = isMentor ? "/mentor/tests" : "/admin/tests";
+
+  // Check if mentor is assigned to DSA (allows coding tests)
+  const mentorHasDSA = useMemo(() => {
+    return mentorSubjects.some((s) => {
+      const lower = s.toLowerCase();
+      return lower === "dsa" || lower.includes("dsa") || lower.includes("data structure");
+    });
+  }, [mentorSubjects]);
+
+  // Detect role and fetch mentor subjects on mount
+  useEffect(() => {
+    const storedUser = localStorage.getItem("user");
+    if (storedUser) {
+      try {
+        const user = JSON.parse(storedUser);
+        const role = user.role || "Admin";
+        setUserRole(role);
+
+        if (String(role).toLowerCase() === "mentor") {
+          // If stored user already has assigned subjects
+          if (Array.isArray(user.subjects) && user.subjects.length > 0) {
+            const list = user.subjects.map((s) =>
+              typeof s === "string" ? { _id: s, name: s } : s
+            );
+            setMentorSubjectList(list);
+            setMentorSubjects(
+              list.map((s) => (s.name || "").toLowerCase()).filter(Boolean)
+            );
+          }
+
+          // Fetch fresh mentor's assigned subjects from the backend
+          apiRequest("/mentor/me/subjects")
+            .then((data) => {
+              const list = data.subjects || [];
+              setMentorSubjectList(list);
+              setMentorSubjects(
+                list.map((s) => (s.name || "").toLowerCase()).filter(Boolean)
+              );
+            })
+            .catch((err) => {
+              console.error("Error fetching mentor subjects:", err);
+            });
+        }
+      } catch (e) {
+        console.error("Error parsing user data:", e);
+      }
+    }
+  }, []);
+
+  // Compute displayed subjects for the dropdown: mentors only see assigned subjects
+  const displayedSubjects = useMemo(() => {
+    if (!isMentor) return subjects;
+    if (mentorSubjectList.length > 0) return mentorSubjectList;
+    return subjects.filter((s) =>
+      mentorSubjects.includes((s.name || "").toLowerCase())
+    );
+  }, [isMentor, subjects, mentorSubjectList, mentorSubjects]);
+
+  // If mentor is not assigned to DSA, ensure type cannot be coding
+  useEffect(() => {
+    if (isMentor && !mentorHasDSA && form.type === "coding") {
+      setForm((prev) => ({ ...prev, type: "mcq" }));
+    }
+  }, [isMentor, mentorHasDSA, form.type]);
+
+  // Auto-select subject if mentor has only 1 assigned subject and none selected
+  useEffect(() => {
+    if (isMentor && displayedSubjects.length === 1 && !form.subject) {
+      setForm((prev) => ({ ...prev, subject: displayedSubjects[0].name }));
+    }
+  }, [isMentor, displayedSubjects, form.subject]);
+
   // Fetch subjects on component mount
   useEffect(() => {
     fetchSubjects();
@@ -152,7 +232,7 @@ export default function CreateTest() {
     } catch (error) {
       console.error("Error fetching test:", error);
       alert("Error loading test data");
-      nav("/admin/tests");
+      nav(testsPath);
     } finally {
       setLoading(false);
     }
@@ -440,6 +520,22 @@ export default function CreateTest() {
       return;
     }
 
+    // Mentor-specific validation before submission
+    if (isMentor) {
+      if (mentorSubjects.length === 0) {
+        alert("You have no subjects assigned to your mentor account. Please contact an administrator.");
+        return;
+      }
+      if (!form.subject || !mentorSubjects.includes(form.subject.trim().toLowerCase())) {
+        alert(`You can only create tests for your assigned subjects (${mentorSubjects.join(", ")}).`);
+        return;
+      }
+      if (form.type === "coding" && !mentorHasDSA) {
+        alert("Only mentors assigned to DSA can create coding tests.");
+        return;
+      }
+    }
+
     // Check for incompatible questions
     const incompatibleQuestions = form.questions.filter(q => !isQuestionTypeAllowed(q.kind));
     if (incompatibleQuestions.length > 0) {
@@ -568,11 +664,11 @@ export default function CreateTest() {
           }
         })();
 
-        nav("/admin/tests");
+        nav(testsPath);
       }
 
       if (isEdit) {
-        nav("/admin/tests");
+        nav(testsPath);
       }
     } catch (error) {
       alert(error.message || `Error ${isEdit ? "updating" : "creating"} test`);
@@ -603,7 +699,7 @@ export default function CreateTest() {
 
           <button
             type="button"
-            onClick={() => nav("/admin/tests")}
+            onClick={() => nav(testsPath)}
             className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold text-white bg-[#2A2E39] hover:bg-[#343946] border border-white/10 transition-all cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -657,10 +753,12 @@ export default function CreateTest() {
                       required
                     >
                       <option value="" disabled className="bg-[#181A22]">
-                        Select a subject
+                        {isMentor && displayedSubjects.length === 0
+                          ? "No assigned subjects available"
+                          : "Select a subject"}
                       </option>
-                      {subjects.map((subject) => (
-                        <option key={subject._id} value={subject.name} className="bg-[#181A22]">
+                      {displayedSubjects.map((subject) => (
+                        <option key={subject._id || subject.name} value={subject.name} className="bg-[#181A22]">
                           {subject.name}
                         </option>
                       ))}
@@ -671,15 +769,22 @@ export default function CreateTest() {
                       </svg>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowSubjectModal(true)}
-                    className="p-3 bg-white hover:bg-slate-100 text-slate-950 rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer flex items-center justify-center"
-                    title="Add Subject"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
+                  {!isMentor && (
+                    <button
+                      type="button"
+                      onClick={() => setShowSubjectModal(true)}
+                      className="p-3 bg-white hover:bg-slate-100 text-slate-950 rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer flex items-center justify-center"
+                      title="Add Subject"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
+                {isMentor && displayedSubjects.length === 0 && (
+                  <p className="mt-2 text-xs text-amber-400">
+                    ⚠️ You do not have any subjects assigned. Contact an administrator to assign subjects to your mentor account.
+                  </p>
+                )}
               </div>
 
               <div className="bg-[#181A22] rounded-xl p-4 border border-white/[0.06]">
@@ -693,7 +798,9 @@ export default function CreateTest() {
                     className="w-full p-3 bg-[#14161D] border border-white/[0.08] rounded-xl text-xs text-white focus:border-[#00C4B4] focus:ring-1 focus:ring-[#00C4B4] outline-none transition-all appearance-none cursor-pointer"
                   >
                     <option value="mcq" className="bg-[#181A22]">MCQ Only</option>
-                    <option value="coding" className="bg-[#181A22]">Coding Only</option>
+                    {(!isMentor || mentorHasDSA) && (
+                      <option value="coding" className="bg-[#181A22]">Coding Only</option>
+                    )}
                     <option value="theory" className="bg-[#181A22]">Theory Only</option>
                     <option value="practice" className="bg-[#181A22]">Practice Test (MCQ Only)</option>
                   </select>

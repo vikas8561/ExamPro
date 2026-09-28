@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const mongoose = require("mongoose");
 const Test = require("../models/Test");
 const { authenticateToken, requireRole } = require("../middleware/auth");
 const { attach } = require("../services/principals");
@@ -9,10 +10,13 @@ const { sanitizeCodingQuestion } = require("../services/testCases");
 const { recalculateScoresForTest } = require("../services/scoreCalculation");
 const { resolveOrderedQuestions } = require("../services/questionOrder");
 const Assignment = require("../models/Assignment");
+const Mentor = require("../models/Mentor");
+const Subject = require("../models/Subject");
 const { invalidateTestCache } = require("../utils/testCache");
 
-// Get all tests (admin only) - ULTRA FAST VERSION with pagination
-router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) => {
+// Get all tests (admin/mentor) - ULTRA FAST VERSION with pagination
+// Admins see all tests; mentors see only their own.
+router.get("/", authenticateToken, requireRole(["admin", "Mentor"]), async (req, res, next) => {
   try {
     const startTime = Date.now();
     const page = parseInt(req.query.page) || 1;
@@ -23,6 +27,29 @@ router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) 
 
     // Build query
     const query = {};
+
+    // Mentors can only see tests they created for their assigned subjects
+    const userRole = String(req.user?.role || "").toLowerCase();
+    if (userRole === "mentor") {
+      const mentor = await Mentor.findById(req.user.userId).populate("subjects", "name").lean();
+      const subjectNames = (mentor?.subjects || [])
+        .map((s) => (typeof s === "string" ? s : s?.name || "").trim())
+        .filter(Boolean);
+
+      if (subjectNames.length === 0) {
+        query._id = { $in: [] };
+      } else {
+        const hasAllSubject = subjectNames.some((s) => s.toUpperCase() === "ALL");
+        const subjectRegexes = subjectNames.map(
+          (name) => new RegExp(`^\\s*${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "i")
+        );
+
+        query.createdBy = new mongoose.Types.ObjectId(req.user.userId);
+        if (!hasAllSubject) {
+          query.subject = { $in: subjectRegexes };
+        }
+      }
+    }
 
     if (status) {
       query.status = status;
@@ -153,6 +180,29 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
     // away the answer must be stripped. Admins and mentors need the full
     // document to author and review.
     if (canSeeAnswers(req.user)) {
+      const userRole = String(req.user?.role || "").toLowerCase();
+      if (userRole === "mentor") {
+        const isCreator = String(test.createdBy?._id || test.createdBy) === String(req.user.userId);
+        const conductsAssignment = await Assignment.exists({
+          testId: req.params.id,
+          mentorId: req.user.userId
+        });
+
+        if (!isCreator && !conductsAssignment) {
+          return res.status(403).json({ message: "You can only access tests you create or conduct." });
+        }
+
+        const mentor = await Mentor.findById(req.user.userId).populate("subjects", "name").lean();
+        const subjectNames = (mentor?.subjects || [])
+          .map((s) => (typeof s === "string" ? s : s?.name || "").trim().toLowerCase())
+          .filter(Boolean);
+        const hasAllSubject = subjectNames.includes("all");
+        const testSubject = (test.subject || "").trim().toLowerCase();
+        if (!hasAllSubject && !subjectNames.includes(testSubject)) {
+          return res.status(403).json({ message: "You can only access tests related to your assigned subjects." });
+        }
+      }
+
       return res.json(test);
     }
 
@@ -205,14 +255,50 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
   }
 });
 
-// Create new test (admin only)
-router.post("/", authenticateToken, requireRole("admin"), async (req, res, next) => {
+// Create new test (admin/mentor)
+router.post("/", authenticateToken, requireRole(["admin", "Mentor"]), async (req, res, next) => {
   try {
     const { title, subject, type, instructions, timeLimit, negativeMarkingPercent, allowedTabSwitches, shuffleQuestions, questions } = req.body;
     console.log('DEBUG: Creating test with allowedTabSwitches:', allowedTabSwitches);
 
     if (!title) {
       return res.status(400).json({ message: "Test title is required" });
+    }
+
+    // Mentor-specific validations
+    const userRole = String(req.user?.role || "").toLowerCase();
+    if (userRole === "mentor") {
+      const mentor = await Mentor.findById(req.user.userId)
+        .populate("subjects", "name")
+        .lean();
+
+      if (!mentor) {
+        return res.status(403).json({ message: "Mentor profile not found" });
+      }
+
+      const mentorSubjectNames = (mentor.subjects || [])
+        .map((s) => (typeof s === "string" ? s : s?.name || "").toLowerCase().trim())
+        .filter(Boolean);
+
+      // Mentor must have at least one assigned subject
+      if (mentorSubjectNames.length === 0) {
+        return res.status(403).json({ message: "You have no subjects assigned. Contact an admin." });
+      }
+
+      const hasAllSubject = mentorSubjectNames.includes("all");
+
+      // Validate the test's subject belongs to the mentor's assigned subjects
+      if (!hasAllSubject && (!subject || !mentorSubjectNames.includes(subject.trim().toLowerCase()))) {
+        return res.status(403).json({ message: `You are not assigned to the subject "${subject}". You can only create tests for your assigned subjects.` });
+      }
+
+      // Coding tests require DSA assignment
+      if (type === "coding") {
+        const hasDSA = hasAllSubject || mentorSubjectNames.some(s => s === "dsa" || s.includes("dsa") || s.includes("data structure"));
+        if (!hasDSA) {
+          return res.status(403).json({ message: "Only mentors assigned to DSA can create coding tests." });
+        }
+      }
     }
 
     // Validate allowedTabSwitches (0-100 for regular tests, -1 for practice tests)
@@ -309,10 +395,46 @@ router.post("/", authenticateToken, requireRole("admin"), async (req, res, next)
   }
 });
 
-// Update test (admin only)
-router.put("/:id", authenticateToken, requireRole("admin"), async (req, res, next) => {
+// Update test (admin/mentor - mentors can only update their own)
+router.put("/:id", authenticateToken, requireRole(["admin", "Mentor"]), async (req, res, next) => {
   try {
     const { title, subject, type, instructions, timeLimit, negativeMarkingPercent, allowedTabSwitches, shuffleQuestions, questions, status } = req.body;
+
+    // Mentor can only update tests they created
+    const userRole = String(req.user?.role || "").toLowerCase();
+    if (userRole === "mentor") {
+      const existingTest = await Test.findById(req.params.id).select("createdBy subject type").lean();
+      if (!existingTest || String(existingTest.createdBy) !== String(req.user.userId)) {
+        return res.status(403).json({ message: "You can only edit tests you created." });
+      }
+
+      const mentor = await Mentor.findById(req.user.userId)
+        .populate("subjects", "name")
+        .lean();
+
+      if (!mentor) {
+        return res.status(403).json({ message: "Mentor profile not found" });
+      }
+
+      const mentorSubjectNames = (mentor.subjects || [])
+        .map((s) => (typeof s === "string" ? s : s?.name || "").toLowerCase().trim())
+        .filter(Boolean);
+
+      const hasAllSubject = mentorSubjectNames.includes("all");
+
+      const targetSubject = subject !== undefined ? subject : existingTest.subject;
+      if (!hasAllSubject && (!targetSubject || !mentorSubjectNames.includes(targetSubject.trim().toLowerCase()))) {
+        return res.status(403).json({ message: `You are not assigned to the subject "${targetSubject}". You can only edit tests for your assigned subjects.` });
+      }
+
+      const targetType = type || existingTest.type;
+      if (targetType === "coding") {
+        const hasDSA = hasAllSubject || mentorSubjectNames.some(s => s === "dsa" || s.includes("dsa") || s.includes("data structure"));
+        if (!hasDSA) {
+          return res.status(403).json({ message: "Only mentors assigned to DSA can create or update coding tests." });
+        }
+      }
+    }
 
     // Validate allowedTabSwitches if provided (0-100 for regular tests, -1 for practice tests)
     if (allowedTabSwitches !== undefined) {
@@ -424,13 +546,18 @@ router.put("/:id", authenticateToken, requireRole("admin"), async (req, res, nex
   }
 });
 
-// Delete test (admin only)
-router.delete("/:id", authenticateToken, requireRole("admin"), async (req, res, next) => {
+// Delete test (admin/mentor - mentors can only delete their own)
+router.delete("/:id", authenticateToken, requireRole(["admin", "Mentor"]), async (req, res, next) => {
   try {
     const test = await Test.findById(req.params.id);
 
     if (!test) {
       return res.status(404).json({ message: "Test not found" });
+    }
+
+    const userRole = String(req.user?.role || "").toLowerCase();
+    if (userRole === "mentor" && String(test.createdBy) !== String(req.user.userId)) {
+      return res.status(403).json({ message: "You can only delete tests you created." });
     }
 
     const TestSubmission = require("../models/TestSubmission");
@@ -454,8 +581,8 @@ router.delete("/:id", authenticateToken, requireRole("admin"), async (req, res, 
   }
 });
 
-// Get test statistics (admin only)
-router.get("/:id/stats", authenticateToken, requireRole("admin"), async (req, res, next) => {
+// Get test statistics (admin/mentor)
+router.get("/:id/stats", authenticateToken, requireRole(["admin", "Mentor"]), async (req, res, next) => {
   try {
     const test = await Test.findById(req.params.id);
 
@@ -463,8 +590,26 @@ router.get("/:id/stats", authenticateToken, requireRole("admin"), async (req, re
       return res.status(404).json({ message: "Test not found" });
     }
 
+    const userRole = String(req.user?.role || "").toLowerCase();
+    if (userRole === "mentor") {
+      const isCreator = String(test.createdBy) === String(req.user.userId);
+      const isAssigned = await Assignment.exists({ testId: req.params.id, mentorId: req.user.userId });
+      if (!isCreator && !isAssigned) {
+        return res.status(403).json({ message: "You can only view stats for tests you conduct." });
+      }
+
+      const mentor = await Mentor.findById(req.user.userId).populate("subjects", "name").lean();
+      const subjectNames = (mentor?.subjects || [])
+        .map((s) => (typeof s === "string" ? s : s?.name || "").trim().toLowerCase())
+        .filter(Boolean);
+      const hasAllSubject = subjectNames.includes("all");
+      const testSubject = (test.subject || "").trim().toLowerCase();
+      if (!hasAllSubject && !subjectNames.includes(testSubject)) {
+        return res.status(403).json({ message: "You can only view stats for tests in your assigned subjects." });
+      }
+    }
+
     // Get assignment and submission stats
-    const Assignment = require("../models/Assignment");
     const TestSubmission = require("../models/TestSubmission");
 
     const assignmentCount = await Assignment.countDocuments({ testId: req.params.id });
@@ -486,13 +631,32 @@ router.get("/:id/stats", authenticateToken, requireRole("admin"), async (req, re
   }
 });
 
-// Download test results (admin only) - returns student names and scores for CSV export
-router.get("/:id/results/download", authenticateToken, requireRole("admin"), async (req, res, next) => {
+// Download test results (admin/mentor) - returns student names and scores for CSV export
+router.get("/:id/results/download", authenticateToken, requireRole(["admin", "Mentor"]), async (req, res, next) => {
   try {
-    const test = await Test.findById(req.params.id).select("title");
+    const test = await Test.findById(req.params.id).select("title createdBy subject");
 
     if (!test) {
       return res.status(404).json({ message: "Test not found" });
+    }
+
+    const userRole = String(req.user?.role || "").toLowerCase();
+    if (userRole === "mentor") {
+      const isCreator = String(test.createdBy) === String(req.user.userId);
+      const isAssigned = await Assignment.exists({ testId: req.params.id, mentorId: req.user.userId });
+      if (!isCreator && !isAssigned) {
+        return res.status(403).json({ message: "You can only download results for tests you conduct." });
+      }
+
+      const mentor = await Mentor.findById(req.user.userId).populate("subjects", "name").lean();
+      const subjectNames = (mentor?.subjects || [])
+        .map((s) => (typeof s === "string" ? s : s?.name || "").trim().toLowerCase())
+        .filter(Boolean);
+      const hasAllSubject = subjectNames.includes("all");
+      const testSubject = (test.subject || "").trim().toLowerCase();
+      if (!hasAllSubject && !subjectNames.includes(testSubject)) {
+        return res.status(403).json({ message: "You can only download results for tests in your assigned subjects." });
+      }
     }
 
     const TestSubmission = require("../models/TestSubmission");

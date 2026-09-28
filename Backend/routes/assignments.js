@@ -7,11 +7,13 @@ const {
   attach,
   COHORTS,
   getCohort,
+  getUniversitiesForBatches,
   findStudentsByCohort,
   cohortCounts,
 } = require("../services/principals");
 const Student = require("../models/Student");
 const Mentor = require("../models/Mentor");
+const Subject = require("../models/Subject");
 const ProctorSession = require("../models/ProctorSession");
 const TestSubmission = require("../models/TestSubmission");
 const { authenticateToken, requireRole } = require("../middleware/auth");
@@ -667,10 +669,19 @@ router.get("/student/recent-activity", authenticateToken, async (req, res, next)
 });
 
 // Get assignment by ID
-// The cohorts a test can be assigned to, with live student counts (admin only).
-router.get("/cohorts", authenticateToken, requireRole("admin"), async (req, res, next) => {
+// The cohorts a test can be assigned to, with live student counts (admin/mentor).
+router.get("/cohorts", authenticateToken, requireRole(["admin", "Mentor"]), async (req, res, next) => {
   try {
-    res.json({ cohorts: await cohortCounts() });
+    const allCohorts = await cohortCounts();
+    const role = String(req.user?.role || "").toLowerCase();
+    if (role === "mentor") {
+      const mentor = await Mentor.findById(req.user.userId).select("batches").lean();
+      const mentorBatches = mentor?.batches || [];
+      // Mentors only see their assigned batches (and not 'all')
+      const filtered = allCohorts.filter((c) => c.key !== "all" && mentorBatches.includes(c.key));
+      return res.json({ cohorts: filtered });
+    }
+    res.json({ cohorts: allCohorts });
   } catch (error) {
     next(error);
   }
@@ -1223,7 +1234,7 @@ router.put("/:id", authenticateToken, requireRole("admin"), async (req, res, nex
 // were three near-identical copies of the same 190 lines differing only in which
 // students they selected. The cohort list lives in services/principals, so a new
 // campus needs one entry there and nothing here.
-router.post("/assign-cohort", authenticateToken, requireRole("admin"), async (req, res, next) => {
+router.post("/assign-cohort", authenticateToken, requireRole(["admin", "Mentor"]), async (req, res, next) => {
   try {
     const { testId, startTime, duration, mentorId, cohort } = req.body;
 
@@ -1241,6 +1252,30 @@ router.post("/assign-cohort", authenticateToken, requireRole("admin"), async (re
     const test = await Test.findById(testId);
     if (!test) {
       return res.status(404).json({ message: "Test not found" });
+    }
+
+    const userRole = String(req.user?.role || "").toLowerCase();
+    if (userRole === "mentor") {
+      const mentor = await Mentor.findById(req.user.userId).populate("subjects", "name").lean();
+      const subjectNames = (mentor?.subjects || [])
+        .map((s) => (typeof s === "string" ? s : s?.name || "").trim().toLowerCase())
+        .filter(Boolean);
+      const hasAllSubject = subjectNames.includes("all");
+      const testSubject = (test.subject || "").trim().toLowerCase();
+      if (!hasAllSubject && !subjectNames.includes(testSubject)) {
+        return res.status(403).json({ message: "You can only assign tests for your assigned subjects." });
+      }
+
+      if (String(test.createdBy) !== String(req.user.userId)) {
+        return res.status(403).json({ message: "You can only assign tests that you created." });
+      }
+
+      const mentorBatches = mentor?.batches || [];
+      if (cohort === "all" || !mentorBatches.includes(cohort)) {
+        return res.status(403).json({
+          message: "You can only assign tests to students in your assigned batches."
+        });
+      }
     }
 
     if (Number(duration) < test.timeLimit) {
@@ -1266,13 +1301,15 @@ router.post("/assign-cohort", authenticateToken, requireRole("admin"), async (re
     const assignmentsToInsert = [];
     const studentIdsForSocket = [];
 
+    const effectiveMentorId = mentorId || (String(req.user?.role || "").toLowerCase() === "mentor" ? req.user.userId : null);
+
     for (const student of students) {
       const studentIdStr = String(student._id);
       if (!existingUserIds.has(studentIdStr)) {
         assignmentsToInsert.push({
           testId,
           userId: student._id,
-          mentorId: mentorId || null,
+          mentorId: effectiveMentorId,
           startTime: startTimeDate,
           duration: Number(duration),
           deadline,
@@ -1346,7 +1383,7 @@ router.post("/assign-cohort", authenticateToken, requireRole("admin"), async (re
   }
 });
 
-router.post("/assign-manual", authenticateToken, requireRole("admin"), async (req, res, next) => {
+router.post("/assign-manual", authenticateToken, requireRole(["admin", "Mentor"]), async (req, res, next) => {
   try {
     const { testId, studentIds, startTime, duration, mentorId } = req.body;
 
@@ -1368,6 +1405,23 @@ router.post("/assign-manual", authenticateToken, requireRole("admin"), async (re
       return res.status(404).json({ message: "Test not found" });
     }
 
+    const manualUserRole = String(req.user?.role || "").toLowerCase();
+    if (manualUserRole === "mentor") {
+      const mentor = await Mentor.findById(req.user.userId).populate("subjects", "name").lean();
+      const subjectNames = (mentor?.subjects || [])
+        .map((s) => (typeof s === "string" ? s : s?.name || "").trim().toLowerCase())
+        .filter(Boolean);
+      const hasAllSubject = subjectNames.includes("all");
+      const testSubject = (test.subject || "").trim().toLowerCase();
+      if (!hasAllSubject && !subjectNames.includes(testSubject)) {
+        return res.status(403).json({ message: "You can only assign tests for your assigned subjects." });
+      }
+
+      if (String(test.createdBy) !== String(req.user.userId)) {
+        return res.status(403).json({ message: "You can only assign tests that you created." });
+      }
+    }
+
     // Validate duration >= timeLimit
     if (Number(duration) < test.timeLimit) {
       return res.status(400).json({
@@ -1377,7 +1431,7 @@ router.post("/assign-manual", authenticateToken, requireRole("admin"), async (re
 
     // Validate that all student IDs are valid and correspond to actual students
     const students = await Student.find({ _id: { $in: studentIds } })
-      .select("_id")
+      .select("_id University")
       .lean();
 
     if (students.length !== studentIds.length) {
@@ -1388,6 +1442,19 @@ router.post("/assign-manual", authenticateToken, requireRole("admin"), async (re
         message: "Some student IDs are invalid or not students",
         invalidStudentIds
       });
+    }
+
+    // Verify all selected students belong to mentor's assigned batches
+    if (manualUserRole === "mentor") {
+      const mentor = await Mentor.findById(req.user.userId).select("batches").lean();
+      const mentorBatches = mentor?.batches || [];
+      const allowedUniversities = getUniversitiesForBatches(mentorBatches);
+      const invalidStudents = students.filter((s) => !allowedUniversities.includes(s.University));
+      if (invalidStudents.length > 0) {
+        return res.status(403).json({
+          message: "You can only assign tests to students belonging to your assigned batches."
+        });
+      }
     }
 
     // Create assignments for selected students - OPTIMIZED with bulk operations
@@ -1407,12 +1474,14 @@ router.post("/assign-manual", authenticateToken, requireRole("admin"), async (re
     const assignmentsToInsert = [];
     const studentIdsForSocket = [];
 
+    const effectiveMentorId = mentorId || (String(req.user?.role || "").toLowerCase() === "mentor" ? req.user.userId : null);
+
     for (const studentId of studentIds) {
       if (!existingUserIds.has(studentId)) {
         assignmentsToInsert.push({
           testId,
           userId: studentId,
-          mentorId: mentorId || null,
+          mentorId: effectiveMentorId,
           startTime: startTimeDate,
           duration: Number(duration),
           deadline: deadline,

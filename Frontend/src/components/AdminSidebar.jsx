@@ -9,6 +9,7 @@ import {
   X,
   ChevronRight,
   User,
+  UserCheck,
 } from "lucide-react";
 import "../styles/StudentSidebar.mobile.css";
 
@@ -112,6 +113,7 @@ export default function AdminSidebar({
     { to: "/admin", icon: LayoutDashboard, label: "Dashboard", end: true, iconColor: "#00C4B4" },
     { to: "/admin/tests", icon: ClipboardList, label: "Tests", iconColor: "#2DD4BF" },
     { to: "/admin/users", icon: Users, label: "Users", iconColor: "#A78BFA" },
+    { to: "/admin/mentors", icon: UserCheck, label: "Mentors", iconColor: "#38BDF8" },
     { to: "/admin/proctoring", icon: Shield, label: "Proctoring", iconColor: "#F59E0B" },
   ];
 

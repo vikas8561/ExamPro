@@ -36,7 +36,11 @@ function normalizeStudent(doc) {
 
 function normalizeMentor(doc) {
   if (!doc) return null;
-  return { _id: doc._id, name: doc.name, email: doc.email, role: "Mentor" };
+  const base = { _id: doc._id, name: doc.name, email: doc.email, role: "Mentor" };
+  // Include assigned subjects and batches when available
+  if (doc.subjects) base.subjects = doc.subjects;
+  if (doc.batches) base.batches = doc.batches;
+  return base;
 }
 
 function normalizeAdmin(doc) {
@@ -52,7 +56,7 @@ const COHORTS = [
   { key: "all", label: "All Students", description: "Every student on the university roster", filter: {} },
   { key: "ru", label: "Rai University", description: "Rai University", filter: { University: "Rai University" } },
   { key: "su702", label: "SU 2025 LAB 702", description: "SUxCG 702", filter: { University: "SUxCG 702" } },
-  { key: "su714", label: "SU 2025 LAB 714", description: "SUxCG 714", filter: { University: "SUxCG 714" } },
+  { key: "su714", label: "SU 2025 LAB 714", description: "SUxCG 714", filter: { University: { $in: ["SUxCG 714", "CGXSU 714"] } } },
   { key: "cglab3", label: "SU 2026 LAB 3", description: "CG LAB 3", filter: { University: "CG LAB 3" } },
   { key: "cglab4", label: "SU 2026 LAB 4", description: "CG LAB 4", filter: { University: "CG LAB 4" } },
   {
@@ -63,10 +67,59 @@ const COHORTS = [
   },
 ];
 
+// Assignable individual batches (excluding 'all')
+const BATCHES = COHORTS.filter((c) => c.key !== "all");
+
 const COHORTS_BY_KEY = new Map(COHORTS.map((c) => [c.key, c]));
 
 function getCohort(key) {
   return COHORTS_BY_KEY.get(key) || null;
+}
+
+/**
+ * Returns all distinct university strings for the specified batch keys.
+ */
+function getUniversitiesForBatches(batchKeys = []) {
+  const universities = [];
+  for (const key of batchKeys) {
+    const cohort = getCohort(key);
+    if (!cohort) continue;
+    if (cohort.filter.University) {
+      if (typeof cohort.filter.University === "string") {
+        universities.push(cohort.filter.University);
+      } else if (cohort.filter.University.$in) {
+        universities.push(...cohort.filter.University.$in);
+      }
+    }
+  }
+  return [...new Set(universities)];
+}
+
+/**
+ * Returns a MongoDB query filter for Student collection matching the given batch keys.
+ * If batchKeys is empty, returns filter matching no records ({ _id: null }).
+ */
+function getStudentFilterForBatches(batchKeys = []) {
+  if (!Array.isArray(batchKeys) || batchKeys.length === 0) {
+    return { _id: null };
+  }
+  if (batchKeys.includes("all")) {
+    return {};
+  }
+  const universities = getUniversitiesForBatches(batchKeys);
+  if (universities.length === 0) {
+    return { _id: null };
+  }
+  return { University: { $in: universities } };
+}
+
+/**
+ * Returns array of student ObjectIds for the given batch keys.
+ */
+async function getStudentIdsForBatches(batchKeys = []) {
+  const filter = getStudentFilterForBatches(batchKeys);
+  const docs = await Student.find(filter).select("_id").lean().maxTimeMS(10000);
+  return docs.map((d) => d._id);
 }
 
 // The roster for one of the COHORTS above, by key.
@@ -99,7 +152,9 @@ async function findStudentById(id) {
 
 async function findPrincipalById(id, role) {
   if (role === "Student") return findStudentById(id);
-  if (role === "Mentor") return normalizeMentor(await Mentor.findById(id).select("name email").lean());
+  if (role === "Mentor") return normalizeMentor(
+    await Mentor.findById(id).select("name email subjects batches").populate("subjects", "name").lean()
+  );
   if (role === "Admin") return normalizeAdmin(await Admin.findById(id).select("name email").lean());
   return null;
 }
@@ -177,7 +232,11 @@ module.exports = {
   normalizeMentor,
   normalizeAdmin,
   COHORTS,
+  BATCHES,
   getCohort,
+  getUniversitiesForBatches,
+  getStudentFilterForBatches,
+  getStudentIdsForBatches,
   findStudentsByCohort,
   cohortCounts,
   findStudentById,

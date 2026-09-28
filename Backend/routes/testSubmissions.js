@@ -9,7 +9,10 @@ const { authenticateToken, requireRole } = require("../middleware/auth");
 const { requireProctorSession } = require("../middleware/proctorSession");
 const ProctorSession = require("../models/ProctorSession");
 const policyService = require("../services/proctorPolicy");
-const { attach } = require("../services/principals");
+const { attach, getUniversitiesForBatches } = require("../services/principals");
+const Subject = require("../models/Subject");
+const Mentor = require("../models/Mentor");
+const Student = require("../models/Student");
 
 // Gemini integration removed - mentors will grade manually
 
@@ -411,7 +414,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
     const assignment = await Assignment.findById(assignmentId)
       .populate({
         path: "testId",
-        select: "title questions negativeMarkingPercent",
+        select: "title subject createdBy questions negativeMarkingPercent",
         populate: {
           path: "questions",
           select: "kind text options answer answers guidelines examples points"
@@ -436,10 +439,31 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
     // sitting it.
     const role = String(req.user?.role || "").toLowerCase();
     const isAdmin = role === "admin";
-    const isReviewer =
-      isAdmin ||
-      (role === "mentor" &&
-        (!assignment.mentorId || assignment.mentorId.toString() === userId));
+    let isReviewer = isAdmin;
+
+    if (!isReviewer && role === "mentor") {
+      const mentor = await Mentor.findById(userId).populate("subjects", "name").lean();
+      if (mentor && mentor.subjects && mentor.subjects.length > 0 && mentor.batches && mentor.batches.length > 0) {
+        const subjectNames = mentor.subjects.map(s => (typeof s === "string" ? s : s?.name || "").trim().toLowerCase()).filter(Boolean);
+        const hasAllSubject = subjectNames.includes("all");
+        const testSubject = (assignment.testId?.subject || "").trim().toLowerCase();
+        const subjectMatches = hasAllSubject || subjectNames.includes(testSubject);
+
+        // Check if mentor conducts this test: either they created it or are the assigned mentor
+        const conductsTest =
+          (assignment.mentorId && assignment.mentorId.toString() === userId) ||
+          (assignment.testId?.createdBy && assignment.testId.createdBy.toString() === userId);
+
+        // Check if student belongs to mentor's assigned batches
+        const allowedUniversities = getUniversitiesForBatches(mentor.batches);
+        const studentDoc = await Student.findById(assignment.userId).select("University").lean();
+        const studentInBatch = studentDoc && allowedUniversities.includes(studentDoc.University);
+
+        if (subjectMatches && conductsTest && studentInBatch) {
+          isReviewer = true;
+        }
+      }
+    }
 
     if (!isStudent && !isReviewer) {
       return res.status(403).json({ message: "Not authorized to view this submission" });
@@ -483,7 +507,9 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
     }
 
     // Add a small buffer (5 seconds) to handle timing precision issues
-    const deadlineWithBuffer = new Date(assignmentDeadline.getTime() + 5000);
+    const deadlineWithBuffer = assignmentDeadline
+      ? new Date(new Date(assignmentDeadline).getTime() + 5000)
+      : new Date(0);
 
     // console.log('Deadline with buffer:', deadlineWithBuffer.toISOString());
     // console.log('Current time >= deadline with buffer:', currentTime >= deadlineWithBuffer);
@@ -747,16 +773,47 @@ router.put("/:submissionId/review", authenticateToken, requireRole(["Mentor", "A
 
     // Get submission and assignment
     const submission = await TestSubmission.findById(submissionId)
-      .populate("assignmentId");
+      .populate({
+        path: "assignmentId",
+        populate: {
+          path: "testId",
+          select: "createdBy subject"
+        }
+      });
 
     if (!submission) {
       return res.status(404).json({ message: "Submission not found" });
     }
 
-    // Verify mentor is assigned to this assignment
-    const assignment = await Assignment.findById(submission.assignmentId._id);
-    if (!assignment || assignment.mentorId?.toString() !== mentorId) {
-      return res.status(403).json({ message: "Not authorized to review this submission" });
+    const role = String(req.user?.role || "").toLowerCase();
+    const isAdmin = role === "admin";
+
+    if (!isAdmin) {
+      const assignment = submission.assignmentId;
+      if (!assignment) {
+        return res.status(404).json({ message: "Assignment not found" });
+      }
+
+      // Check mentor's subjects and batches
+      const mentor = await Mentor.findById(mentorId).populate("subjects", "name").lean();
+      const subjectNames = (mentor?.subjects || [])
+        .map((s) => (typeof s === "string" ? s : s?.name || "").trim().toLowerCase())
+        .filter(Boolean);
+      const hasAllSubject = subjectNames.includes("all");
+      const testSubject = (assignment.testId?.subject || "").trim().toLowerCase();
+      const subjectMatches = hasAllSubject || subjectNames.includes(testSubject);
+
+      const conductsTest =
+        (assignment.mentorId && assignment.mentorId.toString() === mentorId) ||
+        (assignment.testId?.createdBy && assignment.testId.createdBy.toString() === mentorId);
+
+      const allowedUniversities = getUniversitiesForBatches(mentor?.batches || []);
+      const studentDoc = await Student.findById(assignment.userId).select("University").lean();
+      const studentInBatch = studentDoc && allowedUniversities.includes(studentDoc.University);
+
+      if (!subjectMatches || !conductsTest || !studentInBatch) {
+        return res.status(403).json({ message: "Not authorized to review this submission" });
+      }
     }
 
     // Update submission with mentor review

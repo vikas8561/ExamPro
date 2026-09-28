@@ -9,6 +9,8 @@ const MentorSchema = new mongoose.Schema(
     // A mentor teaches one or more of the subjects ExamPro already knows about,
     // so these point at the `subjects` collection rather than free text.
     subjects: [{ type: mongoose.Schema.Types.ObjectId, ref: "Subject" }],
+    // Batches/cohorts assigned to this mentor (e.g. 'ru', 'su702', 'su714', 'cglab3', 'cglab4', 'ssiu')
+    batches: [{ type: String, trim: true }],
   },
   { timestamps: true, collection: "mentors" }
 );
