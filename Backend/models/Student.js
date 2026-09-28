@@ -1,10 +1,11 @@
 const mongoose = require("mongoose");
 const { getStudentConnection } = require("../configs/studentDb");
 
-// Read-only mirror of the university attendance platform's `students`
-// collection. `strict: false` keeps every field the university stores (mentor
-// links, attendance, profile links) reachable without ExamPro having to model
-// them, and nothing here ever writes.
+// The university attendance platform's `students` collection. ExamPro treats it
+// as read-only with one exception: an admin resetting a locked-out student's
+// password writes `password`, and nothing else, in routes/users.js.
+// `strict: false` keeps every field the university stores (mentor links,
+// attendance, profile links) reachable without ExamPro having to model them.
 const StudentSchema = new mongoose.Schema(
   {
     studentName: String,

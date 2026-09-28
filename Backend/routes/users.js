@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const mongoose = require("mongoose");
+const bcrypt = require("bcrypt");
 
 const Student = require("../models/Student");
 const Mentor = require("../models/Mentor");
@@ -10,15 +11,38 @@ const Subject = require("../models/Subject");
 const AuthSession = require("../models/AuthSession");
 const { authenticateToken, requireRole } = require("../middleware/auth");
 const { normalizeStudent, getCohort, cohortCounts, STUDENT_FIELDS } = require("../services/principals");
+const { isDatabaseUnavailable } = require("../utils/databaseErrors");
+const lockout = require("../services/loginLockout");
 
 // The admin panel lists everyone who can sign in. Those identities come from
 // three collections across two databases now - students from the university's
 // `students`, mentors and admins from ExamPro's own - so the listing is
-// assembled here rather than by a single query. Students are read-only: the
-// university owns them, and ExamPro never writes to that database.
+// assembled here rather than by a single query. Students are all but read-only:
+// the university owns them, so they cannot be created, edited or deleted here.
+// The one exception is the password reset below, which an admin needs in order to
+// let a student who has forgotten theirs back in.
 
 const STUDENTS_ARE_READ_ONLY =
   "Students are managed in the university's system and cannot be created, edited or deleted from ExamPro.";
+
+// What an admin resets a locked-out student's password to. The student signs in
+// with this and is expected to change it themselves afterwards.
+const DEFAULT_STUDENT_PASSWORD = "123456";
+
+// Every identifier this student could have typed at the login form. The lockout
+// counter is keyed by what was typed rather than by whose account it was, so
+// reading or clearing a student's lock means covering all of them.
+function studentLoginKeys(student) {
+  return [student.universityUID, student.rollno, student.email].filter(Boolean);
+}
+
+// Find a student by id, normalized. The counterpart to findStaff() below, which
+// deliberately returns null for a student id.
+async function findStudent(id) {
+  if (!mongoose.Types.ObjectId.isValid(id)) return null;
+  const doc = await Student.findById(id).select(STUDENT_FIELDS).lean();
+  return doc ? normalizeStudent(doc) : null;
+}
 
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -70,7 +94,13 @@ async function loadDirectory({ search = "", filter = "" } = {}) {
   ]);
 
   return [
-    ...students.map((doc) => ({ ...normalizeStudent(doc), createdAt: doc.createdAt })),
+    // Students carry their login-lockout state, so the admin panel can show who
+    // is locked out and offer to unblock them. It is read from memory, so this
+    // costs nothing per row.
+    ...students.map((doc) => {
+      const row = normalizeStudent(doc);
+      return { ...row, createdAt: doc.createdAt, ...lockout.statusFor(studentLoginKeys(row)) };
+    }),
     ...mentors.map((doc) => ({
       _id: doc._id,
       name: doc.name,
@@ -174,8 +204,21 @@ router.get("/profiles", authenticateToken, requireRole("Admin"), async (req, res
     const totalUsers = rows.length;
     const totalPages = Math.ceil(totalUsers / limit) || 1;
 
+    // Counted over the whole filtered directory, not the page being returned.
+    // The admin panel shows these as headline figures, and one page holds nine
+    // rows sorted students-first, so counting the page made "All Users" report
+    // every mentor and admin as zero. Scoped to the same search and filter as
+    // `totalUsers`, so the three roles always add up to it.
+    const counts = { total: totalUsers, students: 0, mentors: 0, admins: 0 };
+    for (const row of rows) {
+      if (row.role === "Student") counts.students += 1;
+      else if (row.role === "Mentor") counts.mentors += 1;
+      else if (row.role === "Admin") counts.admins += 1;
+    }
+
     res.json({
       users: rows.slice(skip, skip + limit),
+      counts,
       pagination: {
         currentPage: page,
         totalPages,
@@ -247,6 +290,81 @@ router.get("/:id/full-profile", authenticateToken, requireRole("admin"), async (
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+});
+
+// Let a locked-out student sign in again (admin only).
+//
+// There is no "blocked" flag to unset: the lockout is the failed-attempt counter
+// in services/loginLockout, so unblocking is just forgetting the attempts
+// recorded against every identifier this student could have typed.
+router.post("/:id/unblock", authenticateToken, requireRole("Admin"), async (req, res) => {
+  try {
+    const student = await findStudent(req.params.id);
+    if (!student) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    const keys = studentLoginKeys(student);
+    lockout.clearAll(keys);
+
+    res.json({
+      message: `${student.name} can sign in again.`,
+      ...lockout.statusFor(keys),
+    });
+  } catch (err) {
+    console.error("Error unblocking student:", err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Reset a student's password to the shared default (admin only).
+//
+// This is the one place ExamPro writes to the university's database. Every other
+// student field stays read-only and should remain so - but the password a student
+// signs in with is the one the university stores, so a reset written anywhere
+// else would not be the password they actually use. The write is kept as narrow
+// as that reasoning allows: one field, on one document, found by _id.
+//
+// It is not only ExamPro's view that changes. The university's attendance
+// platform authenticates against this same field, so the student's password there
+// becomes the default too, and they should be told to change it.
+router.post("/:id/reset-password", authenticateToken, requireRole("Admin"), async (req, res, next) => {
+  try {
+    const student = await findStudent(req.params.id);
+    if (!student) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    // Same cost factor the mentor and admin schemas hash with.
+    const password = await bcrypt.hash(DEFAULT_STUDENT_PASSWORD, 10);
+
+    // Not wrapped in withDbRetry: that helper is for reads only, because
+    // retrying a write that may already have been applied is a different
+    // problem. A failure here reaches the admin, who can press the button again.
+    const result = await Student.updateOne({ _id: student._id }, { $set: { password } });
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    // A reset is useless while the old lockout still stands, and a session opened
+    // with the previous password must not outlive it.
+    lockout.clearAll(studentLoginKeys(student));
+    await AuthSession.deleteMany({ principalId: String(student._id) });
+
+    res.json({
+      message: `Password for ${student.name} reset to ${DEFAULT_STUDENT_PASSWORD}.`,
+      defaultPassword: DEFAULT_STUDENT_PASSWORD,
+      ...lockout.statusFor(studentLoginKeys(student)),
+    });
+  } catch (err) {
+    console.error("Error resetting student password:", err);
+
+    // The university's database being unreachable is not a bad request. The
+    // global handler turns this into a 503 the admin can act on.
+    if (isDatabaseUnavailable(err)) return next(err);
+
+    res.status(500).json({ message: "Could not reset the password. Please try again." });
   }
 });
 

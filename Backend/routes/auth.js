@@ -20,38 +20,11 @@ const {
   findPrincipalById,
 } = require("../services/principals");
 
-// Brute-force protection. Blocking used to be a flag on the User document, but
-// student records belong to the university's database and ExamPro only reads
-// from it, so the counter is kept in memory here: 3 wrong passwords inside 5
-// minutes locks that identifier out for 30 minutes.
-const MAX_ATTEMPTS = 3;
-const ATTEMPT_WINDOW_MS = 5 * 60 * 1000;
-const LOCKOUT_MS = 30 * 60 * 1000;
-const failedAttempts = new Map(); // identifier -> { count, firstAt, lockedUntil }
-
-function lockoutRemaining(key) {
-  const entry = failedAttempts.get(key);
-  if (!entry?.lockedUntil) return 0;
-  const remaining = entry.lockedUntil - Date.now();
-  if (remaining <= 0) {
-    failedAttempts.delete(key);
-    return 0;
-  }
-  return remaining;
-}
-
-function recordFailure(key) {
-  const now = Date.now();
-  const entry = failedAttempts.get(key);
-  if (!entry || now - entry.firstAt > ATTEMPT_WINDOW_MS) {
-    failedAttempts.set(key, { count: 1, firstAt: now, lockedUntil: null });
-    return;
-  }
-  entry.count += 1;
-  if (entry.count >= MAX_ATTEMPTS) {
-    entry.lockedUntil = now + LOCKOUT_MS;
-  }
-}
+// Brute-force protection: 3 wrong passwords inside 5 minutes locks that
+// identifier out for 30 minutes. The counter lives in services/loginLockout
+// rather than here, because the admin panel reads and clears the same state when
+// it shows a student as locked out and unblocks them.
+const lockout = require("../services/loginLockout");
 
 // Roll numbers and UIDs are stored the way the university typed them
 // ("24BTCSE095"), so match them case-insensitively without letting user input
@@ -73,8 +46,7 @@ router.post("/login", async (req, res, next) => {
       return res.status(400).json({ message: "Please enter your UniversityUID / Roll No and password" });
     }
 
-    const lockKey = identifier.toLowerCase();
-    const remaining = lockoutRemaining(lockKey);
+    const remaining = lockout.remainingFor(identifier);
     if (remaining > 0) {
       return res.status(403).json({
         message: `Too many failed attempts. Please try again in ${Math.ceil(remaining / 60000)} minute(s).`,
@@ -82,7 +54,7 @@ router.post("/login", async (req, res, next) => {
     }
 
     const invalid = () => {
-      recordFailure(lockKey);
+      lockout.recordFailure(identifier);
       return res.status(401).json({ message: "Invalid credentials" });
     };
 
@@ -127,7 +99,7 @@ router.post("/login", async (req, res, next) => {
     const isMatch = await bcrypt.compare(password, hash);
     if (!isMatch) return invalid();
 
-    failedAttempts.delete(lockKey);
+    lockout.clear(identifier);
 
     const token = generateToken(principal);
     await startSession(principal, token);

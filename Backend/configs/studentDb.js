@@ -1,8 +1,10 @@
 const mongoose = require("mongoose");
 
 // The university's attendance platform owns the student records and their
-// passwords. ExamPro only ever reads from it, never writes, so it gets its own
-// small connection rather than sharing the main ExamPro pool.
+// passwords. ExamPro reads from it, and writes to exactly one field: an admin
+// resetting a locked-out student's password in routes/users.js. Everything else
+// about a student stays read-only. It gets its own small connection rather than
+// sharing the main ExamPro pool.
 let studentConnection = null;
 
 function getStudentConnection() {
@@ -34,10 +36,15 @@ function getStudentConnection() {
     // Admin and mentor logins were unaffected — they read from the ExamPro
     // database on the other connection — so it looked like students specifically
     // could not sign in, intermittently, with the database plainly up.
+
+    // `retryWrites` stays off even though there is now one write here. If the
+    // driver cannot tell whether a password reset landed, an admin pressing the
+    // button again is a better answer than the driver retrying silently. Reads
+    // are a different matter, hence `retryReads`.
     retryWrites: false,
     retryReads: true,
     readPreference: "primary",
-    autoIndex: false, // read-only: never create indexes in the university's DB
+    autoIndex: false, // ExamPro never creates indexes in the university's DB
   });
 
   studentConnection.on("connected", () => console.log("✅ University student DB connected"));

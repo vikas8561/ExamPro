@@ -15,10 +15,17 @@ import {
   Shield,
   GraduationCap,
   UserCheck,
-  AlertCircle
+  AlertCircle,
+  Lock,
+  LockOpen,
+  KeyRound
 } from "lucide-react";
 import { API_BASE_URL } from "../config/api";
 import apiRequest from "../services/api";
+
+// Matches DEFAULT_STUDENT_PASSWORD in Backend/routes/users.js, which is what
+// actually gets set; this copy only exists so the admin is told what it will be.
+const DEFAULT_STUDENT_PASSWORD = "123456";
 
 export default function Users() {
   const [users, setUsers] = useState([]);
@@ -32,6 +39,9 @@ export default function Users() {
   const [filterOptions, setFilterOptions] = useState([{ value: "All Users", label: "All Users" }]);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [deletingImage, setDeletingImage] = useState(null);
+  // Which student card has an unblock / password reset in flight, as
+  // `${id}:unblock` or `${id}:reset`, so only the pressed button shows a spinner.
+  const [lockAction, setLockAction] = useState(null);
   const [resultPopup, setResultPopup] = useState({ show: false, message: "", type: "success" });
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -42,6 +52,9 @@ export default function Users() {
     hasPrevPage: false,
     currentPage: 1
   });
+  // Role totals across the whole filtered directory, from the server. They cannot
+  // be counted from `users`, which holds only the nine rows of the current page.
+  const [counts, setCounts] = useState(null);
   const searchDebounceRef = useRef(null);
 
   // Confirmation Modal State
@@ -87,10 +100,14 @@ export default function Users() {
           if (data.pagination) {
             setPagination(data.pagination);
           }
+          setCounts(data.counts || null);
         } else if (Array.isArray(data)) {
+          // The unpaginated endpoint returns every row, so counting it is correct.
           setUsers(data);
+          setCounts(null);
         } else {
           setUsers([]);
+          setCounts(null);
         }
       })
       .catch((err) => {
@@ -293,6 +310,92 @@ export default function Users() {
     }
   };
 
+  // How long a lockout has left. The number came with the page data, so it ages
+  // between refreshes - phrased loosely enough that being a minute out does not
+  // make it wrong.
+  const formatLockRemaining = (ms) => {
+    const minutes = Math.ceil((ms || 0) / 60000);
+    if (minutes <= 1) return "under a minute left";
+    return `${minutes} min left`;
+  };
+
+  // Clear a student's failed-login lockout so they can sign in again. Their
+  // password is untouched - use this when they know it and simply mistyped it.
+  const unblockStudent = async (student) => {
+    if (
+      !window.confirm(
+        `Unblock ${student.name}? Their failed login attempts will be cleared and they can sign in again straight away with their existing password.`
+      )
+    ) {
+      return;
+    }
+
+    setLockAction(`${student._id}:unblock`);
+    try {
+      const data = await apiRequest(`/users/${student._id}/unblock`, { method: "POST" });
+      // Patch the row in place rather than refetching: the lock state is the only
+      // thing that changed, and a refetch would lose the admin's page and search.
+      setUsers((prev) =>
+        prev.map((row) =>
+          row._id === student._id
+            ? { ...row, isLocked: false, lockedUntil: null, lockRemainingMs: 0, failedLoginAttempts: 0 }
+            : row
+        )
+      );
+      setResultPopup({ show: true, message: data.message || "Student unblocked.", type: "success" });
+    } catch (err) {
+      console.error("Error unblocking student:", err);
+      setResultPopup({
+        show: true,
+        message: err.message || "Could not unblock this student.",
+        type: "error"
+      });
+    } finally {
+      setLockAction(null);
+    }
+  };
+
+  // Reset a student's password to the shared default. This also clears any
+  // lockout and signs them out everywhere, so it covers a forgotten password on
+  // its own - the admin does not need to press Unblock as well.
+  const resetStudentPassword = async (student) => {
+    if (
+      !window.confirm(
+        `Reset the password for ${student.name} to ${DEFAULT_STUDENT_PASSWORD}?\n\n` +
+          `They will be signed out everywhere and any lockout will be cleared.\n\n` +
+          `This is the same password they use for the university's attendance platform, so it changes there too. Tell them to change it after signing in.`
+      )
+    ) {
+      return;
+    }
+
+    setLockAction(`${student._id}:reset`);
+    try {
+      const data = await apiRequest(`/users/${student._id}/reset-password`, { method: "POST" });
+      setUsers((prev) =>
+        prev.map((row) =>
+          row._id === student._id
+            ? { ...row, isLocked: false, lockedUntil: null, lockRemainingMs: 0, failedLoginAttempts: 0 }
+            : row
+        )
+      );
+      setResultPopup({
+        show: true,
+        message: data.message || `Password reset to ${DEFAULT_STUDENT_PASSWORD}.`,
+        type: "success"
+      });
+    } catch (err) {
+      console.error("Error resetting student password:", err);
+      setResultPopup({
+        show: true,
+        message: err.message || "Could not reset this student's password.",
+        type: "error"
+      });
+    } finally {
+      setLockAction(null);
+    }
+  };
+
   const closeConfirmModal = () => {
     setConfirmModal({ ...confirmModal, isOpen: false });
     setTypedConfirmation("");
@@ -343,11 +446,32 @@ export default function Users() {
     }
   }, [resultPopup.show]);
 
-  // Compute live demographic statistics
-  const totalUsersCount = pagination.totalUsers || users.length;
-  const studentsCount = useMemo(() => users.filter((u) => u.role === "Student").length, [users]);
-  const mentorsCount = useMemo(() => users.filter((u) => u.role === "Mentor").length, [users]);
-  const adminsCount = useMemo(() => users.filter((u) => u.role === "Admin").length, [users]);
+  // Headline figures for the KPI row, covering the whole directory under the
+  // current search and filter - the same scope as `pagination.totalUsers`, so the
+  // three roles always add up to the total.
+  //
+  // These come from the server. Counting `users` here is what made the row wrong:
+  // it holds one page of nine rows sorted students-first, so "All Users" showed
+  // Students 9, Mentors 0, Admins 0 however many mentors and admins existed. The
+  // fallback only runs for the unpaginated response, which does contain every row.
+  const roleCounts = useMemo(() => {
+    if (counts) return counts;
+    return {
+      total: users.length,
+      students: users.filter((u) => u.role === "Student").length,
+      mentors: users.filter((u) => u.role === "Mentor").length,
+      admins: users.filter((u) => u.role === "Admin").length
+    };
+  }, [counts, users]);
+
+  // The figures follow the active search and filter, so the card says which it is
+  // rather than claiming to be the whole directory when it is not.
+  const isNarrowed = Boolean(searchTerm) || (filter && filter !== "All Users");
+
+  const totalUsersCount = roleCounts.total;
+  const studentsCount = roleCounts.students;
+  const mentorsCount = roleCounts.mentors;
+  const adminsCount = roleCounts.admins;
 
   return (
     <div
@@ -512,7 +636,7 @@ export default function Users() {
                 Total Users
               </span>
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-medium bg-[#133B42] text-[#2DD4BF] border border-[#2DD4BF]/20">
-                Directory
+                {isNarrowed ? "Filtered" : "Directory"}
               </span>
             </div>
             <div className="text-xl sm:text-2xl font-bold text-white tracking-tight">
@@ -520,11 +644,11 @@ export default function Users() {
             </div>
             <p className="text-[11px] text-[#7E8594] mt-1 flex items-center gap-1">
               <UsersIcon className="w-3 h-3 text-[#2DD4BF]" />
-              Total institutional accounts
+              {isNarrowed ? "Accounts matching this view" : "Total institutional accounts"}
             </p>
           </div>
 
-          {/* Students in Current Page/View */}
+          {/* Students */}
           <div className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-4 sm:p-5 hover:border-white/10 transition-all shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <span className="text-[11px] sm:text-xs font-semibold tracking-wide text-[#7E8594] uppercase">
@@ -539,11 +663,11 @@ export default function Users() {
             </div>
             <p className="text-[11px] text-[#7E8594] mt-1 flex items-center gap-1">
               <GraduationCap className="w-3 h-3 text-[#38BDF8]" />
-              Enrolled student cohort
+              Enrolled student
             </p>
           </div>
 
-          {/* Mentors in Current Page/View */}
+          {/* Mentors */}
           <div className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-4 sm:p-5 hover:border-white/10 transition-all shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <span className="text-[11px] sm:text-xs font-semibold tracking-wide text-[#7E8594] uppercase">
@@ -562,7 +686,7 @@ export default function Users() {
             </p>
           </div>
 
-          {/* Admins in Current Page/View */}
+          {/* Admins */}
           <div className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-4 sm:p-5 hover:border-white/10 transition-all shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <span className="text-[11px] sm:text-xs font-semibold tracking-wide text-[#7E8594] uppercase">
@@ -795,7 +919,11 @@ export default function Users() {
                 return (
                   <div
                     key={u._id}
-                    className="bg-[#20242D] border border-white/[0.06] hover:border-[#00C4B4]/30 rounded-2xl p-5 sm:p-6 transition-all duration-200 flex flex-col justify-between shadow-sm group hover:-translate-y-0.5"
+                    className={`bg-[#20242D] border rounded-2xl p-5 sm:p-6 transition-all duration-200 flex flex-col justify-between shadow-sm group hover:-translate-y-0.5 ${
+                      u.isLocked
+                        ? "border-rose-500/40 hover:border-rose-500/60"
+                        : "border-white/[0.06] hover:border-[#00C4B4]/30"
+                    }`}
                   >
                     <div>
                       {/* Top Header: Avatar + Identity + Role Badge */}
@@ -910,6 +1038,43 @@ export default function Users() {
                         </div>
                       </div>
 
+                      {/* Student Login Access / Lockout State */}
+                      {isStudent && (
+                        <div
+                          className={`mb-4 rounded-xl border p-2.5 flex items-center gap-2.5 ${
+                            u.isLocked
+                              ? "bg-rose-500/[0.07] border-rose-500/25"
+                              : "bg-[#181A22] border-white/[0.04]"
+                          }`}
+                        >
+                          <div
+                            className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                              u.isLocked ? "bg-rose-500/15" : "bg-[#19382C]"
+                            }`}
+                          >
+                            {u.isLocked ? (
+                              <Lock className="w-3.5 h-3.5 text-rose-400" />
+                            ) : (
+                              <LockOpen className="w-3.5 h-3.5 text-[#34D399]" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-[10px] text-[#7E8594] uppercase tracking-wider block">
+                              Login Access
+                            </span>
+                            <span
+                              className={`text-xs font-semibold truncate block ${
+                                u.isLocked ? "text-rose-400" : "text-[#34D399]"
+                              }`}
+                            >
+                              {u.isLocked
+                                ? `Locked out · ${formatLockRemaining(u.lockRemainingMs)}`
+                                : "Active"}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Mentor Assigned Subjects Pills */}
                       {isMentor && u.subjects && u.subjects.length > 0 && (
                         <div className="mb-4">
@@ -963,6 +1128,42 @@ export default function Users() {
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                             <span>Delete</span>
+                          </button>
+
+                          {/* Unblock, once too many wrong passwords have locked
+                              them out. Nothing to clear otherwise, so the slot
+                              reads as a state rather than a dead button. */}
+                          {u.isLocked ? (
+                            <button
+                              onClick={() => unblockStudent(u)}
+                              disabled={lockAction?.startsWith(`${u._id}:`)}
+                              className="py-2 px-2 rounded-xl text-xs font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/25 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Clear the failed login attempts locking this student out"
+                            >
+                              <LockOpen className="w-3.5 h-3.5" />
+                              <span>
+                                {lockAction === `${u._id}:unblock` ? "Unblocking..." : "Unblock"}
+                              </span>
+                            </button>
+                          ) : (
+                            <div className="py-2 px-2 rounded-xl text-xs font-medium text-[#555C6D] bg-white/[0.02] border border-white/[0.04] text-center flex items-center justify-center gap-1">
+                              <LockOpen className="w-3.5 h-3.5 text-[#555C6D]" />
+                              <span>Not Locked</span>
+                            </div>
+                          )}
+
+                          {/* Reset to the default password. Also clears a lockout,
+                              so it stands on its own for a forgotten password. */}
+                          <button
+                            onClick={() => resetStudentPassword(u)}
+                            disabled={lockAction?.startsWith(`${u._id}:`)}
+                            className="py-2 px-2 rounded-xl text-xs font-semibold bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/25 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            title={`Set this student's password to ${DEFAULT_STUDENT_PASSWORD} and sign them out everywhere`}
+                          >
+                            <KeyRound className="w-3.5 h-3.5" />
+                            <span>
+                              {lockAction === `${u._id}:reset` ? "Resetting..." : "Reset Password"}
+                            </span>
                           </button>
                         </div>
                       ) : (
