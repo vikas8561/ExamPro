@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
+import { isSebPresent } from "../proctoring/seb";
 import {
   ClipboardList,
   Search,
@@ -417,6 +418,24 @@ const StudentAssignments = () => {
 
           {/* Right Controls: Search Input + Filter Toggle Button */}
           <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
+            {/* The way out of Safe Exam Browser, shown only inside it.
+                SEB's own Quit button demands the password that stops a student
+                leaving mid-exam. This goes to SEB's configured quit URL instead,
+                which it exits on without prompting — so finishing a paper and
+                closing down needs no password, while walking out halfway still
+                does. */}
+            {isSebPresent() && (
+              <button
+                type="button"
+                onClick={() =>
+                  window.location.assign(`${window.location.origin}/student/seb-exit`)
+                }
+                className="rounded-lg border border-[#00C4B4]/30 bg-[#133B42] px-3.5 py-2 text-xs font-semibold text-[#00C4B4] hover:bg-[#164A52]"
+              >
+                Exit Safe Exam Browser
+              </button>
+            )}
+
             {/* Search Bar */}
             <div className="relative w-full sm:w-72">
               <Search className="w-4 h-4 text-[#7E8594] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />

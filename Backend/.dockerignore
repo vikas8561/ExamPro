@@ -1,0 +1,23 @@
+# Secrets, first and most important. The image gets pushed to a registry, and
+# anyone who can pull it can read every layer — so credentials are supplied at
+# runtime, never baked in.
+.env
+.env.*
+!.env.example
+
+# Rebuilt inside the image for the target platform. Copying a macOS arm64
+# node_modules into a linux/amd64 image would ship a bcrypt binary that cannot
+# load.
+node_modules
+npm-debug.log*
+
+.git
+.gitignore
+.DS_Store
+
+# Local scratch, not part of the application.
+debug_output.txt
+debug_assignments.js
+
+# Runtime upload target; whatever is here locally is not wanted in the image.
+uploads/*

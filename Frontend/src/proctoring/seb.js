@@ -1,0 +1,233 @@
+/**
+ * Are we running inside Safe Exam Browser, and can we prove it?
+ *
+ * SEB used to attach its keys as HTTP request headers, and an exam server just
+ * read them. That stopped working: neither WebKit nor Chromium lets SEB inject
+ * headers on cross-origin requests any more, and this app's API is a different
+ * origin from its frontend, so those headers would never arrive. The supported
+ * replacement is a JavaScript API that SEB injects into the page.
+ *
+ * The value it exposes is **not** the Browser Exam Key. It is already
+ * `SHA256(current page URL + key)` — exactly what the old header carried. So the
+ * page never sees a secret; it reads a proof and forwards it, and the server
+ * checks that proof against the URL it expects. A student in an ordinary browser
+ * has nothing to forward.
+ *
+ * Detection is by the presence of this API, not by sniffing the user agent. SEB's
+ * own documentation says not to trust the user agent, because any browser can be
+ * made to claim anything.
+ *
+ * Everything here degrades honestly, the same rule the rest of the proctoring
+ * follows: a missing API means "not SEB", never a crash and never an accusation.
+ */
+
+/** How long to wait for older SEB builds to populate the keys asynchronously. */
+const UPDATE_KEYS_TIMEOUT_MS = 1500;
+
+/**
+ * How long to wait for `window.SafeExamBrowser` to turn up at all.
+ *
+ * Checking once, the moment the exam page mounts, assumes SEB has already
+ * injected its API by then — and there is no guarantee of that. React mounts
+ * fast, injection happens on SEB's own schedule, and losing that race makes a
+ * perfectly good SEB look like an ordinary browser. The student is then told to
+ * launch Safe Exam Browser while already sitting inside it.
+ *
+ * Only ever waited when the user agent says SEB, so no ordinary Chrome student
+ * is delayed by a single millisecond.
+ */
+const API_APPEAR_TIMEOUT_MS = 3000;
+const API_POLL_INTERVAL_MS = 100;
+
+function sebGlobal() {
+  try {
+    return typeof window !== "undefined" && window.SafeExamBrowser
+      ? window.SafeExamBrowser
+      : null;
+  } catch {
+    // Reading an injected global can throw in a hardened context.
+    return null;
+  }
+}
+
+/** Cheap synchronous check, safe to call anywhere including render. */
+export function isSebPresent() {
+  return sebGlobal() !== null;
+}
+
+/**
+ * Does the user agent claim SEB even though the JavaScript API is absent?
+ *
+ * Normally the user agent is the wrong thing to trust — SEB's own documentation
+ * says so, because any browser can be made to claim anything. It is exactly
+ * right for this one question though, because the answer is never used to *grant*
+ * anything. It only distinguishes two failures that look identical to a student:
+ *
+ *   - not running SEB at all      → offer the launch button
+ *   - running SEB, but no API     → the button cannot help, and pressing it again
+ *                                   just reloads into the same state, forever
+ *
+ * The second happens when SEB is using its classic WebView, which has no
+ * JavaScript API. On macOS that is what `sendBrowserExamKey` does unless the
+ * config also asks for the modern engine — see services/sebConfig.js.
+ */
+export function looksLikeSebWithoutApi() {
+  if (isSebPresent()) return false;
+  try {
+    return /\bSEB[/ ]/i.test(navigator.userAgent || "");
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The version SEB puts in its user agent, e.g. "3.9.0" from `… SEB/3.9.0`.
+ *
+ * The only way to learn the version when the JavaScript API is absent — and the
+ * version is usually the reason it is absent, since the API arrived in SEB 3.3.2
+ * for Windows and 3.0 for macOS. Without it the error screen can only say
+ * "something is wrong", which helps nobody.
+ */
+export function sebVersionFromUserAgent() {
+  try {
+    const match = /\bSEB[/ ]([0-9][0-9.]*)/i.exec(navigator.userAgent || "");
+    return match ? match[1] : "";
+  } catch {
+    return "";
+  }
+}
+
+function readKeys() {
+  const seb = sebGlobal();
+  if (!seb) return { browserExamKeyHash: "", configKeyHash: "" };
+
+  try {
+    return {
+      browserExamKeyHash:
+        typeof seb.security?.browserExamKey === "string" ? seb.security.browserExamKey : "",
+      configKeyHash:
+        typeof seb.security?.configKey === "string" ? seb.security.configKey : "",
+    };
+  } catch {
+    return { browserExamKeyHash: "", configKeyHash: "" };
+  }
+}
+
+/**
+ * The current Config Key hash, re-read fresh.
+ *
+ * Used by the heartbeat: the server treats a session as genuine only while SEB
+ * keeps re-proving itself, so this is read again on every check-in rather than
+ * captured once at startup. Re-reading also covers the case where the keys were
+ * still being filled in when the exam page first mounted.
+ *
+ * The Config Key rather than the Browser Exam Key, because the server can derive
+ * it from the configuration file it wrote — the same value on Windows and macOS
+ * and across SEB releases, with nothing for an administrator to copy by hand.
+ */
+export function readSebKeyHash() {
+  return readKeys().configKeyHash;
+}
+
+/**
+ * Ask SEB to populate its key variables, on the builds that need asking.
+ *
+ * SEB for Windows 3.3.2 and macOS 3.1 onwards fill these in before the page
+ * loads and expose no callback at all. Older builds require `updateKeys` and
+ * answer asynchronously. Both shapes are handled, and a build that never calls
+ * back is not allowed to hang the exam.
+ */
+function updateKeys() {
+  const seb = sebGlobal();
+  if (!seb || typeof seb.security?.updateKeys !== "function") {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+
+    const timer = setTimeout(finish, UPDATE_KEYS_TIMEOUT_MS);
+
+    try {
+      seb.security.updateKeys(() => {
+        clearTimeout(timer);
+        finish();
+      });
+    } catch {
+      clearTimeout(timer);
+      finish();
+    }
+  });
+}
+
+/**
+ * Wait, briefly, for SEB to inject its API.
+ *
+ * Returns the moment it appears, so a browser that already has it pays nothing,
+ * and returns false immediately for anything whose user agent is not SEB — which
+ * is every ordinary student. Only a browser claiming to be SEB but not yet
+ * showing its API is worth waiting on, and then only for a few seconds.
+ */
+async function waitForSebApi() {
+  if (isSebPresent()) return true;
+  if (!looksLikeSebWithoutApi()) return false;
+
+  const deadline = Date.now() + API_APPEAR_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, API_POLL_INTERVAL_MS));
+    if (isSebPresent()) return true;
+  }
+  return false;
+}
+
+/**
+ * Everything the exam page and the server need to know about SEB, in one call.
+ *
+ * `pageUrl` is reported for diagnostics only. The server deliberately ignores it
+ * and hashes against the URL it stored when it generated this attempt's config
+ * file — trusting a URL from the page would undo the per-attempt nonce that stops
+ * one student's proof being replayed by another.
+ */
+export async function detectSEB() {
+  if (!(await waitForSebApi())) {
+    return {
+      isSEB: false,
+      version: "",
+      browserExamKeyHash: "",
+      configKeyHash: "",
+      pageUrl: "",
+    };
+  }
+
+  await updateKeys();
+
+  const seb = sebGlobal();
+  const keys = readKeys();
+
+  let version = "";
+  try {
+    version = typeof seb?.version === "string" ? seb.version : "";
+  } catch {
+    version = "";
+  }
+
+  let pageUrl = "";
+  try {
+    pageUrl = window.location.href.split("#")[0];
+  } catch {
+    pageUrl = "";
+  }
+
+  return {
+    isSEB: true,
+    version,
+    browserExamKeyHash: keys.browserExamKeyHash,
+    configKeyHash: keys.configKeyHash,
+    pageUrl,
+  };
+}

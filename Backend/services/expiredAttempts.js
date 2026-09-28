@@ -23,6 +23,7 @@ const TestSubmission = require("../models/TestSubmission");
 const ProctorSession = require("../models/ProctorSession");
 const { gradeSubmission } = require("./submissionGrading");
 const { isAttemptExpired, SUBMISSION_GRACE_MS } = require("./attemptWindow");
+const policyService = require("./proctorPolicy");
 
 /** Bound the work per run so one sweep can never monopolise the process. */
 const MAX_PER_RUN = 200;
@@ -103,6 +104,7 @@ async function finalizeAttempt(assignment, test) {
               tabCount: 1,
             })),
             cancelledDueToViolation: proctorSession.status === "terminated",
+            ...policyService.sebSubmissionStatus(proctorSession.seb),
           }
           : {}),
       },

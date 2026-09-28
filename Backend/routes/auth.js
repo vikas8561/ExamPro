@@ -6,6 +6,7 @@ const Student = require("../models/Student");
 const Mentor = require("../models/Mentor");
 const Admin = require("../models/Admin");
 const Profile = require("../models/Profile");
+const { isDatabaseUnavailable, withDbRetry } = require("../utils/databaseErrors");
 const {
   generateToken,
   authenticateToken,
@@ -62,7 +63,7 @@ function exactInsensitive(value) {
 // Login. An identifier containing "@" is an email, so it belongs to an ExamPro
 // admin or mentor; anything else is a student's UniversityUID or roll number and
 // is checked against the university's student database.
-router.post("/login", async (req, res) => {
+router.post("/login", async (req, res, next) => {
   try {
     const rawIdentifier = req.body.identifier ?? req.body.email;
     const { password } = req.body;
@@ -90,12 +91,16 @@ router.post("/login", async (req, res) => {
 
     if (identifier.includes("@")) {
       const email = identifier.toLowerCase();
-      const admin = await Admin.findOne({ email }).select("name email password").lean();
+      const admin = await withDbRetry(() =>
+        Admin.findOne({ email }).select("name email password").lean()
+      );
       if (admin) {
         principal = normalizeAdmin(admin);
         hash = admin.password;
       } else {
-        const mentor = await Mentor.findOne({ email }).select("name email password").lean();
+        const mentor = await withDbRetry(() =>
+          Mentor.findOne({ email }).select("name email password").lean()
+        );
         if (mentor) {
           principal = normalizeMentor(mentor);
           hash = mentor.password;
@@ -103,11 +108,14 @@ router.post("/login", async (req, res) => {
       }
     } else {
       const match = exactInsensitive(identifier);
-      const student = await Student.findOne({
-        $or: [{ UniversityUID: match }, { rollno: match }],
-      })
-        .select("studentName studentEmail UniversityUID rollno University password")
-        .lean();
+      // The connection this uses is touched only by student logins, so it sits
+      // idle between them and is the likeliest in the application to be handed
+      // out dead after a network blip. See withDbRetry.
+      const student = await withDbRetry(() =>
+        Student.findOne({ $or: [{ UniversityUID: match }, { rollno: match }] })
+          .select("studentName studentEmail UniversityUID rollno University password")
+          .lean()
+      );
       if (student) {
         principal = normalizeStudent(student);
         hash = student.password;
@@ -127,6 +135,13 @@ router.post("/login", async (req, res) => {
     res.json({ user: principal, token, message: "Login successful" });
   } catch (err) {
     console.error("Login error:", err);
+
+    // The database being unreachable is not a failed login, and must not read
+    // like one. Handing it to the global error handler turns it into a 503 with
+    // `code: "db_unavailable"` and a Retry-After, so the student is told the
+    // server is down rather than left retyping a correct password.
+    if (isDatabaseUnavailable(err)) return next(err);
+
     res.status(500).json({ message: "Login failed. Please try again." });
   }
 });

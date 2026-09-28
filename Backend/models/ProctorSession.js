@@ -106,6 +106,29 @@ const ProctorSessionSchema = new mongoose.Schema(
       secondMonitor: { type: String, enum: ["yes", "no", "unknown"], default: "unknown" },
     },
 
+    // Safe Exam Browser state for this attempt.
+    //
+    // `required` is frozen when the session is created and is never raised
+    // afterwards: an admin turning the global switch on mid-exam must not lock
+    // out students already sitting a paper. `verifiedAt` is refreshed by every
+    // heartbeat that carries a matching key hash, and the session guard treats a
+    // stale value as "SEB is no longer there".
+    seb: {
+      required: { type: Boolean, default: false },
+      verified: { type: Boolean, default: false },
+      verifiedAt: { type: Date, default: null },
+      version: { type: String, default: "" },
+      platform: { type: String, default: "" },
+      matchedKeyLabel: { type: String, default: "" },
+      // Why this attempt is running without SEB although it was required —
+      // "os_unsupported" for Linux, where SEB has never existed.
+      fallbackReason: { type: String, default: null },
+      // The exact URL string the server put in the .seb config's startURL. SEB
+      // hashes its key with the page URL, so this is what verification hashes
+      // against. A URL reported by the browser is never used.
+      examUrl: { type: String, default: "" },
+    },
+
     startedAt: { type: Date, default: Date.now },
     endedAt: { type: Date, default: null },
     terminatedReason: { type: String, default: null },

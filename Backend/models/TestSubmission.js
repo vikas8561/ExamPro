@@ -20,10 +20,43 @@ const ResponseSchema = new mongoose.Schema({
     enum: ["Pending", "Evaluating", "Evaluated", "Failed"],
     default: "Pending"
   },
-  // Judge0 measurements for coding answers, used to build the runtime and
-  // memory distributions shown after a submission.
+  // Judge0 measurements for coding answers. Recorded for the mentor's report
+  // and for auditing a judge that may have been slow or starved of memory --
+  // deliberately NOT sent back to the student, who is shown a verdict and a
+  // pass count and nothing that invites re-submitting to shave off a
+  // millisecond.
   runtimeMs: { type: Number, default: null },
-  memoryKb: { type: Number, default: null }
+  memoryKb: { type: Number, default: null },
+
+  // How the best attempt scored, in cases rather than marks.
+  //
+  // Stored because grading a coding question is best-wins: deciding which of two
+  // attempts to keep means comparing them, and comparing marks is a worse
+  // question than comparing cases -- marks shift if an admin edits the
+  // question's weight mid-test, cases do not. Also what the mentor's report
+  // shows, instead of re-deriving a count from a score.
+  passedCount: { type: Number, default: null },
+  totalHidden: { type: Number, default: null },
+
+  // The code the student is currently writing, which is NOT what was graded.
+  //
+  // Coding answers are graded best-wins, so `textAnswer` holds the attempt that
+  // earned `points` and must survive the student carrying on typing. Autosave
+  // therefore writes here once an answer has been graded, which keeps crash
+  // recovery working without letting a work-in-progress draft quietly replace
+  // the source behind a score. Null for MCQ and theory answers, where
+  // `textAnswer` is simply the answer.
+  draftAnswer: { type: String, default: null },
+
+  // When the attempt that earned `points` was submitted.
+  //
+  // The document already carries a `submittedAt`, but that one belongs to the
+  // paper as a whole and only means anything once the test is handed in. A
+  // coding answer is submitted, graded and replaced repeatedly while the test
+  // is still running, so it needs its own, and the student is shown it as their
+  // receipt. Defaulted rather than required so the answers already in the
+  // database keep loading.
+  submittedAt: { type: Date, default: Date.now }
 }, { _id: false });
 
 const TabViolationSchema = new mongoose.Schema({
@@ -36,11 +69,12 @@ const TabViolationSchema = new mongoose.Schema({
     // Extended, never renamed, so submissions made before the proctoring
     // rebuild still load and display correctly.
     enum: ["tab_switch", "window_open", "tab_close", "browser_switch", "fullscreen_exit",
-      "window_blur", "devtools_opened", "copy_attempt", "paste_attempt", "context_menu",
+      "window_blur", "devtools_opened", "copy_attempt", "paste_attempt", "paste_internal",
+      "context_menu",
       "blocked_key", "screen_share_stopped", "screen_share_wrong_surface",
       "second_monitor_detected", "permission_revoked", "heartbeat_lost",
-      "page_tampered", "network_lost"],
-    required: true 
+      "page_tampered", "network_lost", "seb_integrity_lost"],
+    required: true
   },
   details: { 
     type: String, 
@@ -120,6 +154,21 @@ const TestSubmissionSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  // How this attempt stood in relation to Safe Exam Browser, so a reviewer can
+  // tell a genuine locked-down attempt from one that fell back to the ordinary
+  // browser-based proctoring:
+  //   not_required — SEB was switched off system-wide when this was taken
+  //   verified     — ran inside SEB and proved it on every check-in
+  //   fallback     — SEB was required but unavailable; see proctorSebFallbackReason
+  proctorSebStatus: {
+    type: String,
+    enum: ["not_required", "verified", "fallback"],
+    default: "not_required"
+  },
+  proctorSebFallbackReason: {
+    type: String,
+    default: null
+  },
   autoSubmit: {
     type: Boolean,
     default: false
@@ -146,6 +195,13 @@ TestSubmissionSchema.index({ mentorReviewed: 1, reviewStatus: 1 });
 // Validation: givenMarks (points) must not exceed totalMarks for any response
 TestSubmissionSchema.pre('save', function(next) {
   for (const response of this.responses || []) {
+    // Null entries exist in stored submissions -- a sparse array serializes
+    // its holes as null -- and reading a field off one threw here, so those
+    // documents could not be save()d AT ALL. Every path that goes through
+    // save() hit it: a mentor recording a review, a re-grade after a test
+    // edit, the coding re-grade audit. An empty slot carries no marks, so
+    // there is nothing here to validate.
+    if (!response) continue;
     if (response.totalMarks > 0 && response.points > response.totalMarks) {
       return next(new Error(
         `Given marks (${response.points}) cannot exceed total marks (${response.totalMarks}) for question ${response.questionId}`

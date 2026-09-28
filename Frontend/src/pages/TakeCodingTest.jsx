@@ -7,9 +7,6 @@ import ProctorProvider from '../proctoring/ProctorProvider';
 import useProctor from '../proctoring/useProctor';
 import QuestionText from '../components/QuestionText';
 
-// recharts is heavy, and most of a test is spent writing code — only pull it in
-// once a submission actually needs to draw its distribution.
-const SubmissionChart = React.lazy(() => import('../components/SubmissionChart'));
 import {
   FALLBACK_LANGUAGES,
   fetchSupportedLanguages,
@@ -88,11 +85,45 @@ function CustomDropdown({ value, onChange, options, className = "" }) {
 // Judge0 status ids (GET /statuses). Colours follow LeetCode's verdict palette.
 const ACCEPTED = 3;
 
+const WRONG_ANSWER = 4;
 const verdictColor = (statusId) => (statusId === ACCEPTED ? 'text-[#28c244]' : 'text-[#ef4743]');
 
 const verdictLabel = (statusId, description) => {
   if (statusId === ACCEPTED) return 'Accepted';
   return description || 'Wrong Answer';
+};
+
+/**
+ * The verdict to show for a submission.
+ *
+ * The headline and the pass count must tell the same story. The judge reports
+ * Accepted on its own comparison, so an "Accepted" sitting beside
+ * "3 / 5 testcases passed" was possible; the count is what the score was
+ * computed from, so the count wins.
+ */
+const submitVerdict = (result) => {
+  const verdict = result?.verdict || { id: WRONG_ANSWER, description: 'Wrong Answer' };
+  const allPassed = result?.totalHidden > 0 && result.passedCount === result.totalHidden;
+  if (verdict.id === ACCEPTED && !allPassed) {
+    return { id: WRONG_ANSWER, description: 'Wrong Answer' };
+  }
+  return verdict;
+};
+
+/**
+ * The clock time a submission was accepted, as the student's own clock reads it.
+ *
+ * The instant comes from the server -- the browser's clock belongs to the
+ * student -- but it is rendered in their locale, because the point of a receipt
+ * is that it matches the clock they are looking at. Returns null rather than a
+ * placeholder when the server did not send one, so an older cached result shows
+ * no time instead of "Invalid Date".
+ */
+const submittedAtLabel = (iso) => {
+  if (!iso) return null;
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return null;
+  return at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 };
 
 const DIFFICULTY_COLOR = {
@@ -137,8 +168,6 @@ function TakeCodingTestInner({ submitRef }) {
   const [lastActionByQ, setLastActionByQ] = useState({}); // 'run' | 'submit'
   const [leftTab, setLeftTab] = useState('description'); // 'description' | 'submission'
   const [submitProgress, setSubmitProgress] = useState(null); // live judge progress
-  const [distributionByQ, setDistributionByQ] = useState({});
-  const [statMetric, setStatMetric] = useState('runtime'); // 'runtime' | 'memory'
   const [selectedCase, setSelectedCase] = useState(0);
   const [useCustomCase, setUseCustomCase] = useState(false);
   // The exact boilerplate we last inserted per question. Comparing against this
@@ -345,6 +374,9 @@ function TakeCodingTestInner({ submitRef }) {
       await proctor.endSession();
 
       setIsSubmitting(false);
+      // Under Safe Exam Browser the exit page is its configured quit URL, so
+      // arriving there closes SEB and hands the machine back. Sending them to
+      // the assignments list instead would leave them in a locked kiosk.
       nav(`/student/assignments`);
     } catch (error) {
       console.error('Error submitting test:', error);
@@ -552,7 +584,12 @@ function TakeCodingTestInner({ submitRef }) {
             if (!questionId) continue;
             // Several rows can exist for one question; keep the longest, which
             // is the furthest the student actually got.
-            const text = response.textAnswer || '';
+            //
+            // `draftAnswer` first: once an answer has been graded, `textAnswer`
+            // is frozen as the source of the best attempt and the draft is where
+            // the student's current editing lives. Restoring the graded source
+            // instead would silently roll their editor back to an older attempt.
+            const text = response.draftAnswer || response.textAnswer || '';
             if (text && text.length >= (restoredCode[questionId]?.length || 0)) {
               restoredCode[questionId] = text;
             }
@@ -602,7 +639,6 @@ function TakeCodingTestInner({ submitRef }) {
   const activeRunResult = activeQ ? runResultsByQ[activeQ._id] : null;
   const activeSubmitResult = activeQ ? submitResultsByQ[activeQ._id] : null;
   const lastAction = activeQ ? lastActionByQ[activeQ._id] : null;
-  const activeDistribution = activeQ ? distributionByQ[activeQ._id] : null;
   const sampleCases = activeQ?.visibleTestCases?.length
     ? activeQ.visibleTestCases
     : (activeQ?.examples || []);
@@ -697,14 +733,6 @@ function TakeCodingTestInner({ submitRef }) {
 
       setSubmitResultsByQ((prev) => ({ ...prev, [questionId]: finalResult }));
       setLastActionByQ((prev) => ({ ...prev, [questionId]: 'submit' }));
-
-      // Where this result sits against everyone else's accepted submissions.
-      try {
-        const distribution = await apiRequest(`/coding/distribution/${questionId}`);
-        setDistributionByQ((prev) => ({ ...prev, [questionId]: distribution }));
-      } catch {
-        // The chart is a nice-to-have; a failure here must not hide the verdict.
-      }
     } catch (error) {
       setJudgeError(error?.message || 'Could not reach the code execution service. Please try again.');
     } finally {
@@ -819,15 +847,31 @@ function TakeCodingTestInner({ submitRef }) {
   }, [assignmentId]);
 
 
+  /**
+   * Tidy whitespace. Deliberately NOT a reformatter.
+   *
+   * This used to run `line.trim()` over every line, which strips leading
+   * indentation -- pressing Format silently destroyed any Python submission
+   * and reduced C-family code to one flat block. There is no formatter for
+   * six languages on the client, so this does only what is provably safe:
+   * normalise line endings, drop trailing whitespace, collapse runs of blank
+   * lines, and end the file with a single newline. Indentation is untouched.
+   */
   const formatCode = async () => {
     if (!activeQ) return;
     setIsFormatting(true);
     try {
-      // Simulate code formatting (in real app, this would use a formatter API)
       const currentCode = codeByQ[activeQ._id] || '';
-      // Simple formatting simulation - in real app, use prettier, black, etc.
-      const formattedCode = currentCode.split('\n').map(line => line.trim()).join('\n');
-      setCodeByQ(prev => ({ ...prev, [activeQ._id]: formattedCode }));
+      const formattedCode = currentCode
+        .replace(/\r\n/g, '\n')
+        .split('\n')
+        .map((line) => line.replace(/[ \t]+$/, ''))
+        .join('\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .replace(/\s*$/, '\n');
+      if (formattedCode !== currentCode) {
+        setCodeByQ(prev => ({ ...prev, [activeQ._id]: formattedCode }));
+      }
     } catch (e) {
       console.error('Formatting failed', e);
     } finally {
@@ -1072,75 +1116,39 @@ function TakeCodingTestInner({ submitRef }) {
                     <div>
                       {/* ---- verdict ---- */}
                       <div className="flex items-baseline gap-3 mb-1">
-                        <span className={`text-[22px] font-medium ${verdictColor(activeSubmitResult.verdict?.id)}`}>
-                          {verdictLabel(activeSubmitResult.verdict?.id, activeSubmitResult.verdict?.description)}
+                        <span className={`text-[22px] font-medium ${verdictColor(submitVerdict(activeSubmitResult).id)}`}>
+                          {verdictLabel(submitVerdict(activeSubmitResult).id, submitVerdict(activeSubmitResult).description)}
                         </span>
                         <span className="text-[13px] text-white/50">
                           {activeSubmitResult.passedCount} / {activeSubmitResult.totalHidden} testcases passed
                         </span>
                       </div>
-                      <div className="text-[12px] text-white/40 mb-5">
+                      <div className="text-[12px] text-white/40 mb-3">
                         Submitted in {findLanguage(supportedLanguages, activeSubmitResult.language)?.label || activeSubmitResult.language}
+                        {submittedAtLabel(activeSubmitResult.submittedAt)
+                          ? ` at ${submittedAtLabel(activeSubmitResult.submittedAt)}`
+                          : ''}
                       </div>
 
-                      {/* ---- runtime / memory stat cards, LeetCode style ---- */}
-                      <div className="grid grid-cols-2 gap-3 mb-4">
-                        {[
-                          {
-                            key: 'runtime',
-                            label: 'Runtime',
-                            value: activeSubmitResult.runtimeMs === null || activeSubmitResult.runtimeMs === undefined
-                              ? 'N/A' : `${activeSubmitResult.runtimeMs} ms`,
-                            beats: activeDistribution?.runtime?.beats,
-                          },
-                          {
-                            key: 'memory',
-                            label: 'Memory',
-                            value: activeSubmitResult.memoryKb === null || activeSubmitResult.memoryKb === undefined
-                              ? 'N/A' : `${(activeSubmitResult.memoryKb / 1024).toFixed(1)} MB`,
-                            beats: activeDistribution?.memory?.beats,
-                          },
-                        ].map((card) => (
-                          <button
-                            key={card.key}
-                            type="button"
-                            onClick={() => setStatMetric(card.key)}
-                            className={`text-left rounded-lg px-4 py-3 border transition-colors ${
-                              statMetric === card.key
-                                ? 'bg-white/[0.08] border-white/20'
-                                : 'bg-white/[0.04] border-transparent hover:bg-white/[0.06]'
-                            }`}
-                          >
-                            <div className="text-[12px] text-white/50 mb-0.5">{card.label}</div>
-                            <div className="text-[18px] font-medium text-white/90">{card.value}</div>
-                            {card.beats !== null && card.beats !== undefined && (
-                              <div className="text-[12px] text-white/50 mt-0.5">
-                                Beats <span className="text-[#28c244]">{card.beats}%</span>
-                              </div>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* ---- distribution chart ---- */}
-                      <div className="rounded-lg bg-white/[0.04] p-3">
-                        <React.Suspense fallback={<div className="h-[150px] flex items-center justify-center text-[13px] text-white/40">Loading chart...</div>}>
-                          {statMetric === 'runtime' ? (
-                            <SubmissionChart
-                              summary={activeDistribution?.runtime}
-                              unit="Runtime (ms)"
-                              format={(value) => `${Math.round(value)}`}
-                            />
-                          ) : (
-                            <SubmissionChart
-                              summary={activeDistribution?.memory}
-                              unit="Memory (MB)"
-                              format={(value) => (value / 1024).toFixed(1)}
-                              accent="#46c6c2"
-                            />
-                          )}
-                        </React.Suspense>
-                      </div>
+                      {/* Best-wins: persistCodingResponse keeps whichever attempt
+                          passed more cases, so resubmitting can only ever help.
+                          When an earlier attempt is the one standing, say so with
+                          its number -- otherwise a student reading "6 / 10" at the
+                          top takes it for their grade. */}
+                      {activeSubmitResult.graded && !activeSubmitResult.graded.isThisAttempt ? (
+                        <div className="text-[12px] mb-5 rounded-lg bg-[#28c244]/10 border border-[#28c244]/25 px-3 py-2">
+                          <span className="text-white/70">Your best attempt is the one graded: </span>
+                          <span className="text-[#28c244] font-medium">
+                            {activeSubmitResult.graded.passedCount} / {activeSubmitResult.graded.totalHidden} testcases
+                          </span>
+                          <span className="text-white/50">. This attempt did not beat it, so it has not replaced it.</span>
+                        </div>
+                      ) : (
+                        <div className="text-[12px] text-white/50 mb-5 rounded-lg bg-white/[0.04] px-3 py-2">
+                          Your best submission is the one graded. Submitting again can only
+                          improve your result, never lower it.
+                        </div>
+                      )}
 
                       {activeSubmitResult.compileOutput && (
                         <div className="mt-4">
@@ -1378,6 +1386,12 @@ function TakeCodingTestInner({ submitRef }) {
                         </div>
                       ) : sampleCases[selectedCase] ? (
                         <div>
+                          {!activeQ?.visibleTestCases?.length && (
+                            <div className="text-[12px] text-[#ffb800] mb-2">
+                              Illustration from the question — Run has no sample cases to execute for this
+                              question. Use Custom input to try your code.
+                            </div>
+                          )}
                           <LcBox label="Input" value={sampleCases[selectedCase].input} />
                           <LcBox label="Expected" value={sampleCases[selectedCase].output} />
                         </div>
@@ -1395,46 +1409,38 @@ function TakeCodingTestInner({ submitRef }) {
                       {lastAction === 'submit' && activeSubmitResult && (
                         <div>
                           <div className="flex items-baseline gap-3 mb-1">
-                            <span className={`text-[18px] font-medium ${verdictColor(activeSubmitResult.verdict?.id)}`}>
-                              {verdictLabel(activeSubmitResult.verdict?.id, activeSubmitResult.verdict?.description)}
+                            <span className={`text-[18px] font-medium ${verdictColor(submitVerdict(activeSubmitResult).id)}`}>
+                              {verdictLabel(submitVerdict(activeSubmitResult).id, submitVerdict(activeSubmitResult).description)}
                             </span>
-                            {activeSubmitResult.verdict?.id !== 3 && (
+                            {submitVerdict(activeSubmitResult).id !== ACCEPTED && (
                               <span className="text-[13px] text-white/50">
                                 {activeSubmitResult.passedCount} / {activeSubmitResult.totalHidden} testcases passed
                               </span>
                             )}
                           </div>
 
-                          {activeSubmitResult.verdict?.id === 3 && (
-                            <div className="text-[13px] text-white/50 mb-3">
+                          {submitVerdict(activeSubmitResult).id === ACCEPTED && (
+                            <div className="text-[13px] text-white/50 mb-1">
                               {activeSubmitResult.passedCount} / {activeSubmitResult.totalHidden} testcases passed
                             </div>
                           )}
 
-                          <div className="flex items-center gap-6 mb-3">
-                            {activeSubmitResult.runtimeMs !== null && activeSubmitResult.runtimeMs !== undefined && (
-                              <div>
-                                <div className="text-[12px] text-white/50">Runtime</div>
-                                <div className="text-[14px] text-white/90">{activeSubmitResult.runtimeMs} ms</div>
-                              </div>
-                            )}
-                            {activeSubmitResult.memoryKb !== null && activeSubmitResult.memoryKb !== undefined && (
-                              <div>
-                                <div className="text-[12px] text-white/50">Memory</div>
-                                <div className="text-[14px] text-white/90">{(activeSubmitResult.memoryKb / 1024).toFixed(1)} MB</div>
-                              </div>
-                            )}
-                          </div>
+                          {submittedAtLabel(activeSubmitResult.submittedAt) && (
+                            <div className="text-[12px] text-white/40 mb-2">
+                              Submitted at {submittedAtLabel(activeSubmitResult.submittedAt)}
+                            </div>
+                          )}
 
-                          <div className="flex flex-wrap gap-1.5">
-                            {activeSubmitResult.results?.map((result, index) => (
-                              <span
-                                key={index}
-                                title={result.status?.description}
-                                className={`w-2 h-2 rounded-full ${result.passed ? 'bg-[#28c244]' : 'bg-[#ef4743]'}`}
-                              />
-                            ))}
-                          </div>
+                          {/* Best-wins grading; see the note in the submission panel. */}
+                          {activeSubmitResult.graded && !activeSubmitResult.graded.isThisAttempt ? (
+                            <div className="text-[12px] text-[#28c244] mb-3">
+                              Best attempt graded: {activeSubmitResult.graded.passedCount} / {activeSubmitResult.graded.totalHidden} testcases
+                            </div>
+                          ) : (
+                            <div className="text-[12px] text-white/50 mb-3">
+                              Your best submission is the one graded.
+                            </div>
+                          )}
 
                           {activeSubmitResult.compileOutput && (
                             <pre className="mt-3 bg-white/[0.06] rounded-lg px-3 py-2.5 text-[13px] font-mono text-[#ef4743] whitespace-pre-wrap break-words">
@@ -1448,9 +1454,27 @@ function TakeCodingTestInner({ submitRef }) {
                       {lastAction === 'run' && activeRunResult && (
                         <div>
                           <div className="mb-3">
-                            <span className={`text-[18px] font-medium ${verdictColor(activeRunResult.passed === activeRunResult.total ? 3 : 4)}`}>
-                              {activeRunResult.passed === activeRunResult.total ? 'Accepted' : 'Wrong Answer'}
-                            </span>
+                            {/* `total === 0` means nothing was checked against an
+                                expectation -- a question with no visible test
+                                cases, or a custom-input-only run. Calling that
+                                "Accepted" told students their code had passed
+                                when not a single case had run. */}
+                            {activeRunResult.total === 0 ? (
+                              <span className="text-[18px] font-medium text-white/60">
+                                {activeRunResult.customResult
+                                  ? 'Ran with your input'
+                                  : 'No sample test cases to run'}
+                              </span>
+                            ) : (
+                              <span className={`text-[18px] font-medium ${verdictColor(activeRunResult.passed === activeRunResult.total ? ACCEPTED : WRONG_ANSWER)}`}>
+                                {activeRunResult.passed === activeRunResult.total ? 'Accepted' : 'Wrong Answer'}
+                              </span>
+                            )}
+                            {activeRunResult.total > 0 && (
+                              <span className="ml-2 text-[13px] text-white/50">
+                                {activeRunResult.passed}/{activeRunResult.total} sample cases passed
+                              </span>
+                            )}
                           </div>
 
                           <div className="flex items-center gap-2 mb-3 flex-wrap">
@@ -1491,6 +1515,13 @@ function TakeCodingTestInner({ submitRef }) {
                                   <LcBox label="Compile Error" value={shown.compileOutput} tone="text-[#ef4743]" />
                                 ) : (
                                   <>
+                                    {selectedCase !== -1 && (
+                                      <div className="mb-3 text-[13px]">
+                                        <span className={shown.passed ? 'text-[#28c244]' : 'text-[#ef4743]'}>
+                                          {shown.passed ? 'Accepted' : (shown.status?.description || 'Wrong Answer')}
+                                        </span>
+                                      </div>
+                                    )}
                                     <LcBox label="Input" value={shown.input} />
                                     <LcBox label="Output" value={shown.stdout} />
                                     {selectedCase !== -1 && <LcBox label="Expected" value={shown.expected} />}

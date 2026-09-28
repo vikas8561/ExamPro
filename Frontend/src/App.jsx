@@ -8,6 +8,7 @@ import "./styles/StudentSidebar.mobile.css";
 
 import CreateTest from "./pages/CreateTest";
 import Login from "./pages/Login";
+import SebExit from "./pages/SebExit";
 import StudentDashboard from "./pages/StudentDashboard";
 import StudentAssignments from "./pages/StudentAssignments";
 import StudentResults from "./pages/StudentResults";
@@ -31,12 +32,21 @@ import AdminDSAPractice from "./pages/AdminDSAPractice";
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const token = localStorage.getItem('token');
   const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const location = useLocation();
+
+  // Where to send them back to once they have signed in. This matters more than
+  // convenience for Safe Exam Browser: SEB opens the exam in its own browser
+  // with no saved session, so the student always lands on the login page first,
+  // and the exam URL carries the per-attempt nonce that SEB's exam key is hashed
+  // against. Losing the query string here would lose the nonce, and verification
+  // would fail for every SEB student.
+  const returnTo = `${location.pathname}${location.search}`;
 
   // Must have a token to be authenticated. Identity is checked on `_id`, not
   // email: students sign in with a UniversityUID or roll number and many have
   // no email address recorded at all.
   if (!token || !user._id) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to={`/login?redirect=${encodeURIComponent(returnTo)}`} replace />;
   }
 
   // Read role from JWT payload (can't be tampered without the secret key)
@@ -49,54 +59,108 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
       }
     } catch {
       // Invalid token format — redirect to login
-      return <Navigate to="/login" replace />;
+      return <Navigate to={`/login?redirect=${encodeURIComponent(returnTo)}`} replace />;
     }
   }
 
   return children;
 };
 
+// Admin Sidebar Context for desktop collapse and mobile drawer
+export const AdminSidebarContext = React.createContext({
+  sidebarOpen: false,
+  toggleSidebar: () => {},
+  isCollapsed: false,
+  toggleCollapse: () => {},
+});
+
+export const useAdminSidebar = () => React.useContext(AdminSidebarContext);
+
 // Admin Layout Component
 const AdminLayout = () => {
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const [isCollapsed, setIsCollapsed] = React.useState(() => {
+    try {
+      return localStorage.getItem("admin_sidebar_collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen);
   };
 
-  return (
-    <div className="min-h-screen bg-slate-900 text-white flex">
-      <AdminSidebar isOpen={sidebarOpen} onToggle={toggleSidebar} />
-      <main className="flex-1">
-        {/* Mobile Header with Hamburger */}
-        <div className="lg:hidden bg-slate-800 p-4 border-b border-slate-700">
-          <div className="flex items-center justify-between">
-            <h1 className="text-lg font-bold">Admin Panel</h1>
-            <button
-              onClick={toggleSidebar}
-              className="p-2 hover:bg-slate-700 rounded-md"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
-          </div>
-        </div>
+  const toggleCollapse = () => {
+    setIsCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("admin_sidebar_collapsed", String(next));
+      } catch {}
+      return next;
+    });
+  };
 
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/tests" element={<Tests />} />
-          <Route path="/tests/create" element={<CreateTest />} />
-          <Route path="/dsa-practice" element={<AdminDSAPractice />} />
-          <Route path="/users" element={<Users />} />
-          <Route path="/proctoring" element={<AdminProctoring />} />
-          <Route path="/view-test/:assignmentId" element={<ViewCompletedTest />} />
-          <Route path="*" element={<div className="p-6">Not Found</div>} />
-        </Routes>
-      </main>
-    </div>
+  // Keyboard shortcut Cmd+B / Ctrl+B for macOS / Windows
+  React.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        toggleCollapse();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  return (
+    <AdminSidebarContext.Provider value={{ sidebarOpen, toggleSidebar, isCollapsed, toggleCollapse }}>
+      <div className="h-[100dvh] bg-[#16181F] text-slate-100 flex overflow-hidden">
+        <AdminSidebar
+          isOpen={sidebarOpen}
+          onToggle={toggleSidebar}
+          isCollapsed={isCollapsed}
+          onToggleCollapse={toggleCollapse}
+        />
+        <main
+          className="flex-1 min-w-0 h-[100dvh] overflow-y-auto"
+          style={{
+            transition: "all 0.35s cubic-bezier(0.16, 1, 0.3, 1)",
+            willChange: "width, margin",
+          }}
+        >
+          {/* Mobile Header with Hamburger */}
+          <div className="mobile-header lg:hidden bg-[#191B22] p-4 border-b border-white/5">
+            <div className="flex items-center justify-between">
+              <h1 className="mobile-header-title text-lg font-bold">Admin Portal</h1>
+              <button
+                onClick={toggleSidebar}
+                className="mobile-hamburger-btn p-2 hover:bg-slate-700 rounded-md cursor-pointer"
+                aria-label="Open menu"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/tests" element={<Tests />} />
+            <Route path="/tests/create" element={<CreateTest />} />
+            <Route path="/dsa-practice" element={<AdminDSAPractice />} />
+            <Route path="/users" element={<Users />} />
+            <Route path="/proctoring" element={<AdminProctoring />} />
+            <Route path="/view-test/:assignmentId" element={<ViewCompletedTest />} />
+            <Route path="*" element={<div className="p-6">Not Found</div>} />
+          </Routes>
+        </main>
+      </div>
+    </AdminSidebarContext.Provider>
   );
 };
+
 
 // Student Sidebar Context for desktop collapse and mobile drawer
 export const StudentSidebarContext = React.createContext({
@@ -204,23 +268,95 @@ const StudentRoutes = () => {
   );
 };
 
+// Mentor Sidebar Context for desktop collapse and mobile drawer
+export const MentorSidebarContext = React.createContext({
+  sidebarOpen: false,
+  toggleSidebar: () => {},
+  isCollapsed: false,
+  toggleCollapse: () => {},
+});
+
+export const useMentorSidebar = () => React.useContext(MentorSidebarContext);
+
 // Mentor Layout Component with routes
 const MentorRoutes = () => {
+  const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const [isCollapsed, setIsCollapsed] = React.useState(() => {
+    try {
+      return localStorage.getItem("mentor_sidebar_collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleSidebar = () => {
+    setSidebarOpen(!sidebarOpen);
+  };
+
+  const toggleCollapse = () => {
+    setIsCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("mentor_sidebar_collapsed", String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  // Keyboard shortcut Cmd+B / Ctrl+B for macOS / Windows
+  React.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        toggleCollapse();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   return (
-    <div className="h-screen bg-slate-900 text-white flex overflow-hidden">
-      <div className="sticky top-0 h-screen flex-shrink-0">
-        <MentorLayout />
+    <MentorSidebarContext.Provider value={{ sidebarOpen, toggleSidebar, isCollapsed, toggleCollapse }}>
+      <div className="h-[100dvh] bg-[#16181F] text-slate-100 flex overflow-hidden">
+        <MentorLayout
+          isOpen={sidebarOpen}
+          onToggle={toggleSidebar}
+          isCollapsed={isCollapsed}
+          onToggleCollapse={toggleCollapse}
+        />
+        <main
+          className="flex-1 min-w-0 h-[100dvh] overflow-y-auto"
+          style={{
+            transition: "all 0.35s cubic-bezier(0.16, 1, 0.3, 1)",
+            willChange: "width, margin",
+          }}
+        >
+          {/* Mobile Header with Hamburger */}
+          <div className="mobile-header lg:hidden bg-[#191B22] p-4 border-b border-white/5">
+            <div className="flex items-center justify-between">
+              <h1 className="mobile-header-title text-lg font-bold">Mentor Portal</h1>
+              <button
+                onClick={toggleSidebar}
+                className="mobile-hamburger-btn p-2 hover:bg-slate-700 rounded-md"
+                aria-label="Open menu"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <Routes>
+            <Route path="/" element={<MentorDashboard />} />
+            <Route path="/assignments" element={<MentorAssignments />} />
+            <Route path="/submissions" element={<MentorSubmissions />} />
+            <Route path="/view-test/:assignmentId" element={<ViewCompletedTest />} />
+            <Route path="*" element={<div className="p-6">Not Found</div>} />
+          </Routes>
+        </main>
       </div>
-      <main className="flex-1 overflow-y-auto">
-        <Routes>
-          <Route path="/" element={<MentorDashboard />} />
-          <Route path="/assignments" element={<MentorAssignments />} />
-          <Route path="/submissions" element={<MentorSubmissions />} />
-          <Route path="/view-test/:assignmentId" element={<ViewCompletedTest />} />
-          <Route path="*" element={<div className="p-6">Not Found</div>} />
-        </Routes>
-      </main>
-    </div>
+    </MentorSidebarContext.Provider>
   );
 };
 
@@ -230,6 +366,12 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+
+      {/* Where Safe Exam Browser is sent after a submit, so it closes itself and
+          hands the machine back. Deliberately outside ProtectedRoute: SEB
+          watches for this exact URL, and a bounce to /login would change it and
+          leave the student stuck in a locked kiosk. */}
+      <Route path="/student/seb-exit" element={<SebExit />} />
 
       {/* Admin Routes */}
       <Route

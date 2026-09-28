@@ -1,78 +1,322 @@
-import React from "react";
-import { Link, useLocation } from "react-router-dom";
+import React, { useEffect } from "react";
+import { NavLink, useNavigate } from "react-router-dom";
+import {
+  LogOut,
+  LayoutDashboard,
+  ClipboardList,
+  FileCheck,
+  ShieldCheck,
+  X,
+  ChevronRight,
+  User,
+} from "lucide-react";
+import "../styles/StudentSidebar.mobile.css";
 
-export default function MentorLayout() {
-  const location = useLocation();
+const Item = ({ to, icon: Icon, children, onClick, end = false, iconColor = "#00C4B4", isCollapsed = false, label = "" }) => {
+  const itemLabel = label || (typeof children === "string" ? children : "");
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      onClick={onClick}
+      title={isCollapsed ? itemLabel : undefined}
+      className={({ isActive }) =>
+        `nav-item group flex items-center rounded-2xl text-sm transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+          isCollapsed
+            ? "justify-center px-0 py-3 w-11 h-11 mx-auto"
+            : "gap-3.5 px-4 py-3 w-full"
+        } ${
+          isActive
+            ? "bg-[#252834] text-[#00C4B4] font-medium shadow-sm active"
+            : "text-[#8E95A5] hover:text-[#F1F5F9] hover:bg-white/[0.03]"
+        }`
+      }
+    >
+      {({ isActive }) => (
+        <>
+          {/* Icon */}
+          <div className="nav-item-icon transition-transform duration-200 group-hover:scale-105 flex items-center justify-center flex-shrink-0">
+            <Icon
+              className="w-5 h-5 transition-colors duration-200"
+              style={{ color: isActive ? "#00C4B4" : iconColor }}
+            />
+          </div>
 
-  const isActive = (path) => {
-    return location.pathname.startsWith(path);
+          {/* Label with smooth width, opacity & transform transition */}
+          <div
+            className={`overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+              isCollapsed
+                ? "max-w-0 opacity-0 -translate-x-2 pointer-events-none"
+                : "max-w-[200px] opacity-100 translate-x-0 flex-1 ml-0.5"
+            }`}
+          >
+            <span
+              className="nav-item-text tracking-tight block truncate font-medium whitespace-nowrap"
+              style={{ color: isActive ? "#00C4B4" : undefined }}
+            >
+              {children}
+            </span>
+          </div>
+        </>
+      )}
+    </NavLink>
+  );
+};
+
+export default function MentorLayout({
+  isOpen = false,
+  onToggle,
+  isCollapsed = false,
+  onToggleCollapse,
+}) {
+  const navigate = useNavigate();
+
+  // Prevent body scroll when sidebar is open on mobile
+  useEffect(() => {
+    if (isOpen && window.innerWidth <= 767) {
+      document.body.classList.add("sidebar-open-mobile");
+    } else {
+      document.body.classList.remove("sidebar-open-mobile");
+    }
+    return () => {
+      document.body.classList.remove("sidebar-open-mobile");
+    };
+  }, [isOpen]);
+
+  const handleLogout = () => {
+    localStorage.removeItem("user");
+    localStorage.removeItem("token");
+    localStorage.removeItem("userId");
+    navigate("/login");
   };
 
+  const handleNavClick = () => {
+    if (window.innerWidth <= 768 && onToggle) {
+      onToggle();
+    }
+  };
+
+  // Get user details for profile
+  const storedUser = localStorage.getItem("user");
+  let userDisplayName = "Mentor";
+  let userEmailOrRole = "Mentor Account";
+  if (storedUser) {
+    try {
+      const u = JSON.parse(storedUser);
+      userDisplayName = u.name || "Mentor";
+      userEmailOrRole = u.email || "Mentor Account";
+    } catch (e) {}
+  }
+
+  const menuItems = [
+    { to: "/mentor", icon: LayoutDashboard, label: "Dashboard", end: true, iconColor: "#00C4B4" },
+    { to: "/mentor/assignments", icon: ClipboardList, label: "Test Assignments", iconColor: "#2DD4BF" },
+    { to: "/mentor/submissions", icon: FileCheck, label: "Student Submissions", iconColor: "#38BDF8" },
+  ];
+
   return (
-    <aside className="w-64 h-screen bg-slate-800 border-r border-slate-700 flex flex-col">
-      <div className="p-6">
-        <h1 className="text-xl font-bold text-white">Mentor Panel</h1>
-      </div>
-      
-      <nav className="flex-1 px-4">
-        <Link
-          to="/mentor"
-          className={`flex items-center px-4 py-3 mb-2 rounded-lg transition-colors ${
-            isActive("/mentor") && !isActive("/mentor/assignments") && !isActive("/mentor/submissions")
-              ? "bg-slate-700 text-white"
-              : "text-slate-300 hover:bg-slate-700 hover:text-white"
-          }`}
+    <>
+      {/* Mobile Overlay */}
+      {isOpen && (
+        <div
+          className="student-sidebar-overlay fixed inset-0 bg-black/70 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300"
+          onClick={onToggle}
+        />
+      )}
+
+      {/* Sidebar - Wide width (18.5rem / 296px) when open, Sleek Rail (5rem / 80px) when closed */}
+      <aside
+        className={`
+          student-sidebar-mobile fixed lg:sticky top-0 left-0 z-50 h-screen 
+          text-slate-100 flex flex-col flex-shrink-0 overflow-hidden
+          ${isOpen ? "open translate-x-0" : "-translate-x-full lg:translate-x-0"}
+          ${isCollapsed ? "w-[5rem] px-2.5 py-6" : "w-[18.5rem] p-6"}
+        `}
+        style={{
+          backgroundColor: "#181A22",
+          borderRight: "1px solid rgba(255, 255, 255, 0.05)",
+          width: isCollapsed ? "5rem" : "18.5rem",
+          minWidth: isCollapsed ? "5rem" : "18.5rem",
+          transition: "width 0.35s cubic-bezier(0.16, 1, 0.3, 1), min-width 0.35s cubic-bezier(0.16, 1, 0.3, 1), padding 0.35s cubic-bezier(0.16, 1, 0.3, 1)",
+          willChange: "width, min-width, padding",
+        }}
+      >
+        {/* Header - Synchronized baseline with fluid cross-fade and centering */}
+        <div
+          className="sidebar-header flex items-center justify-between pb-5 mb-6 flex-shrink-0 relative overflow-hidden"
+          style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.05)", minHeight: "3.5rem" }}
         >
-          <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-          </svg>
-          Dashboard
-        </Link>
+          {/* Logo & Portal Branding */}
+          <div
+            className={`sidebar-header-content flex items-center gap-3 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+              isCollapsed
+                ? "max-w-0 opacity-0 -translate-x-4 pointer-events-none"
+                : "max-w-[200px] opacity-100 translate-x-0"
+            }`}
+          >
+            <div className="w-9 h-9 rounded-xl bg-[#20242D] border border-white/5 flex items-center justify-center flex-shrink-0">
+              <ShieldCheck className="w-5 h-5 text-[#00C4B4]" />
+            </div>
+            <div className="whitespace-nowrap">
+              <h1 className="text-base font-semibold text-white tracking-tight leading-tight">
+                CodingGita
+              </h1>
+              <p className="text-xs text-[#7E8594]">Mentor Portal</p>
+            </div>
+          </div>
+
+          {/* Controls: Codex Toggle Button & Mobile Close Button */}
+          <div
+            className={`flex items-center transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+              isCollapsed ? "w-full justify-center" : "justify-end gap-1"
+            }`}
+          >
+            {/* Desktop MacBook Codex App Sidebar Toggle Button */}
+            <button
+              onClick={onToggleCollapse}
+              className="hidden lg:flex items-center justify-center w-8 h-8 rounded-lg bg-[#20242D] hover:bg-[#282C38] border border-white/[0.08] text-slate-400 hover:text-[#00C4B4] transition-all duration-200 shadow-sm active:scale-95 flex-shrink-0"
+              title={isCollapsed ? "Open Sidebar (⌘B)" : "Close Sidebar (⌘B)"}
+              aria-label="Toggle sidebar"
+            >
+              <svg
+                className="w-4 h-4 transition-transform duration-200"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <rect width="18" height="18" x="3" y="3" rx="3" />
+                <path d="M9 3v18" />
+                <rect
+                  width="6"
+                  height="18"
+                  x="3"
+                  y="3"
+                  rx="0"
+                  fill="currentColor"
+                  className="transition-opacity duration-300"
+                  fillOpacity={isCollapsed ? 0 : 0.25}
+                  stroke="none"
+                />
+              </svg>
+            </button>
+
+            {/* Mobile Close Button */}
+            <button
+              onClick={onToggle}
+              className="sidebar-close-btn lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+              aria-label="Close sidebar"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Navigation - Generous spacing matching design system */}
+        <nav
+          className={`nav-container space-y-2 flex-1 overflow-y-auto ${
+            isCollapsed ? "px-0" : "pr-0.5"
+          } custom-scrollbar transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]`}
+        >
+          {menuItems.map((item) => (
+            <Item
+              key={item.to}
+              to={item.to}
+              icon={item.icon}
+              iconColor={item.iconColor}
+              onClick={handleNavClick}
+              end={item.end}
+              isCollapsed={isCollapsed}
+              label={item.label}
+            >
+              {item.label}
+            </Item>
+          ))}
+        </nav>
+
+        {/* Footer Section - Polished Profile Card & Logout with seamless morphing */}
+        <div
+          className="sidebar-footer mt-auto pt-4 space-y-2.5 flex-shrink-0 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
+          style={{ borderTop: "1px solid rgba(255, 255, 255, 0.05)" }}
+        >
+          {/* Profile Card */}
+          <div
+            title={userDisplayName}
+            className={`group flex items-center rounded-2xl transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] border bg-[#20242D]/60 border-white/[0.04] text-slate-300 ${
+              isCollapsed
+                ? "w-11 h-11 p-0 justify-center mx-auto"
+                : "w-full gap-3 p-2.5"
+            }`}
+          >
+            {/* User Initials Avatar */}
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#133B42] to-[#1E293B] border border-[#00C4B4]/30 flex items-center justify-center text-[#00C4B4] font-bold text-xs flex-shrink-0 shadow-sm transition-transform duration-200 group-hover:scale-105">
+              {userDisplayName.charAt(0).toUpperCase()}
+            </div>
+
+            {/* Name and Subtitle with smooth collapse transition */}
+            <div
+              className={`min-w-0 overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                isCollapsed ? "max-w-0 opacity-0 -translate-x-2 pointer-events-none" : "max-w-[150px] opacity-100 translate-x-0 flex-1"
+              }`}
+            >
+              <div className="text-xs font-semibold text-white truncate whitespace-nowrap">
+                {userDisplayName}
+              </div>
+              <div className="text-[11px] text-[#7E8594] truncate whitespace-nowrap">
+                Mentor Account
+              </div>
+            </div>
+          </div>
+
+          {/* Sign Out Button (Morphs between full button and compact icon square) */}
+          <button
+            onClick={handleLogout}
+            title="Sign Out"
+            aria-label="Sign Out"
+            className={`logout-button flex items-center justify-center rounded-xl text-xs font-medium transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 border border-red-500/20 hover:border-red-500/30 active:scale-95 ${
+              isCollapsed
+                ? "w-11 h-11 p-0 mx-auto"
+                : "w-full gap-2 px-3.5 py-2.5"
+            }`}
+          >
+            <LogOut className="w-3.5 h-3.5 text-red-400 flex-shrink-0 transition-transform duration-200" />
+            <div
+              className={`overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                isCollapsed ? "max-w-0 opacity-0 pointer-events-none" : "max-w-[100px] opacity-100"
+              }`}
+            >
+              <span className="whitespace-nowrap">Sign Out</span>
+            </div>
+          </button>
+        </div>
+      </aside>
+
+      {/* Custom Scrollbar Styles */}
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
         
-        <Link
-          to="/mentor/assignments"
-          className={`flex items-center px-4 py-3 mb-2 rounded-lg transition-colors ${
-            isActive("/mentor/assignments")
-              ? "bg-slate-700 text-white"
-              : "text-slate-300 hover:bg-slate-700 hover:text-white"
-          }`}
-        >
-          <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-          </svg>
-          Test Assignments
-        </Link>
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.1);
+          border-radius: 10px;
+        }
         
-        <Link
-          to="/mentor/submissions"
-          className={`flex items-center px-4 py-3 mb-2 rounded-lg transition-colors ${
-            isActive("/mentor/submissions")
-              ? "bg-slate-700 text-white"
-              : "text-slate-300 hover:bg-slate-700 hover:text-white"
-          }`}
-        >
-          <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          Student Submissions
-        </Link>
-      </nav>
-      
-      <div className="p-4 mt-auto border-t border-slate-700">
-        <button
-          onClick={() => {
-            localStorage.removeItem("user");
-            window.location.href = "/login";
-          }}
-          className="w-full flex items-center px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-lg transition-colors"
-        >
-          <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-          </svg>
-          Logout
-        </button>
-      </div>
-    </aside>
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.3);
+          border-radius: 10px;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.5);
+        }
+        
+        .nav-item:not(.active):hover {
+          background-color: rgba(255, 255, 255, 0.04) !important;
+        }
+      `}</style>
+    </>
   );
 }

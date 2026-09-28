@@ -3,6 +3,25 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { API_BASE_URL } from "../config/api";
 import { Eye, EyeOff, IdCard, Lock, Loader2, AlertCircle, Code2, ShieldCheck, Check } from "lucide-react";
 
+/**
+ * Where to send someone after they sign in, when they were bounced here from a
+ * page that needed a login.
+ *
+ * Safe Exam Browser depends on this. It opens the exam in its own browser with
+ * no saved session, so every SEB student lands here first, and the exam URL they
+ * were heading for carries the per-attempt nonce that SEB's exam key is hashed
+ * against. Dropping it would mean no SEB student could ever be verified.
+ *
+ * Only same-site paths are accepted. A value that is absolute, protocol-relative
+ * or otherwise not a plain path is discarded, so this cannot be turned into an
+ * open redirect by handing someone a crafted login link.
+ */
+function safeRedirect(value) {
+  if (typeof value !== "string" || !value.startsWith("/")) return null;
+  if (value.startsWith("//") || value.includes("\\")) return null;
+  return value;
+}
+
 export default function Login() {
   // Students sign in with their UID or roll number; mentors and admins use their email.
   const [identifier, setIdentifier] = useState("");
@@ -46,7 +65,10 @@ export default function Login() {
 
         if (payload.exp && payload.exp > currentTime) {
           const userData = JSON.parse(user);
-          if (userData.role === "Admin") {
+          const back = safeRedirect(searchParams.get("redirect"));
+          if (back) {
+            navigate(back, { replace: true });
+          } else if (userData.role === "Admin") {
             navigate("/admin");
           } else if (userData.role === "Student") {
             navigate("/student");
@@ -98,7 +120,10 @@ export default function Login() {
           localStorage.removeItem("rememberedPassword");
         }
 
-        if (data.user.role === "Admin") {
+        const back = safeRedirect(searchParams.get("redirect"));
+        if (back) {
+          navigate(back, { replace: true });
+        } else if (data.user.role === "Admin") {
           navigate("/admin");
         } else if (data.user.role === "Student") {
           navigate("/student");

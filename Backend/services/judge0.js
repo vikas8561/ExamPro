@@ -169,15 +169,57 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const encode = (value) => Buffer.from(String(value ?? ''), 'utf8').toString('base64');
 const decode = (value) => (value ? Buffer.from(String(value), 'base64').toString('utf8') : '');
 
+/** Trailing whitespace off one line. BOM and NBSP included: both are invisible. */
+const rstrip = (line) => line.replace(/[\s﻿\xA0]+$/, '');
+
 /**
- * Judge0 compares stdout against expected_output after stripping trailing
- * whitespace from the whole string (leading whitespace still matters).
- * We mirror that rule exactly so our verdict always agrees with its status,
- * and additionally fold CRLF -> LF because expected outputs authored in a
- * browser textarea routinely arrive with Windows line endings.
+ * Judge0's own comparison rule, mirrored exactly.
+ *
+ * app/jobs/isolate_job.rb decides Accepted vs Wrong Answer with:
+ *
+ *     def strip(text)
+ *       text.split("\n").collect(&:rstrip).join("\n").rstrip
+ *     end
+ *
+ * i.e. trailing whitespace comes off EVERY line, and then off the end of the
+ * whole string. This function used to strip only the end of the whole string
+ * (`/\s+$/` has no `m` flag in JS), which made our check strictly stricter
+ * than the judge's. A program printing "1 2 3 \n4 5 6 \n" -- the ordinary
+ * `print(x, end=' ')` / `cout << v[i] << " "` loop -- was Accepted by Judge0
+ * and then marked failed here, beside an "Expected" box that looked
+ * character-for-character identical to the student's output. On submit that
+ * came straight off the score.
+ *
+ * Any divergence between this rule and Judge0's is a wrong mark, so the two
+ * must stay identical. CRLF is folded first: Ruby's rstrip drops the stray \r
+ * anyway, but folding keeps our own equality check comparable for test cases
+ * authored on Windows.
  */
 function normalizeOutput(value) {
-  return String(value ?? '').replace(/\r\n/g, '\n').replace(/[\s﻿\xA0]+$/, '');
+  return rstrip(
+    String(value ?? '')
+      .replace(/\r\n/g, '\n')
+      .split('\n')
+      .map(rstrip)
+      .join('\n')
+  );
+}
+
+/**
+ * stdin goes to the program verbatim, so the line ending is the only thing we
+ * may safely touch -- and we must touch it. A test case authored on Windows
+ * (a .json file uploaded by an admin, a paste out of Notepad) otherwise hands
+ * the program "3\r\n"; getline, Scanner.nextLine and readline all carry that
+ * stray \r into the parsed token, so correct code prints the wrong answer and
+ * the student cannot see why. Expected output has been folded this way all
+ * along; the input it is compared against was not.
+ *
+ * Nothing else is added or removed -- notably no trailing newline, because a
+ * program that reads stdin whole would see an extra empty line that the author
+ * did not write.
+ */
+function normalizeInput(value) {
+  return String(value ?? '').replace(/\r\n/g, '\n');
 }
 
 class Judge0Error extends Error {
@@ -419,7 +461,7 @@ function buildSubmission({ languageId, compilerOptions, sourceCode, stdin, expec
   const submission = {
     language_id: languageId,
     source_code: encode(sourceCode),
-    stdin: encode(stdin ?? ''),
+    stdin: encode(normalizeInput(stdin)),
     cpu_time_limit: limits?.cpuTimeLimit ?? CPU_TIME_LIMIT,
     wall_time_limit: limits?.wallTimeLimit ?? WALL_TIME_LIMIT,
     memory_limit: limits?.memoryLimit ?? MEMORY_LIMIT,
@@ -428,8 +470,28 @@ function buildSubmission({ languageId, compilerOptions, sourceCode, stdin, expec
 
   // Only send expected_output when the case actually declares one, otherwise
   // Judge0 would mark a plain "run this code" submission as Wrong Answer.
-  if (expectedOutput !== null && expectedOutput !== undefined) {
-    submission.expected_output = encode(normalizeOutput(expectedOutput));
+  //
+  // An expectation of NO output is withheld too, and that is not an oversight.
+  // Judge0 stores an empty program output as NULL:
+  //
+  //     program_stdout = nil if program_stdout.empty?      (isolate_job.rb)
+  //
+  // and then compares `strip(expected_output) == strip(stdout)` with
+  // `def strip(text); return nil unless text; ...` -- so a correct submission
+  // that prints nothing is compared as `"" == nil`, which is false. The case
+  // would be Wrong Answer however right it is, and no submission could ever
+  // pass it. (Base64Service.decode("") returns "" rather than nil, so the
+  // empty expectation really does reach that comparison as "".)
+  //
+  // Withholding it makes Judge0 report Accepted for any clean run, and
+  // toResult's own comparison -- which handles "" correctly -- decides whether
+  // the program actually printed nothing. Our check is the only gate for these
+  // cases, by necessity.
+  const expectation = expectedOutput === null || expectedOutput === undefined
+    ? null
+    : normalizeOutput(expectedOutput);
+  if (expectation) {
+    submission.expected_output = encode(expectation);
   }
   if (compilerOptions) submission.compiler_options = compilerOptions;
 
@@ -450,6 +512,35 @@ async function createBatch(submissions) {
     if (entry && typeof entry.token === 'string') return { token: entry.token };
     return { token: null, error: JSON.stringify(entry) };
   });
+}
+
+/**
+ * Line the judge's results up with the tokens we asked for.
+ *
+ * Callers pair result[i] with case[i] and compare one against the other's
+ * expected output. Judge0 does return batch results in token order, but
+ * trusting position alone means any deviation -- a reordered, duplicated or
+ * dropped entry -- silently grades one test case's stdout against another
+ * case's expectation, marking correct code wrong with nothing in the logs.
+ * `token` is already in RESULT_FIELDS, so pairing by it costs nothing.
+ *
+ * Returns null when the results carry tokens but cannot be paired with the
+ * ones we submitted: the caller turns that into an infrastructure error, so
+ * the run is reported as UNGRADED rather than as a pile of failed cases.
+ */
+function orderByToken(tokens, submissions) {
+  const byToken = new Map();
+  for (const submission of submissions) {
+    if (submission?.token) byToken.set(String(submission.token), submission);
+  }
+
+  // No tokens echoed back at all (an older build, or `fields` stripped by a
+  // proxy): position is all we have, and it is what we have always used.
+  if (byToken.size === 0) return submissions;
+
+  if (byToken.size !== submissions.length) return null;    // duplicate tokens
+  const ordered = tokens.map((token) => byToken.get(String(token)));
+  return ordered.every(Boolean) ? ordered : null;
 }
 
 async function pollBatch(tokens, onTick = null) {
@@ -473,7 +564,16 @@ async function pollBatch(tokens, onTick = null) {
     }
 
     const settled = submissions.length === tokens.length && finished.length === tokens.length;
-    if (settled) return submissions;
+    if (settled) {
+      const ordered = orderByToken(tokens, submissions);
+      if (!ordered) {
+        throw new Judge0Error(
+          'Judge0 returned results that do not match the submitted tokens',
+          { retryable: false }
+        );
+      }
+      return ordered;
+    }
 
     // Ease off gradually on long-running batches.
     interval = Math.min(Math.round(interval * 1.25), 2000);
@@ -491,9 +591,23 @@ function toResult(raw, testCase, index) {
   const message = decode(raw?.message);
 
   const hasExpected = testCase.output !== null && testCase.output !== undefined;
-  const passed = hasExpected
-    ? statusId === STATUS.ACCEPTED && normalizeOutput(stdout) === normalizeOutput(testCase.output)
-    : statusId === STATUS.ACCEPTED;
+  // Judge0 has already compared these two itself; we repeat the comparison so
+  // a misconfigured instance (expected_output dropped by a proxy, an older
+  // build with a different rule) cannot hand out marks we did not verify.
+  // normalizeOutput is Judge0's own rule, so the two agree.
+  const outputMatches = hasExpected
+    ? normalizeOutput(stdout) === normalizeOutput(testCase.output)
+    : true;
+  const passed = statusId === STATUS.ACCEPTED && outputMatches;
+
+  // What the student is shown must agree with `passed`. Judge0 reports
+  // ACCEPTED purely on its own comparison, so in the (now unreachable) case
+  // where the two disagree, reporting its status verbatim put a green
+  // "Accepted" next to a case counted as failed. Wrong Answer is the honest
+  // verdict there.
+  const status = passed || statusId !== STATUS.ACCEPTED
+    ? { id: statusId, description: raw?.status?.description || 'Unknown' }
+    : { id: STATUS.WRONG_ANSWER, description: 'Wrong Answer' };
 
   return {
     index,
@@ -503,7 +617,7 @@ function toResult(raw, testCase, index) {
     stderr,
     compileOutput,
     message,
-    status: { id: statusId, description: raw?.status?.description || 'Unknown' },
+    status,
     time: raw?.time ?? null,
     memory: raw?.memory ?? null,
     exitCode: raw?.exit_code ?? null,
@@ -733,6 +847,7 @@ module.exports = {
   checkHealth,
   resetDiscoveryCache,
   normalizeOutput,
+  normalizeInput,
   Judge0Error,
   STATUS,
   JUDGE0_URL,

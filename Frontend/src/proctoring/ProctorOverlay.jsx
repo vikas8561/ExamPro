@@ -20,10 +20,12 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
   {
     phase,
     warning,
+    notice,
     blockReason,
     offline,
     isDevtoolsOpen,
     onDismissWarning,
+    onDismissNotice,
     onResume,
   },
   ref
@@ -34,6 +36,14 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
   // Recheck continuously while a dialog is open, so the button unlocks the
   // moment the student actually closes devtools or returns to fullscreen —
   // and stays locked while they have not.
+  // The notice clears itself. Nothing about it needs acknowledging, and a
+  // dismiss button would only add a thing to click mid-exam.
+  useEffect(() => {
+    if (!notice) return undefined;
+    const timer = setTimeout(() => onDismissNotice?.(), 6000);
+    return () => clearTimeout(timer);
+  }, [notice, onDismissNotice]);
+
   useEffect(() => {
     const needsCheck =
       blockReason === "fullscreen" ||
@@ -117,6 +127,22 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
       {offline && phase === "active" && (
         <div className="fixed bottom-16 left-1/2 z-[9991] max-w-[90vw] -translate-x-1/2 rounded-lg border border-amber-500/40 bg-amber-950/90 px-5 py-3 text-center text-sm text-amber-200 backdrop-blur">
           Your internet connection was lost. Your answers are saved and will sync when it returns.
+        </div>
+      )}
+
+      {/* Something was recorded but nothing was charged.
+          A passing notice, not a dialog: these signals are scored zero because
+          they misfire, so interrupting the student for one — or making them
+          click to dismiss it — would punish them for a false positive. It tells
+          them what was seen while they can still act on it, and gets out of the
+          way on its own. */}
+      {notice && phase === "active" && (
+        <div className="fixed bottom-28 left-1/2 z-[9991] max-w-[90vw] -translate-x-1/2 rounded-lg border border-slate-500/50 bg-slate-900/95 px-5 py-3 text-center text-sm text-slate-200 shadow-lg backdrop-blur">
+          <span className="font-semibold text-slate-100">Noticed: </span>
+          {notice.message}
+          <p className="mt-1 text-xs text-slate-400">
+            Recorded for the reviewer. Your test has not been affected.
+          </p>
         </div>
       )}
 

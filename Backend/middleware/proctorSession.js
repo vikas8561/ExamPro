@@ -114,7 +114,54 @@ async function resolveProctorStatus(req, { allowTerminated = false } = {}) {
     };
   }
 
+  const sebReason = sebFailureReason(session, { allowStale: allowTerminated });
+  if (sebReason) {
+    return { required: true, ok: false, reason: sebReason, session, assignmentId };
+  }
+
   return { required: true, ok: true, reason: "active", session, assignmentId };
+}
+
+/**
+ * Is Safe Exam Browser missing from a session that was opened under it?
+ *
+ * Returns a reason string when the request must be refused, or `null` when the
+ * session is fine. This is where SEB is actually enforced — everything else is
+ * detection and bookkeeping.
+ *
+ * The freshness half matters more than it looks. Checking only `verified` would
+ * make the whole feature bypassable in one move: sit the gate inside SEB, copy
+ * the login token and session id out into an ordinary browser, and stop sending
+ * heartbeats. Nothing else in this file looks at heartbeat age, and no background
+ * job reaps quiet sessions, so `verified` would stay true until the session's TTL
+ * expired two days later.
+ *
+ * Being blocked here is recoverable and meant to be: the moment SEB checks in
+ * again the referee refreshes `verifiedAt` and the next request goes through.
+ *
+ * `allowStale` is passed by the submit route, and only the submit route. If a
+ * student's SEB crashes near the end of a paper, refusing their submission would
+ * cost them work they did legitimately inside the lockdown, which is the outcome
+ * this whole system exists to avoid. So a session that *was* verified may always
+ * hand in, even if SEB is no longer answering.
+ *
+ * A session that was NEVER verified gets no such latitude: that is a student who
+ * never opened SEB at all, and letting them submit would let answers composed
+ * outside the lockdown in through the one door left open.
+ */
+function sebFailureReason(session, { allowStale = false } = {}) {
+  const seb = session?.seb;
+  if (!seb || seb.required !== true) return null;
+
+  // SEB was required but has never existed for this student's operating system.
+  // They are running the ordinary browser-based proctoring instead, which is
+  // recorded on their submission for the reviewer.
+  if (seb.fallbackReason) return null;
+
+  if (seb.verified !== true) return "seb_required";
+  if (allowStale) return null;
+  if (!policyService.isSebProofFresh(seb)) return "seb_stale";
+  return null;
 }
 
 /**
@@ -137,14 +184,24 @@ function requireProctorSession(options = {}) {
         return next();
       }
 
-      const message =
-        status.reason === "terminated"
-          ? "This attempt was ended by the proctoring system."
-          : "This test must be taken with proctoring active. Please start the test from your assignments page.";
+      // Stable `reason` codes, not message text: the frontend used to match on
+      // wording and matched the wrong string. See routes/assignments.js.
+      const MESSAGES = {
+        terminated: "This attempt was ended by the proctoring system.",
+        seb_required:
+          "This test must be taken in Safe Exam Browser. Please start it again from your assignments page.",
+        seb_stale:
+          "Safe Exam Browser has stopped responding. Return to the exam window in Safe Exam Browser to continue.",
+      };
 
       return res.status(403).json({
-        message,
+        message:
+          MESSAGES[status.reason] ||
+          "This test must be taken with proctoring active. Please start the test from your assignments page.",
         proctoringRequired: true,
+        // Lets the exam page show a "reopen in Safe Exam Browser" screen rather
+        // than a generic proctoring error.
+        sebRequired: status.reason === "seb_required" || status.reason === "seb_stale",
         reason: status.reason,
       });
     } catch (error) {
@@ -203,9 +260,16 @@ async function resolveProctorStatusForTest(req, testId) {
     status: "active",
   }).lean();
 
-  return session
-    ? { required: true, ok: true, reason: "active", session }
-    : { required: true, ok: false, reason: "no_session" };
+  if (!session) {
+    return { required: true, ok: false, reason: "no_session" };
+  }
+
+  const sebReason = sebFailureReason(session);
+  if (sebReason) {
+    return { required: true, ok: false, reason: sebReason, session };
+  }
+
+  return { required: true, ok: true, reason: "active", session };
 }
 
 /**
@@ -222,6 +286,7 @@ function mayServeQuestions(req) {
 }
 
 module.exports = {
+  sebFailureReason,
   requireProctorSession,
   attachProctorStatus,
   resolveProctorStatus,
