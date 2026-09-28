@@ -10,7 +10,13 @@ const Profile = require("../models/Profile");
 const Subject = require("../models/Subject");
 const AuthSession = require("../models/AuthSession");
 const { authenticateToken, requireRole } = require("../middleware/auth");
-const { normalizeStudent, getCohort, cohortCounts, STUDENT_FIELDS } = require("../services/principals");
+const {
+  normalizeStudent,
+  getCohort,
+  cohortCounts,
+  getStudentFilterForBatches,
+  STUDENT_FIELDS,
+} = require("../services/principals");
 const { isDatabaseUnavailable } = require("../utils/databaseErrors");
 const lockout = require("../services/loginLockout");
 
@@ -53,21 +59,40 @@ function escapeRegex(value) {
 // avoids trying to paginate across two databases.
 // `filter` is either empty / "All Users", the role names "Mentor" or "Admin",
 // or "students:<cohortKey>" for one of the campus cohorts in services/principals.
-async function loadDirectory({ search = "", filter = "" } = {}) {
+async function loadDirectory({ search = "", filter = "", requesterRole = "admin", requesterId = null } = {}) {
+  const isMentor = String(requesterRole || "").toLowerCase() === "mentor";
+  let mentorBatches = [];
+
+  if (isMentor) {
+    const mentor = await Mentor.findById(requesterId).select("batches").lean();
+    mentorBatches = mentor?.batches || [];
+    // If mentor has no assigned batches, they can see no students
+    if (mentorBatches.length === 0) {
+      return [];
+    }
+  }
+
   const showEveryone = !filter || filter === "All Users";
   const cohortKey = filter.startsWith("students:") ? filter.slice("students:".length) : null;
 
+  // Mentors only see students in their batches (never staff)
   const wantsStudents = showEveryone || cohortKey !== null;
-  const wantsMentors = showEveryone || filter === "Mentor";
-  const wantsAdmins = showEveryone || filter === "Admin";
+  const wantsMentors = !isMentor && (showEveryone || filter === "Mentor");
+  const wantsAdmins = !isMentor && (showEveryone || filter === "Admin");
 
   const studentQuery = {};
   if (cohortKey) {
     const cohort = getCohort(cohortKey);
     // An unrecognised cohort key must not silently widen to every student.
     if (!cohort) return [];
+    if (isMentor && !mentorBatches.includes(cohortKey)) {
+      return [];
+    }
     Object.assign(studentQuery, cohort.filter);
+  } else if (isMentor) {
+    Object.assign(studentQuery, getStudentFilterForBatches(mentorBatches));
   }
+
   if (search) {
     const rx = new RegExp(escapeRegex(search), "i");
     // Students are found by the things they actually sign in with as well.
@@ -142,11 +167,31 @@ async function findStaff(id) {
   return null;
 }
 
-// The filter options the admin directory offers: every campus cohort, plus the
-// two staff roles. Same cohort list the assignment modes use.
-router.get("/filters", authenticateToken, requireRole("Admin"), async (req, res) => {
+// The filter options the directory offers:
+// For Admin: every campus cohort, plus the two staff roles.
+// For Mentor: only their assigned batches.
+router.get("/filters", authenticateToken, requireRole(["Admin", "Mentor"]), async (req, res) => {
   try {
     const cohorts = await cohortCounts();
+    const isMentor = String(req.user?.role || "").toLowerCase() === "mentor";
+
+    if (isMentor) {
+      const mentor = await Mentor.findById(req.user.userId).select("batches").lean();
+      const mentorBatches = mentor?.batches || [];
+      const assignedCohorts = cohorts.filter((c) => c.key !== "all" && mentorBatches.includes(c.key));
+
+      return res.json({
+        filters: [
+          { value: "All Users", label: "My Students" },
+          ...assignedCohorts.map((c) => ({
+            value: `students:${c.key}`,
+            label: c.label,
+            count: c.count,
+          })),
+        ],
+      });
+    }
+
     res.json({
       filters: [
         { value: "All Users", label: "All Users" },
@@ -164,10 +209,15 @@ router.get("/filters", authenticateToken, requireRole("Admin"), async (req, res)
   }
 });
 
-// Get all users (admin only)
-router.get("/", authenticateToken, requireRole("Admin"), async (req, res) => {
+// Get all users (admin/mentor)
+router.get("/", authenticateToken, requireRole(["Admin", "Mentor"]), async (req, res) => {
   try {
-    const rows = await loadDirectory();
+    const rows = await loadDirectory({
+      search: req.query.search || "",
+      filter: req.query.filter || "",
+      requesterRole: req.user?.role,
+      requesterId: req.user?.userId,
+    });
     rows.sort((a, b) => a.name.localeCompare(b.name));
     res.json(rows);
   } catch (err) {

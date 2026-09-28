@@ -17,8 +17,8 @@ router.get("/public", async (req, res, next) => {
   }
 });
 
-// Get all subjects (admin only)
-router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) => {
+// Get all subjects (admin/mentor)
+router.get("/", authenticateToken, requireRole(["admin", "Mentor"]), async (req, res, next) => {
   try {
     const subjects = await attach(
       await Subject.find({}).sort({ name: 1 }).lean(),

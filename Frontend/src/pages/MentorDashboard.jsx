@@ -19,7 +19,9 @@ import {
   ArrowUpRight,
   BarChart3,
   Calendar,
-  Sparkles
+  Sparkles,
+  PlusCircle,
+  FileText
 } from "lucide-react";
 
 export default function MentorDashboard() {
@@ -225,22 +227,38 @@ export default function MentorDashboard() {
               <p className="text-xs text-[#7E8594] mt-0.5">Quickly jump into assessment assignments or review student evaluation lists</p>
             </div>
           </div>
-          <div className="flex items-center gap-3 w-full sm:w-auto">
-            {/* White Button for View All Assignments */}
+          <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+            {/* White Button for Create Test */}
+            <Link
+              to="/mentor/tests/create"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-white hover:bg-slate-100 text-slate-950 font-semibold text-xs transition-all shadow-sm active:scale-95"
+            >
+              <PlusCircle className="w-4 h-4 text-slate-950" />
+              <span>Create Test</span>
+            </Link>
+            {/* Manage Tests Button */}
+            <Link
+              to="/mentor/tests"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-[#2A2E39] hover:bg-[#323744] text-white border border-white/[0.08] font-medium text-xs transition-all active:scale-95"
+            >
+              <FileText className="w-4 h-4 text-[#A78BFA]" />
+              <span>Manage Tests</span>
+            </Link>
+            {/* Assignments Button */}
             <Link
               to="/mentor/assignments"
-              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-slate-100 text-slate-950 font-semibold text-xs transition-all shadow-sm active:scale-95"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-[#2A2E39] hover:bg-[#323744] text-white border border-white/[0.08] font-medium text-xs transition-all active:scale-95"
             >
-              <ClipboardList className="w-4 h-4 text-slate-950" />
-              <span>View All Assignments</span>
+              <ClipboardList className="w-4 h-4 text-[#2DD4BF]" />
+              <span>Assignments</span>
             </Link>
-            {/* Dark Secondary Button for View Student Submissions */}
+            {/* Submissions Button */}
             <Link
               to="/mentor/submissions"
-              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#2A2E39] hover:bg-[#323744] text-white border border-white/[0.08] font-medium text-xs transition-all active:scale-95"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-[#2A2E39] hover:bg-[#323744] text-white border border-white/[0.08] font-medium text-xs transition-all active:scale-95"
             >
               <FileCheck className="w-4 h-4 text-[#38BDF8]" />
-              <span>View Student Submissions</span>
+              <span>Submissions</span>
             </Link>
           </div>
         </div>

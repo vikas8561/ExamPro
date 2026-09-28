@@ -27,6 +27,7 @@ import MentorSubmissions from "./pages/MentorSubmissions";
 import ViewCompletedTest from "./pages/ViewCompletedTest";
 import AdminSidebar from "./components/AdminSidebar";
 import AdminDSAPractice from "./pages/AdminDSAPractice";
+import AdminMentorManagement from "./pages/AdminMentorManagement";
 
 // Protected Route Component - uses JWT payload for role check (defense-in-depth)
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -151,6 +152,7 @@ const AdminLayout = () => {
             <Route path="/tests/create" element={<CreateTest />} />
             <Route path="/dsa-practice" element={<AdminDSAPractice />} />
             <Route path="/users" element={<Users />} />
+            <Route path="/mentors" element={<AdminMentorManagement />} />
             <Route path="/proctoring" element={<AdminProctoring />} />
             <Route path="/view-test/:assignmentId" element={<ViewCompletedTest />} />
             <Route path="*" element={<div className="p-6">Not Found</div>} />
@@ -349,6 +351,8 @@ const MentorRoutes = () => {
 
           <Routes>
             <Route path="/" element={<MentorDashboard />} />
+            <Route path="/tests" element={<Tests />} />
+            <Route path="/tests/create" element={<CreateTest />} />
             <Route path="/assignments" element={<MentorAssignments />} />
             <Route path="/submissions" element={<MentorSubmissions />} />
             <Route path="/view-test/:assignmentId" element={<ViewCompletedTest />} />

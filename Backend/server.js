@@ -365,6 +365,7 @@ app.use("/api/debug", require("./routes/debug"));
 app.use("/api/subjects", require("./routes/subjects"));
 app.use("/api/time", require("./routes/time"));
 app.use("/api/proctor", require("./routes/proctor"));
+app.use("/api/admin/mentors", require("./routes/adminMentors"));
 app.use("/api/seb", require("./routes/seb"));
 
 // Make io available to routes
