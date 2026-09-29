@@ -1,10 +1,91 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import apiRequest from "../services/api";
-import Judge0CodeEditor from "../components/Judge0CodeEditor";
+import { API_BASE_URL } from "../config/api";
 import ProctorProvider from "../proctoring/ProctorProvider";
 import useProctor from "../proctoring/useProctor";
 import QuestionText from "../components/QuestionText";
+import CodingWorkspace from "../components/coding/CodingWorkspace";
+import { TimerPill } from "../components/coding/codingUi";
+import useCodingJudge from "../hooks/useCodingJudge";
+import {
+  FALLBACK_LANGUAGES,
+  fetchSupportedLanguages,
+  findLanguage,
+  normalizeLanguageKey,
+} from "../config/languages";
+
+/**
+ * Jump-to-any-question grid for the coding workspace's top bar. The coding view
+ * is full screen, so the side navigator the MCQ view uses has no room there.
+ */
+const QuestionPalette = ({ questions, current, statuses, onSelect }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (event) => {
+      if (ref.current && !ref.current.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        title="All questions"
+        className={`h-7 px-2 rounded flex items-center gap-1.5 text-[13px] transition-colors ${open ? "bg-white/10 text-white" : "text-white/60 hover:bg-white/10 hover:text-white/90"}`}
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+        </svg>
+        Questions
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full mt-2 z-50 w-72 rounded-lg border border-white/10 bg-[#303030] shadow-2xl p-3 animate-in">
+          <div className="grid grid-cols-6 gap-1.5 max-h-64 overflow-y-auto lc-scroll">
+            {questions.map((q, index) => {
+              const status = statuses[q._id];
+              return (
+                <button
+                  key={q._id}
+                  type="button"
+                  onClick={() => { setOpen(false); onSelect(index); }}
+                  title={`Question ${index + 1} · ${q.kind === "coding" ? "Coding" : q.kind === "mcq" ? "MCQ" : "Theory"}`}
+                  className={`relative h-9 rounded-md text-[13px] font-medium tabular-nums transition-colors ${
+                    index === current
+                      ? "bg-[#46c6c2] text-[#1a1a1a]"
+                      : status === "answered"
+                        ? "bg-[#28c244]/20 text-[#28c244] hover:bg-[#28c244]/30"
+                        : status === "mark-for-review"
+                          ? "bg-[#ffb800]/20 text-[#ffb800] hover:bg-[#ffb800]/30"
+                          : "bg-white/[0.06] text-white/70 hover:bg-white/10"
+                  }`}
+                >
+                  {index + 1}
+                  {q.kind === "coding" && (
+                    <span className="absolute top-0.5 right-1 text-[8px] leading-none opacity-70">{"</>"}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 mt-3 pt-2.5 border-t border-white/10 text-[11px] text-white/50">
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-[#46c6c2]" /> Current</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-[#28c244]" /> Answered</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-[#ffb800]" /> Review</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-white/20" /> Not answered</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const TakeTestInner = ({ submitRef }) => {
   // Proctoring is centralised: this page mounts the provider (see the wrapper at
@@ -27,6 +108,47 @@ const TakeTestInner = ({ submitRef }) => {
   const [showSubmitConfirmModal, setShowSubmitConfirmModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const debounceTimers = useRef({});
+
+  // Coding questions. The code itself lives in `answers` like every other
+  // answer; the language is tracked beside it so it can be saved with the code
+  // and shown to the mentor. The ref mirrors the state for the save path, which
+  // runs from debounce timers holding stale closures.
+  const judge = useCodingJudge(assignmentId);
+  const [supportedLanguages, setSupportedLanguages] = useState(FALLBACK_LANGUAGES);
+  const [, setLanguageByQ] = useState({}); // re-renders on change; reads go through languageRef
+  const languageRef = useRef({});
+  const setQuestionLanguage = useCallback((questionId, language) => {
+    languageRef.current = { ...languageRef.current, [questionId]: language };
+    setLanguageByQ(languageRef.current);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchSupportedLanguages().then((languages) => {
+      if (!cancelled && languages?.length) setSupportedLanguages(languages);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Every coding question starts in its own default language unless a saved
+  // answer already said otherwise.
+  useEffect(() => {
+    if (!test?.questions) return;
+    const defaults = {};
+    for (const q of test.questions) {
+      if (q.kind === "coding" && !languageRef.current[q._id]) {
+        defaults[q._id] = normalizeLanguageKey(q.language) || "python";
+      }
+    }
+    if (Object.keys(defaults).length) {
+      languageRef.current = { ...defaults, ...languageRef.current };
+      setLanguageByQ(languageRef.current);
+    }
+  }, [test]);
+
+  const languageFor = (question) =>
+    languageRef.current[question._id] || normalizeLanguageKey(question.language) || "python";
+  const templateFor = (language) => findLanguage(supportedLanguages, language)?.boilerplate || "";
 
   // Auto-submit modal state: null | 'time-up' | 'submitting' | 'success' | 'error'
   const [autoSubmitPhase, setAutoSubmitPhase] = useState(null);
@@ -61,47 +183,57 @@ const TakeTestInner = ({ submitRef }) => {
   };
 
 
-  // Cleanup debounce timers on unmount and save pending answers
+  // Pending autosaves.
+  //
+  // This effect used to clear every debounce timer in its cleanup, and its
+  // dependencies include `answers` -- so each keystroke scheduled a save and the
+  // re-render it caused cancelled it a moment later. Theory and coding answers
+  // only reached the server when the student changed question or submitted; a
+  // crashed browser, or an attempt finalised by the expiry sweep, lost
+  // everything typed since. Timers are now cleared only when the page goes away.
+  //
+  // A closing tab gets one last attempt for anything still pending. `keepalive`
+  // is what lets the request outlive the page; an ordinary fetch is cancelled.
   useEffect(() => {
-    const handleBeforeUnload = async (event) => {
-      // Save any pending answers before page unload
-      const pendingSaves = Object.entries(debounceTimers.current).map(async ([questionId, timer]) => {
-        if (timer) {
-          clearTimeout(timer);
-          const question = test?.questions?.find((q) => q._id === questionId);
-          if (question && (question.kind === "theory" || question.kind === "coding")) {
-            const answerValue = answers[questionId];
-            let selectedOption = undefined;
-            let textAnswer = undefined;
-            let hasAnswer = false;
-
-            if (question.kind === "theory" || question.kind === "coding") {
-              // Always set textAnswer to the current value (even if empty)
-              textAnswer = answerValue || "";
-              hasAnswer = answerValue && answerValue.trim() !== "";
-            }
-
-            // Force save the current answer
-            await saveAnswerToBackend(questionId, selectedOption, textAnswer, hasAnswer);
-          }
+    const handleBeforeUnload = () => {
+      for (const [questionId, timer] of Object.entries(debounceTimers.current)) {
+        if (!timer) continue;
+        clearTimeout(timer);
+        const question = test?.questions?.find((q) => q._id === questionId);
+        if (!question || (question.kind !== "theory" && question.kind !== "coding")) continue;
+        try {
+          fetch(`${API_BASE_URL}/answers`, {
+            method: "POST",
+            keepalive: true,
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${localStorage.getItem("token")}`,
+            },
+            body: JSON.stringify({
+              assignmentId,
+              questionId,
+              selectedOption: undefined,
+              textAnswer: answers[questionId] || "",
+              ...(question.kind === "coding" ? { language: languageFor(question) } : {}),
+            }),
+          });
+        } catch {
+          // Nothing useful to do while the page is going away.
         }
-      });
-
-      // Wait for all saves to complete
-      await Promise.all(pendingSaves);
+      }
+      debounceTimers.current = {};
     };
 
-    // Add event listener for page unload
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
-    return () => {
-      // Cleanup
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      Object.values(debounceTimers.current).forEach(timer => {
-        if (timer) clearTimeout(timer);
-      });
-    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [test, answers]);
+
+  useEffect(() => () => {
+    Object.values(debounceTimers.current).forEach((timer) => {
+      if (timer) clearTimeout(timer);
+    });
+  }, []);
 
   useEffect(() => {
     const checkExistingTest = async () => {
@@ -212,6 +344,7 @@ const TakeTestInner = ({ submitRef }) => {
             questionId: question._id.toString(),
             selectedOption,
             textAnswer,
+            ...(question.kind === "coding" ? { language: languageFor(question) } : {}),
           };
         }),
         timeSpent,
@@ -418,9 +551,24 @@ const TakeTestInner = ({ submitRef }) => {
 
             // For theory and coding questions, get the longest/most complete answer
             if (question.kind === "theory" || question.kind === "coding") {
+              // `draftAnswer` first for coding: once Judge0 has graded an answer
+              // its `textAnswer` is frozen as the graded source, and the
+              // student's current editing lives in the draft. Restoring the
+              // graded source would roll the editor back to an older attempt.
               const textAnswers = responses
-                .filter(r => r.textAnswer !== undefined && r.textAnswer !== null)
-                .map(r => r.textAnswer);
+                .map(r => (question.kind === "coding" && r.draftAnswer) || r.textAnswer)
+                .filter(text => text !== undefined && text !== null);
+
+              if (question.kind === "coding") {
+                const withLanguage = responses.find(r => r.language);
+                if (withLanguage) {
+                  languageRef.current = {
+                    ...languageRef.current,
+                    [questionId]: normalizeLanguageKey(withLanguage.language) || "python",
+                  };
+                  setLanguageByQ(languageRef.current);
+                }
+              }
 
               if (textAnswers.length > 0) {
                 // Get the longest answer (most complete)
@@ -539,11 +687,13 @@ const TakeTestInner = ({ submitRef }) => {
     // For coding questions, debounce the save operation to avoid excessive API calls
     if (question.kind === "coding") {
       debounceTimers.current[questionId] = setTimeout(async () => {
+        delete debounceTimers.current[questionId];
         await saveAnswerToBackend(questionId, selectedOption, textAnswer, hasAnswer);
       }, 1000); // Wait 1 second after user stops typing
     } else if (question.kind === "theory") {
       // For theory questions, debounce with shorter delay to preserve more content
       debounceTimers.current[questionId] = setTimeout(async () => {
+        delete debounceTimers.current[questionId];
         await saveAnswerToBackend(questionId, selectedOption, textAnswer, hasAnswer);
       }, 500); // Wait 500ms after user stops typing
     } else {
@@ -583,6 +733,7 @@ const TakeTestInner = ({ submitRef }) => {
           questionId,
           selectedOption: sanitizedSelectedOption,
           textAnswer: textAnswer || "", // Ensure textAnswer is always a string
+          ...(question.kind === "coding" ? { language: languageFor(question) } : {}),
         };
 
 
@@ -683,6 +834,7 @@ const TakeTestInner = ({ submitRef }) => {
             questionId: question._id.toString(),
             selectedOption,
             textAnswer,
+            ...(question.kind === "coding" ? { language: languageFor(question) } : {}),
           };
         }),
         timeSpent,
@@ -861,6 +1013,315 @@ const TakeTestInner = ({ submitRef }) => {
   const progressPercent = totalQuestions > 0 ? (answeredCount / totalQuestions) * 100 : 0;
   const isTimeLow = timeRemaining <= 300;
   const isTimeCritical = timeRemaining <= 60;
+
+  // Everything that can sit on top of either view: the time-up sequence and
+  // the submit confirmation.
+  const overlays = (
+    <>
+      {/* ═══════════ AUTO-SUBMIT TIME-UP MODAL ═══════════ */}
+      {autoSubmitPhase && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-[60] p-4 auto-submit-overlay">
+          <div className="bg-slate-800/95 backdrop-blur-xl rounded-2xl p-8 max-w-sm w-full text-center border border-slate-700/50 shadow-2xl auto-submit-card">
+
+            {/* Phase: TIME-UP */}
+            {autoSubmitPhase === 'time-up' && (
+              <>
+                <div className="relative w-20 h-20 mx-auto mb-6">
+                  <div className="absolute inset-0 rounded-full bg-red-500/15 auto-submit-pulse-ring"></div>
+                  <div className="w-20 h-20 rounded-full bg-red-500/10 border-2 border-red-500/30 flex items-center justify-center">
+                    <svg className="w-10 h-10 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                </div>
+                <h2 className="text-2xl font-bold text-white mb-2">Time's Up!</h2>
+                <p className="text-slate-400 text-sm">Your exam time has been completed.</p>
+                <p className="text-slate-500 text-xs mt-2">Preparing to submit your exam...</p>
+              </>
+            )}
+
+            {/* Phase: SUBMITTING */}
+            {autoSubmitPhase === 'submitting' && (
+              <>
+                <div className="w-20 h-20 mx-auto mb-6 relative">
+                  <div className="absolute inset-0 rounded-full border-4 border-slate-700"></div>
+                  <div className="absolute inset-0 rounded-full border-4 border-t-blue-500 border-r-transparent border-b-transparent border-l-transparent auto-submit-spinner"></div>
+                </div>
+                <h2 className="text-2xl font-bold text-white mb-2">Submitting Exam...</h2>
+                <p className="text-slate-400 text-sm">Please wait while we submit your answers.</p>
+                <p className="text-slate-500 text-xs mt-2">Do not close this window.</p>
+              </>
+            )}
+
+            {/* Phase: SUCCESS */}
+            {autoSubmitPhase === 'success' && (
+              <>
+                <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-emerald-500/10 border-2 border-emerald-500/30 flex items-center justify-center">
+                  <svg className="w-10 h-10 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                    <path className="auto-submit-checkmark" strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <h2 className="text-2xl font-bold text-white mb-2">Exam Submitted!</h2>
+                <p className="text-slate-400 text-sm">Your exam has been submitted successfully.</p>
+                <p className="text-emerald-400/70 text-xs mt-2">Redirecting to your tests...</p>
+              </>
+            )}
+
+            {/* Phase: ERROR */}
+            {autoSubmitPhase === 'error' && (
+              <>
+                <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-red-500/10 border-2 border-red-500/30 flex items-center justify-center auto-submit-shake">
+                  <svg className="w-10 h-10 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                </div>
+                <h2 className="text-2xl font-bold text-white mb-2">Submission Failed</h2>
+                <p className="text-slate-400 text-sm mb-4">{autoSubmitError}</p>
+                <button
+                  onClick={() => {
+                    autoSubmitTriggered.current = false;
+                    setAutoSubmitPhase(null);
+                    setAutoSubmitError('');
+                    handleTimeUp();
+                  }}
+                  className="px-6 py-3 rounded-xl font-bold transition-all duration-200 border bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white border-blue-500/50 shadow-lg shadow-blue-500/20 w-full"
+                >
+                  Retry Submission
+                </button>
+              </>
+            )}
+
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════ SUBMIT CONFIRMATION MODAL ═══════════ */}
+      {showSubmitConfirmModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800/95 backdrop-blur-xl rounded-2xl p-8 max-w-md w-full text-center border border-slate-700/50 shadow-2xl">
+            <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+              <svg className="w-8 h-8 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold mb-3 text-white">Submit Test?</h2>
+            <p className="text-slate-400 mb-3 text-sm">
+              You have answered <span className="text-white font-semibold">{answeredCount}</span> out of <span className="text-white font-semibold">{totalQuestions}</span> questions.
+            </p>
+            {answeredCount < totalQuestions && (
+              <p className="text-amber-400/80 text-xs mb-6 bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20">
+                ⚠ {totalQuestions - answeredCount} question{totalQuestions - answeredCount !== 1 ? 's' : ''} left unanswered
+              </p>
+            )}
+            {answeredCount >= totalQuestions && <div className="mb-6"></div>}
+            <div className="flex gap-3">
+              <button onClick={handleCancelSubmit} className="flex-1 px-6 py-3 rounded-xl font-semibold bg-slate-700/80 hover:bg-slate-600 text-white border border-slate-600/50 transition-all duration-200">
+                Go Back
+              </button>
+              <button onClick={handleConfirmSubmit} disabled={isSubmitting}
+                className={`flex-1 px-6 py-3 rounded-xl font-bold transition-all duration-200 border ${isSubmitting ? 'bg-slate-700 text-slate-400 cursor-not-allowed border-slate-600' : 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white border-emerald-500/50 shadow-lg shadow-emerald-500/20'}`}
+              >
+                {isSubmitting ? 'Submitting...' : 'Confirm Submit'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  const toggleReview = (q) => {
+    const currentStatus = questionStatuses[q._id];
+    let newStatus;
+    if (currentStatus === "mark-for-review") {
+      const answer = answers[q._id];
+      let hasAnswer = false;
+      if (q.kind === "mcq") { hasAnswer = answer !== undefined && answer !== null && answer !== ""; }
+      else if (q.kind === "theory" || q.kind === "coding") { hasAnswer = answer && answer.trim() !== ""; }
+      newStatus = hasAnswer ? "answered" : "not-answered";
+    } else { newStatus = "mark-for-review"; }
+    setQuestionStatuses((prev) => ({ ...prev, [q._id]: newStatus }));
+  };
+
+  // ═══════════ CODING VIEW ═══════════
+  // A coding question gets the same full-screen workspace as the coding test
+  // (components/coding/CodingWorkspace.jsx), whatever else is in the paper.
+  if (question.kind === "coding") {
+    const language = languageFor(question);
+    const template = templateFor(language);
+    // Until the student types, the editor shows the language's starting code
+    // without it counting as an answer or being saved.
+    const shownCode = answers[question._id] !== undefined ? answers[question._id] : template;
+    const isMarked = questionStatuses[question._id] === "mark-for-review";
+
+    const handleLanguageChange = (newLanguage) => {
+      const current = answers[question._id];
+      const untouched = current === undefined || current.trim() === "" || current === template;
+      setQuestionLanguage(question._id, newLanguage);
+      if (untouched) {
+        // Nothing of theirs to keep: show the new language's starting code.
+        if (current !== undefined) {
+          setAnswers((prev) => {
+            const next = { ...prev };
+            delete next[question._id];
+            return next;
+          });
+        }
+      } else {
+        // Their code stays; record which language it is now in.
+        saveAnswerToBackend(question._id, undefined, current, true);
+      }
+    };
+
+    const handleResetCode = async () => {
+      if (debounceTimers.current[question._id]) {
+        clearTimeout(debounceTimers.current[question._id]);
+        delete debounceTimers.current[question._id];
+      }
+      setAnswers((prev) => {
+        const next = { ...prev };
+        delete next[question._id];
+        return next;
+      });
+      setQuestionStatuses((prev) => ({ ...prev, [question._id]: "not-answered" }));
+      await saveAnswerToBackend(question._id, undefined, "", false);
+    };
+
+    return (
+      <>
+      <style>
+        {`
+          .scrollbar-hide {
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+          }
+          .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+          }
+          @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 8px 0 rgba(239, 68, 68, 0.4); }
+            50% { box-shadow: 0 0 20px 4px rgba(239, 68, 68, 0.6); }
+          }
+          .timer-critical {
+            animation: pulse-glow 1s ease-in-out infinite;
+          }
+          @keyframes autoSubmitFadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+          }
+          @keyframes autoSubmitScaleIn {
+            from { opacity: 0; transform: scale(0.85) translateY(20px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+          }
+          @keyframes autoSubmitSpin {
+            to { transform: rotate(360deg); }
+          }
+          @keyframes autoSubmitCheckmark {
+            0% { stroke-dashoffset: 24; }
+            100% { stroke-dashoffset: 0; }
+          }
+          @keyframes autoSubmitPulseRing {
+            0% { transform: scale(0.8); opacity: 1; }
+            100% { transform: scale(1.8); opacity: 0; }
+          }
+          @keyframes autoSubmitShake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-6px); }
+            40%, 80% { transform: translateX(6px); }
+          }
+          .auto-submit-overlay {
+            animation: autoSubmitFadeIn 0.3s ease-out forwards;
+          }
+          .auto-submit-card {
+            animation: autoSubmitScaleIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          }
+          .auto-submit-spinner {
+            animation: autoSubmitSpin 1s linear infinite;
+          }
+          .auto-submit-checkmark {
+            stroke-dasharray: 24;
+            stroke-dashoffset: 24;
+            animation: autoSubmitCheckmark 0.5s ease-out 0.2s forwards;
+          }
+          .auto-submit-pulse-ring {
+            animation: autoSubmitPulseRing 1s ease-out forwards;
+          }
+          .auto-submit-shake {
+            animation: autoSubmitShake 0.5s ease-out;
+          }
+        `}
+      </style>
+        <CodingWorkspace
+          title={test.title}
+          headerLeft={(
+            <div className="flex items-center gap-1 text-white/60">
+              <button
+                type="button"
+                disabled={currentQuestion === 0}
+                onClick={handlePreviousQuestion}
+                className="w-7 h-7 rounded hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-transparent flex items-center justify-center"
+                title="Previous question"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <span className="text-[13px] tabular-nums">{currentQuestion + 1}<span className="text-white/40"> / {totalQuestions}</span></span>
+              <button
+                type="button"
+                disabled={currentQuestion === totalQuestions - 1}
+                onClick={handleNextQuestion}
+                className="w-7 h-7 rounded hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-transparent flex items-center justify-center"
+                title="Next question"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+              <QuestionPalette
+                questions={test.questions}
+                current={currentQuestion}
+                statuses={questionStatuses}
+                onSelect={handleQuestionNavigation}
+              />
+              <button
+                type="button"
+                onClick={() => toggleReview(question)}
+                title={isMarked ? "Remove the review mark" : "Mark this question for review"}
+                className={`h-7 px-2 rounded flex items-center gap-1 text-[13px] transition-colors ${isMarked ? "bg-[#ffb800]/15 text-[#ffb800]" : "text-white/60 hover:bg-white/10 hover:text-white/90"}`}
+              >
+                {isMarked ? "★" : "☆"} Review
+              </button>
+            </div>
+          )}
+          headerRight={(
+            <>
+              <TimerPill seconds={timeRemaining} />
+              <button
+                type="button"
+                onClick={handleSubmitClick}
+                disabled={isSubmitting}
+                className="h-8 px-3 rounded-md text-[13px] font-medium bg-[#28c244]/15 text-[#28c244] hover:bg-[#28c244]/25 disabled:opacity-40 transition-colors whitespace-nowrap"
+              >
+                {isSubmitting ? "Submitting..." : "Submit Test"}
+              </button>
+            </>
+          )}
+          question={question}
+          heading={`${currentQuestion + 1}. ${question.title || "Coding Problem"}`}
+          chips={[`${question.points} ${question.points !== 1 ? "points" : "point"}`]}
+          code={shownCode}
+          onCodeChange={(value) => handleAnswerChange(question._id, value)}
+          language={language}
+          onLanguageChange={handleLanguageChange}
+          supportedLanguages={supportedLanguages}
+          judge={judge}
+          onResetCode={handleResetCode}
+        />
+        {overlays}
+      </>
+    );
+  }
 
   return (
     <>
@@ -1061,115 +1522,6 @@ const TakeTestInner = ({ submitRef }) => {
                 </div>
               </div>
             </div>
-          ) : question.kind === "coding" ? (
-            /* ═══════════ CODING LAYOUT ═══════════ */
-            <div className="grid grid-cols-1 lg:grid-cols-[45%_45%_7%] gap-4" style={{ height: '70vh' }}>
-              {/* Question Panel */}
-              <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-5 lg:p-6 overflow-y-auto h-full border border-slate-700/30 shadow-lg">
-                <div className="flex items-center justify-between mb-5">
-                  <div className="flex items-center gap-3">
-                    <span className="px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs font-bold tracking-wide">Q{currentQuestion + 1}</span>
-                    <span className="px-3 py-1.5 rounded-lg bg-slate-700/50 border border-slate-600/30 text-slate-300 text-xs font-semibold">{question.points} {question.points !== 1 ? "pts" : "pt"}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => handleAnswerChange(question._id, "")} className="px-3.5 py-1.5 bg-slate-700/60 hover:bg-slate-600/80 text-slate-300 hover:text-white rounded-lg text-xs font-semibold transition-all duration-200 border border-slate-600/40">Clear</button>
-                    <button
-                      onClick={() => {
-                        const currentStatus = questionStatuses[question._id];
-                        let newStatus;
-                        if (currentStatus === "mark-for-review") {
-                          const answer = answers[question._id];
-                          const hasAnswer = answer && answer.trim() !== "";
-                          newStatus = hasAnswer ? "answered" : "not-answered";
-                        } else { newStatus = "mark-for-review"; }
-                        setQuestionStatuses((prev) => ({ ...prev, [question._id]: newStatus }));
-                      }}
-                      className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 border ${questionStatuses[question._id] === "mark-for-review" ? "bg-amber-500/20 text-amber-300 border-amber-500/30" : "bg-slate-700/60 text-slate-300 border-slate-600/40 hover:bg-slate-600/80"}`}
-                    >{questionStatuses[question._id] === "mark-for-review" ? "★ Marked" : "☆ Review"}</button>
-                  </div>
-                </div>
-                <div className="text-lg lg:text-xl font-semibold mb-5 text-slate-100 leading-relaxed">
-                  <QuestionText text={question.text} />
-                </div>
-
-                {question.guidelines && (
-                  <div className="bg-slate-700/30 p-4 rounded-xl mb-4 border border-slate-600/20">
-                    <h4 className="font-semibold text-slate-300 mb-2 text-sm flex items-center gap-2">
-                      <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                      Guidelines
-                    </h4>
-                    <p className="text-slate-400 text-sm leading-relaxed">{question.guidelines}</p>
-                  </div>
-                )}
-
-                {question.visibleTestCases && question.visibleTestCases.length > 0 && (
-                  <div className="bg-slate-700/30 p-4 rounded-xl mb-4 scrollbar-hide border border-slate-600/20" style={{ maxHeight: '16rem', overflowY: 'auto' }}>
-                    <div className="text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider flex items-center gap-2">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
-                      Test Cases
-                    </div>
-                    {question.visibleTestCases.map((tc, idx) => (
-                      <div key={idx} className="mb-3 last:mb-0 p-3 bg-slate-800/50 rounded-xl border border-slate-600/20">
-                        <div className="text-xs font-bold text-slate-400 mb-2">Case {idx + 1}</div>
-                        <div className="mb-1 text-xs font-semibold text-slate-400">Input:</div>
-                        <pre className="whitespace-pre-wrap text-slate-300 bg-slate-900/60 p-2.5 rounded-lg text-sm font-mono mb-2">{tc.input}</pre>
-                        <div className="mb-1 text-xs font-semibold text-slate-400">Output:</div>
-                        <pre className="whitespace-pre-wrap text-emerald-300 bg-slate-900/60 p-2.5 rounded-lg text-sm font-mono">{tc.output}</pre>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Code Editor Panel */}
-              <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-5 lg:p-6 flex flex-col border border-slate-700/30 shadow-lg" style={{ height: '70vh' }}>
-                <div className="flex-1">
-                  <Judge0CodeEditor
-                    testId={test._id}
-                    questionId={question._id}
-                    assignmentId={assignmentId}
-                    initialLanguage={question.language || "python"}
-                    initialCode={answers[question._id] || ""}
-                    // Capture what the student writes. This page keys every
-                    // answer off `answers[question._id]`, and without this the
-                    // coding editor never wrote to it, so the final submit sent
-                    // textAnswer: undefined and the work was silently lost.
-                    onCodeChange={(value) => handleAnswerChange(question._id, value)}
-                    onRun={(res) => {/* optional hook */ }}
-                    onSubmit={(res) => {/* optional hook */ }}
-                  />
-                </div>
-                <div className="flex gap-3 mt-5">
-                  <button onClick={handlePreviousQuestion} disabled={currentQuestion === 0} className="flex-1 flex items-center justify-center gap-2 bg-slate-800/80 hover:bg-slate-700/90 disabled:opacity-40 disabled:cursor-not-allowed text-white py-2.5 rounded-xl font-semibold transition-all duration-200 border border-slate-600/40">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>Previous
-                  </button>
-                  <button onClick={handleNextQuestion} disabled={currentQuestion === totalQuestions - 1} className="flex-1 flex items-center justify-center gap-2 bg-slate-800/80 hover:bg-slate-700/90 disabled:opacity-40 disabled:cursor-not-allowed text-white py-2.5 rounded-xl font-semibold transition-all duration-200 border border-slate-600/40">
-                    Next<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                  </button>
-                  <button onClick={handleSubmitClick} disabled={isSubmitting} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold transition-all duration-200 border ${isSubmitting ? 'bg-slate-700 text-slate-400 cursor-not-allowed border-slate-600' : 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white border-emerald-500/50 shadow-lg shadow-emerald-500/20'}`}>
-                    {isSubmitting ? 'Submitting...' : <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>Submit</>}
-                  </button>
-                </div>
-              </div>
-
-              {/* Question Nav Strip */}
-              <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-4 flex flex-col gap-2 max-h-[calc(100vh-160px)] overflow-y-auto scrollbar-hide order-last border border-slate-700/30 shadow-lg">
-                <div className="flex flex-col gap-2 overflow-y-auto scrollbar-hide">
-                  {test?.questions?.map((q, index) => (
-                    <button key={q._id} onClick={() => handleQuestionNavigation(index)}
-                      className={`w-10 h-10 rounded-xl text-sm font-bold transition-all duration-200 hover:scale-110 border-2 flex items-center justify-center ${currentQuestion === index
-                        ? "bg-gradient-to-br from-blue-500 to-blue-600 text-white border-blue-400 shadow-lg shadow-blue-500/25 ring-2 ring-blue-400/30"
-                        : questionStatuses[q._id] === "answered"
-                          ? "bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-emerald-400 shadow-md shadow-emerald-500/20"
-                          : questionStatuses[q._id] === "mark-for-review"
-                            ? "bg-gradient-to-br from-amber-500 to-orange-500 text-white border-amber-400 shadow-md shadow-amber-500/20"
-                            : "bg-slate-800/80 hover:bg-slate-700 border-slate-600/50 hover:border-slate-500 text-slate-300"
-                        }`}
-                    >{index + 1}</button>
-                  ))}
-                </div>
-              </div>
-            </div>
           ) : (
             /* ═══════════ MCQ LAYOUT ═══════════ */
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -1326,115 +1678,7 @@ const TakeTestInner = ({ submitRef }) => {
           )}
         </div>
 
-        {/* ═══════════ AUTO-SUBMIT TIME-UP MODAL ═══════════ */}
-        {autoSubmitPhase && (
-          <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-[60] p-4 auto-submit-overlay">
-            <div className="bg-slate-800/95 backdrop-blur-xl rounded-2xl p-8 max-w-sm w-full text-center border border-slate-700/50 shadow-2xl auto-submit-card">
-
-              {/* Phase: TIME-UP */}
-              {autoSubmitPhase === 'time-up' && (
-                <>
-                  <div className="relative w-20 h-20 mx-auto mb-6">
-                    <div className="absolute inset-0 rounded-full bg-red-500/15 auto-submit-pulse-ring"></div>
-                    <div className="w-20 h-20 rounded-full bg-red-500/10 border-2 border-red-500/30 flex items-center justify-center">
-                      <svg className="w-10 h-10 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </div>
-                  </div>
-                  <h2 className="text-2xl font-bold text-white mb-2">Time's Up!</h2>
-                  <p className="text-slate-400 text-sm">Your exam time has been completed.</p>
-                  <p className="text-slate-500 text-xs mt-2">Preparing to submit your exam...</p>
-                </>
-              )}
-
-              {/* Phase: SUBMITTING */}
-              {autoSubmitPhase === 'submitting' && (
-                <>
-                  <div className="w-20 h-20 mx-auto mb-6 relative">
-                    <div className="absolute inset-0 rounded-full border-4 border-slate-700"></div>
-                    <div className="absolute inset-0 rounded-full border-4 border-t-blue-500 border-r-transparent border-b-transparent border-l-transparent auto-submit-spinner"></div>
-                  </div>
-                  <h2 className="text-2xl font-bold text-white mb-2">Submitting Exam...</h2>
-                  <p className="text-slate-400 text-sm">Please wait while we submit your answers.</p>
-                  <p className="text-slate-500 text-xs mt-2">Do not close this window.</p>
-                </>
-              )}
-
-              {/* Phase: SUCCESS */}
-              {autoSubmitPhase === 'success' && (
-                <>
-                  <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-emerald-500/10 border-2 border-emerald-500/30 flex items-center justify-center">
-                    <svg className="w-10 h-10 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
-                      <path className="auto-submit-checkmark" strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  </div>
-                  <h2 className="text-2xl font-bold text-white mb-2">Exam Submitted!</h2>
-                  <p className="text-slate-400 text-sm">Your exam has been submitted successfully.</p>
-                  <p className="text-emerald-400/70 text-xs mt-2">Redirecting to your tests...</p>
-                </>
-              )}
-
-              {/* Phase: ERROR */}
-              {autoSubmitPhase === 'error' && (
-                <>
-                  <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-red-500/10 border-2 border-red-500/30 flex items-center justify-center auto-submit-shake">
-                    <svg className="w-10 h-10 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                    </svg>
-                  </div>
-                  <h2 className="text-2xl font-bold text-white mb-2">Submission Failed</h2>
-                  <p className="text-slate-400 text-sm mb-4">{autoSubmitError}</p>
-                  <button
-                    onClick={() => {
-                      autoSubmitTriggered.current = false;
-                      setAutoSubmitPhase(null);
-                      setAutoSubmitError('');
-                      handleTimeUp();
-                    }}
-                    className="px-6 py-3 rounded-xl font-bold transition-all duration-200 border bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white border-blue-500/50 shadow-lg shadow-blue-500/20 w-full"
-                  >
-                    Retry Submission
-                  </button>
-                </>
-              )}
-
-            </div>
-          </div>
-        )}
-
-        {/* ═══════════ SUBMIT CONFIRMATION MODAL ═══════════ */}
-        {showSubmitConfirmModal && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-slate-800/95 backdrop-blur-xl rounded-2xl p-8 max-w-md w-full text-center border border-slate-700/50 shadow-2xl">
-              <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
-                <svg className="w-8 h-8 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                </svg>
-              </div>
-              <h2 className="text-2xl font-bold mb-3 text-white">Submit Test?</h2>
-              <p className="text-slate-400 mb-3 text-sm">
-                You have answered <span className="text-white font-semibold">{answeredCount}</span> out of <span className="text-white font-semibold">{totalQuestions}</span> questions.
-              </p>
-              {answeredCount < totalQuestions && (
-                <p className="text-amber-400/80 text-xs mb-6 bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20">
-                  ⚠ {totalQuestions - answeredCount} question{totalQuestions - answeredCount !== 1 ? 's' : ''} left unanswered
-                </p>
-              )}
-              {answeredCount >= totalQuestions && <div className="mb-6"></div>}
-              <div className="flex gap-3">
-                <button onClick={handleCancelSubmit} className="flex-1 px-6 py-3 rounded-xl font-semibold bg-slate-700/80 hover:bg-slate-600 text-white border border-slate-600/50 transition-all duration-200">
-                  Go Back
-                </button>
-                <button onClick={handleConfirmSubmit} disabled={isSubmitting}
-                  className={`flex-1 px-6 py-3 rounded-xl font-bold transition-all duration-200 border ${isSubmitting ? 'bg-slate-700 text-slate-400 cursor-not-allowed border-slate-600' : 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white border-emerald-500/50 shadow-lg shadow-emerald-500/20'}`}
-                >
-                  {isSubmitting ? 'Submitting...' : 'Confirm Submit'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        {overlays}
       </div>
     </>);
 };

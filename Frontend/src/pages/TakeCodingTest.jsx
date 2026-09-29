@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import apiRequest, { apiStream } from '../services/api';
+import apiRequest from '../services/api';
 import { API_BASE_URL } from '../config/api';
-import LazyMonacoEditor from '../components/LazyMonacoEditor';
 import ProctorProvider from '../proctoring/ProctorProvider';
 import useProctor from '../proctoring/useProctor';
-import QuestionText from '../components/QuestionText';
+import CodingWorkspace from '../components/coding/CodingWorkspace';
+import { TimerPill } from '../components/coding/codingUi';
+import useCodingJudge from '../hooks/useCodingJudge';
 
 import {
   FALLBACK_LANGUAGES,
@@ -13,135 +14,6 @@ import {
   findLanguage,
   normalizeLanguageKey,
 } from '../config/languages';
-
-// Custom Dropdown Component
-function CustomDropdown({ value, onChange, options, className = "" }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsOpen(false);
-      }
-    };
-
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isOpen]);
-
-  const selectedOption = options.find(opt => opt.value === value) || options[0];
-
-  const handleSelect = (optionValue) => {
-    onChange(optionValue);
-    setIsOpen(false);
-  };
-
-  return (
-    <div className={`relative ${className}`} ref={dropdownRef}>
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between gap-1 px-3 h-8 rounded-md text-[13px] text-white/90 bg-white/[0.06] hover:bg-white/10 transition-colors"
-      >
-        <span className="truncate">{selectedOption.label}</span>
-        <svg className={`w-3.5 h-3.5 shrink-0 text-white/50 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-
-      {isOpen && (
-        <div className="absolute z-50 w-full mt-1 rounded-lg border border-white/10 bg-[#3c3c3c] shadow-2xl overflow-hidden animate-in">
-          <div className="max-h-60 overflow-y-auto lc-scroll py-1">
-            {options.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => handleSelect(option.value)}
-                className={`w-full text-left px-3 py-1.5 text-[13px] transition-colors flex items-center justify-between ${
-                  value === option.value ? 'text-white bg-white/10' : 'text-white/70 hover:bg-white/[0.06] hover:text-white'
-                }`}
-              >
-                <span>{option.label}</span>
-                {value === option.value && (
-                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Judge0 status ids (GET /statuses). Colours follow LeetCode's verdict palette.
-const ACCEPTED = 3;
-
-const WRONG_ANSWER = 4;
-const verdictColor = (statusId) => (statusId === ACCEPTED ? 'text-[#28c244]' : 'text-[#ef4743]');
-
-const verdictLabel = (statusId, description) => {
-  if (statusId === ACCEPTED) return 'Accepted';
-  return description || 'Wrong Answer';
-};
-
-/**
- * The verdict to show for a submission.
- *
- * The headline and the pass count must tell the same story. The judge reports
- * Accepted on its own comparison, so an "Accepted" sitting beside
- * "3 / 5 testcases passed" was possible; the count is what the score was
- * computed from, so the count wins.
- */
-const submitVerdict = (result) => {
-  const verdict = result?.verdict || { id: WRONG_ANSWER, description: 'Wrong Answer' };
-  const allPassed = result?.totalHidden > 0 && result.passedCount === result.totalHidden;
-  if (verdict.id === ACCEPTED && !allPassed) {
-    return { id: WRONG_ANSWER, description: 'Wrong Answer' };
-  }
-  return verdict;
-};
-
-/**
- * The clock time a submission was accepted, as the student's own clock reads it.
- *
- * The instant comes from the server -- the browser's clock belongs to the
- * student -- but it is rendered in their locale, because the point of a receipt
- * is that it matches the clock they are looking at. Returns null rather than a
- * placeholder when the server did not send one, so an older cached result shows
- * no time instead of "Invalid Date".
- */
-const submittedAtLabel = (iso) => {
-  if (!iso) return null;
-  const at = new Date(iso);
-  if (Number.isNaN(at.getTime())) return null;
-  return at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-};
-
-const DIFFICULTY_COLOR = {
-  easy: 'text-[#46c6c2]',
-  medium: 'text-[#ffb800]',
-  hard: 'text-[#f63737]',
-};
-
-/** LeetCode-style labelled value box used for Input / Output / Expected. */
-const LcBox = ({ label, value, tone = 'text-white/90' }) =>
-  value === null || value === undefined || value === '' ? null : (
-    <div className="mb-3">
-      <div className="text-[12px] text-white/50 mb-1.5">{label}</div>
-      <pre className={`bg-white/[0.06] rounded-lg px-3 py-2.5 text-[13px] font-mono whitespace-pre-wrap break-words ${tone}`}>
-        {value}
-      </pre>
-    </div>
-  );
 
 function TakeCodingTestInner({ submitRef }) {
   // Proctoring is centralised: the provider is mounted by the wrapper at the
@@ -158,18 +30,9 @@ function TakeCodingTestInner({ submitRef }) {
   const [languageByQ, setLanguageByQ] = useState({});
   const [supportedLanguages, setSupportedLanguages] = useState(FALLBACK_LANGUAGES);
 
-  // Judge0 execution state, kept per question so switching questions keeps results.
-  const [runResultsByQ, setRunResultsByQ] = useState({});
-  const [submitResultsByQ, setSubmitResultsByQ] = useState({});
-  const [customInputByQ, setCustomInputByQ] = useState({});
-  const [judgeBusy, setJudgeBusy] = useState(null);   // 'run' | 'submit' | null
-  const [judgeError, setJudgeError] = useState('');
-  const [consoleTab, setConsoleTab] = useState('result'); // 'result' | 'input'
-  const [lastActionByQ, setLastActionByQ] = useState({}); // 'run' | 'submit'
-  const [leftTab, setLeftTab] = useState('description'); // 'description' | 'submission'
-  const [submitProgress, setSubmitProgress] = useState(null); // live judge progress
-  const [selectedCase, setSelectedCase] = useState(0);
-  const [useCustomCase, setUseCustomCase] = useState(false);
+  // Judge0 execution state, kept per question so switching questions keeps
+  // results. Shared with TakeTest.jsx -- see hooks/useCodingJudge.js.
+  const judge = useCodingJudge(assignment?._id || assignmentId);
   // The exact boilerplate we last inserted per question. Comparing against this
   // (rather than re-deriving it) means a language switch still replaces an
   // untouched template even if the served boilerplate changes mid-session.
@@ -183,10 +46,7 @@ function TakeCodingTestInner({ submitRef }) {
     });
     return () => { cancelled = true; };
   }, []);
-  const [fontSize, setFontSize] = useState('medium');
-  const [editorTheme, setEditorTheme] = useState('vs-dark');
   const [showShortcuts, setShowShortcuts] = useState(false);
-  const [isFormatting, setIsFormatting] = useState(false);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
   const [lastSaved, setLastSaved] = useState(null);
 
@@ -636,27 +496,6 @@ function TakeCodingTestInner({ submitRef }) {
 
   const codingQuestions = useMemo(() => (test?.questions || []).filter(q => q.kind === 'coding'), [test]);
   const activeQ = codingQuestions[activeIndex];
-  const activeRunResult = activeQ ? runResultsByQ[activeQ._id] : null;
-  const activeSubmitResult = activeQ ? submitResultsByQ[activeQ._id] : null;
-  const lastAction = activeQ ? lastActionByQ[activeQ._id] : null;
-  const sampleCases = activeQ?.visibleTestCases?.length
-    ? activeQ.visibleTestCases
-    : (activeQ?.examples || []);
-
-  const formatClock = (seconds) => {
-    const total = Math.max(0, seconds || 0);
-    const h = Math.floor(total / 3600);
-    const m = Math.floor((total % 3600) / 60).toString().padStart(2, '0');
-    const sec = (total % 60).toString().padStart(2, '0');
-    return `${h}:${m}:${sec}`;
-  };
-
-  const fontSizeMap = {
-    'small': 12,
-    'medium': 14,
-    'large': 16,
-    'extra-large': 18
-  };
 
   // Boilerplate comes from the shared registry so it always matches what the
   // judge expects (e.g. Java's public class must be named Main).
@@ -664,82 +503,6 @@ function TakeCodingTestInner({ submitRef }) {
     (language) => findLanguage(supportedLanguages, language)?.boilerplate || '',
     [supportedLanguages]
   );
-
-  /**
-   * Send the current question's code to Judge0.
-   *  - 'run'    grades against the visible test cases (plus any custom input)
-   *  - 'submit' grades against the hidden test cases and records the score
-   */
-  const executeCode = useCallback(async (mode) => {
-    if (!activeQ || judgeBusy) return;
-
-    const sourceCode = codeByQ[activeQ._id] || '';
-    if (!sourceCode.trim()) {
-      setJudgeError('Write some code before running it.');
-      setConsoleTab('result');
-      return;
-    }
-
-    const questionId = activeQ._id;
-    const payload = {
-      assignmentId: assignment?._id || assignmentId,
-      questionId,
-      sourceCode,
-      language: languageByQ[questionId] || 'python',
-    };
-
-    setJudgeBusy(mode);
-    setJudgeError('');
-
-    if (mode === 'run') {
-      setConsoleTab('result');
-      const customInput = customInputByQ[questionId] || '';
-      try {
-        const result = await apiRequest('/coding/run', {
-          method: 'POST',
-          body: JSON.stringify({ ...payload, ...(customInput ? { customInput } : {}) }),
-        });
-        setRunResultsByQ((prev) => ({ ...prev, [questionId]: result }));
-        setSelectedCase(0);
-        setLastActionByQ((prev) => ({ ...prev, [questionId]: 'run' }));
-      } catch (error) {
-        setJudgeError(error?.message || 'Could not reach the code execution service. Please try again.');
-      } finally {
-        setJudgeBusy(null);
-      }
-      return;
-    }
-
-    // Submitting opens the submission panel on the left and streams the judge's
-    // real progress (how many hidden test cases have actually finished).
-    setLeftTab('submission');
-    setSubmitProgress({ phase: 'submitting', finished: 0, total: activeQ.hiddenTestCaseCount || 0 });
-    setSubmitResultsByQ((prev) => ({ ...prev, [questionId]: null }));
-
-    let finalResult = null;
-    let failure = null;
-    try {
-      await apiStream('/coding/submit?stream=1', {
-        body: payload,
-        onEvent: (event, data) => {
-          if (event === 'progress') setSubmitProgress(data);
-          else if (event === 'result') finalResult = data;
-          else if (event === 'failed') failure = data.message;
-        },
-      });
-
-      if (failure) throw new Error(failure);
-      if (!finalResult) throw new Error('The judge closed the connection before returning a result.');
-
-      setSubmitResultsByQ((prev) => ({ ...prev, [questionId]: finalResult }));
-      setLastActionByQ((prev) => ({ ...prev, [questionId]: 'submit' }));
-    } catch (error) {
-      setJudgeError(error?.message || 'Could not reach the code execution service. Please try again.');
-    } finally {
-      setSubmitProgress(null);
-      setJudgeBusy(null);
-    }
-  }, [activeQ, assignment, assignmentId, codeByQ, customInputByQ, judgeBusy, languageByQ]);
 
   // Auto-save.
   //
@@ -846,84 +609,26 @@ function TakeCodingTestInner({ submitRef }) {
     return () => window.removeEventListener('beforeunload', handleUnload);
   }, [assignmentId]);
 
-
-  /**
-   * Tidy whitespace. Deliberately NOT a reformatter.
-   *
-   * This used to run `line.trim()` over every line, which strips leading
-   * indentation -- pressing Format silently destroyed any Python submission
-   * and reduced C-family code to one flat block. There is no formatter for
-   * six languages on the client, so this does only what is provably safe:
-   * normalise line endings, drop trailing whitespace, collapse runs of blank
-   * lines, and end the file with a single newline. Indentation is untouched.
-   */
-  const formatCode = async () => {
+  // Switching language swaps in that language's starting code, but only if the
+  // student has not written anything of their own.
+  const handleLanguageChange = (newLang) => {
     if (!activeQ) return;
-    setIsFormatting(true);
-    try {
-      const currentCode = codeByQ[activeQ._id] || '';
-      const formattedCode = currentCode
-        .replace(/\r\n/g, '\n')
-        .split('\n')
-        .map((line) => line.replace(/[ \t]+$/, ''))
-        .join('\n')
-        .replace(/\n{3,}/g, '\n\n')
-        .replace(/\s*$/, '\n');
-      if (formattedCode !== currentCode) {
-        setCodeByQ(prev => ({ ...prev, [activeQ._id]: formattedCode }));
-      }
-    } catch (e) {
-      console.error('Formatting failed', e);
-    } finally {
-      setIsFormatting(false);
+    const questionId = activeQ._id;
+    setLanguageByQ(prev => ({ ...prev, [questionId]: newLang }));
+    const currentCode = codeByQ[questionId] || '';
+    const untouched = currentCode.trim() === ''
+      || currentCode === insertedTemplateRef.current[questionId]
+      || currentCode === getLanguageTemplate(languageByQ[questionId] || 'python');
+    if (untouched) {
+      const nextTemplate = getLanguageTemplate(newLang);
+      insertedTemplateRef.current[questionId] = nextTemplate;
+      setCodeByQ(prev => ({ ...prev, [questionId]: nextTemplate }));
     }
   };
 
-  // CSS styles for scrollbars
-  const scrollbarStyles = `
-    .lc-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
-    .lc-scroll::-webkit-scrollbar-track { background: transparent; }
-    .lc-scroll::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.16);
-      border-radius: 4px;
-    }
-    .lc-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.28); }
-    .lc-scroll { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.16) transparent; }
-
-    /* Markdown inside the description, matching LeetCode's typography */
-    .lc-prose p { margin: 0 0 1rem 0; }
-    .lc-prose strong, .lc-prose b { color: #fff; font-weight: 600; }
-    .lc-prose ul, .lc-prose ol { margin: 0 0 1rem 1.25rem; list-style: revert; }
-    .lc-prose li { margin: 0.25rem 0; }
-    .lc-prose a { color: #46c6c2; }
-    .lc-prose code {
-      background: rgba(255, 255, 255, 0.07);
-      color: rgba(239, 241, 246, 0.75);
-      font-family: Menlo, Monaco, Consolas, monospace;
-      font-size: 12px;
-      padding: 2px 4px;
-      border-radius: 5px;
-    }
-    .lc-prose pre {
-      background: rgba(255, 255, 255, 0.06);
-      border-radius: 8px;
-      padding: 12px;
-      overflow-x: auto;
-    }
-    .lc-prose pre code { background: transparent; padding: 0; font-size: 13px; }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(-4px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    .animate-in { animation: fadeIn 0.15s ease-out; }
-  `;
 
   return (
     <>
-      {/* Custom Scrollbar Styles */}
-      <style dangerouslySetInnerHTML={{ __html: scrollbarStyles }} />
-
       {showSubmitConfirmModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <div className="bg-[#262626] border border-white/10 rounded-lg p-6 max-w-sm w-full">
@@ -955,12 +660,10 @@ function TakeCodingTestInner({ submitRef }) {
       {!test && !loading && !error && <div className="h-screen bg-[#1a1a1a] text-white/50 flex items-center justify-center text-[14px]">Loading...</div>}
 
       {!loading && !error && test && (
-        <div className="h-screen flex flex-col bg-[#1a1a1a] text-[#f5f5f5] overflow-hidden">
-
-          {/* ---------------- Top bar ---------------- */}
-          <header className="h-12 flex items-center justify-between gap-3 px-3 flex-shrink-0">
-            <div className="flex items-center gap-3 min-w-0">
-              <span className="text-[14px] font-medium text-white/90 truncate max-w-[220px]">{test.title}</span>
+        <>
+          <CodingWorkspace
+            title={test.title}
+            headerLeft={(
               <div className="flex items-center gap-1 text-white/60">
                 <button
                   type="button"
@@ -986,570 +689,29 @@ function TakeCodingTestInner({ submitRef }) {
                   </svg>
                 </button>
               </div>
-            </div>
-
-            {/* Run / Submit, centred like LeetCode's toolbar */}
-            <div className="flex items-center gap-1 bg-white/[0.06] rounded-lg p-1">
-              <button
-                type="button"
-                onClick={() => executeCode('run')}
-                disabled={!!judgeBusy}
-                className="h-8 px-3 rounded-md text-[13px] text-white/90 hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent flex items-center gap-1.5 transition-colors"
-              >
-                {judgeBusy === 'run' ? (
-                  <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                ) : (
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M6.3 4.4a1 1 0 011.02-.06l8 4.6a1 1 0 010 1.74l-8 4.6A1 1 0 016 14.42V5.58a1 1 0 01.3-1.18z" />
-                  </svg>
-                )}
-                Run
-              </button>
-              <button
-                type="button"
-                onClick={() => executeCode('submit')}
-                disabled={!!judgeBusy}
-                className="h-8 px-3 rounded-md text-[13px] text-[#28c244] hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent flex items-center gap-1.5 transition-colors"
-              >
-                {judgeBusy === 'submit' ? (
-                  <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                ) : (
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 15V6a2 2 0 012-2h10a2 2 0 012 2v9M12 4v9m0-9l-3 3m3-3l3 3" />
-                  </svg>
-                )}
-                Submit
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2 flex-shrink-0">
-              {testStarted && (
-                <div className={`h-8 px-3 rounded-md flex items-center gap-1.5 text-[13px] font-medium tabular-nums ${
-                  timeRemaining <= 60 ? 'bg-[#ef4743]/15 text-[#ef4743]'
-                    : timeRemaining <= 300 ? 'bg-[#ffb800]/15 text-[#ffb800]'
-                      : 'bg-white/[0.06] text-white/80'
-                }`}>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  {formatClock(timeRemaining)}
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={handleSubmitClick}
-                disabled={isSubmitting}
-                className="h-8 px-3 rounded-md text-[13px] font-medium bg-[#28c244]/15 text-[#28c244] hover:bg-[#28c244]/25 disabled:opacity-40 transition-colors"
-              >
-                {isSubmitting ? 'Submitting...' : 'Submit Test'}
-              </button>
-            </div>
-          </header>
-
-          {/* ---------------- Workspace ---------------- */}
-          <div className="flex-1 flex gap-1.5 px-1.5 pb-1.5 min-h-0">
-
-            {/* ---- Description panel ---- */}
-            <div className="w-1/2 flex flex-col min-h-0 bg-[#262626] rounded-lg overflow-hidden">
-              <div className="h-10 flex items-center gap-4 px-4 border-b border-white/10 flex-shrink-0">
+            )}
+            headerRight={(
+              <>
+                {testStarted && <TimerPill seconds={timeRemaining} />}
                 <button
                   type="button"
-                  onClick={() => setLeftTab('description')}
-                  className={`text-[14px] font-medium flex items-center gap-1.5 transition-colors ${leftTab === 'description' ? 'text-[#f5f5f5]' : 'text-white/60 hover:text-white/80'}`}
+                  onClick={handleSubmitClick}
+                  disabled={isSubmitting}
+                  className="h-8 px-3 rounded-md text-[13px] font-medium bg-[#28c244]/15 text-[#28c244] hover:bg-[#28c244]/25 disabled:opacity-40 transition-colors"
                 >
-                  <svg className="w-4 h-4 text-[#46c6c2]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  Description
+                  {isSubmitting ? 'Submitting...' : 'Submit Test'}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setLeftTab('submission')}
-                  className={`text-[14px] font-medium flex items-center gap-1.5 transition-colors ${leftTab === 'submission' ? 'text-[#f5f5f5]' : 'text-white/60 hover:text-white/80'}`}
-                >
-                  <svg className="w-4 h-4 text-[#ffb800]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                  </svg>
-                  Submission
-                </button>
-              </div>
-
-              {leftTab === 'submission' ? (
-                <div className="flex-1 overflow-y-auto lc-scroll px-5 py-4">
-                  {/* ---- live judging ---- */}
-                  {submitProgress ? (
-                    <div>
-                      <div className="flex items-center gap-2 mb-4">
-                        <svg className="w-4 h-4 animate-spin text-[#ffb800]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                        <span className="text-[16px] font-medium text-[#ffb800]">
-                          {submitProgress.phase === 'running' ? 'Judging' : 'Pending'}
-                        </span>
-                      </div>
-
-                      <div className="text-[13px] text-white/60 mb-2">
-                        {submitProgress.phase === 'running' && submitProgress.total > 0
-                          ? `Running test case ${Math.min(submitProgress.finished + 1, submitProgress.total)} of ${submitProgress.total}...`
-                          : submitProgress.phase === 'queued'
-                            ? 'Your solution is in the queue. This usually takes a few seconds.'
-                            : 'Sending your solution for evaluation...'}
-                      </div>
-
-                      <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
-                        <div
-                          className="h-full bg-[#ffb800] transition-all duration-300 ease-out"
-                          style={{ width: `${submitProgress.total ? Math.round((submitProgress.finished / submitProgress.total) * 100) : 8}%` }}
-                        />
-                      </div>
-                      <div className="text-[12px] text-white/40 mt-1.5 tabular-nums">
-                        {submitProgress.total
-                          ? `${submitProgress.finished} of ${submitProgress.total} test cases completed`
-                          : 'Preparing test cases...'}
-                      </div>
-                    </div>
-                  ) : activeSubmitResult ? (
-                    <div>
-                      {/* ---- verdict ---- */}
-                      <div className="flex items-baseline gap-3 mb-1">
-                        <span className={`text-[22px] font-medium ${verdictColor(submitVerdict(activeSubmitResult).id)}`}>
-                          {verdictLabel(submitVerdict(activeSubmitResult).id, submitVerdict(activeSubmitResult).description)}
-                        </span>
-                        <span className="text-[13px] text-white/50">
-                          {activeSubmitResult.passedCount} / {activeSubmitResult.totalHidden} testcases passed
-                        </span>
-                      </div>
-                      <div className="text-[12px] text-white/40 mb-3">
-                        Submitted in {findLanguage(supportedLanguages, activeSubmitResult.language)?.label || activeSubmitResult.language}
-                        {submittedAtLabel(activeSubmitResult.submittedAt)
-                          ? ` at ${submittedAtLabel(activeSubmitResult.submittedAt)}`
-                          : ''}
-                      </div>
-
-                      {/* Best-wins: persistCodingResponse keeps whichever attempt
-                          passed more cases, so resubmitting can only ever help.
-                          When an earlier attempt is the one standing, say so with
-                          its number -- otherwise a student reading "6 / 10" at the
-                          top takes it for their grade. */}
-                      {activeSubmitResult.graded && !activeSubmitResult.graded.isThisAttempt ? (
-                        <div className="text-[12px] mb-5 rounded-lg bg-[#28c244]/10 border border-[#28c244]/25 px-3 py-2">
-                          <span className="text-white/70">Your best attempt is the one graded: </span>
-                          <span className="text-[#28c244] font-medium">
-                            {activeSubmitResult.graded.passedCount} / {activeSubmitResult.graded.totalHidden} testcases
-                          </span>
-                          <span className="text-white/50">. This attempt did not beat it, so it has not replaced it.</span>
-                        </div>
-                      ) : (
-                        <div className="text-[12px] text-white/50 mb-5 rounded-lg bg-white/[0.04] px-3 py-2">
-                          Your best submission is the one graded. Submitting again can only
-                          improve your result, never lower it.
-                        </div>
-                      )}
-
-                      {activeSubmitResult.compileOutput && (
-                        <div className="mt-4">
-                          <div className="text-[12px] text-white/50 mb-1.5">Compile Error</div>
-                          <pre className="bg-white/[0.06] rounded-lg px-3 py-2.5 text-[13px] font-mono text-[#ef4743] whitespace-pre-wrap break-words">
-                            {activeSubmitResult.compileOutput}
-                          </pre>
-                        </div>
-                      )}
-                    </div>
-                  ) : judgeError ? (
-                    <div className="text-[14px] text-[#ef4743]">{judgeError}</div>
-                  ) : (
-                    <div className="text-[13px] text-white/40">
-                      Submit your code to see the result here.
-                    </div>
-                  )}
-                </div>
-              ) : (
-
-              <div className="flex-1 overflow-y-auto lc-scroll px-5 py-4">
-                <h1 className="text-[22px] font-medium text-[#f5f5f5] leading-8 mb-3">
-                  {activeIndex + 1}. {activeQ?.title || test.title}
-                </h1>
-
-                <div className="flex flex-wrap items-center gap-2 mb-5">
-                  {activeQ?.difficulty && (
-                    <span className={`px-2.5 py-1 rounded-full bg-white/10 text-[12px] ${DIFFICULTY_COLOR[String(activeQ.difficulty).toLowerCase()] || 'text-white/70'}`}>
-                      {activeQ.difficulty}
-                    </span>
-                  )}
-                  {(activeQ?.topics || []).map((topic, i) => (
-                    <span key={i} className="px-2.5 py-1 rounded-full bg-white/10 text-[12px] text-white/60">{topic}</span>
-                  ))}
-                  {activeQ?.hint && (
-                    <span className="px-2.5 py-1 rounded-full bg-white/10 text-[12px] text-white/60">Hint</span>
-                  )}
-                </div>
-
-                <div className="lc-prose text-[14px] leading-6 text-[rgba(239,241,246,0.75)]">
-                  <QuestionText text={activeQ?.text} />
-                </div>
-
-                {sampleCases.length > 0 && (
-                  <div className="mt-6 space-y-5">
-                    {sampleCases.map((example, index) => (
-                      <div key={index}>
-                        <div className="text-[14px] text-white mb-2">Example {index + 1}:</div>
-                        <pre className="border-l-2 border-white/[0.14] pl-4 font-mono text-[13px] leading-6 text-white/60 whitespace-pre-wrap break-words">
-<span className="text-white/80 font-semibold">Input: </span>{example.input}
-<span className="text-white/80 font-semibold">{'\n'}Output: </span>{example.output}{example.explanation ? (
-<><span className="text-white/80 font-semibold">{'\n'}Explanation: </span>{example.explanation}</>
-) : null}
-                        </pre>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {activeQ?.guidelines && (
-                  <div className="mt-6">
-                    <div className="text-[14px] text-white mb-2">Constraints:</div>
-                    <div className="text-[13px] leading-6 text-white/60 whitespace-pre-wrap">{activeQ.guidelines}</div>
-                  </div>
-                )}
-              </div>
-              )}
-            </div>
-
-            {/* ---- Editor + console column ---- */}
-            <div className="w-1/2 flex flex-col gap-1.5 min-h-0">
-
-              {/* Code panel */}
-              <div className="flex-1 flex flex-col min-h-0 bg-[#262626] rounded-lg overflow-hidden">
-                <div className="h-10 flex items-center justify-between gap-2 px-3 border-b border-white/10 flex-shrink-0">
-                  <span className="text-[14px] font-medium text-[#f5f5f5] flex items-center gap-1.5">
-                    <svg className="w-4 h-4 text-white/50" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                    </svg>
-                    Code
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-32">
-                      <CustomDropdown
-                        value={languageByQ[activeQ?._id] || 'python'}
-                        onChange={(newLang) => {
-                          setLanguageByQ(prev => ({ ...prev, [activeQ._id]: newLang }));
-                          // Only replace the code if the student has not touched it.
-                          const currentCode = codeByQ[activeQ._id] || '';
-                          const untouched = currentCode.trim() === ''
-                            || currentCode === insertedTemplateRef.current[activeQ._id]
-                            || currentCode === getLanguageTemplate(languageByQ[activeQ._id] || 'python');
-                          if (untouched) {
-                            const nextTemplate = getLanguageTemplate(newLang);
-                            insertedTemplateRef.current[activeQ._id] = nextTemplate;
-                            setCodeByQ(prev => ({ ...prev, [activeQ._id]: nextTemplate }));
-                          }
-                        }}
-                        options={supportedLanguages.map((entry) => ({ value: entry.key, label: entry.label }))}
-                      />
-                    </div>
-                    <div className="w-28">
-                      <CustomDropdown
-                        value={editorTheme}
-                        onChange={setEditorTheme}
-                        options={[
-                          { value: 'vs-dark', label: 'Dark' },
-                          { value: 'vs', label: 'Light' },
-                          { value: 'hc-black', label: 'Contrast' }
-                        ]}
-                      />
-                    </div>
-                    <div className="w-24">
-                      <CustomDropdown
-                        value={fontSize}
-                        onChange={setFontSize}
-                        options={[
-                          { value: 'small', label: 'Small' },
-                          { value: 'medium', label: 'Medium' },
-                          { value: 'large', label: 'Large' },
-                          { value: 'extra-large', label: 'X-Large' }
-                        ]}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={formatCode}
-                      disabled={isFormatting}
-                      title="Format code"
-                      className="w-8 h-8 rounded-md text-white/60 hover:bg-white/10 hover:text-white/90 disabled:opacity-40 flex items-center justify-center transition-colors"
-                    >
-                      <svg className={`w-4 h-4 ${isFormatting ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                        {isFormatting
-                          ? <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                          : <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h10M4 18h14" />}
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex-1 min-h-0">
-                  <LazyMonacoEditor
-                    height="100%"
-                    language={findLanguage(supportedLanguages, languageByQ[activeQ?._id] || 'python')?.monacoLanguage || 'plaintext'}
-                    theme={editorTheme}
-                    value={codeByQ[activeQ?._id] || ''}
-                    onChange={(val) => setCodeByQ(prev => ({ ...prev, [activeQ._id]: val }))}
-                    options={{
-                      fontSize: fontSizeMap[fontSize],
-                      minimap: { enabled: false },
-                      lineNumbers: 'on',
-                      scrollBeyondLastLine: false,
-                      automaticLayout: true,
-                      tabSize: 4,
-                      insertSpaces: true,
-                      wordWrap: 'on',
-                      folding: true,
-                      matchBrackets: 'always',
-                      autoClosingBrackets: 'always',
-                      autoClosingQuotes: 'always',
-                      suggestOnTriggerCharacters: true,
-                      quickSuggestions: { other: true, comments: false, strings: false },
-                      parameterHints: { enabled: true },
-                      renderLineHighlight: 'line',
-                      smoothScrolling: true,
-                      fontFamily: "'Menlo', 'Monaco', 'Consolas', 'Courier New', monospace",
-                      lineHeight: 1.6,
-                      padding: { top: 12, bottom: 12 },
-                      bracketPairColorization: { enabled: true },
-                      guides: { bracketPairs: true, indentation: true },
-                      scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Console panel */}
-              <div className="h-[38%] flex flex-col min-h-0 bg-[#262626] rounded-lg overflow-hidden">
-                <div className="h-10 flex items-center gap-4 px-4 border-b border-white/10 flex-shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setConsoleTab('input')}
-                    className={`text-[14px] font-medium transition-colors ${consoleTab === 'input' ? 'text-[#f5f5f5]' : 'text-white/60 hover:text-white/80'}`}
-                  >
-                    Testcase
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConsoleTab('result')}
-                    className={`text-[14px] font-medium transition-colors ${consoleTab === 'result' ? 'text-[#f5f5f5]' : 'text-white/60 hover:text-white/80'}`}
-                  >
-                    Test Result
-                  </button>
-                </div>
-
-                <div className="flex-1 overflow-y-auto lc-scroll px-4 py-3">
-                  {consoleTab === 'input' ? (
-                    <div>
-                      <div className="flex items-center gap-2 mb-3 flex-wrap">
-                        {sampleCases.map((_, index) => (
-                          <button
-                            key={index}
-                            type="button"
-                            onClick={() => { setUseCustomCase(false); setSelectedCase(index); }}
-                            className={`px-3 py-1 rounded-lg text-[13px] transition-colors ${
-                              !useCustomCase && selectedCase === index ? 'bg-white/10 text-white' : 'text-white/60 hover:bg-white/[0.06]'
-                            }`}
-                          >
-                            Case {index + 1}
-                          </button>
-                        ))}
-                        <button
-                          type="button"
-                          onClick={() => setUseCustomCase(true)}
-                          className={`px-3 py-1 rounded-lg text-[13px] transition-colors ${
-                            useCustomCase ? 'bg-white/10 text-white' : 'text-white/60 hover:bg-white/[0.06]'
-                          }`}
-                        >
-                          + Custom
-                        </button>
-                      </div>
-
-                      {useCustomCase ? (
-                        <div>
-                          <div className="text-[12px] text-white/50 mb-1.5">stdin</div>
-                          <textarea
-                            id="coding-custom-input"
-                            value={customInputByQ[activeQ?._id] || ''}
-                            onChange={(event) => setCustomInputByQ((prev) => ({ ...prev, [activeQ._id]: event.target.value }))}
-                            spellCheck="false"
-                            placeholder="Type input for your program..."
-                            className="w-full h-20 bg-white/[0.06] rounded-lg px-3 py-2.5 text-[13px] font-mono text-white/90 placeholder-white/30 outline-none focus:bg-white/[0.09] resize-none"
-                          />
-                          <div className="text-[12px] text-white/40 mt-2">Sent to your program on Run.</div>
-                        </div>
-                      ) : sampleCases[selectedCase] ? (
-                        <div>
-                          {!activeQ?.visibleTestCases?.length && (
-                            <div className="text-[12px] text-[#ffb800] mb-2">
-                              Illustration from the question — Run has no sample cases to execute for this
-                              question. Use Custom input to try your code.
-                            </div>
-                          )}
-                          <LcBox label="Input" value={sampleCases[selectedCase].input} />
-                          <LcBox label="Expected" value={sampleCases[selectedCase].output} />
-                        </div>
-                      ) : (
-                        <div className="text-[13px] text-white/40">No sample test cases for this question.</div>
-                      )}
-                    </div>
-                  ) : (
-                    <div>
-                      {judgeError && (
-                        <div className="text-[14px] text-[#ef4743] mb-2">{judgeError}</div>
-                      )}
-
-                      {/* ---- Submit verdict (no marks shown) ---- */}
-                      {lastAction === 'submit' && activeSubmitResult && (
-                        <div>
-                          <div className="flex items-baseline gap-3 mb-1">
-                            <span className={`text-[18px] font-medium ${verdictColor(submitVerdict(activeSubmitResult).id)}`}>
-                              {verdictLabel(submitVerdict(activeSubmitResult).id, submitVerdict(activeSubmitResult).description)}
-                            </span>
-                            {submitVerdict(activeSubmitResult).id !== ACCEPTED && (
-                              <span className="text-[13px] text-white/50">
-                                {activeSubmitResult.passedCount} / {activeSubmitResult.totalHidden} testcases passed
-                              </span>
-                            )}
-                          </div>
-
-                          {submitVerdict(activeSubmitResult).id === ACCEPTED && (
-                            <div className="text-[13px] text-white/50 mb-1">
-                              {activeSubmitResult.passedCount} / {activeSubmitResult.totalHidden} testcases passed
-                            </div>
-                          )}
-
-                          {submittedAtLabel(activeSubmitResult.submittedAt) && (
-                            <div className="text-[12px] text-white/40 mb-2">
-                              Submitted at {submittedAtLabel(activeSubmitResult.submittedAt)}
-                            </div>
-                          )}
-
-                          {/* Best-wins grading; see the note in the submission panel. */}
-                          {activeSubmitResult.graded && !activeSubmitResult.graded.isThisAttempt ? (
-                            <div className="text-[12px] text-[#28c244] mb-3">
-                              Best attempt graded: {activeSubmitResult.graded.passedCount} / {activeSubmitResult.graded.totalHidden} testcases
-                            </div>
-                          ) : (
-                            <div className="text-[12px] text-white/50 mb-3">
-                              Your best submission is the one graded.
-                            </div>
-                          )}
-
-                          {activeSubmitResult.compileOutput && (
-                            <pre className="mt-3 bg-white/[0.06] rounded-lg px-3 py-2.5 text-[13px] font-mono text-[#ef4743] whitespace-pre-wrap break-words">
-                              {activeSubmitResult.compileOutput}
-                            </pre>
-                          )}
-                        </div>
-                      )}
-
-                      {/* ---- Run results ---- */}
-                      {lastAction === 'run' && activeRunResult && (
-                        <div>
-                          <div className="mb-3">
-                            {/* `total === 0` means nothing was checked against an
-                                expectation -- a question with no visible test
-                                cases, or a custom-input-only run. Calling that
-                                "Accepted" told students their code had passed
-                                when not a single case had run. */}
-                            {activeRunResult.total === 0 ? (
-                              <span className="text-[18px] font-medium text-white/60">
-                                {activeRunResult.customResult
-                                  ? 'Ran with your input'
-                                  : 'No sample test cases to run'}
-                              </span>
-                            ) : (
-                              <span className={`text-[18px] font-medium ${verdictColor(activeRunResult.passed === activeRunResult.total ? ACCEPTED : WRONG_ANSWER)}`}>
-                                {activeRunResult.passed === activeRunResult.total ? 'Accepted' : 'Wrong Answer'}
-                              </span>
-                            )}
-                            {activeRunResult.total > 0 && (
-                              <span className="ml-2 text-[13px] text-white/50">
-                                {activeRunResult.passed}/{activeRunResult.total} sample cases passed
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-2 mb-3 flex-wrap">
-                            {activeRunResult.results?.map((result, index) => (
-                              <button
-                                key={index}
-                                type="button"
-                                onClick={() => setSelectedCase(index)}
-                                className={`px-3 py-1 rounded-lg text-[13px] flex items-center gap-1.5 transition-colors ${
-                                  selectedCase === index ? 'bg-white/10 text-white' : 'text-white/60 hover:bg-white/[0.06]'
-                                }`}
-                              >
-                                <span className={`w-1.5 h-1.5 rounded-full ${result.passed ? 'bg-[#28c244]' : 'bg-[#ef4743]'}`} />
-                                Case {index + 1}
-                              </button>
-                            ))}
-                            {activeRunResult.customResult && (
-                              <button
-                                type="button"
-                                onClick={() => setSelectedCase(-1)}
-                                className={`px-3 py-1 rounded-lg text-[13px] transition-colors ${
-                                  selectedCase === -1 ? 'bg-white/10 text-white' : 'text-white/60 hover:bg-white/[0.06]'
-                                }`}
-                              >
-                                Custom
-                              </button>
-                            )}
-                          </div>
-
-                          {(() => {
-                            const shown = selectedCase === -1
-                              ? activeRunResult.customResult
-                              : activeRunResult.results?.[selectedCase];
-                            if (!shown) return null;
-                            return (
-                              <div>
-                                {shown.compileOutput ? (
-                                  <LcBox label="Compile Error" value={shown.compileOutput} tone="text-[#ef4743]" />
-                                ) : (
-                                  <>
-                                    {selectedCase !== -1 && (
-                                      <div className="mb-3 text-[13px]">
-                                        <span className={shown.passed ? 'text-[#28c244]' : 'text-[#ef4743]'}>
-                                          {shown.passed ? 'Accepted' : (shown.status?.description || 'Wrong Answer')}
-                                        </span>
-                                      </div>
-                                    )}
-                                    <LcBox label="Input" value={shown.input} />
-                                    <LcBox label="Output" value={shown.stdout} />
-                                    {selectedCase !== -1 && <LcBox label="Expected" value={shown.expected} />}
-                                    <LcBox label="Stderr" value={shown.stderr} tone="text-[#ef4743]" />
-                                    {shown.message && <LcBox label="Note" value={shown.message} tone="text-[#ffb800]" />}
-                                  </>
-                                )}
-                                <div className="flex items-center gap-6 text-[12px] text-white/50">
-                                  {shown.time && <span>Runtime <span className="text-white/80">{Math.round(Number(shown.time) * 1000)} ms</span></span>}
-                                  {shown.memory && <span>Memory <span className="text-white/80">{(shown.memory / 1024).toFixed(1)} MB</span></span>}
-                                </div>
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      )}
-
-                      {!lastAction && !judgeError && (
-                        <div className="text-[13px] text-white/40">
-                          You must run your code first.
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
+              </>
+            )}
+            question={activeQ}
+            heading={`${activeIndex + 1}. ${activeQ?.title || test.title}`}
+            code={codeByQ[activeQ?._id] || ''}
+            onCodeChange={(val) => activeQ && setCodeByQ(prev => ({ ...prev, [activeQ._id]: val }))}
+            language={languageByQ[activeQ?._id] || 'python'}
+            onLanguageChange={handleLanguageChange}
+            supportedLanguages={supportedLanguages}
+            judge={judge}
+          />
 
           {/* Keyboard Shortcuts Modal */}
           {showShortcuts && (
@@ -1574,7 +736,7 @@ function TakeCodingTestInner({ submitRef }) {
               </div>
             </div>
           )}
-        </div>
+        </>
       )}
     </>
   );
