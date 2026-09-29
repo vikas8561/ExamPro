@@ -68,6 +68,7 @@ function gradeSubmission({ test, responses, priorAutoGraded = new Map() }) {
 
     let isCorrect = false;
     let points = 0;
+    let judged = null;
     // Tracks whether the score came from a grader rather than a mentor, so a
     // repeat submit can carry it forward again.
     let autoGraded = question.kind === "mcq";
@@ -78,7 +79,7 @@ function gradeSubmission({ test, responses, priorAutoGraded = new Map() }) {
       points = marked.points;
       if (isCorrect) correctCount++; else incorrectCount++;
     } else if (question.kind === "theory" || question.kind === "coding") {
-      const judged = question.kind === "coding"
+      judged = question.kind === "coding"
         ? priorAutoGraded.get(question._id.toString())
         : null;
 
@@ -101,7 +102,9 @@ function gradeSubmission({ test, responses, priorAutoGraded = new Map() }) {
       questionId: question._id,
       selectedOption: userResponse.selectedOption ?? null,
       textAnswer: userResponse.textAnswer ?? null,
-      language: userResponse.language || null,
+      // TakeTest (MCQ and mixed papers) does not send a language on final
+      // submit; the Judge0 result recorded mid-test knows what was run.
+      language: userResponse.language || judged?.language || null,
       isCorrect,
       points,
       autoGraded,

@@ -108,6 +108,12 @@ export default function CreateTest() {
     });
   }, [mentorSubjects]);
 
+  // MCQ + Coding tests are open to DSA and Interview Preparation mentors.
+  // Keep in sync with mentorTypeRestriction in Backend/routes/tests.js.
+  const mentorCanCreateMixed = useMemo(() => {
+    return mentorHasDSA || mentorSubjects.some((s) => s.toLowerCase().includes("interview"));
+  }, [mentorHasDSA, mentorSubjects]);
+
   // Detect role and fetch mentor subjects on mount
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -163,6 +169,13 @@ export default function CreateTest() {
       setForm((prev) => ({ ...prev, type: "mcq" }));
     }
   }, [isMentor, mentorHasDSA, form.type]);
+
+  // Same for MCQ + Coding, which also needs DSA or Interview Preparation
+  useEffect(() => {
+    if (isMentor && !mentorCanCreateMixed && form.type === "mixed") {
+      setForm((prev) => ({ ...prev, type: "mcq" }));
+    }
+  }, [isMentor, mentorCanCreateMixed, form.type]);
 
   // Auto-select subject if mentor has only 1 assigned subject and none selected
   useEffect(() => {
@@ -299,6 +312,8 @@ export default function CreateTest() {
         return ["mcq"];
       case "coding":
         return ["coding"];
+      case "mixed":
+        return ["mcq", "coding"];
       case "theory":
         return ["theory"];
       case "practice":
@@ -532,6 +547,10 @@ export default function CreateTest() {
       }
       if (form.type === "coding" && !mentorHasDSA) {
         alert("Only mentors assigned to DSA can create coding tests.");
+        return;
+      }
+      if (form.type === "mixed" && !mentorCanCreateMixed) {
+        alert("Only mentors assigned to DSA or Interview Preparation can create MCQ + Coding tests.");
         return;
       }
     }
@@ -801,6 +820,9 @@ export default function CreateTest() {
                     {(!isMentor || mentorHasDSA) && (
                       <option value="coding" className="bg-[#181A22]">Coding Only</option>
                     )}
+                    {(!isMentor || mentorCanCreateMixed) && (
+                      <option value="mixed" className="bg-[#181A22]">MCQ + Coding</option>
+                    )}
                     <option value="theory" className="bg-[#181A22]">Theory Only</option>
                     <option value="practice" className="bg-[#181A22]">Practice Test (MCQ Only)</option>
                   </select>
@@ -891,6 +913,7 @@ export default function CreateTest() {
                   <div className="mt-1.5 text-[11px] text-[#555C6D]">
                     {form.negativeMarkingPercent === 0 ? "No penalty for wrong answers" :
                       `${Math.round(form.negativeMarkingPercent * 100)}% penalty for wrong answers`}
+                    {form.type === "mixed" && " (MCQ questions only)"}
                   </div>
                 </div>
               )}

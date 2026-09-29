@@ -58,10 +58,48 @@ export const EXAMPLE_CODING_JSON = `{
   ]
 }`;
 
+// For "MCQ + Coding" tests: one file, each question carrying its own `kind`.
+export const EXAMPLE_MIXED_JSON = `{
+  "questions": [
+    {
+      "kind": "mcq",
+      "text": "What is the time complexity of binary search on a sorted array of n elements?",
+      "options": ["O(n)", "O(log n)", "O(n log n)", "O(1)"],
+      "answer": "O(log n)",
+      "points": 2
+    },
+    {
+      "kind": "mcq",
+      "text": "Which data structure follows the Last In, First Out (LIFO) principle?",
+      "options": ["Queue", "Stack", "Linked List", "Heap"],
+      "answer": "Stack",
+      "points": 1
+    },
+    {
+      "kind": "coding",
+      "text": "Given an integer n followed by n integers, print the largest of them.\\n\\n**Input:** first line n, second line n space-separated integers\\n\\n**Output:** a single integer",
+      "language": "cpp",
+      "guidelines": "Read from stdin, write the answer to stdout. Do not print anything else.",
+      "examples": [
+        { "input": "5\\n3 9 2 7 4", "output": "9" }
+      ],
+      "visibleTestCases": [
+        { "input": "5\\n3 9 2 7 4", "output": "9" },
+        { "input": "3\\n-1 -5 -2", "output": "-1" }
+      ],
+      "hiddenTestCases": [
+        { "input": "1\\n42", "output": "42", "marks": 2 },
+        { "input": "4\\n100 200 150 199", "output": "200", "marks": 3 }
+      ]
+    }
+  ]
+}`;
+
 export const EXAMPLES = [
   { key: 'mcq', label: 'MCQ', json: EXAMPLE_MCQ_JSON },
   { key: 'theory', label: 'Theory', json: EXAMPLE_THEORY_JSON },
   { key: 'coding', label: 'Coding', json: EXAMPLE_CODING_JSON },
+  { key: 'mixed', label: 'MCQ + Coding', json: EXAMPLE_MIXED_JSON },
 ];
 
 /** Test case values must be strings — JSON authors routinely write numbers. */

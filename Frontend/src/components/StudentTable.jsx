@@ -180,7 +180,7 @@ const StudentTable = ({ type, data, currentPage = 1, totalPages = 1, totalItems 
                                 border: '1px solid rgba(255, 255, 255, 0.2)'
                               }}
                             >
-                              {item.testId.type}
+                              {item.testId.type === "mixed" ? "MCQ + Coding" : item.testId.type}
                             </div>
                           )}
                         </div>
@@ -401,7 +401,7 @@ const StudentTable = ({ type, data, currentPage = 1, totalPages = 1, totalItems 
                                 border: '1px solid rgba(255, 255, 255, 0.2)'
                               }}
                             >
-                              {item.testId.type}
+                              {item.testId.type === "mixed" ? "MCQ + Coding" : item.testId.type}
                             </div>
                           )}
                         </div>

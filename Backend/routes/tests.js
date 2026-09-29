@@ -14,6 +14,32 @@ const Mentor = require("../models/Mentor");
 const Subject = require("../models/Subject");
 const { invalidateTestCache } = require("../utils/testCache");
 
+// Mentor subject names arrive lowercased and trimmed.
+const isDSASubject = (s) => s === "dsa" || s.includes("dsa") || s.includes("data structure");
+const isInterviewPrepSubject = (s) => s.includes("interview");
+
+// Which mentors may author a given test type. Coding tests are DSA-only; MCQ +
+// Coding tests are open to DSA and Interview Preparation mentors. Keep in sync
+// with the dropdown gating in Frontend/src/pages/CreateTest.jsx.
+function mentorTypeRestriction(type, mentorSubjectNames, hasAllSubject) {
+  if (hasAllSubject) return null;
+  if (type === "coding" && !mentorSubjectNames.some(isDSASubject)) {
+    return "Only mentors assigned to DSA can create or update coding tests.";
+  }
+  if (type === "mixed" && !mentorSubjectNames.some((s) => isDSASubject(s) || isInterviewPrepSubject(s))) {
+    return "Only mentors assigned to DSA or Interview Preparation can create or update MCQ + Coding tests.";
+  }
+  return null;
+}
+
+// findByIdAndUpdate skips the model's pre-save hook, so the update route checks
+// this itself.
+function mixedTestKindError(type, questions) {
+  if (type !== "mixed" || !Array.isArray(questions)) return null;
+  const invalid = questions.some((q) => q && q.kind !== "mcq" && q.kind !== "coding");
+  return invalid ? "MCQ + Coding tests can only contain MCQ and coding questions" : null;
+}
+
 // Get all tests (admin/mentor) - ULTRA FAST VERSION with pagination
 // Admins see all tests; mentors see only their own.
 router.get("/", authenticateToken, requireRole(["admin", "Mentor"]), async (req, res, next) => {
@@ -292,13 +318,15 @@ router.post("/", authenticateToken, requireRole(["admin", "Mentor"]), async (req
         return res.status(403).json({ message: `You are not assigned to the subject "${subject}". You can only create tests for your assigned subjects.` });
       }
 
-      // Coding tests require DSA assignment
-      if (type === "coding") {
-        const hasDSA = hasAllSubject || mentorSubjectNames.some(s => s === "dsa" || s.includes("dsa") || s.includes("data structure"));
-        if (!hasDSA) {
-          return res.status(403).json({ message: "Only mentors assigned to DSA can create coding tests." });
-        }
+      const restriction = mentorTypeRestriction(type, mentorSubjectNames, hasAllSubject);
+      if (restriction) {
+        return res.status(403).json({ message: restriction });
       }
+    }
+
+    const kindError = mixedTestKindError(type, questions);
+    if (kindError) {
+      return res.status(400).json({ message: kindError });
     }
 
     // Validate allowedTabSwitches (0-100 for regular tests, -1 for practice tests)
@@ -427,12 +455,17 @@ router.put("/:id", authenticateToken, requireRole(["admin", "Mentor"]), async (r
         return res.status(403).json({ message: `You are not assigned to the subject "${targetSubject}". You can only edit tests for your assigned subjects.` });
       }
 
-      const targetType = type || existingTest.type;
-      if (targetType === "coding") {
-        const hasDSA = hasAllSubject || mentorSubjectNames.some(s => s === "dsa" || s.includes("dsa") || s.includes("data structure"));
-        if (!hasDSA) {
-          return res.status(403).json({ message: "Only mentors assigned to DSA can create or update coding tests." });
-        }
+      const restriction = mentorTypeRestriction(type || existingTest.type, mentorSubjectNames, hasAllSubject);
+      if (restriction) {
+        return res.status(403).json({ message: restriction });
+      }
+    }
+
+    if (questions) {
+      const effectiveType = type || (await Test.findById(req.params.id).select("type").lean())?.type;
+      const kindError = mixedTestKindError(effectiveType, questions);
+      if (kindError) {
+        return res.status(400).json({ message: kindError });
       }
     }
 

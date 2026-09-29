@@ -596,7 +596,7 @@ export default function Tests() {
                         {/* Type */}
                         <div className="bg-[#181A22] border border-white/[0.04] rounded-xl p-2.5 flex items-center gap-2.5">
                           <div className="w-7 h-7 rounded-lg bg-[#1E293B] flex items-center justify-center flex-shrink-0">
-                            {t.type?.toLowerCase().includes("code") ? (
+                            {t.type?.toLowerCase().includes("code") || t.type === "mixed" ? (
                               <Code2 className="w-3.5 h-3.5 text-[#38BDF8]" />
                             ) : (
                               <BookOpen className="w-3.5 h-3.5 text-[#38BDF8]" />
@@ -607,7 +607,7 @@ export default function Tests() {
                               Type
                             </span>
                             <span className="text-xs font-semibold text-white capitalize truncate block">
-                              {t.type || "MCQ"}
+                              {t.type === "mixed" ? "MCQ + Coding" : t.type || "MCQ"}
                             </span>
                           </div>
                         </div>

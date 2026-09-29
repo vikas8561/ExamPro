@@ -499,7 +499,7 @@ export default function MentorAssignments() {
                                 {test.title || "Untitled Assessment"}
                               </p>
                               <p className="text-[11px] text-[#7E8594] mt-0.5 truncate md:hidden">
-                                {test.subject || "General"} • {test.type || "Exam"}
+                                {test.subject || "General"} • {test.type === "mixed" ? "MCQ + Coding" : test.type || "Exam"}
                               </p>
                             </div>
                           </div>
@@ -513,7 +513,7 @@ export default function MentorAssignments() {
                             </span>
                             {test.type && (
                               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[#133B42] text-[#2DD4BF] border border-[#2DD4BF]/20">
-                                {test.type}
+                                {test.type === "mixed" ? "MCQ + Coding" : test.type}
                               </span>
                             )}
                           </div>

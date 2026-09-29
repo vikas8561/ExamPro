@@ -61,7 +61,9 @@ const TestSchema = new mongoose.Schema(
   {
     title: { type: String, required: true, trim: true },
     subject: { type: String, default: "" },
-    type: { type: String, enum: ["mcq", "theory", "coding", "practice"], default: "mcq" },
+    // "mixed" holds MCQ and coding questions side by side. Each question is still
+    // graded by its own `kind`: MCQ by matching the option, coding by Judge0.
+    type: { type: String, enum: ["mcq", "theory", "coding", "mixed", "practice"], default: "mcq" },
     instructions: { type: String, default: "" },
     timeLimit: { type: Number, default: 30, min: 1 },
     negativeMarkingPercent: { type: Number, enum: [0, 0.25, 0.5, 0.75, 1], default: 0 },
@@ -143,6 +145,13 @@ TestSchema.pre('save', function(next) {
     for (const q of this.questions || []) {
       if (q.kind !== 'mcq') {
         return next(new Error('Practice tests can only contain MCQ questions'));
+      }
+    }
+  }
+  if (this.type === 'mixed') {
+    for (const q of this.questions || []) {
+      if (q.kind !== 'mcq' && q.kind !== 'coding') {
+        return next(new Error('MCQ + Coding tests can only contain MCQ and coding questions'));
       }
     }
   }

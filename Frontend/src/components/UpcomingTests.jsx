@@ -63,7 +63,14 @@ const UpcomingTests = ({ data }) => {
   // Color mapping matching the screenshot's pills
   const getBadgeStyle = (type, index) => {
     const t = (type || "").toLowerCase();
-    if (t.includes("coding")) {
+    if (t === "mixed") {
+      return {
+        bg: "bg-[#1E2A47]",
+        text: "text-[#60A5FA]",
+        border: "border-[#60A5FA]/20",
+        label: "MCQ + Coding",
+      };
+    } else if (t.includes("coding")) {
       return {
         bg: "bg-[#133B42]",
         text: "text-[#2DD4BF]",

@@ -316,7 +316,8 @@ const StudentResults = () => {
             {[
               { id: "all", label: "All Tests" },
               { id: "mcq", label: "Standard / MCQ" },
-              { id: "coding", label: "Coding" }
+              { id: "coding", label: "Coding" },
+              { id: "mixed", label: "MCQ + Coding" }
             ].map((tab) => {
               const isActive = selectedType === tab.id;
               return (
@@ -394,7 +395,7 @@ const StudentResults = () => {
                     {/* Top Badges Row */}
                     <div className="flex items-center justify-between gap-2">
                       <span className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#133B42] text-[#00C4B4] border border-[#00C4B4]/20 uppercase tracking-wide">
-                        {data.testType}
+                        {data.testType === "mixed" ? "MCQ + Coding" : data.testType}
                       </span>
 
                       <span
@@ -532,7 +533,7 @@ const StudentResults = () => {
                         </td>
                         <td className="py-4 px-4">
                           <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-[#133B42] text-[#00C4B4] border border-[#00C4B4]/20 uppercase">
-                            {data.testType}
+                            {data.testType === "mixed" ? "MCQ + Coding" : data.testType}
                           </span>
                         </td>
                         <td className="py-4 px-4 text-center">
