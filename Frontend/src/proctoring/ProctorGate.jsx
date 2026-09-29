@@ -213,8 +213,8 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
             ))}
           </ul>
           <p className="text-sm text-slate-400">
-            Please switch to a laptop or desktop computer using Google Chrome, then open
-            this test again.
+            Please switch to a laptop or desktop computer with an up-to-date browser,
+            then open this test again.
           </p>
         </div>
       </div>

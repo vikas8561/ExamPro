@@ -5,8 +5,7 @@ import { requestSebLaunch } from "./transport";
 /**
  * "This exam has to be taken in Safe Exam Browser."
  *
- * Deliberately not a dead end, which is what separates it from the unsupported-
- * browser dialog next to it. A student here has something they can do, so the
+ * Deliberately not a dead end. A student here has something they can do, so the
  * screen gives them the button that does it: the server mints a short-lived
  * signed link, clicking it hands the URL to the operating system, and the
  * operating system starts SEB the way it would start a mail client for a
@@ -115,10 +114,10 @@ export default function SebLaunchScreen({ info, assignmentId }) {
     return (
       <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/95 p-4">
         <div className="w-full max-w-lg rounded-xl border border-slate-700 bg-slate-900 p-8">
-          <h2 className="mb-3 text-2xl font-bold text-white">Please use Google Chrome</h2>
+          <h2 className="mb-3 text-2xl font-bold text-white">Please use your regular browser</h2>
           <p className="mb-6 text-slate-300">
             This exam is not set up for Safe Exam Browser. Quit Safe Exam Browser
-            and open the exam in Google Chrome instead.
+            and open the exam in your regular browser instead.
           </p>
           <p className="text-xs text-slate-400">
             If you were told to use Safe Exam Browser for this exam, contact your
@@ -216,7 +215,7 @@ export default function SebLaunchScreen({ info, assignmentId }) {
               {os === "linux" ? " (Linux)" : ""}.
             </p>
             <div className="mb-6 rounded-md border border-slate-600 bg-slate-800 px-4 py-3 text-sm text-slate-300">
-              You can take the exam in Google Chrome instead. The standard
+              You can take the exam in your regular browser instead. The standard
               proctoring rules apply in full, and your submission will record that
               Safe Exam Browser was unavailable.
             </div>

@@ -198,15 +198,13 @@ check("SEB runs on macOS", sebAvailableForOS("macos") === true);
 check("SEB has never run on Linux", sebAvailableForOS("linux") === false);
 check("SEB is not offered on an unknown OS", sebAvailableForOS("unknown") === false);
 
-console.log("\n════ Readiness: the two gates that would reject every SEB student ════\n");
+console.log("\n════ Readiness: the gates that would reject every SEB student ════\n");
 
-// Exactly the shape SEB presents: not Chrome, no getDisplayMedia, and a kiosk
-// that is not the Fullscreen API.
+// Exactly the shape SEB presents: an unrecognised browser, no getDisplayMedia,
+// and a kiosk that is not the Fullscreen API.
 const sebEnv = {
   isSEB: true,
   browser: "Unknown",
-  isSupportedChrome: false,
-  isEdge: false,
   isBrave: false,
   isMobile: false,
   fullscreenSupported: false,
@@ -214,7 +212,7 @@ const sebEnv = {
   isSecureContext: true,
 };
 const sebReadiness = assessReadiness(sebEnv);
-check("SEB is not rejected for failing the Chrome check", sebReadiness.ready === true, JSON.stringify(sebReadiness.blockers));
+check("SEB is not rejected for missing fullscreen", sebReadiness.ready === true, JSON.stringify(sebReadiness.blockers));
 check("SEB is not rejected for having no screen sharing", sebReadiness.blockers.length === 0);
 
 // The same environment without SEB must still be rejected — relaxing the gates
@@ -222,7 +220,18 @@ check("SEB is not rejected for having no screen sharing", sebReadiness.blockers.
 const plainEnv = { ...sebEnv, isSEB: false };
 const plainReadiness = assessReadiness(plainEnv);
 check("an ordinary browser failing the same checks is still blocked", plainReadiness.ready === false);
-check("and is told about Chrome", plainReadiness.blockers.some((b) => b.includes("Google Chrome")));
+check("and is told which capabilities are missing", plainReadiness.blockers.some((b) => b.includes("fullscreen")) && plainReadiness.blockers.some((b) => b.includes("share your screen")));
+
+console.log("\n════ Readiness: any capable desktop browser may sit the exam ════\n");
+
+// There is no browser-brand requirement: only capability and device type.
+for (const browser of ["Chrome", "Chromium", "Edge", "Brave", "Firefox", "Safari", "Opera", "Unknown"]) {
+  const env = { ...sebEnv, isSEB: false, browser, isBrave: browser === "Brave", fullscreenSupported: true, screenShareSupported: true };
+  const readiness = assessReadiness(env);
+  check(`${browser} with fullscreen and screen sharing is ready`, readiness.ready === true, JSON.stringify(readiness.blockers));
+}
+check("no readiness message mentions a required browser",
+  !assessReadiness({ ...sebEnv, isSEB: false }).blockers.some((b) => /can only be taken using/i.test(b)));
 
 // A phone claiming to be SEB is still a phone.
 const mobileSeb = { ...sebEnv, isMobile: true };

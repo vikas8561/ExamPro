@@ -78,6 +78,7 @@ export const EXAMPLE_MIXED_JSON = `{
     {
       "kind": "coding",
       "text": "Given an integer n followed by n integers, print the largest of them.\\n\\n**Input:** first line n, second line n space-separated integers\\n\\n**Output:** a single integer",
+      "points": 5,
       "language": "cpp",
       "guidelines": "Read from stdin, write the answer to stdout. Do not print anything else.",
       "examples": [

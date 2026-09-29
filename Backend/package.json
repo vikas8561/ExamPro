@@ -20,6 +20,7 @@
     "test:reported": "node scripts/exam/reported-issues-check.js",
     "test:output-matching": "node scripts/exam/output-matching-check.js",
     "test:coding-persistence": "node scripts/exam/coding-persistence-check.js",
+    "test:mixed": "node scripts/exam/mixed-test-check.js",
     "audit-coding-marks": "node scripts/auditCodingMarks.js",
     "audit-coding-verdicts": "node scripts/auditCodingVerdicts.js",
     "audit-ungraded-coding": "node scripts/auditUngradedCoding.js",

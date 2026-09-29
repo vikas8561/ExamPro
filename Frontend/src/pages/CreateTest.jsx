@@ -100,19 +100,14 @@ export default function CreateTest() {
   // Dynamic back and navigation path depending on role
   const testsPath = isMentor ? "/mentor/tests" : "/admin/tests";
 
-  // Check if mentor is assigned to DSA (allows coding tests)
-  const mentorHasDSA = useMemo(() => {
+  // Coding and MCQ + Coding tests are open to DSA and Interview Preparation
+  // mentors. Keep in sync with mentorTypeRestriction in Backend/routes/tests.js.
+  const mentorCanCreateCoding = useMemo(() => {
     return mentorSubjects.some((s) => {
       const lower = s.toLowerCase();
-      return lower === "dsa" || lower.includes("dsa") || lower.includes("data structure");
+      return lower.includes("dsa") || lower.includes("data structure") || lower.includes("interview");
     });
   }, [mentorSubjects]);
-
-  // MCQ + Coding tests are open to DSA and Interview Preparation mentors.
-  // Keep in sync with mentorTypeRestriction in Backend/routes/tests.js.
-  const mentorCanCreateMixed = useMemo(() => {
-    return mentorHasDSA || mentorSubjects.some((s) => s.toLowerCase().includes("interview"));
-  }, [mentorHasDSA, mentorSubjects]);
 
   // Detect role and fetch mentor subjects on mount
   useEffect(() => {
@@ -163,19 +158,12 @@ export default function CreateTest() {
     );
   }, [isMentor, subjects, mentorSubjectList, mentorSubjects]);
 
-  // If mentor is not assigned to DSA, ensure type cannot be coding
+  // Mentors outside DSA and Interview Preparation cannot use the coding types
   useEffect(() => {
-    if (isMentor && !mentorHasDSA && form.type === "coding") {
+    if (isMentor && !mentorCanCreateCoding && (form.type === "coding" || form.type === "mixed")) {
       setForm((prev) => ({ ...prev, type: "mcq" }));
     }
-  }, [isMentor, mentorHasDSA, form.type]);
-
-  // Same for MCQ + Coding, which also needs DSA or Interview Preparation
-  useEffect(() => {
-    if (isMentor && !mentorCanCreateMixed && form.type === "mixed") {
-      setForm((prev) => ({ ...prev, type: "mcq" }));
-    }
-  }, [isMentor, mentorCanCreateMixed, form.type]);
+  }, [isMentor, mentorCanCreateCoding, form.type]);
 
   // Auto-select subject if mentor has only 1 assigned subject and none selected
   useEffect(() => {
@@ -545,12 +533,8 @@ export default function CreateTest() {
         alert(`You can only create tests for your assigned subjects (${mentorSubjects.join(", ")}).`);
         return;
       }
-      if (form.type === "coding" && !mentorHasDSA) {
-        alert("Only mentors assigned to DSA can create coding tests.");
-        return;
-      }
-      if (form.type === "mixed" && !mentorCanCreateMixed) {
-        alert("Only mentors assigned to DSA or Interview Preparation can create MCQ + Coding tests.");
+      if ((form.type === "coding" || form.type === "mixed") && !mentorCanCreateCoding) {
+        alert("Only mentors assigned to DSA or Interview Preparation can create coding or MCQ + Coding tests.");
         return;
       }
     }
@@ -817,11 +801,11 @@ export default function CreateTest() {
                     className="w-full p-3 bg-[#14161D] border border-white/[0.08] rounded-xl text-xs text-white focus:border-[#00C4B4] focus:ring-1 focus:ring-[#00C4B4] outline-none transition-all appearance-none cursor-pointer"
                   >
                     <option value="mcq" className="bg-[#181A22]">MCQ Only</option>
-                    {(!isMentor || mentorHasDSA) && (
-                      <option value="coding" className="bg-[#181A22]">Coding Only</option>
-                    )}
-                    {(!isMentor || mentorCanCreateMixed) && (
-                      <option value="mixed" className="bg-[#181A22]">MCQ + Coding</option>
+                    {(!isMentor || mentorCanCreateCoding) && (
+                      <>
+                        <option value="coding" className="bg-[#181A22]">Coding Only</option>
+                        <option value="mixed" className="bg-[#181A22]">MCQ + Coding</option>
+                      </>
                     )}
                     <option value="theory" className="bg-[#181A22]">Theory Only</option>
                     <option value="practice" className="bg-[#181A22]">Practice Test (MCQ Only)</option>

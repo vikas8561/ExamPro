@@ -63,7 +63,6 @@ const SILENT_VIOLATIONS = new Set(["paste_internal"]);
  *   idle        proctoring is off (practice tests, or the exam has not begun)
  *   starting    opening the session with the server
  *   seb_launch  this exam needs Safe Exam Browser and this browser is not it
- *   unsupported this browser cannot run the exam and no lockdown is available
  *   gate        the pre-exam screen: browser check, permissions, rules
  *   active      the exam is running and monitored
  *   blocked     something must be fixed before the exam can continue
@@ -332,15 +331,6 @@ export function ProctorProvider({
             detectedVersion: env.sebUserAgentVersion,
           });
           setPhase("seb_launch");
-          return;
-        }
-
-        // Safe Exam Browser is its own browser. The Chrome requirement exists to
-        // approximate a lockdown SEB provides outright, so it does not apply
-        // here — and SEB would fail it, having neither Chrome's user-agent brand
-        // nor its vendor string.
-        if (!env.isSEB && (!env.isSupportedChrome || env.isEdge || env.isBrave)) {
-          setPhase("unsupported");
           return;
         }
 
@@ -766,28 +756,9 @@ export function ProctorProvider({
     <ProctorContext.Provider value={contextValue}>
       {children}
 
-      {/* This exam needs Safe Exam Browser and this browser is not it. Unlike
-          the unsupported-browser dialog below, this one has a way forward. */}
+      {/* This exam needs Safe Exam Browser and this browser is not it. */}
       {enabled && phase === "seb_launch" && (
         <SebLaunchScreen info={sebLaunchInfo} assignmentId={assignmentId} />
-      )}
-
-      {/* Unsupported browser gate */}
-      {enabled && phase === "unsupported" && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/95 p-4">
-          <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-8 text-center">
-            <h2 className="mb-3 text-2xl font-bold text-white">Google Chrome Required</h2>
-            <p className="mb-6 text-slate-300">
-              This exam can only be taken using Google Chrome.
-            </p>
-            <div className="mb-6 rounded-md bg-slate-800 px-4 py-3 text-sm text-slate-400">
-              Current browser: <span className="font-semibold text-rose-400">{environment?.browser || "Unknown"}</span>
-            </div>
-            <p className="text-xs text-slate-400">
-              Please open this exam link in the latest version of Google Chrome.
-            </p>
-          </div>
-        </div>
       )}
 
       {proctoringActive && phase === "gate" && (

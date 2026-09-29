@@ -137,60 +137,6 @@ export function isMobileDevice() {
 }
 
 /**
- * ExamPro requires desktop Google Chrome only.
- * Explicitly rejects Brave, Edge, Opera, Firefox, Safari, Chromium, mobile and unknown browsers.
- */
-export function isSupportedChrome(env) {
-  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
-  if (!env) return false;
-  if (env.isBrave || env.isEdge || env.isMobile) return false;
-  if (env.browser && env.browser !== "Chrome" && env.browser !== "Google Chrome") return false;
-
-  if (detectEdge()) return false;
-  if (isMobileDevice()) return false;
-
-  const ua = navigator.userAgent || "";
-  const vendor = navigator.vendor || "";
-  const brands = navigator.userAgentData?.brands;
-
-  // Explicitly reject Edge
-  if (/Edg\/|Edge\/|EdgA\/|EdgiOS\//i.test(ua)) return false;
-  if (Array.isArray(brands) && brands.some((b) => /Edge|Microsoft Edge/i.test(b.brand))) {
-    return false;
-  }
-
-  // Reject browsers identifying as Opera, Firefox, Safari
-  if (
-    /OPR\//i.test(ua) ||
-    /Opera/i.test(ua) ||
-    /Firefox\//i.test(ua) ||
-    (/Safari\//i.test(ua) && /Version\//i.test(ua))
-  ) {
-    return false;
-  }
-
-  if (Array.isArray(brands) && brands.some((b) => /Opera|Brave/i.test(b.brand))) {
-    return false;
-  }
-
-  // Reject unbranded Chromium or missing Google Chrome brand
-  if (/Chromium\//i.test(ua)) return false;
-  if (Array.isArray(brands)) {
-    const hasGoogleChrome = brands.some((b) => b.brand === "Google Chrome");
-    if (!hasGoogleChrome) return false;
-  }
-
-  // Strictly require desktop Google Chrome markers
-  const hasChromeUa = /Chrome\//i.test(ua) && !/HeadlessChrome/i.test(ua);
-  const hasGoogleVendor = /Google Inc\./i.test(vendor) || Boolean(window.chrome);
-  const hasChromeBrand = Array.isArray(brands)
-    ? brands.some((b) => b.brand === "Google Chrome")
-    : true;
-
-  return Boolean(hasChromeUa && hasGoogleVendor && hasChromeBrand);
-}
-
-/**
  * The Keyboard Lock API is what lets us capture keys the browser normally keeps
  * for itself — Escape, F11, Ctrl+W, Ctrl+T, Ctrl+N, and on some systems even
  * Alt+Tab. It exists only in Chromium browsers (Chrome, Edge, Brave), and it
@@ -243,7 +189,6 @@ export function detectSecondMonitor() {
  */
 export async function inspectEnvironment() {
   const isBrave = await detectBrave();
-  const isEdge = detectEdge();
   const browser = detectBrowserName(isBrave);
   const isMobile = isMobileDevice();
   const seb = await detectSEB();
@@ -252,8 +197,6 @@ export async function inspectEnvironment() {
   return {
     browser,
     isBrave,
-    isEdge,
-    isSupportedChrome: isSupportedChrome({ browser, isBrave, isEdge, isMobile }),
     platform: typeof navigator !== "undefined" ? navigator.platform || "" : "",
     os,
     sebAvailableForOS: sebAvailableForOS(os),
@@ -289,21 +232,12 @@ export function assessReadiness(env) {
   const blockers = [];
   const warnings = [];
 
-  // Inside Safe Exam Browser two of the checks below are not just wrong but
-  // unsatisfiable, so they are skipped rather than softened:
-  //
-  //   - SEB is not Google Chrome and never will be. It is a purpose-built
-  //     lockdown browser, and the lockdown is stronger than anything the Chrome
-  //     requirement was there to approximate.
-  //   - SEB supports no `getDisplayMedia` on any platform, so screen sharing can
-  //     never be granted. Demanding it would block every SEB student forever.
-  //
-  // Everything SEB does not cover — a phone pretending to be a desktop, a
-  // missing Fullscreen API — is still checked exactly as before.
-  if (!env.isSEB && (env.isEdge || !env.isSupportedChrome)) {
-    blockers.push("This exam can only be taken using Google Chrome.");
-  }
-
+  // Any desktop browser can sit the exam; what is checked is capability, not
+  // brand. Inside Safe Exam Browser the fullscreen and screen-share checks are
+  // skipped rather than softened: SEB's kiosk is not the Fullscreen API, and it
+  // supports no `getDisplayMedia` on any platform, so demanding either would
+  // block every SEB student forever. A phone pretending to be a desktop is
+  // still checked exactly as before.
   if (env.isMobile) {
     blockers.push(
       "This test needs a laptop or desktop computer. Phones and tablets cannot meet the exam security requirements."
@@ -312,13 +246,13 @@ export function assessReadiness(env) {
 
   if (!env.isSEB && !env.fullscreenSupported) {
     blockers.push(
-      "This browser cannot enter fullscreen mode, which this test requires. Please use Google Chrome."
+      "This browser cannot enter fullscreen mode, which this test requires. Please use an up-to-date desktop browser such as Chrome, Edge, Firefox or Safari."
     );
   }
 
   if (!env.isSEB && !env.screenShareSupported) {
     blockers.push(
-      "This browser cannot share your screen, which this test requires. Please use Google Chrome."
+      "This browser cannot share your screen, which this test requires. Please use an up-to-date desktop browser such as Chrome, Edge, Firefox or Safari."
     );
   }
 

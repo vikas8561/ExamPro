@@ -599,13 +599,13 @@ export default function AdminMentorManagement() {
                               {mentorSubjects.map((subject) => {
                                 const subId = typeof subject === "object" ? subject._id : subject;
                                 const subName = typeof subject === "object" ? subject.name : "Subject";
-                                const isDSA = (subName || "").toLowerCase().includes("dsa");
+                                const enablesCoding = /dsa|data structure|interview/.test((subName || "").toLowerCase());
 
                                 return (
                                   <span
                                     key={subId}
                                     className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${
-                                      isDSA
+                                      enablesCoding
                                         ? "bg-purple-500/15 text-purple-300 border-purple-500/25"
                                         : "bg-[#133B42] text-[#2DD4BF] border-[#2DD4BF]/20"
                                     }`}
@@ -802,7 +802,7 @@ export default function AdminMentorManagement() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {filteredModalSubjects.map((subject) => {
                     const isChecked = modalSubjectIds.includes(subject._id);
-                    const isDSA = (subject.name || "").toLowerCase().includes("dsa");
+                    const enablesCoding = /dsa|data structure|interview/.test((subject.name || "").toLowerCase());
 
                     return (
                       <div
@@ -828,7 +828,7 @@ export default function AdminMentorManagement() {
                             <p className="text-xs font-semibold text-white tracking-tight truncate">
                               {subject.name}
                             </p>
-                            {isDSA && (
+                            {enablesCoding && (
                               <span className="text-[10px] text-purple-400 font-mono">
                                 Enables Coding Tests
                               </span>

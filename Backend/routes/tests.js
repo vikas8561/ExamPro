@@ -18,18 +18,15 @@ const { invalidateTestCache } = require("../utils/testCache");
 const isDSASubject = (s) => s === "dsa" || s.includes("dsa") || s.includes("data structure");
 const isInterviewPrepSubject = (s) => s.includes("interview");
 
-// Which mentors may author a given test type. Coding tests are DSA-only; MCQ +
-// Coding tests are open to DSA and Interview Preparation mentors. Keep in sync
-// with the dropdown gating in Frontend/src/pages/CreateTest.jsx.
+// Which mentors may author a given test type. Coding and MCQ + Coding tests are
+// open to DSA and Interview Preparation mentors; every other type is open to all.
+// Keep in sync with mentorCanCreateCoding in Frontend/src/pages/CreateTest.jsx.
 function mentorTypeRestriction(type, mentorSubjectNames, hasAllSubject) {
-  if (hasAllSubject) return null;
-  if (type === "coding" && !mentorSubjectNames.some(isDSASubject)) {
-    return "Only mentors assigned to DSA can create or update coding tests.";
-  }
-  if (type === "mixed" && !mentorSubjectNames.some((s) => isDSASubject(s) || isInterviewPrepSubject(s))) {
-    return "Only mentors assigned to DSA or Interview Preparation can create or update MCQ + Coding tests.";
-  }
-  return null;
+  if (hasAllSubject || (type !== "coding" && type !== "mixed")) return null;
+  if (mentorSubjectNames.some((s) => isDSASubject(s) || isInterviewPrepSubject(s))) return null;
+  return type === "coding"
+    ? "Only mentors assigned to DSA or Interview Preparation can create or update coding tests."
+    : "Only mentors assigned to DSA or Interview Preparation can create or update MCQ + Coding tests.";
 }
 
 // findByIdAndUpdate skips the model's pre-save hook, so the update route checks
