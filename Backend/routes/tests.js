@@ -157,7 +157,38 @@ router.get("/", authenticateToken, requireRole(["admin", "Mentor"]), async (req,
 
       { $sort: { createdAt: -1 } },
       { $skip: skip },
-      { $limit: limit }
+      { $limit: limit },
+
+      // Lookup assignments to get scheduled startTime for the page
+      {
+        $lookup: {
+          from: "assignments",
+          let: { testId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ["$testId", "$$testId"] },
+                startTime: { $exists: true, $ne: null }
+              }
+            },
+            { $sort: { startTime: -1 } },
+            { $limit: 1 },
+            { $project: { startTime: 1 } }
+          ],
+          as: "scheduledAssignment"
+        }
+      },
+      {
+        $addFields: {
+          startTime: {
+            $ifNull: [
+              "$startTime",
+              { $arrayElemAt: ["$scheduledAssignment.startTime", 0] }
+            ]
+          }
+        }
+      },
+      { $project: { scheduledAssignment: 0 } }
     ];
 
     const tests = await Test.aggregate(pipeline);

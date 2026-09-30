@@ -25,6 +25,21 @@ import {
 } from "lucide-react";
 import apiRequest from "../services/api";
 
+const formatScheduledDate = (dateVal) => {
+  if (!dateVal) return "Not scheduled";
+  const d = new Date(dateVal);
+  if (isNaN(d.getTime())) return "Not scheduled";
+  const day = d.getDate();
+  const month = d.toLocaleString("en-US", { month: "short" });
+  const year = d.getFullYear();
+  const time = d.toLocaleString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+  return `${day} ${month} ${year} · ${time}`;
+};
+
 export default function Tests() {
   const [tests, setTests] = useState([]);
   const [students, setStudents] = useState([]);
@@ -549,7 +564,7 @@ export default function Tests() {
                   >
                     <div>
                       {/* Card Top: Title & Status Badge */}
-                      <div className="flex items-start justify-between gap-3 mb-4">
+                      <div className="flex items-start justify-between gap-3 mb-3">
                         <div className="flex-1 min-w-0">
                           <h3
                             className="text-base font-bold text-white tracking-tight truncate group-hover:text-[#00C4B4] transition-colors"
@@ -573,6 +588,14 @@ export default function Tests() {
                           }`}
                         >
                           {t.status}
+                        </span>
+                      </div>
+
+                      {/* Scheduled Date & Time */}
+                      <div className="flex items-center gap-1.5 text-xs mb-3.5 px-0.5">
+                        <Calendar className={`w-3.5 h-3.5 flex-shrink-0 ${t.startTime ? "text-[#00C4B4]" : "text-[#7E8594]"}`} />
+                        <span className={`truncate ${t.startTime ? "text-[#D1D5DB] font-medium" : "text-[#7E8594]"}`}>
+                          {formatScheduledDate(t.startTime)}
                         </span>
                       </div>
 
