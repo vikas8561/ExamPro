@@ -22,6 +22,7 @@ const { attachProctorStatus, mayServeQuestions } = require("../middleware/procto
 const { sanitizeQuestions, canSeeAnswers } = require("../services/questionSanitizer");
 const { resolveOrderedQuestions } = require("../services/questionOrder");
 const { isAttemptExpired } = require("../services/attemptWindow");
+const { getMentorScope } = require("./mentor");
 
 /** Mongoose document -> plain object, so stripping actually sticks. */
 function toPlain(value) {
@@ -687,12 +688,15 @@ router.get("/cohorts", authenticateToken, requireRole(["admin", "Mentor"]), asyn
   }
 });
 
-// Get all assignments auto-submitted due to proctoring violations (admin only)
-router.get("/terminated-violations", authenticateToken, requireRole("admin"), async (req, res, next) => {
+// Get all assignments auto-submitted due to proctoring violations (admin or mentor)
+router.get("/terminated-violations", authenticateToken, requireRole(["admin", "mentor"]), async (req, res, next) => {
   try {
-    const assignments = await Assignment.find({
-      $or: [{ cancelledDueToViolation: true }, { status: "Cancelled" }]
-    })
+    const scope = await getMentorScope(req.user);
+    const filter = {
+      $or: [{ cancelledDueToViolation: true }, { status: "Cancelled" }],
+      ...(scope.isAdmin ? {} : scope.assignmentFilter)
+    };
+    const assignments = await Assignment.find(filter)
       .populate("userId", "name email")
       .populate("testId", "title type timeLimit")
       .sort({ updatedAt: -1 })
@@ -1154,11 +1158,15 @@ router.post("/:id/start", authenticateToken, attachProctorStatus(), async (req, 
   }
 });
 
-// Re-enable exam after auto-submission due to maximum violations (admin only)
-router.post("/:id/re-enable", authenticateToken, requireRole("admin"), async (req, res, next) => {
+// Re-enable exam after auto-submission due to maximum violations (admin or mentor)
+router.post("/:id/re-enable", authenticateToken, requireRole(["admin", "mentor"]), async (req, res, next) => {
   try {
-    const assignment = await Assignment.findById(req.params.id);
-    if (!assignment) return res.status(404).json({ message: "Assignment not found" });
+    const scope = await getMentorScope(req.user);
+    const assignment = await Assignment.findOne({
+      _id: req.params.id,
+      ...(scope.isAdmin ? {} : scope.assignmentFilter)
+    });
+    if (!assignment) return res.status(404).json({ message: "Assignment not found or unauthorized" });
 
     // Only allow for violation-terminated exams
     if (!assignment.cancelledDueToViolation && assignment.status !== "Cancelled") {

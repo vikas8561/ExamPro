@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
 import apiRequest from "../services/api";
 
-export default function SebSettingsCard() {
+export default function SebSettingsCard({ isMentor: propIsMentor }) {
+  const storedUser = localStorage.getItem("user");
+  const currentUser = storedUser ? JSON.parse(storedUser) : {};
+  const isMentor = propIsMentor !== undefined ? propIsMentor : String(currentUser?.role || "").toLowerCase() === "mentor";
   const [required, setRequired] = useState(false);
   const [urlFilter, setUrlFilter] = useState(true);
   const [configKey, setConfigKey] = useState(null);
@@ -99,6 +102,33 @@ export default function SebSettingsCard() {
       setError(err.message || "Could not build the configuration file.");
     }
   }, []);
+
+  if (isMentor) {
+    return (
+      <div className="w-full rounded-2xl border border-white/[0.06] bg-[#20242D] p-5 sm:p-6 shadow-sm">
+        <h2 className="text-base sm:text-lg font-bold text-white tracking-tight mb-1">Safe Exam Browser</h2>
+        <p className="text-xs text-[#7E8594] mb-4">Read quit password to a student only if they need to exit mid-exam.</p>
+        <div className="rounded-xl border border-white/[0.06] bg-[#181A22] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold text-white mb-0.5">Quit Password</p>
+            <p className="text-[11px] text-[#7E8594]">Password to exit Safe Exam Browser.</p>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <code className="rounded-lg bg-[#16181F] border border-white/[0.04] px-3.5 py-1.5 font-mono text-xs tracking-widest text-white">
+              {quitVisible ? quitPassword || "—" : "••••••••••••"}
+            </code>
+            <button
+              type="button"
+              onClick={() => setQuitVisible((v) => !v)}
+              className="rounded-xl border border-white/10 bg-[#2A2E39] hover:bg-[#343946] px-3.5 py-1.5 text-xs font-semibold text-white transition-all cursor-pointer"
+            >
+              {quitVisible ? "Hide" : "Show"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full rounded-2xl border border-white/[0.06] bg-[#20242D] p-5 sm:p-6 shadow-sm">
