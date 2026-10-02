@@ -11,6 +11,7 @@ const {
   findStudentsByCohort,
   cohortCounts,
   canManageStudent,
+  getStudentIdsForBatches,
   findPrincipalById,
 } = require("../services/principals");
 const Student = require("../models/Student");
@@ -690,17 +691,22 @@ router.get("/cohorts", authenticateToken, requireRole(["admin", "Mentor"]), asyn
   }
 });
 
-// Get all assignments auto-submitted due to proctoring violations (admin only)
-router.get("/terminated-violations", authenticateToken, requireRole("admin"), async (req, res, next) => {
+// Get all assignments auto-submitted due to proctoring violations. Admins see
+// every student; mentors only students in their assigned batches -- the same
+// batch filter canManageStudent applies when they press Re-enable.
+router.get("/terminated-violations", authenticateToken, requireRole(["admin", "mentor"]), async (req, res, next) => {
   try {
-    const assignments = await Assignment.find({
-      $or: [{ cancelledDueToViolation: true }, { status: "Cancelled" }]
-    })
-      .populate("userId", "name email")
+    const filter = { $or: [{ cancelledDueToViolation: true }, { status: "Cancelled" }] };
+    if (String(req.user.role || "").toLowerCase() !== "admin") {
+      const mentor = await Mentor.findById(req.user.userId).select("batches").lean();
+      filter.userId = { $in: await getStudentIdsForBatches(mentor?.batches || []) };
+    }
+    const assignments = await Assignment.find(filter)
       .populate("testId", "title type timeLimit")
       .sort({ updatedAt: -1 })
       .lean();
-    res.json(assignments);
+    // Students live in the university database, out of populate's reach.
+    res.json(await attach(assignments, "userId", "Student"));
   } catch (error) {
     next(error);
   }

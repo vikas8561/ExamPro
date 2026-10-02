@@ -234,6 +234,22 @@ async function main() {
     list = await api("/users/profiles?limit=50", { token: adminToken });
     check(list.body.users.find((u) => String(u._id) === String(chen._id))?.reEnableable?.length === 1, "admin does see it on that student's card", null);
 
+    // The Proctoring page's "Re-enable Terminated Exams" card lists these. Its
+    // window closed hours ago, so they never count as re-enableable below.
+    const testV = await Test.create({ title: `Violations ${MARK}`, type: "mcq", timeLimit: 60, allowedTabSwitches: 0, status: "Active", createdBy: admin._id, questions: [mcq("a?", ["x", "y"], "x")] });
+    const cut = (student) => Assignment.create({ testId: testV._id, userId: student._id, startTime: new Date(now - 3 * 60 * MIN), duration: 60, status: "Cancelled", cancelledDueToViolation: true, completedAt: new Date(now - 2.5 * 60 * MIN) });
+    const cutAsha = await cut(asha);
+    const cutChen = await cut(chen);
+    const ids = (res) => (Array.isArray(res.body) ? res.body.map((a) => String(a._id)) : []);
+    r = await api("/assignments/terminated-violations", { token: mentorToken });
+    check(r.status === 200 && ids(r).includes(String(cutAsha._id)), "mentor's terminated-exams list shows their own student", r.status);
+    check(!ids(r).includes(String(cutChen._id)), "  …but not a student outside their batch", ids(r));
+    check(r.body.find((a) => String(a._id) === String(cutAsha._id))?.userId?.name === asha.studentName, "  …named, not just \"Student\"", r.body?.[0]?.userId);
+    r = await api("/assignments/terminated-violations", { token: adminToken });
+    check(r.status === 200 && ids(r).includes(String(cutAsha._id)) && ids(r).includes(String(cutChen._id)), "admin's list shows both", r.status);
+    r = await api("/assignments/terminated-violations", { token: ashaToken });
+    check(r.status === 403, "a student cannot read the list", r.status);
+
     // ════════════════════════════════════════════════════════════════════════
     section("Never after the time has ended");
     const test2 = await Test.create({ title: `Geometry ${MARK}`, type: "mcq", timeLimit: 60, allowedTabSwitches: 0, status: "Active", createdBy: admin._id, questions: [mcq("a?", ["x", "y"], "x")] });
