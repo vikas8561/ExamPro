@@ -316,6 +316,42 @@ function getPolicyForTest(test) {
 }
 
 /**
+ * Does Safe Exam Browser apply to this test?
+ *
+ * Three conditions, all required: SEB is switched on system-wide, the test is
+ * proctored at all (practice tests never are), and whoever authored the test did
+ * not turn SEB off for it. The last one is the per-test opt-out — such a test
+ * runs entirely on the in-browser proctoring, with screen sharing, fullscreen
+ * and every other browser rule in force.
+ *
+ * Every place that decides whether to demand SEB must ask this, not the global
+ * switch directly. If one of them forgot the per-test flag, a student could be
+ * sent to an SEB launch screen for a test the server will never verify under SEB,
+ * or the reverse.
+ *
+ * `sebEnabled !== false` rather than `=== true`: tests written before the flag
+ * existed have no value, and they must keep the system-wide behaviour.
+ */
+function testUsesSeb(test, sebConfig) {
+  if (!sebConfig || sebConfig.required !== true) return false;
+  if (!isProctoredTest(test)) return false;
+  return test.sebEnabled !== false;
+}
+
+/**
+ * Is this a test whose author opted out of a system-wide SEB requirement?
+ * Recorded on the session and the submission so a reviewer can tell "SEB was
+ * off for this test" from "SEB was off everywhere".
+ */
+function sebDisabledForTest(test, sebConfig) {
+  return (
+    sebConfig?.required === true &&
+    isProctoredTest(test) &&
+    test.sebEnabled === false
+  );
+}
+
+/**
  * How long a session may go without SEB re-proving itself before it is blocked.
  *
  * The browser re-sends its key hash on every heartbeat (every 5s), so four
@@ -347,6 +383,9 @@ function isSebProofFresh(seb, now = Date.now()) {
  * exactly the attempts most worth looking at.
  */
 function sebSubmissionStatus(seb) {
+  if (seb && seb.required !== true && seb.disabledForTest === true) {
+    return { proctorSebStatus: "disabled_for_test", proctorSebFallbackReason: null };
+  }
   if (!seb || seb.required !== true) {
     return { proctorSebStatus: "not_required", proctorSebFallbackReason: null };
   }
@@ -473,6 +512,8 @@ module.exports = {
   isSebProofFresh,
   sebSubmissionStatus,
   isProctoredTest,
+  testUsesSeb,
+  sebDisabledForTest,
   getPolicyForTest,
   applySebPolicy,
   decide,

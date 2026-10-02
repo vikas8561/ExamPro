@@ -3,11 +3,10 @@
  * legitimate flows they tightened.
  */
 
-require("dotenv").config({ path: require("path").resolve(__dirname, "../../.env") });
+// Runs against a local API and database only -- see scripts/lib/examHarness.js.
+const { api, makeUser, connect, disconnect } = require("../lib/examHarness");
 const mongoose = require("mongoose");
-const jwt = require("jsonwebtoken");
 
-const API = "http://localhost:4000/api";
 const MARK = `reg-${Date.now()}`;
 
 let pass = 0, fail = 0;
@@ -15,15 +14,6 @@ const check = (label, ok, detail = "") => {
   if (ok) { pass++; console.log(`PASS  ${label}`); }
   else { fail++; console.log(`FAIL  ${label}${detail ? `  -> ${detail}` : ""}`); }
 };
-
-async function api(path, { token, method = "GET", body } = {}) {
-  const res = await fetch(`${API}${path}`, {
-    method,
-    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-  return { status: res.status, body: await res.json().catch(() => null) };
-}
 
 const SECRET = ["answer", "answers", "expectedAnswer", "hiddenTestCases"];
 const exposes = (payload) => {
@@ -42,39 +32,33 @@ const exposes = (payload) => {
 };
 
 (async () => {
-  await mongoose.connect(process.env.MONGODB_URI);
-  const User = require("../../models/User");
-  const AuthSession = require("../../models/AuthSession");
+  await connect();
   const Test = require("../../models/Test");
   const Assignment = require("../../models/Assignment");
   const TestSubmission = require("../../models/TestSubmission");
   const ProctorSession = require("../../models/ProctorSession");
+  const Subject = require("../../models/Subject");
 
-  const bin = { users: [], tests: [], assignments: [] };
-  const mkUser = async (name, role) => {
-    const u = new User({ name: `ZZ ${name} ${MARK}`, email: `${MARK}-${name}@verify.invalid`, password: "x", role });
-    await u.save();
-    const token = jwt.sign({ userId: u._id, email: u.email, role: u.role }, process.env.JWT_SECRET, { expiresIn: "1h" });
-    // Auth moved off User.activeSessions and onto the authsessions
-    // collection, so a token is only live once it has a row there.
-    await AuthSession.create({
-      principalId: String(u._id),
-      role: u.role,
-      token,
-      expiresAt: new Date(Date.now() + 3600_000),
-    });
-    bin.users.push(u._id);
-    return { user: u, token };
-  };
+  const bin = { users: [], tests: [], assignments: [], subjects: [] };
+  const mkUser = (name, role) => makeUser(role, name, { mark: MARK });
 
   try {
     const student = await mkUser("student", "Student");
-    const mentor = await mkUser("mentor", "Mentor");
     const admin = await mkUser("admin", "Admin");
+
+    // A mentor only counts as a reviewer for a test they conduct, in a subject
+    // they teach, for a student in their batch (routes/tests.js and
+    // routes/testSubmissions.js). The mentor here authored this test in their
+    // own subject, which is the case these checks are about; an unrelated
+    // mentor is refused by design, and this used to fail with a 403 because
+    // the fixture built exactly that.
+    const subject = await Subject.create({ name: `ZZ Reg subject ${MARK}`, createdBy: admin.user._id });
+    bin.subjects.push(subject._id);
+    const mentor = await makeUser("Mentor", "mentor", { mark: MARK, subjects: [subject._id] });
 
     const test = await Test.create({
       title: `ZZ Reg ${MARK}`, type: "mcq", timeLimit: 60, allowedTabSwitches: 100,
-      status: "Active", createdBy: admin.user._id,
+      subject: subject.name, status: "Active", createdBy: mentor.user._id,
       questions: [
         { kind: "mcq", text: "2+2?", options: [{ text: "3" }, { text: "4" }], answer: "4", points: 1 },
         { kind: "theory", text: "Explain.", expectedAnswer: "MODEL", points: 5 },
@@ -170,7 +154,6 @@ const exposes = (payload) => {
     fail++;
     console.log("HARNESS ERROR:", err.stack);
   } finally {
-    const User = require("../../models/User");
     const Test = require("../../models/Test");
     const Assignment = require("../../models/Assignment");
     const TestSubmission = require("../../models/TestSubmission");
@@ -179,10 +162,9 @@ const exposes = (payload) => {
     await ProctorSession.deleteMany({ assignmentId: { $in: bin.assignments } });
     await Assignment.deleteMany({ _id: { $in: bin.assignments } });
     await Test.deleteMany({ _id: { $in: bin.tests } });
-    await User.deleteMany({ _id: { $in: bin.users } });
-    await require("../../models/AuthSession").deleteMany({ principalId: { $in: bin.users.map(String) } });
+    await require("../../models/Subject").deleteMany({ _id: { $in: bin.subjects } });
     console.log(`\n${pass} passed, ${fail} failed`);
-    await mongoose.disconnect();
+    await disconnect();
     process.exit(fail === 0 ? 0 : 1);
   }
 })();

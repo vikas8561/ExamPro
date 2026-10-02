@@ -5,30 +5,18 @@
  * student, mid-exam, with nothing but their own token and a browser console.
  */
 
-require("dotenv").config({ path: require("path").resolve(__dirname, "../../.env") });
+// Runs against a local API and database only -- see scripts/lib/examHarness.js.
+const { api, makeUser, connect, disconnect } = require("../lib/examHarness");
 const mongoose = require("mongoose");
-const jwt = require("jsonwebtoken");
 
-const API = "http://localhost:4000/api";
 const MARK = `sec-${Date.now()}`;
 
 let held = 0, leaked = 0;
 const secure = (label) => { held++; console.log(`  SECURE   ${label}`); };
 const breach = (label, detail) => { leaked++; console.log(`  LEAK !!  ${label}\n           ${detail}`); };
 
-async function api(path, { token, method = "GET", body } = {}) {
-  const res = await fetch(`${API}${path}`, {
-    method,
-    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-  return { status: res.status, body: await res.json().catch(() => null) };
-}
-
 (async () => {
-  await mongoose.connect(process.env.MONGODB_URI);
-  const User = require("../../models/User");
-  const AuthSession = require("../../models/AuthSession");
+  await connect();
   const Test = require("../../models/Test");
   const Assignment = require("../../models/Assignment");
   const TestSubmission = require("../../models/TestSubmission");
@@ -36,21 +24,7 @@ async function api(path, { token, method = "GET", body } = {}) {
 
   const bin = { users: [], tests: [], assignments: [] };
 
-  const mkUser = async (name) => {
-    const u = new User({ name: `ZZ ${name} ${MARK}`, email: `${MARK}-${name}@verify.invalid`, password: "x", role: "Student" });
-    await u.save();
-    const token = jwt.sign({ userId: u._id, email: u.email, role: u.role }, process.env.JWT_SECRET, { expiresIn: "1h" });
-    // Auth moved off User.activeSessions and onto the authsessions
-    // collection, so a token is only live once it has a row there.
-    await AuthSession.create({
-      principalId: String(u._id),
-      role: u.role,
-      token,
-      expiresAt: new Date(Date.now() + 3600_000),
-    });
-    bin.users.push(u._id);
-    return { user: u, token };
-  };
+  const mkUser = (name) => makeUser("Student", name, { mark: MARK });
 
   try {
     const victim = await mkUser("victim");
@@ -209,7 +183,6 @@ async function api(path, { token, method = "GET", body } = {}) {
     console.log("HARNESS ERROR:", err.stack);
     leaked++;
   } finally {
-    const User = require("../../models/User");
     const Test = require("../../models/Test");
     const Assignment = require("../../models/Assignment");
     const TestSubmission = require("../../models/TestSubmission");
@@ -218,10 +191,10 @@ async function api(path, { token, method = "GET", body } = {}) {
     await ProctorSession.deleteMany({ assignmentId: { $in: bin.assignments } });
     await Assignment.deleteMany({ _id: { $in: bin.assignments } });
     await Test.deleteMany({ _id: { $in: bin.tests } });
-    await User.deleteMany({ _id: { $in: bin.users } });
-    await require("../../models/AuthSession").deleteMany({ principalId: { $in: bin.users.map(String) } });
     console.log(`\n──────────────\n${held} secure, ${leaked} LEAKS`);
-    await mongoose.disconnect();
-    process.exit(0);
+    await disconnect();
+    // Non-zero on any leak, so CI or `npm run test:security` actually fails.
+    // This used to exit 0 unconditionally, reporting leaks as a success.
+    process.exit(leaked === 0 ? 0 : 1);
   }
 })();

@@ -8,15 +8,12 @@
  * in demonstrably different orders, submitting the same answers keyed by
  * question id -- and getting identical marks.
  *
- * Needs the API running on :4000 and MONGODB_URI set, like the security audit.
+ * Runs against a local API and database only -- see scripts/lib/examHarness.js.
  */
 
-require("dotenv").config({ path: require("path").resolve(__dirname, "../../.env") });
+const { api, makeUser, connect, disconnect } = require("../lib/examHarness");
 const mongoose = require("mongoose");
-const jwt = require("jsonwebtoken");
-const { grantSession, revokeSessions } = require("../lib/testAuth");
 
-const API = "http://localhost:4000/api";
 const MARK = `shuf-${Date.now()}`;
 
 let passed = 0, failed = 0;
@@ -24,38 +21,18 @@ const pass = (label) => { passed++; console.log(`  PASS  ${label}`); };
 const fail = (label, detail) => { failed++; console.log(`  FAIL  ${label}\n        ${detail}`); };
 const check = (cond, label, detail) => (cond ? pass(label) : fail(label, detail));
 
-async function api(path, { token, method = "GET", body } = {}) {
-  const res = await fetch(`${API}${path}`, {
-    method,
-    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-  return { status: res.status, body: await res.json().catch(() => null) };
-}
-
 const idsOf = (questions) => (questions || []).map((q) => String(q._id));
 
 (async () => {
-  await mongoose.connect(process.env.MONGODB_URI);
-  const User = require("../../models/User");
+  await connect();
   const Test = require("../../models/Test");
   const Assignment = require("../../models/Assignment");
   const TestSubmission = require("../../models/TestSubmission");
   const ProctorSession = require("../../models/ProctorSession");
 
-  const bin = { users: [], tests: [], assignments: [] };
+  const bin = { tests: [], assignments: [] };
 
-  const mkUser = async (name) => {
-    const u = new User({
-      name: `ZZ ${name} ${MARK}`, email: `${MARK}-${name}@verify.invalid`,
-      password: "x", role: "Student",
-    });
-    await u.save();
-    const token = jwt.sign({ userId: u._id, email: u.email, role: u.role }, process.env.JWT_SECRET, { expiresIn: "1h" });
-    await grantSession(u, token);
-    bin.users.push(u._id);
-    return { user: u, token };
-  };
+  const mkUser = (name) => makeUser("Student", name, { mark: MARK });
 
   // Ten MCQs, so that two independent shuffles colliding by chance is a 1-in-10!
   // event rather than a coin toss -- this script must not be flaky.
@@ -303,8 +280,12 @@ const idsOf = (questions) => (questions || []).map((q) => String(q._id));
     });
     const m = mixedSubmit.body?.submission || mixedSubmit.body || {};
 
-    // 3 MCQs x 2 points = 6, theory 5, coding scored from its hidden marks (7).
-    check(m.maxScore === 18, "maxScore uses hidden-test-case marks for coding (6 + 5 + 7)", `got ${m.maxScore}`);
+    // 3 MCQs x 2 points = 6, theory 5, coding 5. A coding question is worth its
+    // `points`; its hidden test cases split that worth rather than add their own
+    // `marks` (services/grading.js, maxMarksForQuestion). This used to expect 18,
+    // from the hidden case's 7 marks -- the rule it tested was retired so that
+    // adding a test case can never change what a paper is out of.
+    check(m.maxScore === 16, "maxScore counts the coding question at its points (6 + 5 + 5)", `got ${m.maxScore}`);
     check(m.totalScore === 6, "only the MCQs auto-score; theory and coding await the mentor", `got ${m.totalScore}`);
 
     const mixedStored = await TestSubmission.findOne({ assignmentId: mixedAssignment._id }).lean();
@@ -332,13 +313,12 @@ const idsOf = (questions) => (questions || []).map((q) => String(q._id));
     fail("script crashed", error.stack || String(error));
   } finally {
     await Promise.all([
-      mongoose.model("User").deleteMany({ _id: { $in: bin.users } }),
       mongoose.model("Test").deleteMany({ _id: { $in: bin.tests } }),
       mongoose.model("Assignment").deleteMany({ _id: { $in: bin.assignments } }),
       mongoose.model("TestSubmission").deleteMany({ assignmentId: { $in: bin.assignments } }),
       mongoose.model("ProctorSession").deleteMany({ assignmentId: { $in: bin.assignments } }),
     ]);
-    await mongoose.disconnect();
+    await disconnect();
   }
 
   console.log(`\n${failed === 0 ? "ALL PASS" : "FAILURES"} — ${passed} passed, ${failed} failed\n`);

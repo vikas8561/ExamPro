@@ -1,15 +1,11 @@
 /**
  * The issues from "Testing / Issues Found", each as the thing the tester saw.
  *
- * Needs the API running on :4000 and MONGODB_URI set.
+ * Runs against a local API and database only -- see scripts/lib/examHarness.js.
  */
 
-require("dotenv").config({ path: require("path").resolve(__dirname, "../../.env") });
+const { api, makeUser, connect, disconnect } = require("../lib/examHarness");
 const mongoose = require("mongoose");
-const jwt = require("jsonwebtoken");
-const { grantSession, revokeSessions } = require("../lib/testAuth");
-
-const API = "http://localhost:4000/api";
 const MARK = `rep-${Date.now()}`;
 
 let passed = 0, failed = 0;
@@ -17,32 +13,31 @@ const pass = (l) => { passed++; console.log(`  PASS  ${l}`); };
 const fail = (l, d) => { failed++; console.log(`  FAIL  ${l}\n        ${d}`); };
 const check = (c, l, d) => (c ? pass(l) : fail(l, d));
 
-async function api(path, { token, method = "GET", body } = {}) {
-  const res = await fetch(`${API}${path}`, {
-    method, headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-  return { status: res.status, body: await res.json().catch(() => null) };
-}
-
 (async () => {
-  await mongoose.connect(process.env.MONGODB_URI);
-  const User = require("../../models/User");
+  await connect();
   const Test = require("../../models/Test");
   const Assignment = require("../../models/Assignment");
   const TestSubmission = require("../../models/TestSubmission");
   const ProctorSession = require("../../models/ProctorSession");
+  const Subject = require("../../models/Subject");
 
-  const bin = { users: [], tests: [], assignments: [] };
+  const bin = { users: [], tests: [], assignments: [], subjects: [] };
   let seq = 0;
 
-  const mkUser = async (role = "Student") => {
-    const n = `u${seq++}`;
-    const u = new User({ name: `ZZ ${n} ${MARK}`, email: `${MARK}-${n}@verify.invalid`, password: "x", role });
-    await u.save();
-    const token = jwt.sign({ userId: u._id, email: u.email, role: u.role }, process.env.JWT_SECRET, { expiresIn: "2h" });
-    await grantSession(u, token); bin.users.push(u._id);
-    return { user: u, token };
+  const mkUser = (role = "Student") => makeUser(role, "", { mark: MARK });
+
+  // A reviewer the server actually recognises: a mentor who teaches the test's
+  // subject, is attached to the attempt, and has the student in their batch
+  // (routes/testSubmissions.js, GET /assignment/:id). An arbitrary mentor is
+  // rightly refused -- that check closed a hole where any signed-in user could
+  // read any submission -- so this used to fail with a 403, not a wrong answer.
+  const mkReviewer = async (test, assignmentIds) => {
+    const subject = await Subject.create({ name: `ZZ subject ${MARK} ${bin.subjects.length}`, createdBy: test.createdBy });
+    bin.subjects.push(subject._id);
+    await Test.updateOne({ _id: test._id }, { $set: { subject: subject.name } });
+    const mentor = await makeUser("Mentor", "reviewer", { mark: MARK, subjects: [subject._id] });
+    await Assignment.updateMany({ _id: { $in: assignmentIds } }, { $set: { mentorId: mentor.user._id } });
+    return mentor;
   };
 
   const mcqs = (n) => Array.from({ length: n }, (_, i) => ({
@@ -107,7 +102,7 @@ async function api(path, { token, method = "GET", body } = {}) {
       check(rev1.join() !== rev2.join(),
         "two students' reviews are no longer identical", "both reviews came back in the same order");
 
-      const mentor = await mkUser("Mentor");
+      const mentor = await mkReviewer(test, [s1.a._id]);
       const rm = await api(`/test-submissions/assignment/${s1.a._id}`, { token: mentor.token });
       check(ids(rm.body?.test?.questions).join() === canonical.join(),
         "a reviewer still sees canonical order, so Q3 means one fixed thing",
@@ -138,7 +133,7 @@ async function api(path, { token, method = "GET", body } = {}) {
       await Assignment.updateOne({ _id: a._id }, { $set: { deadline: new Date(Date.now() - 60000) } });
 
       const asStudent = await api(`/test-submissions/assignment/${a._id}`, { token: stu.token });
-      const asMentor = await api(`/test-submissions/assignment/${a._id}`, { token: (await mkUser("Mentor")).token });
+      const asMentor = await api(`/test-submissions/assignment/${a._id}`, { token: (await mkReviewer(test, [a._id])).token });
 
       const sSub = asStudent.body?.submission || {};
       const mSub = asMentor.body?.submission || {};
@@ -298,12 +293,13 @@ async function api(path, { token, method = "GET", body } = {}) {
     fail("script crashed", e.stack || String(e));
   } finally {
     await Promise.all([
-      User.deleteMany({ _id: { $in: bin.users } }), Test.deleteMany({ _id: { $in: bin.tests } }),
+      Test.deleteMany({ _id: { $in: bin.tests } }),
+      Subject.deleteMany({ _id: { $in: bin.subjects } }),
       Assignment.deleteMany({ _id: { $in: bin.assignments } }),
       TestSubmission.deleteMany({ assignmentId: { $in: bin.assignments } }),
       ProctorSession.deleteMany({ assignmentId: { $in: bin.assignments } }),
     ]);
-    await mongoose.disconnect();
+    await disconnect();
   }
 
   console.log(`\n${failed === 0 ? "ALL PASS" : "FAILURES"} — ${passed} passed, ${failed} failed\n`);

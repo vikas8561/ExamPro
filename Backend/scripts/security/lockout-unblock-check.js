@@ -129,6 +129,10 @@ const staff = (rows) => ({
 stub("models/Mentor", staff(MENTORS));
 stub("models/Admin", staff(ADMINS));
 stub("models/Profile", { find: () => query([]), findOne: () => query(null) });
+// The Users directory also lists each student's re-enableable tests, which
+// reads assignments. Out of scope here, and like everything else in this check
+// it must not touch a database.
+stub("services/reEnable", { listReEnableable: async () => new Map() });
 stub("models/AuthSession", {
   deleteMany: async (filter) => {
     sessionDeletes.push(filter);

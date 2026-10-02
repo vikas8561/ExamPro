@@ -157,12 +157,14 @@ const TestSubmissionSchema = new mongoose.Schema({
   // How this attempt stood in relation to Safe Exam Browser, so a reviewer can
   // tell a genuine locked-down attempt from one that fell back to the ordinary
   // browser-based proctoring:
-  //   not_required — SEB was switched off system-wide when this was taken
-  //   verified     — ran inside SEB and proved it on every check-in
-  //   fallback     — SEB was required but unavailable; see proctorSebFallbackReason
+  //   not_required      — SEB was switched off system-wide when this was taken
+  //   disabled_for_test — SEB was on system-wide, but turned off for this test,
+  //                       so the in-browser proctoring applied
+  //   verified          — ran inside SEB and proved it on every check-in
+  //   fallback          — SEB was required but unavailable; see proctorSebFallbackReason
   proctorSebStatus: {
     type: String,
-    enum: ["not_required", "verified", "fallback"],
+    enum: ["not_required", "disabled_for_test", "verified", "fallback"],
     default: "not_required"
   },
   proctorSebFallbackReason: {

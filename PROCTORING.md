@@ -258,6 +258,39 @@ in `proctorPolicy.js`.
 Off by default. Switched on system-wide at **Admin → Proctoring**, where the
 Browser Exam Keys also live.
 
+### Turning it off for one test
+
+The system-wide switch is the master. Under it, each test has its own **Use Safe
+Exam Browser** switch on the Create / Edit Test page, open to admins and mentors.
+It is on by default, and tests saved before it existed count as on.
+
+SEB applies to a test only when both are on (`proctorPolicy.testUsesSeb`). Turn the
+test's switch off and that test runs entirely on the in-browser proctoring above:
+screen sharing, fullscreen, the keyboard allowlist, clipboard rules, focus and
+tamper detection, heartbeat and violation screenshots, all in force. The server
+refuses SEB launch links for it, so nobody is sent into a kiosk that will never
+be verified.
+
+A student who opens such a test from inside SEB (because another test that day
+uses it) is told to use their regular browser, and given an **Exit Safe Exam
+Browser** button that goes to the quit URL, so no invigilator password is needed.
+Their exam clock has not started at that point.
+
+Changing the switch on a test that is already being sat:
+
+| Student's state | Effect of turning SEB off |
+|---|---|
+| Not started | Regular browser, browser proctoring |
+| Stuck at the SEB launch screen | Let through on their next reload |
+| Already verified inside SEB | Stays in SEB until they submit. Dropping SEB mid-paper would demand a screen share SEB cannot give |
+
+Turning it back **on** never raises the requirement for a session already
+running, just as with the system-wide switch.
+
+The submission records `proctorSebStatus: "disabled_for_test"`, and the report
+shows it, so a reviewer can tell "SEB was off for this test" from "SEB was off
+everywhere" (`not_required`) and from "SEB was required but missing" (`fallback`).
+
 ### What it changes
 
 SEB is a separate, locked-down browser. It blocks other applications, browser
@@ -328,7 +361,7 @@ block lifts the instant SEB checks in again.
 |---|---|
 | `Backend/services/sebVerify.js` | Key verification, launch tokens, platform detection |
 | `Backend/services/sebConfig.js` | Generates the `.seb` plist handed to the student |
-| `Backend/routes/seb.js` | `POST /api/seb/launch`, `GET /api/seb/config/:id.seb` |
+| `Backend/routes/seb.js` | `POST /api/seb/launch`, `GET /api/seb/config/:id.seb` — both refuse tests that do not use SEB |
 | `Frontend/src/proctoring/seb.js` | Reads SEB's JavaScript API |
 | `Frontend/src/proctoring/SebLaunchScreen.jsx` | "Start in Safe Exam Browser" |
 
@@ -357,6 +390,33 @@ case-insensitively, no whitespace, and **no character escaping**, which is where
 ```bash
 cd Backend && npm run test:seb
 ```
+
+## Re-enabling an attempt
+
+A test handed in before its time was up can be reopened so the student carries
+on: cancelled by proctoring, submitted automatically, or submitted by mistake.
+Admins can do it for any student from **Users**, mentors for students in their
+batches from **My Students**. Each student card lists those tests by name, and
+each has a **Re-enable** button.
+
+All the rules live in `Backend/services/reEnable.js`:
+
+- **Only inside the attempt's time.** The cut-off is `attemptEndsAt`, the same
+  function the submit route and the expiry sweep use. It is the earlier of the
+  assignment window and the student's own countdown. Within a minute of it, or
+  after it, nobody can reopen anything.
+- **No extra time.** The clock never stopped. The student gets back what was left.
+- **Nothing lost.** Saved answers stay and are restored on resume. Violation
+  history stays on the session and the report. Only the *active* count is
+  reset, and only when proctoring ended the attempt.
+- **All or nothing.** The assignment is claimed first, then the session and
+  submission are reopened. If either fails, the claim is undone. Two people
+  pressing at once get one reopen.
+- **Recorded.** Every reopen is appended to `Assignment.reEnableHistory`: who,
+  when, why it had ended, and the score and violation count it had.
+
+`npm run test:reenable` exercises all of it end to end. It needs a throwaway
+local MongoDB, and refuses to run against anything else.
 
 ## Reviewing an attempt
 

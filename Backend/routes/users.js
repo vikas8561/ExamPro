@@ -15,10 +15,12 @@ const {
   getCohort,
   cohortCounts,
   getStudentFilterForBatches,
+  canManageStudent,
   STUDENT_FIELDS,
 } = require("../services/principals");
 const { isDatabaseUnavailable } = require("../utils/databaseErrors");
 const lockout = require("../services/loginLockout");
+const { listReEnableable } = require("../services/reEnable");
 
 // The admin panel lists everyone who can sign in. Those identities come from
 // three collections across two databases now - students from the university's
@@ -48,6 +50,18 @@ async function findStudent(id) {
   if (!mongoose.Types.ObjectId.isValid(id)) return null;
   const doc = await Student.findById(id).select(STUDENT_FIELDS).lean();
   return doc ? normalizeStudent(doc) : null;
+}
+
+// The student, if the caller may manage them, or an `{ error, status }` the
+// route sends back as-is. Who may manage whom is decided in one place,
+// services/principals.canManageStudent, shared with the exam re-enable route.
+async function findManageableStudent(req, id) {
+  const student = await findStudent(id);
+  if (!student) return { error: "Student not found", status: 404 };
+  if (!(await canManageStudent(req.user, student._id))) {
+    return { error: "You can only manage students in your assigned batches.", status: 403 };
+  }
+  return { student };
 }
 
 function escapeRegex(value) {
@@ -85,7 +99,7 @@ async function loadDirectory({ search = "", filter = "", requesterRole = "admin"
     const cohort = getCohort(cohortKey);
     // An unrecognised cohort key must not silently widen to every student.
     if (!cohort) return [];
-    if (isMentor && !mentorBatches.includes(cohortKey)) {
+    if (isMentor && !mentorBatches.includes("all") && !mentorBatches.includes(cohortKey)) {
       return [];
     }
     Object.assign(studentQuery, cohort.filter);
@@ -178,7 +192,12 @@ router.get("/filters", authenticateToken, requireRole(["Admin", "Mentor"]), asyn
     if (isMentor) {
       const mentor = await Mentor.findById(req.user.userId).select("batches").lean();
       const mentorBatches = mentor?.batches || [];
-      const assignedCohorts = cohorts.filter((c) => c.key !== "all" && mentorBatches.includes(c.key));
+      // A mentor assigned the "all" batch sees every campus, so every campus
+      // is a filter they can pick.
+      const coversAll = mentorBatches.includes("all");
+      const assignedCohorts = cohorts.filter(
+        (c) => c.key !== "all" && (coversAll || mentorBatches.includes(c.key))
+      );
 
       return res.json({
         filters: [
@@ -225,15 +244,22 @@ router.get("/", authenticateToken, requireRole(["Admin", "Mentor"]), async (req,
   }
 });
 
-// Get all users with profile details (admin only) - with pagination and search
-router.get("/profiles", authenticateToken, requireRole("Admin"), async (req, res) => {
+// Get users with profile details - with pagination and search.
+// Admins get the whole directory. Mentors get only the students in their
+// assigned batches, scoped by loadDirectory exactly as GET / is.
+router.get("/profiles", authenticateToken, requireRole(["Admin", "Mentor"]), async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 9;
     const skip = (page - 1) * limit;
 
     const rows = await withProfileFlags(
-      await loadDirectory({ search: req.query.search || "", filter: req.query.filter || "" })
+      await loadDirectory({
+        search: req.query.search || "",
+        filter: req.query.filter || "",
+        requesterRole: req.user?.role,
+        requesterId: req.user?.userId,
+      })
     );
 
     // Same ordering the aggregation used to produce: students with a photo,
@@ -259,15 +285,36 @@ router.get("/profiles", authenticateToken, requireRole("Admin"), async (req, res
     // rows sorted students-first, so counting the page made "All Users" report
     // every mentor and admin as zero. Scoped to the same search and filter as
     // `totalUsers`, so the three roles always add up to it.
-    const counts = { total: totalUsers, students: 0, mentors: 0, admins: 0 };
+    const counts = { total: totalUsers, students: 0, mentors: 0, admins: 0, locked: 0 };
     for (const row of rows) {
+      if (row.isLocked) counts.locked += 1;
       if (row.role === "Student") counts.students += 1;
       else if (row.role === "Mentor") counts.mentors += 1;
       else if (row.role === "Admin") counts.admins += 1;
     }
 
+    // Tests each student on this page handed in early and could still have
+    // reopened, for the Re-enable buttons on their card. Looked up for this page
+    // only, never the whole directory.
+    const pageRows = rows.slice(skip, skip + limit);
+    const pageStudentIds = pageRows.filter((r) => r.role === "Student").map((r) => r._id);
+    //
+    // Never allowed to break the page. This directory is where an admin or mentor
+    // unblocks a locked-out student or resets a password -- often mid-exam, and
+    // often urgently -- so if this lookup fails the cards still load, just
+    // without their Re-enable rows.
+    let reEnableable = new Map();
+    try {
+      reEnableable = await listReEnableable(pageStudentIds);
+    } catch (lookupError) {
+      console.error("Re-enable lookup failed; showing the directory without it:", lookupError.message);
+    }
+    const users = pageRows.map((r) =>
+      r.role === "Student" ? { ...r, reEnableable: reEnableable.get(String(r._id)) || [] } : r
+    );
+
     res.json({
-      users: rows.slice(skip, skip + limit),
+      users,
       counts,
       pagination: {
         currentPage: page,
@@ -343,16 +390,17 @@ router.get("/:id/full-profile", authenticateToken, requireRole("admin"), async (
   }
 });
 
-// Let a locked-out student sign in again (admin only).
+// Let a locked-out student sign in again. Admins, and mentors for students in
+// their assigned batches.
 //
 // There is no "blocked" flag to unset: the lockout is the failed-attempt counter
 // in services/loginLockout, so unblocking is just forgetting the attempts
 // recorded against every identifier this student could have typed.
-router.post("/:id/unblock", authenticateToken, requireRole("Admin"), async (req, res) => {
+router.post("/:id/unblock", authenticateToken, requireRole(["Admin", "Mentor"]), async (req, res) => {
   try {
-    const student = await findStudent(req.params.id);
-    if (!student) {
-      return res.status(404).json({ message: "Student not found" });
+    const { student, error, status } = await findManageableStudent(req, req.params.id);
+    if (error) {
+      return res.status(status).json({ message: error });
     }
 
     const keys = studentLoginKeys(student);
@@ -368,7 +416,8 @@ router.post("/:id/unblock", authenticateToken, requireRole("Admin"), async (req,
   }
 });
 
-// Reset a student's password to the shared default (admin only).
+// Reset a student's password to the shared default. Admins, and mentors for
+// students in their assigned batches.
 //
 // This is the one place ExamPro writes to the university's database. Every other
 // student field stays read-only and should remain so - but the password a student
@@ -379,11 +428,11 @@ router.post("/:id/unblock", authenticateToken, requireRole("Admin"), async (req,
 // It is not only ExamPro's view that changes. The university's attendance
 // platform authenticates against this same field, so the student's password there
 // becomes the default too, and they should be told to change it.
-router.post("/:id/reset-password", authenticateToken, requireRole("Admin"), async (req, res, next) => {
+router.post("/:id/reset-password", authenticateToken, requireRole(["Admin", "Mentor"]), async (req, res, next) => {
   try {
-    const student = await findStudent(req.params.id);
-    if (!student) {
-      return res.status(404).json({ message: "Student not found" });
+    const { student, error, status } = await findManageableStudent(req, req.params.id);
+    if (error) {
+      return res.status(status).json({ message: error });
     }
 
     // Same cost factor the mentor and admin schemas hash with.

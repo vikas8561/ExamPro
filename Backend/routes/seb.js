@@ -5,6 +5,7 @@ const router = express.Router();
 const { authenticateToken } = require("../middleware/auth");
 const Assignment = require("../models/Assignment");
 const Test = require("../models/Test");
+const ProctorSession = require("../models/ProctorSession");
 const ProctorSetting = require("../models/ProctorSetting");
 const policyService = require("../services/proctorPolicy");
 const sebVerify = require("../services/sebVerify");
@@ -122,10 +123,38 @@ router.post("/exam-url", authenticateToken, async (req, res, next) => {
     }
 
     const test = await Test.findById(assignment.testId).select(
-      "type isPracticeTest practiceTestSettings"
+      "type isPracticeTest practiceTestSettings sebEnabled"
     );
     if (!test) {
       return res.status(404).json({ message: "Test not found" });
+    }
+
+    // Nothing to redirect to: a nonced address only matters to SEB's key hash,
+    // and this test is never verified under SEB. The exam page treats the
+    // refusal as "carry on where you are" and tells a student who opened it
+    // inside SEB to use their regular browser instead.
+    //
+    // Except for an attempt already running verified inside SEB — the test's SEB
+    // switch was turned off while they sat it. Their session stays on SEB, so if
+    // SEB relaunches they must land back on the address it was verified against.
+    const alreadyInSeb =
+      assignment.sebLaunch?.examUrl &&
+      (await ProctorSession.exists({
+        userId: req.user.userId,
+        assignmentId: assignment._id,
+        status: "active",
+        "seb.required": true,
+        "seb.verified": true,
+      }));
+    if (alreadyInSeb) {
+      return res.json({ examUrl: assignment.sebLaunch.examUrl });
+    }
+
+    if (!policyService.testUsesSeb(test, await ProctorSetting.getSebConfig())) {
+      return res.status(409).json({
+        message: "This test does not use Safe Exam Browser.",
+        reason: "seb_not_used",
+      });
     }
 
     const launch = await getOrCreateLaunch(assignment, test);
@@ -171,7 +200,7 @@ router.post("/launch", authenticateToken, async (req, res, next) => {
     }
 
     const test = await Test.findById(assignment.testId).select(
-      "type isPracticeTest practiceTestSettings"
+      "type isPracticeTest practiceTestSettings sebEnabled"
     );
     if (!test) {
       return res.status(404).json({ message: "Test not found" });
@@ -179,6 +208,16 @@ router.post("/launch", authenticateToken, async (req, res, next) => {
     if (!policyService.isProctoredTest(test)) {
       return res.status(400).json({
         message: "This test is not proctored and does not use Safe Exam Browser.",
+      });
+    }
+
+    // Covers SEB being off system-wide as well as off for this one test. Either
+    // way the exam runs in the student's regular browser, and a launch link
+    // would only open a kiosk the server will never verify.
+    if (!policyService.testUsesSeb(test, await ProctorSetting.getSebConfig())) {
+      return res.status(400).json({
+        message: "This test runs in your regular browser and does not use Safe Exam Browser.",
+        reason: "seb_not_used",
       });
     }
 

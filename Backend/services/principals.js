@@ -114,6 +114,30 @@ function getStudentFilterForBatches(batchKeys = []) {
 }
 
 /**
+ * May this signed-in user act on this student?
+ *
+ * Admins may act on every student. Mentors only on students in their assigned
+ * batches, decided by the same filter the directory listing uses
+ * (getStudentFilterForBatches), so a mentor can act on exactly the students
+ * they can see. Every other role may act on nobody.
+ *
+ * Shared by the Users routes (unblock, reset password) and the exam re-enable
+ * route, so the two can never disagree about whose student is whose.
+ */
+async function canManageStudent(user, studentId) {
+  const role = String(user?.role || "").toLowerCase();
+  if (role === "admin") return true;
+  if (role !== "mentor") return false;
+
+  const mentor = await Mentor.findById(user.userId).select("batches").lean();
+  const inBatch = await Student.exists({
+    _id: studentId,
+    ...getStudentFilterForBatches(mentor?.batches || []),
+  });
+  return Boolean(inBatch);
+}
+
+/**
  * Returns array of student ObjectIds for the given batch keys.
  */
 async function getStudentIdsForBatches(batchKeys = []) {
@@ -237,6 +261,7 @@ module.exports = {
   getUniversitiesForBatches,
   getStudentFilterForBatches,
   getStudentIdsForBatches,
+  canManageStudent,
   findStudentsByCohort,
   cohortCounts,
   findStudentById,

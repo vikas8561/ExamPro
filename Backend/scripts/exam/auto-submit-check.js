@@ -13,15 +13,11 @@
  *   3. `autoSubmit` is a flag the browser supplies, and it skipped the deadline
  *      check completely, so anyone could submit an attempt hours late with it.
  *
- * Needs the API running on :4000 and MONGODB_URI set, like the other scripts.
+ * Runs against a local API and database only -- see scripts/lib/examHarness.js.
  */
 
-require("dotenv").config({ path: require("path").resolve(__dirname, "../../.env") });
+const { api, makeUser, connect, disconnect } = require("../lib/examHarness");
 const mongoose = require("mongoose");
-const jwt = require("jsonwebtoken");
-const { grantSession, revokeSessions } = require("../lib/testAuth");
-
-const API = "http://localhost:4000/api";
 const MARK = `auto-${Date.now()}`;
 
 let passed = 0, failed = 0;
@@ -29,18 +25,8 @@ const pass = (label) => { passed++; console.log(`  PASS  ${label}`); };
 const fail = (label, detail) => { failed++; console.log(`  FAIL  ${label}\n        ${detail}`); };
 const check = (cond, label, detail) => (cond ? pass(label) : fail(label, detail));
 
-async function api(path, { token, method = "GET", body } = {}) {
-  const res = await fetch(`${API}${path}`, {
-    method,
-    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-  return { status: res.status, body: await res.json().catch(() => null) };
-}
-
 (async () => {
-  await mongoose.connect(process.env.MONGODB_URI);
-  const User = require("../../models/User");
+  await connect();
   const Test = require("../../models/Test");
   const Assignment = require("../../models/Assignment");
   const TestSubmission = require("../../models/TestSubmission");
@@ -50,14 +36,7 @@ async function api(path, { token, method = "GET", body } = {}) {
 
   const bin = { users: [], tests: [], assignments: [] };
 
-  const mkUser = async (n) => {
-    const u = new User({ name: `ZZ ${n} ${MARK}`, email: `${MARK}-${n}@verify.invalid`, password: "x", role: "Student" });
-    await u.save();
-    const token = jwt.sign({ userId: u._id, email: u.email, role: u.role }, process.env.JWT_SECRET, { expiresIn: "1h" });
-    await grantSession(u, token);
-    bin.users.push(u._id);
-    return { user: u, token };
-  };
+  const mkUser = (n) => makeUser("Student", n, { mark: MARK });
 
   /**
    * A student starts an exam, answers two of three questions, and then vanishes.
@@ -215,25 +194,32 @@ async function api(path, { token, method = "GET", body } = {}) {
     // ───────────────────────────────────────────────────────────────────────
     console.log("\n════ 5. Both clocks agree between the submit route and the sweep ════\n");
 
+    // An attempt ends at the EARLIER of the two clocks (services/attemptWindow.js,
+    // since f14bc8e). These used to assert the opposite -- live while either
+    // clock was open -- which was the rule before that commit.
     const a5 = { startTime: new Date(Date.now() - 3600e3), duration: 30, startedAt: new Date(Date.now() - 600e3), deadline: null };
-    check(isAttemptExpired(a5, { timeLimit: 120 }) === false,
-      "an attempt is live while EITHER clock is open (test clock here)",
+    check(isAttemptExpired(a5, { timeLimit: 120 }) === true,
+      "an attempt is over once the window closes, even with the test clock still running",
       `ends at ${attemptEndsAt(a5, { timeLimit: 120 })}`);
-    check(isAttemptExpired({ ...a5, startedAt: new Date(Date.now() - 8 * 3600e3) }, { timeLimit: 30 }) === true,
-      "and over only once BOTH have closed", "still reported live");
+    const b5 = { startTime: new Date(Date.now() - 600e3), duration: 240, startedAt: new Date(Date.now() - 600e3), deadline: null };
+    check(isAttemptExpired(b5, { timeLimit: 5 }) === true,
+      "and once the test clock runs out, even with the window still open",
+      `ends at ${attemptEndsAt(b5, { timeLimit: 5 })}`);
+    check(isAttemptExpired(b5, { timeLimit: 30 }) === false,
+      "while both are open it is live",
+      `ends at ${attemptEndsAt(b5, { timeLimit: 30 })}`);
     check(SUBMISSION_GRACE_MS === 5 * 60 * 1000, "the grace window is 5 minutes", `${SUBMISSION_GRACE_MS}ms`);
 
   } catch (error) {
     fail("script crashed", error.stack || String(error));
   } finally {
     await Promise.all([
-      mongoose.model("User").deleteMany({ _id: { $in: bin.users } }),
       mongoose.model("Test").deleteMany({ _id: { $in: bin.tests } }),
       mongoose.model("Assignment").deleteMany({ _id: { $in: bin.assignments } }),
       mongoose.model("TestSubmission").deleteMany({ assignmentId: { $in: bin.assignments } }),
       mongoose.model("ProctorSession").deleteMany({ assignmentId: { $in: bin.assignments } }),
     ]);
-    await mongoose.disconnect();
+    await disconnect();
   }
 
   console.log(`\n${failed === 0 ? "ALL PASS" : "FAILURES"} — ${passed} passed, ${failed} failed\n`);

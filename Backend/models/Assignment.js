@@ -38,6 +38,23 @@ const PermissionSchema = new mongoose.Schema({
   }
 }, { _id: false });
 
+const ReEnableEntrySchema = new mongoose.Schema({
+  at: { type: Date, default: Date.now },
+  // Admin or mentor. No ref: the two live in different collections.
+  byId: { type: mongoose.Schema.Types.ObjectId, required: true },
+  byRole: { type: String, enum: ["Admin", "Mentor"], required: true },
+  byName: { type: String, default: "" },
+  // Why the attempt had ended: "violation" (proctoring cancelled it),
+  // "auto_submit" (the exam page submitted it) or "submitted" (the student did).
+  reason: { type: String, default: "submitted" },
+  previousStatus: { type: String, default: "" },
+  previousScore: { type: Number, default: null },
+  previousViolationCount: { type: Number, default: 0 },
+  // How long the student had left when it was reopened. The clock never
+  // stopped; this is what they got back, not extra time.
+  remainingMs: { type: Number, default: 0 }
+}, { _id: false });
+
 const AssignmentSchema = new mongoose.Schema({
   testId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -147,6 +164,14 @@ const AssignmentSchema = new mongoose.Schema({
     nonce: { type: String, default: null },
     examUrl: { type: String, default: null },
     issuedAt: { type: Date, default: null }
+  },
+  // Every time an admin or mentor reopened this attempt after it was handed in
+  // early. Append-only: a reopened attempt looks exactly like one that was never
+  // submitted, so this is the only record that it happened. See
+  // services/reEnable.js.
+  reEnableHistory: {
+    type: [ReEnableEntrySchema],
+    default: []
   }
 }, { timestamps: true });
 

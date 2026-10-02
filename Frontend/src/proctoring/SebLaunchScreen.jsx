@@ -108,21 +108,36 @@ export default function SebLaunchScreen({ info, assignmentId }) {
   }
 
   // Running inside SEB on an exam that is not set up for it. The exam still
-  // expects a screen share, which SEB cannot produce on any platform, so there
-  // is no button that would help — only a clear instruction.
+  // expects a screen share, which SEB cannot produce on any platform, so the
+  // only way forward is the regular browser. The exit button goes to SEB's quit
+  // URL — the same password-free way out the assignments page offers — because
+  // SEB's own Quit button asks for the invigilator's password, and a student
+  // told to "quit SEB" would otherwise be stuck.
   if (info?.notExpected) {
     return (
       <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/95 p-4">
         <div className="w-full max-w-lg rounded-xl border border-slate-700 bg-slate-900 p-8">
           <h2 className="mb-3 text-2xl font-bold text-white">Please use your regular browser</h2>
           <p className="mb-6 text-slate-300">
-            This exam is not set up for Safe Exam Browser. Quit Safe Exam Browser
-            and open the exam in your regular browser instead.
+            {info.disabledForTest
+              ? "This test does not use Safe Exam Browser. It runs in your regular browser, with screen sharing and the standard proctoring rules. Exit Safe Exam Browser, then open the test from your assignments page in Chrome, Edge, Brave or Firefox."
+              : "This exam is not set up for Safe Exam Browser. Exit Safe Exam Browser and open the exam in your regular browser instead."}
           </p>
-          <p className="text-xs text-slate-400">
-            If you were told to use Safe Exam Browser for this exam, contact your
-            administrator — the exam may not have been configured for it yet.
-          </p>
+          <button
+            type="button"
+            onClick={() =>
+              window.location.assign(`${window.location.origin}/student/seb-exit`)
+            }
+            className="mb-4 w-full rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-500"
+          >
+            Exit Safe Exam Browser
+          </button>
+          {!info.disabledForTest && (
+            <p className="text-xs text-slate-400">
+              If you were told to use Safe Exam Browser for this exam, contact your
+              administrator — the exam may not have been configured for it yet.
+            </p>
+          )}
         </div>
       </div>
     );

@@ -355,6 +355,8 @@ const MentorRoutes = () => {
             <Route path="/tests/create" element={<CreateTest />} />
             <Route path="/assignments" element={<MentorAssignments />} />
             <Route path="/submissions" element={<MentorSubmissions />} />
+            {/* The admin directory, narrowed to this mentor's batches. */}
+            <Route path="/users" element={<Users mentorView />} />
             <Route path="/view-test/:assignmentId" element={<ViewCompletedTest />} />
             <Route path="*" element={<div className="p-6">Not Found</div>} />
           </Routes>

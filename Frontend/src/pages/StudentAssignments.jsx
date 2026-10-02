@@ -198,6 +198,16 @@ const StudentAssignments = () => {
       fetchAssignments(0, currentPage, true);
     });
 
+    // An admin or mentor reopened a test this student had handed in early. A
+    // refetch is all it takes: the card turns back to "In Progress" and shows
+    // Continue Test.
+    socket.on("assignmentUpdated", (data) => {
+      console.log("Socket event: assignmentUpdated", data);
+      setLastFetchTime(0);
+      fetchInProgressRef.current = false;
+      fetchAssignments(0, currentPage, true);
+    });
+
     return () => {
       if (pollInterval) {
         clearInterval(pollInterval);

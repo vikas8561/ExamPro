@@ -18,7 +18,9 @@ import {
   AlertCircle,
   Lock,
   LockOpen,
-  KeyRound
+  KeyRound,
+  RotateCcw,
+  Clock
 } from "lucide-react";
 import { API_BASE_URL } from "../config/api";
 import apiRequest from "../services/api";
@@ -27,7 +29,22 @@ import apiRequest from "../services/api";
 // actually gets set; this copy only exists so the admin is told what it will be.
 const DEFAULT_STUDENT_PASSWORD = "123456";
 
-export default function Users() {
+// Why a re-enableable test ended, as the server records it (services/reEnable.js).
+const RE_ENABLE_REASONS = {
+  violation: "Cancelled by proctoring",
+  auto_submit: "Auto-submitted",
+  submitted: "Submitted early"
+};
+
+// Server codes meaning the test can no longer be reopened, so its row should go.
+const RE_ENABLE_GONE = new Set(["time_over", "not_submitted", "changed", "no_window", "not_found"]);
+
+// `mentorView` is the same directory as a mentor sees it from the mentor panel:
+// only the students in their assigned batches (the server scopes the listing),
+// and only Unblock and Reset Password on each. No staff, no deleting, no face
+// resets and no account creation — the server refuses all of those to mentors
+// regardless, so hiding them here is about not offering buttons that would fail.
+export default function Users({ mentorView = false }) {
   const [users, setUsers] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const EMPTY_FORM = { name: "", email: "", password: "", role: "Mentor", subjects: [] };
@@ -36,12 +53,22 @@ export default function Users() {
   const [editing, setEditing] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [filter, setFilter] = useState("All Users");
-  const [filterOptions, setFilterOptions] = useState([{ value: "All Users", label: "All Users" }]);
+  const [filterOptions, setFilterOptions] = useState([
+    { value: "All Users", label: mentorView ? "My Students" : "All Users" }
+  ]);
+  // Mentors only: whether /users/filters has answered, so "no batches assigned"
+  // is not announced before we actually know.
+  const [filtersLoaded, setFiltersLoaded] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [deletingImage, setDeletingImage] = useState(null);
   // Which student card has an unblock / password reset in flight, as
   // `${id}:unblock` or `${id}:reset`, so only the pressed button shows a spinner.
   const [lockAction, setLockAction] = useState(null);
+  // The assignment whose Re-enable is in flight, so only that button spins.
+  const [reEnablingId, setReEnablingId] = useState(null);
+  // Ticks so a test drops off a card the moment its re-enable window closes,
+  // without waiting for a refetch. The server checks again on every press.
+  const [now, setNow] = useState(() => Date.now());
   const [resultPopup, setResultPopup] = useState({ show: false, message: "", type: "success" });
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -132,11 +159,14 @@ export default function Users() {
       .then((data) => {
         if (data.filters?.length) setFilterOptions(data.filters);
       })
-      .catch((err) => console.error("Error fetching filter options:", err));
+      .catch((err) => console.error("Error fetching filter options:", err))
+      .finally(() => setFiltersLoaded(true));
   }, []);
 
-  // Load subjects for mentor assignment form
+  // Load subjects for mentor assignment form. Mentors cannot create accounts, so
+  // they never see that form.
   useEffect(() => {
+    if (mentorView) return;
     fetch(`${API_BASE_URL}/subjects`, {
       headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
     })
@@ -146,7 +176,7 @@ export default function Users() {
         console.error("Error fetching subjects:", err);
         setSubjectOptions([]);
       });
-  }, []);
+  }, [mentorView]);
 
   // Debounce search
   useEffect(() => {
@@ -436,6 +466,77 @@ export default function Users() {
     });
   };
 
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 15000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // How long is left, in words. `endsAt` is when the attempt itself ends.
+  const formatTimeLeft = (endsAt) => {
+    const minutes = Math.floor((new Date(endsAt).getTime() - now) / 60000);
+    if (minutes < 1) return "under a minute left";
+    if (minutes < 60) return `${minutes}m left`;
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    return rest ? `${hours}h ${rest}m left` : `${hours}h left`;
+  };
+
+  // Drop one test from one student's card.
+  const removeReEnableable = (studentId, assignmentId) => {
+    setUsers((prev) =>
+      prev.map((row) =>
+        row._id === studentId
+          ? {
+              ...row,
+              reEnableable: (row.reEnableable || []).filter((t) => t.assignmentId !== assignmentId)
+            }
+          : row
+      )
+    );
+  };
+
+  // Reopen a test the student handed in before its time was up. The server
+  // decides whether that is still allowed; this only asks and reports.
+  const reEnableTest = async (student, item) => {
+    const reason = RE_ENABLE_REASONS[item.reason] || "Submitted early";
+    if (
+      !window.confirm(
+        `Re-enable "${item.testTitle}" for ${student.name}?\n\n` +
+          `Ended: ${reason}\n` +
+          `Time: ${formatTimeLeft(item.endsAt)}\n\n` +
+          `• The student continues with all their saved answers.\n` +
+          `• No extra time is given; the original timer keeps running.\n` +
+          (item.reason === "violation"
+            ? `• Active violations reset to 0. The full violation history stays on the report.\n`
+            : `• Violations recorded so far still count.\n`) +
+          `• The submitted score is withdrawn until they submit again.`
+      )
+    ) {
+      return;
+    }
+
+    setReEnablingId(item.assignmentId);
+    try {
+      const data = await apiRequest(`/assignments/${item.assignmentId}/re-enable`, { method: "POST" });
+      removeReEnableable(student._id, item.assignmentId);
+      setResultPopup({
+        show: true,
+        message: data.message || `"${item.testTitle}" re-enabled for ${student.name}.`,
+        type: "success"
+      });
+    } catch (err) {
+      console.error("Error re-enabling test:", err);
+      if (RE_ENABLE_GONE.has(err.code)) removeReEnableable(student._id, item.assignmentId);
+      setResultPopup({
+        show: true,
+        message: err.message || "Could not re-enable this test.",
+        type: "error"
+      });
+    } finally {
+      setReEnablingId(null);
+    }
+  };
+
   // Auto-dismiss result popup after 3 seconds
   useEffect(() => {
     if (resultPopup.show) {
@@ -472,6 +573,12 @@ export default function Users() {
   const studentsCount = roleCounts.students;
   const mentorsCount = roleCounts.mentors;
   const adminsCount = roleCounts.admins;
+  // Everything after "My Students" in the filter list is one of the mentor's
+  // batches, so the list doubles as the count.
+  const batchCount = filterOptions.filter((o) => o.value !== "All Users").length;
+  const lockedCount =
+    typeof counts?.locked === "number" ? counts.locked : users.filter((u) => u.isLocked).length;
+  const noBatches = mentorView && filtersLoaded && batchCount === 0;
 
   return (
     <div
@@ -510,10 +617,12 @@ export default function Users() {
             </div>
             <div>
               <h1 className="text-base sm:text-lg font-semibold text-white tracking-tight leading-tight">
-                User Directory
+                {mentorView ? "My Students" : "User Directory"}
               </h1>
               <p className="text-xs text-[#7E8594] mt-0.5">
-                Institutional accounts, role governance & proctoring profiles
+                {mentorView
+                  ? "Students in your assigned batches · unblock logins & reset passwords"
+                  : "Institutional accounts, role governance & proctoring profiles"}
               </p>
             </div>
           </div>
@@ -527,7 +636,7 @@ export default function Users() {
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search users..."
+                placeholder={mentorView ? "Search name, roll no, UID..." : "Search users..."}
                 className="w-full bg-[#20242D] border border-white/[0.08] rounded-xl pl-9 pr-8 py-2 text-xs sm:text-sm text-white placeholder-[#7E8594] focus:outline-none focus:border-[#00C4B4]/50 focus:ring-1 focus:ring-[#00C4B4]/50 transition-all"
               />
               {searchTerm && (
@@ -589,6 +698,7 @@ export default function Users() {
             </div>
 
             {/* Reset All Face Images Button */}
+            {!mentorView && (
             <button
               onClick={deleteAllProfileImages}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-all cursor-pointer"
@@ -597,6 +707,7 @@ export default function Users() {
               <Trash2 className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Reset Images</span>
             </button>
+            )}
 
             {/* Refresh Sync Button */}
             <button
@@ -609,6 +720,7 @@ export default function Users() {
             </button>
 
             {/* ⚪ White Button: Add User */}
+            {!mentorView && (
             <button
               onClick={() => {
                 if (showAddForm) {
@@ -624,10 +736,71 @@ export default function Users() {
               <UserPlus className="w-4 h-4 stroke-[2.5]" />
               <span>{showAddForm ? "Close Form" : "Add User"}</span>
             </button>
+            )}
           </div>
         </div>
 
+        {/* Mentor KPI Row: their students, their batches, and who is locked out */}
+        {mentorView && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-5">
+            <div className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-4 sm:p-5 hover:border-white/10 transition-all shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] sm:text-xs font-semibold tracking-wide text-[#7E8594] uppercase">
+                  Students
+                </span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-medium bg-[#1E293B] text-[#38BDF8] border border-[#38BDF8]/20">
+                  {isNarrowed ? "Filtered" : "My Batches"}
+                </span>
+              </div>
+              <div className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+                {studentsCount}
+              </div>
+              <p className="text-[11px] text-[#7E8594] mt-1 flex items-center gap-1">
+                <GraduationCap className="w-3 h-3 text-[#38BDF8]" />
+                {isNarrowed ? "Students matching this view" : "Across your assigned batches"}
+              </p>
+            </div>
+
+            <div className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-4 sm:p-5 hover:border-white/10 transition-all shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] sm:text-xs font-semibold tracking-wide text-[#7E8594] uppercase">
+                  Batches
+                </span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-medium bg-[#133B42] text-[#2DD4BF] border border-[#2DD4BF]/20">
+                  Assigned
+                </span>
+              </div>
+              <div className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+                {batchCount}
+              </div>
+              <p className="text-[11px] text-[#7E8594] mt-1 flex items-center gap-1">
+                <UsersIcon className="w-3 h-3 text-[#2DD4BF]" />
+                Assigned to you by an admin
+              </p>
+            </div>
+
+            <div className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-4 sm:p-5 hover:border-white/10 transition-all shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] sm:text-xs font-semibold tracking-wide text-[#7E8594] uppercase">
+                  Locked Out
+                </span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                  Login
+                </span>
+              </div>
+              <div className={`text-xl sm:text-2xl font-bold tracking-tight ${lockedCount > 0 ? "text-rose-400" : "text-white"}`}>
+                {lockedCount}
+              </div>
+              <p className="text-[11px] text-[#7E8594] mt-1 flex items-center gap-1">
+                <Lock className="w-3 h-3 text-rose-400" />
+                Too many wrong passwords
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* 4-Card KPI Overview Row */}
+        {!mentorView && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
           {/* Total Registered Users */}
           <div className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-4 sm:p-5 hover:border-white/10 transition-all shadow-sm">
@@ -705,9 +878,10 @@ export default function Users() {
             </p>
           </div>
         </div>
+        )}
 
         {/* Add/Edit User Elevated Glassmorphism Panel */}
-        {showAddForm && (
+        {showAddForm && !mentorView && (
           <div className="bg-[#181A22] border border-[#00C4B4]/30 rounded-2xl p-6 shadow-xl transition-all duration-200">
             <div className="flex items-center justify-between pb-4 mb-4 border-b border-white/[0.05]">
               <div className="flex items-center gap-2.5">
@@ -893,10 +1067,16 @@ export default function Users() {
               <div className="w-14 h-14 rounded-2xl bg-[#133B42] border border-[#00C4B4]/20 flex items-center justify-center mx-auto mb-4">
                 <AlertCircle className="w-7 h-7 text-[#00C4B4]" />
               </div>
-              <h3 className="text-base font-bold text-white">No Users Found</h3>
+              <h3 className="text-base font-bold text-white">
+                {noBatches ? "No Batches Assigned" : mentorView ? "No Students Found" : "No Users Found"}
+              </h3>
               <p className="text-xs text-[#7E8594] mt-1.5 max-w-sm mx-auto">
-                {searchTerm
-                  ? `No user accounts match "${searchTerm}". Try resetting your search or filter.`
+                {noBatches
+                  ? "You have not been assigned any batches yet, so there are no students to show. Ask an admin to assign your batches."
+                  : searchTerm
+                  ? `No ${mentorView ? "students" : "user accounts"} match "${searchTerm}". Try resetting your search or filter.`
+                  : mentorView
+                  ? "No students found in the selected batch."
                   : "No registered accounts found under the current filter selection."}
               </p>
               {searchTerm && (
@@ -1075,6 +1255,58 @@ export default function Users() {
                         </div>
                       )}
 
+                      {/* Tests handed in before their time was up, still inside
+                          their window. One row per test, each with its own
+                          Re-enable. Gone the moment the window closes. */}
+                      {isStudent &&
+                        (u.reEnableable || []).some((t) => new Date(t.reEnableUntil).getTime() > now) && (
+                          <div className="mb-4 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] p-2.5">
+                            <span className="text-[10px] text-amber-300/90 uppercase tracking-wider font-semibold flex items-center gap-1.5 mb-2">
+                              <RotateCcw className="w-3 h-3" />
+                              Submitted before time ended
+                            </span>
+                            <div className="space-y-2">
+                              {u.reEnableable
+                                .filter((t) => new Date(t.reEnableUntil).getTime() > now)
+                                .map((t) => (
+                                  <div
+                                    key={t.assignmentId}
+                                    className="flex items-center gap-2 rounded-lg bg-[#181A22] border border-white/[0.04] p-2"
+                                  >
+                                    <div className="min-w-0 flex-1">
+                                      <span
+                                        className="text-xs font-semibold text-white truncate block"
+                                        title={t.testTitle}
+                                      >
+                                        {t.testTitle}
+                                      </span>
+                                      <span
+                                        className={`text-[10px] truncate block ${
+                                          t.reason === "violation" ? "text-rose-400" : "text-amber-300"
+                                        }`}
+                                      >
+                                        {RE_ENABLE_REASONS[t.reason] || "Submitted early"}
+                                      </span>
+                                      <span className="text-[10px] text-[#7E8594] flex items-center gap-1 whitespace-nowrap">
+                                        <Clock className="w-2.5 h-2.5 flex-shrink-0" />
+                                        {formatTimeLeft(t.endsAt)}
+                                      </span>
+                                    </div>
+                                    <button
+                                      onClick={() => reEnableTest(u, t)}
+                                      disabled={reEnablingId === t.assignmentId}
+                                      className="flex-shrink-0 py-1.5 px-2.5 rounded-lg text-[11px] font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/25 transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                      title={`Let ${u.name} continue "${t.testTitle}" with their saved answers`}
+                                    >
+                                      <RotateCcw className="w-3 h-3" />
+                                      <span>{reEnablingId === t.assignmentId ? "Re-enabling..." : "Re-enable"}</span>
+                                    </button>
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+                        )}
+
                       {/* Mentor Assigned Subjects Pills */}
                       {isMentor && u.subjects && u.subjects.length > 0 && (
                         <div className="mb-4">
@@ -1103,8 +1335,9 @@ export default function Users() {
                     <div className="pt-3 border-t border-white/[0.05] space-y-2">
                       {isStudent ? (
                         <div className="grid grid-cols-2 gap-2">
-                          {/* Student Reset Face ID Button */}
-                          {u.profileImageSaved ? (
+                          {/* Face reset and Delete are admin-only. Mentors get
+                              Unblock and Reset Password, below. */}
+                          {!mentorView && (u.profileImageSaved ? (
                             <button
                               onClick={() => deleteProfileImage(u._id, u.name)}
                               disabled={deletingImage === u._id}
@@ -1119,9 +1352,10 @@ export default function Users() {
                               <ImageIcon className="w-3.5 h-3.5 text-[#555C6D]" />
                               <span>No Face ID</span>
                             </div>
-                          )}
+                          ))}
 
                           {/* Delete Student Button */}
+                          {!mentorView && (
                           <button
                             onClick={() => deleteUser(u._id, u.name)}
                             className="py-2 px-2 rounded-xl text-xs font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
@@ -1129,6 +1363,7 @@ export default function Users() {
                             <Trash2 className="w-3.5 h-3.5" />
                             <span>Delete</span>
                           </button>
+                          )}
 
                           {/* Unblock, once too many wrong passwords have locked
                               them out. Nothing to clear otherwise, so the slot
@@ -1225,7 +1460,7 @@ export default function Users() {
             <span className="text-xs text-[#7E8594]">
               Showing page <span className="font-semibold text-white">{currentPage}</span> of{" "}
               <span className="font-semibold text-white">{pagination.totalPages}</span> (
-              {pagination.totalUsers} total users)
+              {pagination.totalUsers} total {mentorView ? "students" : "users"})
             </span>
 
             <div className="flex items-center gap-1.5">

@@ -11,15 +11,11 @@
  * marking must leave every score and every answer exactly as it found them.
  * An edit that DOES change an answer key must re-grade correctly.
  *
- * Needs the API running on :4000 and MONGODB_URI set, like the other scripts.
+ * Runs against a local API and database only -- see scripts/lib/examHarness.js.
  */
 
-require("dotenv").config({ path: require("path").resolve(__dirname, "../../.env") });
+const { api, makeUser, connect, disconnect } = require("../lib/examHarness");
 const mongoose = require("mongoose");
-const jwt = require("jsonwebtoken");
-const { grantSession, revokeSessions } = require("../lib/testAuth");
-
-const API = "http://localhost:4000/api";
 const MARK = `edit-${Date.now()}`;
 
 let passed = 0, failed = 0;
@@ -27,18 +23,8 @@ const pass = (label) => { passed++; console.log(`  PASS  ${label}`); };
 const fail = (label, detail) => { failed++; console.log(`  FAIL  ${label}\n        ${detail}`); };
 const check = (cond, label, detail) => (cond ? pass(label) : fail(label, detail));
 
-async function api(path, { token, method = "GET", body } = {}) {
-  const res = await fetch(`${API}${path}`, {
-    method,
-    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-  return { status: res.status, body: await res.json().catch(() => null) };
-}
-
 (async () => {
-  await mongoose.connect(process.env.MONGODB_URI);
-  const User = require("../../models/User");
+  await connect();
   const Test = require("../../models/Test");
   const Assignment = require("../../models/Assignment");
   const TestSubmission = require("../../models/TestSubmission");
@@ -46,17 +32,7 @@ async function api(path, { token, method = "GET", body } = {}) {
 
   const bin = { users: [], tests: [], assignments: [] };
 
-  const mkUser = async (name, role) => {
-    const u = new User({
-      name: `ZZ ${name} ${MARK}`, email: `${MARK}-${name}@verify.invalid`,
-      password: "x", role,
-    });
-    await u.save();
-    const token = jwt.sign({ userId: u._id, email: u.email, role: u.role }, process.env.JWT_SECRET, { expiresIn: "1h" });
-    await grantSession(u, token);
-    bin.users.push(u._id);
-    return { user: u, token };
-  };
+  const mkUser = (name, role) => makeUser(role, name, { mark: MARK });
 
   const questionIds = async (testId) =>
     (await Test.findById(testId).select("questions").lean()).questions.map((q) => String(q._id));
@@ -285,13 +261,12 @@ async function api(path, { token, method = "GET", body } = {}) {
     fail("script crashed", error.stack || String(error));
   } finally {
     await Promise.all([
-      mongoose.model("User").deleteMany({ _id: { $in: bin.users } }),
       mongoose.model("Test").deleteMany({ _id: { $in: bin.tests } }),
       mongoose.model("Assignment").deleteMany({ _id: { $in: bin.assignments } }),
       mongoose.model("TestSubmission").deleteMany({ assignmentId: { $in: bin.assignments } }),
       mongoose.model("ProctorSession").deleteMany({ assignmentId: { $in: bin.assignments } }),
     ]);
-    await mongoose.disconnect();
+    await disconnect();
   }
 
   console.log(`\n${failed === 0 ? "ALL PASS" : "FAILURES"} — ${passed} passed, ${failed} failed\n`);

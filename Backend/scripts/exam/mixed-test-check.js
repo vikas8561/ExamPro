@@ -6,31 +6,20 @@
  * marked by Judge0 via /api/coding/submit, then the final submit and the
  * expired-attempt sweep.
  *
- * Needs the API running (EXAM_API, default http://localhost:4000/api), a
+ * Runs against a local API only (scripts/lib/examHarness.js), with a
  * reachable Judge0 that runs Python, and MONGODB_URI pointing at the same
  * database as the API. It creates and deletes its own records.
  */
 
-require("dotenv").config({ path: require("path").resolve(__dirname, "../../.env") });
+const { api, makeUser, connect, disconnect } = require("../lib/examHarness");
 const mongoose = require("mongoose");
-const jwt = require("jsonwebtoken");
-const { grantSession, revokeSessions } = require("../lib/testAuth");
 
-const API = process.env.EXAM_API || "http://localhost:4000/api";
 const MARK = `mixed-${Date.now()}`;
 
 let passed = 0, failed = 0;
 const pass = (l) => { passed++; console.log(`  PASS  ${l}`); };
 const fail = (l, d) => { failed++; console.log(`  FAIL  ${l}\n        ${d}`); };
 const check = (c, l, d) => (c ? pass(l) : fail(l, d));
-
-async function api(path, { token, method = "GET", body } = {}) {
-  const res = await fetch(`${API}${path}`, {
-    method, headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-  return { status: res.status, body: await res.json().catch(() => null) };
-}
 
 const SUM_OK = "a, b = map(int, input().split())\nprint(a + b)";
 // Right for positive inputs only, so it passes exactly one of the two hidden cases.
@@ -57,8 +46,7 @@ const PAPER = () => [
 ];
 
 (async () => {
-  await mongoose.connect(process.env.MONGODB_URI);
-  const User = require("../../models/User");
+  await connect();
   const Mentor = require("../../models/Mentor");
   const Subject = require("../../models/Subject");
   const Test = require("../../models/Test");
@@ -66,23 +54,13 @@ const PAPER = () => [
   const TestSubmission = require("../../models/TestSubmission");
   const ProctorSession = require("../../models/ProctorSession");
   const { finalizeAttempt } = require("../../services/expiredAttempts");
-  const bin = { users: [], mentors: [], subjects: [], tests: [], assignments: [] };
-
-  const sign = async (principal, role) => {
-    const token = jwt.sign({ userId: principal._id, email: principal.email, role }, process.env.JWT_SECRET, { expiresIn: "1h" });
-    await grantSession({ _id: principal._id, role }, token);
-    return token;
-  };
+  const bin = { subjects: [], tests: [], assignments: [] };
 
   let seq = 0;
-  const mkStudent = async () => {
-    const u = await new User({ name: `ZZ s${seq} ${MARK}`, email: `${MARK}-s${seq++}@verify.invalid`, password: "x", role: "Student" }).save();
-    bin.users.push(u._id);
-    return { user: u, token: await sign(u, "Student") };
-  };
-  const adminId = new mongoose.Types.ObjectId();
-  const adminToken = await sign({ _id: adminId, email: `${MARK}-admin@verify.invalid` }, "Admin");
-  bin.users.push(adminId);
+  const mkStudent = () => makeUser("Student", "s", { mark: MARK });
+  const admin = await makeUser("Admin", "admin", { mark: MARK });
+  const adminId = admin.user._id;
+  const adminToken = admin.token;
 
   const subject = async (name) => {
     const s = await Subject.create({ name: `${name} ${MARK}`, createdBy: adminId });
@@ -90,9 +68,8 @@ const PAPER = () => [
     return s;
   };
   const mkMentor = async (subjects) => {
-    const m = await Mentor.create({ name: `ZZ mentor ${MARK}`, email: `${MARK}-m${seq++}@verify.invalid`, password: "x", subjects: subjects.map((s) => s._id) });
-    bin.mentors.push(m._id);
-    return { mentor: m, token: await sign(m, "Mentor") };
+    const m = await makeUser("Mentor", "m", { mark: MARK, subjects: subjects.map((s) => s._id) });
+    return { mentor: m.doc, token: m.token };
   };
 
   const createTest = (token, extra) => api("/tests", {
@@ -298,14 +275,12 @@ const PAPER = () => [
     fail("script crashed", e.stack || String(e));
   } finally {
     await Promise.all([
-      User.deleteMany({ _id: { $in: bin.users } }), Mentor.deleteMany({ _id: { $in: bin.mentors } }),
       Subject.deleteMany({ _id: { $in: bin.subjects } }), Test.deleteMany({ _id: { $in: bin.tests } }),
       Assignment.deleteMany({ _id: { $in: bin.assignments } }),
       TestSubmission.deleteMany({ assignmentId: { $in: bin.assignments } }),
       ProctorSession.deleteMany({ assignmentId: { $in: bin.assignments } }),
-      revokeSessions([...bin.users, ...bin.mentors]),
     ]);
-    await mongoose.disconnect();
+    await disconnect();
   }
 
   console.log(`\n${failed === 0 ? "ALL PASS" : "FAILURES"} — ${passed} passed, ${failed} failed\n`);

@@ -61,6 +61,11 @@ const SEB_STATUS = {
     text: "Safe Exam Browser was not used",
     className: "border-amber-500/30 bg-amber-500/10 text-amber-200",
   },
+  // A choice made by the test's author, not a gap — so not amber.
+  disabled_for_test: {
+    text: "Safe Exam Browser was turned off for this test — taken under the in-browser proctoring",
+    className: "border-slate-500/30 bg-slate-500/10 text-slate-300",
+  },
 };
 
 const SEB_FALLBACK_REASONS = {
@@ -86,6 +91,9 @@ export default function ProctoringReport({ submission, assignmentId, onReEnabled
 
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const isAdmin = user?.role === "Admin";
+  // Mentors may reopen attempts for students in their own batches; the server
+  // refuses anyone else's (services/principals.canManageStudent).
+  const canReEnable = isAdmin || user?.role === "Mentor";
   const targetAssignmentId = assignmentId || submission.assignmentId;
 
   /**
@@ -163,15 +171,15 @@ export default function ProctoringReport({ submission, assignmentId, onReEnabled
   const handleReEnable = async () => {
     if (
       !window.confirm(
-        "Re-enable this candidate's exam?\n\n• Active violations reset to 0.\n• All previous violation records remain saved in history.\n• The original exam timer continues (no extra time granted).\n• Candidate will see 'Continue' on their dashboard."
+        "Re-enable this candidate's exam?\n\n• Only possible while the test's time is still running.\n• Active violations reset to 0.\n• All previous violation records remain saved in history.\n• The original exam timer continues (no extra time granted).\n• Candidate continues with their saved answers from 'Continue' on their dashboard."
       )
     ) {
       return;
     }
 
     try {
-      await apiRequest(`/assignments/${targetAssignmentId}/re-enable`, { method: "POST" });
-      alert("Exam re-enabled successfully.");
+      const data = await apiRequest(`/assignments/${targetAssignmentId}/re-enable`, { method: "POST" });
+      alert(data?.message || "Exam re-enabled successfully.");
       if (onReEnabled) onReEnabled();
     } catch (err) {
       alert(err.message || "Failed to re-enable exam.");
@@ -222,7 +230,7 @@ export default function ProctoringReport({ submission, assignmentId, onReEnabled
         </div>
 
         <div className="flex items-center gap-2">
-          {isAdmin && cancelled && targetAssignmentId && (
+          {canReEnable && cancelled && targetAssignmentId && (
             <button
               type="button"
               onClick={handleReEnable}

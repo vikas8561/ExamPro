@@ -137,7 +137,8 @@ export default function SebSettingsCard() {
                   Students on Windows and macOS must launch exams through Safe Exam
                   Browser. Students on Linux, where it has never been available, keep
                   the standard browser-based proctoring and their submissions record
-                  that.
+                  that. Individual tests can opt out with the &ldquo;Use Safe Exam
+                  Browser&rdquo; switch when they are created or edited.
                 </span>
               </span>
             </label>

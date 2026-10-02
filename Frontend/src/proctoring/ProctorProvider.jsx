@@ -385,7 +385,9 @@ export function ProctorProvider({
         }
 
         // Running inside SEB on an exam that is not expecting it — an old .seb
-        // file, or the system-wide switch turned off since. The rulebook still
+        // file, the system-wide switch turned off since, or (most often) a test
+        // whose author turned SEB off for it while another test still uses SEB,
+        // so the student is already sitting in the kiosk. The rulebook still
         // demands a screen share, and SEB cannot produce one on any platform, so
         // the gate's Begin button would never enable. Say so instead of leaving
         // them on a screen that can never be satisfied.
@@ -394,7 +396,11 @@ export function ProctorProvider({
           !opened?.seb?.verified &&
           (opened?.policy?.requiredPermissions || []).includes("screen")
         ) {
-          setSebLaunchInfo({ notExpected: true, os: env.os });
+          setSebLaunchInfo({
+            notExpected: true,
+            os: env.os,
+            disabledForTest: opened?.seb?.disabledForTest === true,
+          });
           setPhase("seb_launch");
           return;
         }

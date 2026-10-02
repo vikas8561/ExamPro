@@ -13,15 +13,11 @@
  * the answer actually lands and is marked. It also covers the auto-submit path
  * for each, since that is a separate branch of the same handler.
  *
- * Needs the API running on :4000 and MONGODB_URI set, like the other scripts.
+ * Runs against a local API and database only -- see scripts/lib/examHarness.js.
  */
 
-require("dotenv").config({ path: require("path").resolve(__dirname, "../../.env") });
+const { api, makeUser, connect, disconnect } = require("../lib/examHarness");
 const mongoose = require("mongoose");
-const jwt = require("jsonwebtoken");
-const { grantSession, revokeSessions } = require("../lib/testAuth");
-
-const API = "http://localhost:4000/api";
 const MARK = `kinds-${Date.now()}`;
 
 let passed = 0, failed = 0;
@@ -29,17 +25,8 @@ const pass = (l) => { passed++; console.log(`  PASS  ${l}`); };
 const fail = (l, d) => { failed++; console.log(`  FAIL  ${l}\n        ${d}`); };
 const check = (c, l, d) => (c ? pass(l) : fail(l, d));
 
-async function api(path, { token, method = "GET", body } = {}) {
-  const res = await fetch(`${API}${path}`, {
-    method, headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-  return { status: res.status, body: await res.json().catch(() => null) };
-}
-
 (async () => {
-  await mongoose.connect(process.env.MONGODB_URI);
-  const User = require("../../models/User");
+  await connect();
   const Test = require("../../models/Test");
   const Assignment = require("../../models/Assignment");
   const TestSubmission = require("../../models/TestSubmission");
@@ -47,14 +34,7 @@ async function api(path, { token, method = "GET", body } = {}) {
   const bin = { users: [], tests: [], assignments: [] };
 
   let seq = 0;
-  const mkUser = async () => {
-    const n = `s${seq++}`;
-    const u = new User({ name: `ZZ ${n} ${MARK}`, email: `${MARK}-${n}@verify.invalid`, password: "x", role: "Student" });
-    await u.save();
-    const token = jwt.sign({ userId: u._id, email: u.email, role: u.role }, process.env.JWT_SECRET, { expiresIn: "1h" });
-    await grantSession(u, token); bin.users.push(u._id);
-    return { user: u, token };
-  };
+  const mkUser = () => makeUser("Student", "", { mark: MARK });
 
   const QUESTIONS = {
     mcq: [
@@ -158,7 +138,10 @@ async function api(path, { token, method = "GET", body } = {}) {
       check(sub?.responses?.length === 1, "the answer stored", `${sub?.responses?.length}`);
       check((sub?.responses?.[0]?.textAnswer || "").includes("print("), "the student's code is stored", JSON.stringify(sub?.responses?.[0]?.textAnswer));
       check(sub?.responses?.[0]?.language === "python", "the language is stored for the mentor", `${sub?.responses?.[0]?.language}`);
-      check(sub?.maxScore === 7, "worth the hidden test case marks (7), not points (5)", `${sub?.maxScore}`);
+      // A coding question is worth its `points`; the hidden cases split that worth
+      // (services/grading.js). This used to expect the hidden case's 7 marks --
+      // a rule retired so adding a test case cannot change what a paper is out of.
+      check(sub?.maxScore === 5, "worth its points (5), which its hidden test cases share", `${sub?.maxScore}`);
     }
 
     // ───────────────────────────────────────────────────────────────────────
@@ -220,8 +203,8 @@ async function api(path, { token, method = "GET", body } = {}) {
       check(captured.status === 201 && afterCapture?.responses?.[0]?.textAnswer === "def solve(): pass",
         "the payload TakeTest now builds stores the student's code",
         `textAnswer ${JSON.stringify(afterCapture?.responses?.[0]?.textAnswer)}`);
-      check(afterCapture?.maxScore === 7,
-        "and it is still marked out of the hidden test case marks",
+      check(afterCapture?.maxScore === 5,
+        "and it is still marked out of its points",
         `${afterCapture?.maxScore}`);
     }
 
@@ -229,12 +212,12 @@ async function api(path, { token, method = "GET", body } = {}) {
     fail("script crashed", e.stack || String(e));
   } finally {
     await Promise.all([
-      User.deleteMany({ _id: { $in: bin.users } }), Test.deleteMany({ _id: { $in: bin.tests } }),
+      Test.deleteMany({ _id: { $in: bin.tests } }),
       Assignment.deleteMany({ _id: { $in: bin.assignments } }),
       TestSubmission.deleteMany({ assignmentId: { $in: bin.assignments } }),
       ProctorSession.deleteMany({ assignmentId: { $in: bin.assignments } }),
     ]);
-    await mongoose.disconnect();
+    await disconnect();
   }
 
   console.log(`\n${failed === 0 ? "ALL PASS" : "FAILURES"} — ${passed} passed, ${failed} failed\n`);

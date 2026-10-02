@@ -11,6 +11,7 @@ import {
   User,
   FileText,
   PlusCircle,
+  Users,
 } from "lucide-react";
 import "../styles/StudentSidebar.mobile.css";
 
@@ -116,6 +117,7 @@ export default function MentorLayout({
     { to: "/mentor/tests/create", icon: PlusCircle, label: "Create Test", iconColor: "#34D399" },
     { to: "/mentor/assignments", icon: ClipboardList, label: "Test Assignments", iconColor: "#2DD4BF" },
     { to: "/mentor/submissions", icon: FileCheck, label: "Student Submissions", iconColor: "#38BDF8" },
+    { to: "/mentor/users", icon: Users, label: "My Students", iconColor: "#F472B6" },
   ];
 
   return (

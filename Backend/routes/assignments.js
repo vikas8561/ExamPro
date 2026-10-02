@@ -10,6 +10,8 @@ const {
   getUniversitiesForBatches,
   findStudentsByCohort,
   cohortCounts,
+  canManageStudent,
+  findPrincipalById,
 } = require("../services/principals");
 const Student = require("../models/Student");
 const Mentor = require("../models/Mentor");
@@ -22,6 +24,7 @@ const { attachProctorStatus, mayServeQuestions } = require("../middleware/procto
 const { sanitizeQuestions, canSeeAnswers } = require("../services/questionSanitizer");
 const { resolveOrderedQuestions } = require("../services/questionOrder");
 const { isAttemptExpired } = require("../services/attemptWindow");
+const { reEnableAttempt } = require("../services/reEnable");
 
 /** Mongoose document -> plain object, so stripping actually sticks. */
 function toPlain(value) {
@@ -1154,46 +1157,56 @@ router.post("/:id/start", authenticateToken, attachProctorStatus(), async (req, 
   }
 });
 
-// Re-enable exam after auto-submission due to maximum violations (admin only)
-router.post("/:id/re-enable", authenticateToken, requireRole("admin"), async (req, res, next) => {
+// Reopen an exam that was handed in before its time was up -- cancelled by
+// proctoring, submitted automatically, or submitted by the student. Admins for
+// any student; mentors for students in their assigned batches. Only while the
+// attempt's own time is still running; see services/reEnable.js for every rule.
+router.post("/:id/re-enable", authenticateToken, requireRole(["admin", "mentor"]), async (req, res, next) => {
   try {
-    const assignment = await Assignment.findById(req.params.id);
-    if (!assignment) return res.status(404).json({ message: "Assignment not found" });
-
-    // Only allow for violation-terminated exams
-    if (!assignment.cancelledDueToViolation && assignment.status !== "Cancelled") {
-      return res.status(400).json({ message: "Only violation-terminated exams can be re-enabled" });
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: "Invalid assignment id" });
     }
 
-    // Do not allow re-enable if original deadline has already passed
-    const deadline = assignment.deadline || (assignment.startTime && assignment.duration
-      ? new Date(new Date(assignment.startTime).getTime() + assignment.duration * 60000)
-      : null);
-    if (deadline && new Date() >= new Date(deadline)) {
-      return res.status(400).json({ message: "Cannot re-enable exam: the original deadline has passed" });
+    const target = await Assignment.findById(req.params.id).select("userId").lean();
+    if (!target) return res.status(404).json({ message: "Assignment not found" });
+
+    if (!(await canManageStudent(req.user, target.userId))) {
+      return res.status(403).json({
+        message: "You can only re-enable tests for students in your assigned batches.",
+      });
     }
 
-    // Reopen assignment: reset active violations to 0, keep previous violations and timer untouched
-    assignment.status = "In Progress";
-    assignment.completedAt = null;
-    assignment.cancelledDueToViolation = false;
-    assignment.tabViolationCount = 0;
-    await assignment.save();
+    const role = String(req.user.role || "").toLowerCase() === "admin" ? "Admin" : "Mentor";
+    // The login token carries no name, and the audit entry is read by people.
+    const actor = await findPrincipalById(req.user.userId, role).catch(() => null);
+    const result = await reEnableAttempt(req.params.id, {
+      id: req.user.userId,
+      role,
+      name: actor?.name || "",
+    });
 
-    // Reactivate proctor session and test submission
-    await ProctorSession.updateOne(
-      { assignmentId: assignment._id },
-      { $set: { status: "active", terminatedReason: null, endedAt: null, violationCount: 0 } }
-    );
-    await TestSubmission.updateOne(
-      { assignmentId: assignment._id },
-      { $set: { cancelledDueToViolation: false, isFinalized: false, tabViolationCount: 0 } }
-    );
+    if (!result.ok) {
+      return res.status(result.status).json({ message: result.message, code: result.code });
+    }
 
+    // The student's assignments page listens for this and refreshes, so the
+    // Continue button appears without a reload.
     const io = req.app.get("io");
-    if (io) io.to(String(assignment.userId)).emit("assignmentUpdated", { assignmentId: assignment._id, status: "In Progress" });
+    if (io) {
+      io.to(String(target.userId)).emit("assignmentUpdated", {
+        assignmentId: result.assignment._id,
+        status: "In Progress",
+      });
+    }
 
-    res.json({ message: "Exam re-enabled successfully" });
+    const minutes = Math.floor(result.remainingMs / 60000);
+    res.json({
+      message: `"${result.testTitle}" re-enabled. The student has about ${minutes} minute${minutes === 1 ? "" : "s"} left.`,
+      assignmentId: result.assignment._id,
+      status: result.assignment.status,
+      remainingMs: result.remainingMs,
+      reason: result.reason,
+    });
   } catch (error) {
     next(error);
   }

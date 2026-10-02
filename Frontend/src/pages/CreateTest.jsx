@@ -68,6 +68,9 @@ export default function CreateTest() {
     negativeMarkingPercent: 0,
     allowedTabSwitches: "",
     shuffleQuestions: false,
+    // Per-test Safe Exam Browser switch. On by default so a new test follows the
+    // system-wide setting; off sends it through the in-browser proctoring.
+    sebEnabled: true,
     questions: [],
   });
   const [assignmentOptions, setAssignmentOptions] = useState({
@@ -89,6 +92,9 @@ export default function CreateTest() {
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [previewQuestion, setPreviewQuestion] = useState(null);
   const [allowedTabSwitchesError, setAllowedTabSwitchesError] = useState("");
+  // Whether SEB is switched on system-wide. null while loading or if the lookup
+  // failed — the switch below still works, it just cannot explain itself.
+  const [sebGloballyRequired, setSebGloballyRequired] = useState(null);
   const nav = useNavigate();
 
   // ── Role-awareness: detect if the user is a Mentor or Admin ──
@@ -177,6 +183,14 @@ export default function CreateTest() {
     fetchSubjects();
   }, []);
 
+  // The per-test SEB switch only matters while SEB is on system-wide, so say
+  // which way that currently is.
+  useEffect(() => {
+    apiRequest("/proctor/settings/seb/status")
+      .then((data) => setSebGloballyRequired(data?.required === true))
+      .catch(() => setSebGloballyRequired(null));
+  }, []);
+
   // Fetch test data if editing
   useEffect(() => {
     if (isEdit) {
@@ -198,6 +212,9 @@ export default function CreateTest() {
         negativeMarkingPercent: test.negativeMarkingPercent || 0,
         allowedTabSwitches: test.allowedTabSwitches ?? "",
         shuffleQuestions: Boolean(test.shuffleQuestions),
+        // Tests saved before this switch existed have no value and follow the
+        // system-wide setting, which is what "on" means.
+        sebEnabled: test.sebEnabled !== false,
         questions: test.questions.map((q) => ({
           id: crypto.randomUUID(),
           // The question's identity in the database. `id` above is only a React
@@ -581,6 +598,7 @@ export default function CreateTest() {
         negativeMarkingPercent: Number(form.negativeMarkingPercent),
         allowedTabSwitches: Number(form.allowedTabSwitches) || 0,
         shuffleQuestions: Boolean(form.shuffleQuestions),
+        sebEnabled: form.sebEnabled !== false,
         questions: form.questions.map((q) => ({
           // Only present for questions that came from the database; the server
           // ignores anything that is not already one of this test's own ids.
@@ -990,6 +1008,34 @@ export default function CreateTest() {
                     {form.shuffleQuestions
                       ? "Each student sees these questions in their own random order"
                       : "Every student sees the questions in the order below"}
+                  </div>
+                </div>
+              )}
+
+              {form.type !== "practice" && (
+                <div className="bg-[#181A22] rounded-xl p-4 border border-white/[0.06]">
+                  <label className="block text-xs font-semibold text-[#8E95A5] mb-2">
+                    Safe Exam Browser
+                  </label>
+                  <label className="flex items-center gap-3 cursor-pointer p-3 bg-[#14161D] border border-white/[0.08] rounded-xl hover:border-white/10 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={form.sebEnabled !== false}
+                      onChange={(e) =>
+                        setForm((prev) => ({ ...prev, sebEnabled: e.target.checked }))
+                      }
+                      className="w-4 h-4 rounded accent-[#00C4B4] cursor-pointer"
+                    />
+                    <span className="text-xs text-white font-medium">
+                      Use Safe Exam Browser for this test
+                    </span>
+                  </label>
+                  <div className="mt-1.5 text-[11px] text-[#555C6D]">
+                    {form.sebEnabled === false
+                      ? "Students take this test in their regular browser, under the in-browser proctoring: screen sharing, fullscreen, tab and keyboard monitoring"
+                      : sebGloballyRequired === false
+                        ? "Safe Exam Browser is switched off system-wide, so this test currently uses the in-browser proctoring"
+                        : "Students on Windows and macOS must take this test in Safe Exam Browser"}
                   </div>
                 </div>
               )}

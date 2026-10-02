@@ -123,6 +123,10 @@ const ProctorSessionSchema = new mongoose.Schema(
       // Why this attempt is running without SEB although it was required —
       // "os_unsupported" for Linux, where SEB has never existed.
       fallbackReason: { type: String, default: null },
+      // SEB was on system-wide but the test's author turned it off for this test,
+      // so the attempt runs on the in-browser proctoring. `required` is false
+      // whenever this is true.
+      disabledForTest: { type: Boolean, default: false },
       // The exact URL string the server put in the .seb config's startURL. SEB
       // hashes its key with the page URL, so this is what verification hashes
       // against. A URL reported by the browser is never used.

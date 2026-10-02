@@ -84,6 +84,13 @@ const TestSchema = new mongoose.Schema(
     // Nothing about marking changes: every response is matched to its question
     // by _id, never by position, so the order is purely a display concern.
     shuffleQuestions: { type: Boolean, default: false },
+    // Per-test opt-out from Safe Exam Browser. SEB applies only while it is
+    // switched on system-wide (Admin → Proctoring) AND this is true; turning it
+    // off sends the test through the in-browser proctoring instead, with every
+    // browser rule active. Defaults on so existing tests keep the global
+    // behaviour. Documents written before this field existed have no value at
+    // all, so read it as `sebEnabled !== false` — see proctorPolicy.testUsesSeb.
+    sebEnabled: { type: Boolean, default: true },
     isPracticeTest: { type: Boolean, default: false }, // Flag to identify practice tests
     practiceTestSettings: {
       allowMultipleAttempts: { type: Boolean, default: true },

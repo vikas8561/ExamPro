@@ -8,11 +8,15 @@
  *   the test time limit    startedAt + test.timeLimit -- the countdown the
  *                          student actually watches.
  *
- * POST /api/test-submissions has always accepted a submission while EITHER is
- * still open, so an attempt is finished only once BOTH have closed. That rule
- * now lives here, because the sweep that finalises abandoned attempts has to
- * apply exactly the same one -- a sweep that thought an attempt was over
- * sooner than the submit route did would lock students out mid-exam.
+ * An attempt is over as soon as EITHER clock closes -- the earlier of the
+ * two (see attemptEndsAt). It used to be the later, which let a student who
+ * started near the end of the window run past it; f14bc8e changed that.
+ *
+ * The rule lives here, and only here, because three places must agree on it
+ * exactly: the submit route (when it stops accepting a paper), the sweep that
+ * finalises abandoned attempts (when it takes over), and services/reEnable.js
+ * (when an attempt can no longer be reopened). If any of them disagreed, a
+ * student could be locked out mid-exam or handed an attempt they cannot submit.
  */
 
 /**

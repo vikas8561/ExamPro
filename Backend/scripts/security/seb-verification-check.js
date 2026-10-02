@@ -231,7 +231,43 @@ check("the Linux fallback keeps every browser-based rule", notUnderSeb.requiredP
 check("the Linux fallback keeps fullscreen", notUnderSeb.requireFullscreen === true);
 check("the fallback reason reaches the browser", notUnderSeb.seb.fallbackReason === "os_unsupported");
 
+// ── Per-test opt-out ──────────────────────────────────────────────────────
+
+const SEB_ON = { required: true };
+const SEB_OFF = { required: false };
+
+check("SEB on system-wide applies to an ordinary test", policy.testUsesSeb({ type: "mcq", sebEnabled: true }, SEB_ON) === true);
+check(
+  "a test written before the per-test switch existed follows the global setting",
+  policy.testUsesSeb({ type: "coding" }, SEB_ON) === true
+);
+check("a test with SEB turned off does not use SEB", policy.testUsesSeb({ type: "mcq", sebEnabled: false }, SEB_ON) === false);
+check("a test cannot switch SEB on while it is off system-wide", policy.testUsesSeb({ type: "mcq", sebEnabled: true }, SEB_OFF) === false);
+check("practice tests never use SEB", policy.testUsesSeb({ type: "practice", isPracticeTest: true }, SEB_ON) === false);
+check("a missing SEB config means no SEB", policy.testUsesSeb({ type: "mcq" }, null) === false);
+check(
+  "an opted-out test is recorded as disabled for the test",
+  policy.sebDisabledForTest({ type: "mcq", sebEnabled: false }, SEB_ON) === true
+);
+check(
+  "but not when SEB is off everywhere anyway",
+  policy.sebDisabledForTest({ type: "mcq", sebEnabled: false }, SEB_OFF) === false
+);
+check(
+  "an opted-out test keeps every browser-based rule, screen share included",
+  policy.applySebPolicy(base, { required: false, verified: false }).requiredPermissions.includes("screen")
+);
+
 // ── Submission status ─────────────────────────────────────────────────────
+
+check(
+  "an attempt on an opted-out test is recorded as disabled_for_test",
+  policy.sebSubmissionStatus({ required: false, disabledForTest: true }).proctorSebStatus === "disabled_for_test"
+);
+check(
+  "a verified SEB attempt stays verified even if the test was opted out later",
+  policy.sebSubmissionStatus({ required: true, verified: true, disabledForTest: true }).proctorSebStatus === "verified"
+);
 
 check("SEB off is recorded as not_required", policy.sebSubmissionStatus({ required: false }).proctorSebStatus === "not_required");
 check("a verified attempt is recorded as verified", policy.sebSubmissionStatus({ required: true, verified: true }).proctorSebStatus === "verified");

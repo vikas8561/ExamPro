@@ -281,7 +281,7 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
 // Create new test (admin/mentor)
 router.post("/", authenticateToken, requireRole(["admin", "Mentor"]), async (req, res, next) => {
   try {
-    const { title, subject, type, instructions, timeLimit, negativeMarkingPercent, allowedTabSwitches, shuffleQuestions, questions } = req.body;
+    const { title, subject, type, instructions, timeLimit, negativeMarkingPercent, allowedTabSwitches, shuffleQuestions, sebEnabled, questions } = req.body;
     console.log('DEBUG: Creating test with allowedTabSwitches:', allowedTabSwitches);
 
     if (!title) {
@@ -363,6 +363,9 @@ router.post("/", authenticateToken, requireRole(["admin", "Mentor"]), async (req
       negativeMarkingPercent: Number(negativeMarkingPercent || 0),
       allowedTabSwitches: Number(allowedTabSwitches || 0),
       shuffleQuestions: Boolean(shuffleQuestions),
+      // Absent means "follow the system-wide SEB setting", so only an explicit
+      // false opts the test out.
+      sebEnabled: sebEnabled !== false,
       questions: processedQuestions,
       createdBy: req.user.userId
     };
@@ -401,6 +404,7 @@ router.post("/", authenticateToken, requireRole(["admin", "Mentor"]), async (req
       negativeMarkingPercent: test.negativeMarkingPercent,
       allowedTabSwitches: test.allowedTabSwitches,
       shuffleQuestions: test.shuffleQuestions,
+      sebEnabled: test.sebEnabled,
       status: test.status,
       questions: test.questions,
       createdBy: {
@@ -423,7 +427,7 @@ router.post("/", authenticateToken, requireRole(["admin", "Mentor"]), async (req
 // Update test (admin/mentor - mentors can only update their own)
 router.put("/:id", authenticateToken, requireRole(["admin", "Mentor"]), async (req, res, next) => {
   try {
-    const { title, subject, type, instructions, timeLimit, negativeMarkingPercent, allowedTabSwitches, shuffleQuestions, questions, status } = req.body;
+    const { title, subject, type, instructions, timeLimit, negativeMarkingPercent, allowedTabSwitches, shuffleQuestions, sebEnabled, questions, status } = req.body;
 
     // Mentor can only update tests they created
     const userRole = String(req.user?.role || "").toLowerCase();
@@ -489,6 +493,10 @@ router.put("/:id", authenticateToken, requireRole(["admin", "Mentor"]), async (r
     if (negativeMarkingPercent !== undefined) updateData.negativeMarkingPercent = Number(negativeMarkingPercent);
     if (allowedTabSwitches !== undefined) updateData.allowedTabSwitches = Number(allowedTabSwitches);
     if (shuffleQuestions !== undefined) updateData.shuffleQuestions = Boolean(shuffleQuestions);
+    // Takes effect for attempts that have not started yet. A student already
+    // sitting the test inside SEB stays on SEB; one blocked at the SEB launch
+    // screen is let through on their next reload. See routes/proctor.js.
+    if (sebEnabled !== undefined) updateData.sebEnabled = Boolean(sebEnabled);
 
     // Process questions to ensure test cases are properly formatted
     if (questions) {

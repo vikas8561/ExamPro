@@ -41,6 +41,7 @@ function serializeSession(session) {
       required: session.seb?.required === true,
       verified: session.seb?.verified === true,
       fallbackReason: session.seb?.fallbackReason || null,
+      disabledForTest: session.seb?.disabledForTest === true,
     },
   };
 }
@@ -138,10 +139,14 @@ async function resolveSebState({ req, assignment, test, sebConfig }) {
     matchedKeyLabel: "",
     fallbackReason: null,
     examUrl: "",
+    disabledForTest: false,
   };
 
-  // Practice tests are unproctored, so SEB never applies to them.
-  if (!sebConfig.required || !policyService.isProctoredTest(test)) {
+  // SEB is off system-wide, the test is a practice test, or the test's author
+  // turned SEB off for it. In every case the in-browser proctoring is the whole
+  // story, so nothing below applies.
+  if (!policyService.testUsesSeb(test, sebConfig)) {
+    state.disabledForTest = policyService.sebDisabledForTest(test, sebConfig);
     return state;
   }
 
@@ -224,7 +229,7 @@ router.get("/policy", authenticateToken, async (req, res, next) => {
     }
 
     const test = await Test.findById(assignment.testId).select(
-      "type isPracticeTest practiceTestSettings"
+      "type isPracticeTest practiceTestSettings sebEnabled"
     );
     if (!test) {
       return res.status(404).json({ message: "Test not found" });
@@ -235,7 +240,7 @@ router.get("/policy", authenticateToken, async (req, res, next) => {
     const available = sebVerify.sebAvailableForOs(os);
 
     return res.json({
-      sebRequired: sebConfig.required && policyService.isProctoredTest(test),
+      sebRequired: policyService.testUsesSeb(test, sebConfig),
       sebAvailableForOs: available,
       os,
       minVersion: os === "macos" ? sebConfig.minVersions.macos : sebConfig.minVersions.windows,
@@ -278,7 +283,7 @@ router.post("/session/start", authenticateToken, async (req, res, next) => {
     }
 
     const test = await Test.findById(assignment.testId).select(
-      "type allowedTabSwitches isPracticeTest practiceTestSettings"
+      "type allowedTabSwitches isPracticeTest practiceTestSettings sebEnabled"
     );
     if (!test) {
       return res.status(404).json({ message: "Test not found" });
@@ -326,6 +331,24 @@ router.post("/session/start", authenticateToken, async (req, res, next) => {
         existing.seb.platform = sebState.platform || existing.seb.platform;
         existing.seb.matchedKeyLabel = sebState.matchedKeyLabel || existing.seb.matchedKeyLabel;
         existing.seb.examUrl = sebState.examUrl || existing.seb.examUrl;
+      }
+
+      // The one case where `required` IS lowered on resume: SEB was turned off
+      // for this test (or system-wide) while a student was stuck at the launch
+      // screen. They never got into SEB, so nothing they were doing depends on
+      // it, and keeping the requirement would block them from a test that no
+      // longer asks for SEB at all. A session already verified inside SEB keeps
+      // it — dropping it there would switch them to the browser rulebook, which
+      // asks for a screen share SEB cannot give.
+      if (
+        existing.seb.required === true &&
+        existing.seb.verified !== true &&
+        !sebState.required
+      ) {
+        existing.seb.required = false;
+      }
+      if (sebState.disabledForTest && existing.seb.required !== true) {
+        existing.seb.disabledForTest = true;
       }
 
       // Evidence is append-only. A student who reloads the exam in an ordinary
@@ -385,6 +408,7 @@ router.post("/session/start", authenticateToken, async (req, res, next) => {
         matchedKeyLabel: sebState.matchedKeyLabel,
         fallbackReason: sebState.fallbackReason,
         examUrl: sebState.examUrl,
+        disabledForTest: sebState.disabledForTest,
       },
       // Carry forward anything already recorded on the assignment, so a student
       // who reloads after the session document expired does not start clean.
@@ -989,6 +1013,28 @@ router.post(
         otp: settings.bypassOtp,
         updatedAt: settings.bypassOtpUpdatedAt,
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * Is Safe Exam Browser switched on system-wide? Admins and mentors.
+ *
+ * The test editor needs this to explain what its per-test "Use Safe Exam
+ * Browser" switch will actually do — mentors author tests too but must not read
+ * the full settings below, which carry the quit password. Only the boolean
+ * leaves here.
+ */
+router.get(
+  "/settings/seb/status",
+  authenticateToken,
+  requireRole(["admin", "mentor"]),
+  async (req, res, next) => {
+    try {
+      const sebConfig = await loadSebConfig();
+      return res.json({ required: sebConfig.required === true });
     } catch (error) {
       next(error);
     }

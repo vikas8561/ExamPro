@@ -128,6 +128,13 @@ const StudentDashboard = () => {
       }
     });
 
+    // A test this student handed in early was reopened. Only ever sent to the
+    // student's own room, so there is nothing to filter.
+    socket.on("assignmentUpdated", () => {
+      fetchStudentData();
+      fetchRecentActivity();
+    });
+
     return () => {
       if (pollInterval) clearInterval(pollInterval);
       socket.removeAllListeners();
