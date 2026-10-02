@@ -6,6 +6,7 @@ import {
   ClipboardList,
   FileCheck,
   ShieldCheck,
+  Shield,
   X,
   ChevronRight,
   User,
@@ -118,6 +119,7 @@ export default function MentorLayout({
     { to: "/mentor/assignments", icon: ClipboardList, label: "Test Assignments", iconColor: "#2DD4BF" },
     { to: "/mentor/submissions", icon: FileCheck, label: "Student Submissions", iconColor: "#38BDF8" },
     { to: "/mentor/users", icon: Users, label: "My Students", iconColor: "#F472B6" },
+    { to: "/mentor/proctoring", icon: Shield, label: "Proctoring", iconColor: "#F59E0B" },
   ];
 
   return (

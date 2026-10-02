@@ -17,7 +17,13 @@ import {
   RotateCcw,
   GraduationCap,
   Users,
+  UserPlus,
+  Eye,
+  EyeOff,
+  Mail,
+  Lock,
 } from "lucide-react";
+import { API_BASE_URL } from "../config/api";
 
 export default function AdminMentorManagement() {
   const [mentors, setMentors] = useState([]);
@@ -38,6 +44,18 @@ export default function AdminMentorManagement() {
   const [modalBatchKeys, setModalBatchKeys] = useState([]);
   const [modalBatchSearchTerm, setModalBatchSearchTerm] = useState("");
   const [isSavingBatches, setIsSavingBatches] = useState(false);
+
+  // Create Mentor Modal State
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createForm, setCreateForm] = useState({ name: "", email: "", password: "", subjects: [], batches: [] });
+  const [isCreating, setIsCreating] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [createSubjectSearch, setCreateSubjectSearch] = useState("");
+  const [createBatchSearch, setCreateBatchSearch] = useState("");
+
+  // Delete Mentor State
+  const [deletingMentorId, setDeletingMentorId] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null); // { _id, name }
 
   // Toast State
   const [toast, setToast] = useState({ show: false, message: "", type: "success" });
@@ -250,6 +268,171 @@ export default function AdminMentorManagement() {
     }
   };
 
+  // ---------- Create Mentor ----------
+  const openCreateModal = () => {
+    setCreateForm({ name: "", email: "", password: "", subjects: [], batches: [] });
+    setShowPassword(false);
+    setCreateSubjectSearch("");
+    setCreateBatchSearch("");
+    setShowCreateModal(true);
+  };
+
+  const closeCreateModal = () => {
+    setShowCreateModal(false);
+    setCreateForm({ name: "", email: "", password: "", subjects: [], batches: [] });
+    setCreateSubjectSearch("");
+    setCreateBatchSearch("");
+    setIsCreating(false);
+  };
+
+  const toggleCreateSubject = (subjectId) => {
+    setCreateForm((prev) => {
+      const exists = prev.subjects.includes(subjectId);
+      return {
+        ...prev,
+        subjects: exists
+          ? prev.subjects.filter((id) => id !== subjectId)
+          : [...prev.subjects, subjectId],
+      };
+    });
+  };
+
+  const toggleCreateBatch = (batchKey) => {
+    setCreateForm((prev) => {
+      const exists = prev.batches.includes(batchKey);
+      return {
+        ...prev,
+        batches: exists
+          ? prev.batches.filter((k) => k !== batchKey)
+          : [...prev.batches, batchKey],
+      };
+    });
+  };
+
+  const filteredCreateSubjects = useMemo(() => {
+    if (!createSubjectSearch.trim()) return availableSubjects;
+    const q = createSubjectSearch.toLowerCase();
+    return availableSubjects.filter(
+      (s) =>
+        (s.name || "").toLowerCase().includes(q) ||
+        (s.description || "").toLowerCase().includes(q)
+    );
+  }, [availableSubjects, createSubjectSearch]);
+
+  const filteredCreateBatches = useMemo(() => {
+    if (!createBatchSearch.trim()) return availableBatches;
+    const q = createBatchSearch.toLowerCase();
+    return availableBatches.filter(
+      (b) =>
+        (b.label || "").toLowerCase().includes(q) ||
+        (b.description || "").toLowerCase().includes(q) ||
+        (b.key || "").toLowerCase().includes(q)
+    );
+  }, [availableBatches, createBatchSearch]);
+
+  const handleCreateMentor = async () => {
+    const { name, email, password, subjects, batches } = createForm;
+
+    if (!name.trim() || !email.trim() || !password.trim()) {
+      showToast("Name, email and password are required", "error");
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      showToast("Invalid email format", "error");
+      return;
+    }
+
+    if (password.length < 6) {
+      showToast("Password must be at least 6 characters", "error");
+      return;
+    }
+
+    try {
+      setIsCreating(true);
+
+      // Step 1: Create the mentor account
+      const res = await fetch(`${API_BASE_URL}/users`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim(),
+          password: password.trim(),
+          role: "Mentor",
+          subjects,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to create mentor");
+      }
+
+      // Step 2: Assign batches if any were selected
+      if (batches.length > 0 && data._id) {
+        try {
+          await apiRequest(`/admin/mentors/${data._id}/batches`, {
+            method: "PUT",
+            body: JSON.stringify({ batches }),
+          });
+        } catch (batchErr) {
+          console.error("Mentor created but batch assignment failed:", batchErr);
+          showToast(
+            `Mentor created, but batch assignment failed: ${batchErr.message}. You can assign batches manually.`,
+            "error"
+          );
+          closeCreateModal();
+          fetchInitialData();
+          return;
+        }
+      }
+
+      showToast(`Mentor "${data.name || name.trim()}" created successfully`, "success");
+      closeCreateModal();
+      fetchInitialData();
+    } catch (err) {
+      console.error("Error creating mentor:", err);
+      showToast(err.message || "Failed to create mentor", "error");
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  // ---------- Delete Mentor ----------
+  const handleDeleteMentor = async () => {
+    if (!confirmDelete) return;
+
+    try {
+      setDeletingMentorId(confirmDelete._id);
+      const res = await fetch(`${API_BASE_URL}/users/${confirmDelete._id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || "Failed to delete mentor");
+      }
+
+      setMentors((prev) => prev.filter((m) => m._id !== confirmDelete._id));
+      showToast(`Mentor "${confirmDelete.name}" deleted successfully`, "success");
+    } catch (err) {
+      console.error("Error deleting mentor:", err);
+      showToast(err.message || "Failed to delete mentor", "error");
+    } finally {
+      setDeletingMentorId(null);
+      setConfirmDelete(null);
+    }
+  };
+
   // Batch details map for quick badge rendering
   const batchMap = useMemo(() => {
     const map = new Map();
@@ -407,6 +590,15 @@ export default function AdminMentorManagement() {
               className="p-2 rounded-xl bg-[#20242D] border border-white/[0.06] hover:bg-white/[0.04] text-[#7E8594] hover:text-white transition-colors cursor-pointer"
             >
               <RotateCcw className={`w-4 h-4 ${loading ? "animate-spin text-[#00C4B4]" : ""}`} />
+            </button>
+
+            {/* Create Mentor Button */}
+            <button
+              onClick={openCreateModal}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-white hover:bg-slate-100 text-slate-950 shadow-sm transition-all hover:scale-105 active:scale-95 cursor-pointer"
+            >
+              <UserPlus className="w-4 h-4 stroke-[2.5]" />
+              <span>Create Mentor</span>
             </button>
           </div>
         </div>
@@ -708,6 +900,19 @@ export default function AdminMentorManagement() {
                             >
                               <GraduationCap className="w-3.5 h-3.5 text-[#00C4B4]" />
                               <span>Batches</span>
+                            </button>
+
+                            <button
+                              onClick={() => setConfirmDelete({ _id: mentor._id, name: mentorName })}
+                              disabled={deletingMentorId === mentor._id}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-medium text-xs transition-all border border-rose-500/20 cursor-pointer disabled:opacity-50"
+                              title={`Delete ${mentorName}`}
+                            >
+                              {deletingMentorId === mentor._id ? (
+                                <div className="w-3.5 h-3.5 border-2 border-rose-400 border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <Trash2 className="w-3.5 h-3.5" />
+                              )}
                             </button>
                           </div>
                         </td>
@@ -1048,6 +1253,327 @@ export default function AdminMentorManagement() {
                   )}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* -------------------- CREATE MENTOR MODAL -------------------- */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#1C1F28] border border-white/10 rounded-2xl w-full max-w-xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-white/[0.07] flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#133B42] border border-[#00C4B4]/25 flex items-center justify-center">
+                  <UserPlus className="w-5 h-5 text-[#00C4B4]" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white tracking-tight">
+                    Create New Mentor
+                  </h3>
+                  <p className="text-xs text-[#7E8594]">Add a mentor account with subject assignments</p>
+                </div>
+              </div>
+              <button
+                onClick={closeCreateModal}
+                className="w-8 h-8 rounded-lg bg-white/[0.04] hover:bg-white/10 text-[#7E8594] hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 overflow-y-auto max-h-[65vh] space-y-5">
+              {/* Name */}
+              <div>
+                <label className="block text-xs font-semibold text-[#8E95A5] mb-1.5 uppercase tracking-wider">Full Name</label>
+                <div className="relative">
+                  <UserCheck className="w-4 h-4 text-[#7E8594] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Enter mentor's full name"
+                    value={createForm.name}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, name: e.target.value }))}
+                    className="w-full bg-[#20242D] border border-white/[0.06] rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder-[#7E8594] focus:outline-none focus:border-[#00C4B4]/50 transition-colors"
+                  />
+                </div>
+              </div>
+
+              {/* Email */}
+              <div>
+                <label className="block text-xs font-semibold text-[#8E95A5] mb-1.5 uppercase tracking-wider">Email Address</label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-[#7E8594] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="email"
+                    placeholder="mentor@example.com"
+                    value={createForm.email}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, email: e.target.value }))}
+                    className="w-full bg-[#20242D] border border-white/[0.06] rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder-[#7E8594] focus:outline-none focus:border-[#00C4B4]/50 transition-colors"
+                  />
+                </div>
+              </div>
+
+              {/* Password */}
+              <div>
+                <label className="block text-xs font-semibold text-[#8E95A5] mb-1.5 uppercase tracking-wider">Password</label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-[#7E8594] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Minimum 6 characters"
+                    value={createForm.password}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, password: e.target.value }))}
+                    className="w-full bg-[#20242D] border border-white/[0.06] rounded-xl pl-9 pr-10 py-2.5 text-sm text-white placeholder-[#7E8594] focus:outline-none focus:border-[#00C4B4]/50 transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((p) => !p)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#7E8594] hover:text-white transition-colors cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Subject Assignment */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-[#8E95A5] uppercase tracking-wider">Assign Subjects</label>
+                  <span className="text-[11px] font-semibold text-[#00C4B4]">
+                    {createForm.subjects.length} selected
+                  </span>
+                </div>
+
+                {/* Subject search */}
+                <div className="relative mb-3">
+                  <Search className="w-3.5 h-3.5 text-[#7E8594] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Filter subjects..."
+                    value={createSubjectSearch}
+                    onChange={(e) => setCreateSubjectSearch(e.target.value)}
+                    className="w-full bg-[#20242D] border border-white/[0.06] rounded-lg pl-8 pr-8 py-1.5 text-xs text-white placeholder-[#7E8594] focus:outline-none focus:border-[#00C4B4]/50"
+                  />
+                  {createSubjectSearch && (
+                    <button
+                      onClick={() => setCreateSubjectSearch("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#7E8594] hover:text-white"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Subject grid */}
+                <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
+                  {filteredCreateSubjects.length === 0 ? (
+                    <div className="py-6 text-center text-xs text-[#7E8594]">No subjects found</div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {filteredCreateSubjects.map((subject) => {
+                        const isChecked = createForm.subjects.includes(subject._id);
+                        return (
+                          <div
+                            key={subject._id}
+                            onClick={() => toggleCreateSubject(subject._id)}
+                            className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center gap-2.5 ${
+                              isChecked
+                                ? "bg-[#133B42]/50 border-[#00C4B4]/40 shadow-sm"
+                                : "bg-[#20242D] border-white/[0.06] hover:border-white/15"
+                            }`}
+                          >
+                            <div
+                              className={`w-4 h-4 rounded-md border flex items-center justify-center transition-colors flex-shrink-0 ${
+                                isChecked
+                                  ? "bg-[#00C4B4] border-[#00C4B4] text-slate-950"
+                                  : "border-white/20 bg-transparent"
+                              }`}
+                            >
+                              {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                            </div>
+                            <span className="text-xs font-semibold text-white tracking-tight truncate">
+                              {subject.name}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Batch Assignment */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-[#8E95A5] uppercase tracking-wider">Assign Batches</label>
+                  <span className="text-[11px] font-semibold text-[#38BDF8]">
+                    {createForm.batches.length} selected
+                  </span>
+                </div>
+
+                {/* Batch search */}
+                <div className="relative mb-3">
+                  <Search className="w-3.5 h-3.5 text-[#7E8594] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Filter batches..."
+                    value={createBatchSearch}
+                    onChange={(e) => setCreateBatchSearch(e.target.value)}
+                    className="w-full bg-[#20242D] border border-white/[0.06] rounded-lg pl-8 pr-8 py-1.5 text-xs text-white placeholder-[#7E8594] focus:outline-none focus:border-[#38BDF8]/50"
+                  />
+                  {createBatchSearch && (
+                    <button
+                      onClick={() => setCreateBatchSearch("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#7E8594] hover:text-white"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Batch grid */}
+                <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
+                  {filteredCreateBatches.length === 0 ? (
+                    <div className="py-6 text-center text-xs text-[#7E8594]">No batches found</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {filteredCreateBatches.map((batch) => {
+                        const isChecked = createForm.batches.includes(batch.key);
+                        return (
+                          <div
+                            key={batch.key}
+                            onClick={() => toggleCreateBatch(batch.key)}
+                            className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                              isChecked
+                                ? "bg-[#1E293B]/60 border-[#38BDF8]/40 shadow-sm"
+                                : "bg-[#20242D] border-white/[0.06] hover:border-white/15"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div
+                                className={`w-4 h-4 rounded-md border flex items-center justify-center transition-colors flex-shrink-0 ${
+                                  isChecked
+                                    ? "bg-[#38BDF8] border-[#38BDF8] text-slate-950"
+                                    : "border-white/20 bg-transparent"
+                                }`}
+                              >
+                                {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold text-white tracking-tight truncate">
+                                  {batch.label}
+                                </p>
+                                <p className="text-[11px] text-[#7E8594] truncate">
+                                  {batch.description}
+                                </p>
+                              </div>
+                            </div>
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-white/[0.05] text-[#A6ADBB] border border-white/[0.08] flex-shrink-0">
+                              <Users className="w-2.5 h-2.5 mr-1 text-[#7E8594]" />
+                              {batch.count || 0}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-white/[0.07] bg-[#181A22]/80 flex items-center justify-between">
+              <span className="text-xs text-[#7E8594]">
+                Mentor can sign in immediately after creation
+              </span>
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={closeCreateModal}
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-[#8E95A5] hover:text-white hover:bg-white/[0.04] transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreateMentor}
+                  disabled={isCreating || !createForm.name.trim() || !createForm.email.trim() || !createForm.password.trim()}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-[#00C4B4] text-slate-950 hover:bg-[#00D8C6] active:scale-95 transition-all shadow-md cursor-pointer disabled:opacity-50"
+                >
+                  {isCreating ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                      <span>Creating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="w-3.5 h-3.5" />
+                      <span>Create Mentor</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* -------------------- DELETE CONFIRMATION MODAL -------------------- */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#1C1F28] border border-white/10 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+            {/* Header */}
+            <div className="p-5 border-b border-white/[0.07] flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center">
+                <Trash2 className="w-5 h-5 text-rose-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white tracking-tight">
+                  Delete Mentor
+                </h3>
+                <p className="text-xs text-[#7E8594]">This action cannot be undone</p>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-5">
+              <p className="text-sm text-[#A6ADBB]">
+                Are you sure you want to delete <span className="font-semibold text-white">{confirmDelete.name}</span>?
+              </p>
+              <p className="text-xs text-[#7E8594] mt-2">
+                Their account, sessions, and profile will be permanently removed. Tests they created will remain but will no longer be linked to them.
+              </p>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-white/[0.07] bg-[#181A22]/80 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(null)}
+                className="px-3.5 py-2 rounded-xl text-xs font-semibold text-[#8E95A5] hover:text-white hover:bg-white/[0.04] transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteMentor}
+                disabled={deletingMentorId === confirmDelete._id}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-rose-500 text-white hover:bg-rose-600 active:scale-95 transition-all shadow-md cursor-pointer disabled:opacity-50"
+              >
+                {deletingMentorId === confirmDelete._id ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Mentor</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
