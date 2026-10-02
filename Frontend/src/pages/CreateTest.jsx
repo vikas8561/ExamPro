@@ -125,11 +125,12 @@ export default function CreateTest() {
         setUserRole(role);
 
         if (String(role).toLowerCase() === "mentor") {
-          // If stored user already has assigned subjects
+          // If stored user already has assigned subjects. "ALL" is not a
+          // subject; the fetch below expands it into every real one.
           if (Array.isArray(user.subjects) && user.subjects.length > 0) {
-            const list = user.subjects.map((s) =>
-              typeof s === "string" ? { _id: s, name: s } : s
-            );
+            const list = user.subjects
+              .map((s) => (typeof s === "string" ? { _id: s, name: s } : s))
+              .filter((s) => (s.name || "").trim().toLowerCase() !== "all");
             setMentorSubjectList(list);
             setMentorSubjects(
               list.map((s) => (s.name || "").toLowerCase()).filter(Boolean)

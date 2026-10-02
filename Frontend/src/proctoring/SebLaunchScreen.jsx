@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 
 import { requestSebLaunch } from "./transport";
 
@@ -23,22 +23,76 @@ const DOWNLOADS = {
   macos: "https://safeexambrowser.org/download_en.html",
 };
 
+/** Refresh the prefetched link this long before its token runs out. */
+const LINK_REFRESH_MARGIN_MS = 2 * 60 * 1000;
+
 export default function SebLaunchScreen({ info, assignmentId }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [launched, setLaunched] = useState(false);
+  // { launchUrl, configUrl, expiresAt } — fetched before the student clicks.
+  const [link, setLink] = useState(null);
 
   const os = info?.os || "unknown";
   const available = info?.sebAvailableForOs === true;
+  const wantsLink = available && !info?.apiMissing && !info?.notExpected;
 
+  const fetchLink = useCallback(async () => {
+    const result = await requestSebLaunch(assignmentId);
+    if (!result?.launchUrl) {
+      throw new Error("The server did not return a launch link.");
+    }
+    const next = {
+      launchUrl: result.launchUrl,
+      configUrl: result.configUrl,
+      expiresAt: Date.now() + (result.expiresInMs || 15 * 60 * 1000),
+    };
+    setLink(next);
+    return next;
+  }, [assignmentId]);
+
+  // Fetch the link before the click, and keep it fresh.
+  //
+  // Browsers only let a page hand a custom scheme like `sebs://` to the
+  // operating system while a real click is still "recent" — a few seconds in
+  // Chrome, less elsewhere. Fetching on click and redirecting afterwards spends
+  // that window on the network round trip; on a slow connection or a cold API
+  // it runs out, and the browser drops the launch without a word. The student
+  // sees a button that does nothing. With the link already in hand, the click
+  // lands on an ordinary <a href="sebs://…"> and nothing stands in between.
+  useEffect(() => {
+    if (!wantsLink) return undefined;
+    let cancelled = false;
+    let timer = null;
+
+    const load = async () => {
+      try {
+        const next = await fetchLink();
+        if (cancelled) return;
+        const wait = Math.max(next.expiresAt - Date.now() - LINK_REFRESH_MARGIN_MS, 30 * 1000);
+        timer = setTimeout(load, wait);
+      } catch {
+        // Not fatal: the button falls back to fetching on click, and reports
+        // the error there where the student can see it.
+        if (!cancelled) setLink(null);
+      }
+    };
+    load();
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [wantsLink, fetchLink]);
+
+  const linkIsFresh = Boolean(link && link.expiresAt - Date.now() > 30 * 1000);
+
+  // Only used when no fresh link is in hand.
   const launch = useCallback(async () => {
     setBusy(true);
     setError(null);
     try {
-      const result = await requestSebLaunch(assignmentId);
-      if (!result?.launchUrl) {
-        throw new Error("The server did not return a launch link.");
-      }
+      const result = await fetchLink();
       setLaunched(true);
       // Handing the custom scheme to the OS. Assigning to location rather than
       // opening a window, because a popup blocker would swallow the latter and
@@ -53,7 +107,7 @@ export default function SebLaunchScreen({ info, assignmentId }) {
     } finally {
       setBusy(false);
     }
-  }, [assignmentId]);
+  }, [fetchLink]);
 
   // Inside SEB, but SEB is not exposing the JavaScript API the exam needs. No
   // button helps here: relaunching lands in exactly the same place.
@@ -206,20 +260,86 @@ export default function SebLaunchScreen({ info, assignmentId }) {
               </div>
             )}
 
-            <button
-              type="button"
-              onClick={launch}
-              disabled={busy}
-              className="w-full rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-            >
-              {busy ? "Preparing…" : "Start in Safe Exam Browser"}
-            </button>
+            {linkIsFresh ? (
+              <a
+                href={link.launchUrl}
+                onClick={() => setLaunched(true)}
+                className="block w-full rounded-lg bg-blue-600 px-6 py-3 text-center font-semibold text-white transition hover:bg-blue-500"
+              >
+                Start in Safe Exam Browser
+              </a>
+            ) : (
+              <button
+                type="button"
+                onClick={launch}
+                disabled={busy}
+                className="w-full rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+              >
+                {busy ? "Preparing…" : "Start in Safe Exam Browser"}
+              </button>
+            )}
 
             {launched && !error && (
-              <p className="mt-4 text-center text-xs text-slate-400">
-                Safe Exam Browser should be opening. If nothing happened, check that
-                it is installed, then press the button again.
-              </p>
+              <div className="mt-6 space-y-4 text-sm text-slate-300">
+                <p className="text-center text-xs text-slate-400">
+                  Safe Exam Browser should be opening. If your browser asks whether
+                  to open it, choose Open (or Allow).
+                </p>
+
+                {/* Second route in, for machines where the sebs:// link is not
+                    registered or the browser refuses it. The same config,
+                    opened as a file — SEB is the default app for .seb files. */}
+                {linkIsFresh && link.configUrl && (
+                  <div className="rounded-md border border-slate-600 bg-slate-800 px-4 py-3">
+                    <p className="mb-2 font-semibold text-slate-200">Nothing opened?</p>
+                    <p className="mb-3 text-slate-400">
+                      Download the exam file and open it. It opens in Safe Exam
+                      Browser the same way.
+                    </p>
+                    <a
+                      href={link.configUrl}
+                      className="inline-block rounded-md border border-slate-500 px-4 py-2 text-slate-200 transition hover:bg-slate-700"
+                    >
+                      Download exam file
+                    </a>
+                  </div>
+                )}
+
+                <details className="rounded-md border border-slate-700 px-4 py-3 text-slate-400">
+                  <summary className="cursor-pointer text-slate-300">
+                    Safe Exam Browser opened but showed an error
+                  </summary>
+                  <ul className="mt-3 list-disc space-y-2 pl-5 text-xs">
+                    <li>
+                      <strong className="text-slate-300">Another display:</strong>{" "}
+                      unplug any external monitor, projector or TV, and turn off
+                      screen mirroring. Only the laptop screen is allowed.
+                    </li>
+                    <li>
+                      <strong className="text-slate-300">Programs to close:</strong>{" "}
+                      quit TeamViewer, AnyDesk, Discord, OBS, Zoom/Meet screen
+                      sharing and similar apps, including from the system tray.
+                    </li>
+                    <li>
+                      <strong className="text-slate-300">&quot;Virtual machine detected&quot; (Windows):</strong>{" "}
+                      happens on some laptops with Hyper-V, WSL, Docker Desktop,
+                      Windows Sandbox or an Android emulator installed. Tell your
+                      invigilator.
+                    </li>
+                    <li>
+                      <strong className="text-slate-300">macOS permissions:</strong>{" "}
+                      if macOS asks to allow Safe Exam Browser (Accessibility or
+                      Screen Recording), allow it in System Settings → Privacy &amp;
+                      Security, then start again.
+                    </li>
+                    <li>
+                      <strong className="text-slate-300">Outdated version:</strong>{" "}
+                      reinstall the latest Safe Exam Browser from the download link
+                      above.
+                    </li>
+                  </ul>
+                </details>
+              </div>
             )}
           </>
         ) : (

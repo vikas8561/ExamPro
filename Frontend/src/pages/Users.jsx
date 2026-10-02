@@ -167,7 +167,7 @@ export default function Users({ mentorView = false }) {
   // they never see that form.
   useEffect(() => {
     if (mentorView) return;
-    fetch(`${API_BASE_URL}/subjects`, {
+    fetch(`${API_BASE_URL}/subjects?includeAll=true`, {
       headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
     })
       .then((res) => (res.ok ? res.json() : { subjects: [] }))

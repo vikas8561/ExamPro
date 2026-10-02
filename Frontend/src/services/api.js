@@ -125,22 +125,28 @@ const apiRequest = async (endpoint, options = {}) => {
     }
     
     if (response.status === 403) {
-      // Check if this is a session expiration due to new login
-      try {
-        const errorData = await response.json();
-        if (errorData.message === 'Invalid or expired session') {
-          // Clear local storage and redirect to login
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          localStorage.removeItem('userId');
-          window.location.href = '/login?message=session_expired';
-          throw new Error('Session expired due to new login');
-        }
-      } catch {
-        // If we can't parse the error response, throw generic error
-        throw new Error('Access forbidden');
+      const errorData = await response.json().catch(() => ({}));
+
+      // Signed in somewhere else: this session is gone.
+      if (errorData.message === 'Invalid or expired session') {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        localStorage.removeItem('userId');
+        window.location.href = '/login?message=session_expired';
+        throw new Error('Session expired due to new login');
       }
-      throw new Error('Access forbidden');
+
+      // Every other refusal keeps the server's own words and its code. This
+      // used to replace them all with "Access forbidden", so a student told by
+      // the server that the test had not started yet, or that proctoring had
+      // ended their attempt, saw only that -- and no caller could branch on
+      // `error.code` for a 403 at all.
+      const error = new Error(errorData.message || 'Access forbidden');
+      error.status = 403;
+      if (errorData.code) error.code = errorData.code;
+      if (errorData.reason) error.reason = errorData.reason;
+      if (errorData.opensAt) error.opensAt = errorData.opensAt;
+      throw error;
     }
     
     // Handle 404 responses - don't treat as errors for certain endpoints
@@ -175,6 +181,8 @@ const apiRequest = async (endpoint, options = {}) => {
       // stopped working when the wording drifted.
       error.status = response.status;
       if (errorData.code) error.code = errorData.code;
+      // When the exam opens, for a "not_started" refusal, so the page can say so.
+      if (errorData.opensAt) error.opensAt = errorData.opensAt;
       throw error;
     }
     
@@ -231,8 +239,11 @@ export const apiStream = async (endpoint, { body, onEvent, signal } = {}) => {
   });
 
   if (!response.ok || !response.body) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.message || `HTTP error! status: ${response.status}`);
+    const errorData = await response.json().catch(() => ({}));
+    const error = new Error(errorData.message || `HTTP error! status: ${response.status}`);
+    error.status = response.status;
+    if (errorData.code) error.code = errorData.code;
+    throw error;
   }
 
   const reader = response.body.getReader();

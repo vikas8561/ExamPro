@@ -93,7 +93,11 @@ const StudentResults = () => {
     const testType = item.testId?.type || "Standard";
     const assignmentId = item.assignmentId?._id || item.assignmentId;
     const assignmentDeadline = item.assignmentId?.deadline ? new Date(item.assignmentId.deadline) : null;
-    const deadlinePassed = !assignmentDeadline || new Date() > assignmentDeadline;
+    // The server says whether results are out: it withholds the score until
+    // the window has closed, and its clock -- not this machine's -- decides.
+    const deadlinePassed = typeof item.resultsReleased === "boolean"
+      ? item.resultsReleased
+      : !assignmentDeadline || new Date() > assignmentDeadline;
 
     const score = item.mentorScore !== null && item.mentorScore !== undefined
       ? item.mentorScore

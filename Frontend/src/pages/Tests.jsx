@@ -63,6 +63,9 @@ export default function Tests() {
     currentPage: 1
   });
   const [downloadingResults, setDownloadingResults] = useState({});
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [deletingTestId, setDeletingTestId] = useState(null);
+  const [deleteError, setDeleteError] = useState("");
   const searchDebounceRef = useRef(null);
   const isInitialMount = useRef(true);
   const nav = useNavigate();
@@ -172,19 +175,22 @@ export default function Tests() {
     }
   };
 
-  // Delete a test with confirmation
-  const deleteTest = async (id, title) => {
-    if (!window.confirm(`Are you sure you want to delete test "${title || 'this test'}"? This action cannot be undone.`)) {
-      return;
-    }
+  // Delete the test selected in the confirmation modal
+  const deleteTest = async () => {
+    if (!confirmDelete) return;
+    setDeletingTestId(confirmDelete._id);
+    setDeleteError("");
     try {
-      await apiRequest(`/tests/${id}`, {
+      await apiRequest(`/tests/${confirmDelete._id}`, {
         method: "DELETE",
       });
+      setConfirmDelete(null);
       fetchTests(currentPage, searchTerm);
     } catch (err) {
       console.error("Error deleting test:", err);
-      alert("Failed to delete test.");
+      setDeleteError(err?.message || "Failed to delete test.");
+    } finally {
+      setDeletingTestId(null);
     }
   };
 
@@ -724,7 +730,10 @@ export default function Tests() {
 
                         {/* Delete Button */}
                         <button
-                          onClick={() => deleteTest(t._id, t.title)}
+                          onClick={() => {
+                            setDeleteError("");
+                            setConfirmDelete({ _id: t._id, title: t.title });
+                          }}
                           className="py-2 px-2 rounded-xl text-xs font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -1074,6 +1083,78 @@ export default function Tests() {
                   <>
                     <Check className="w-4 h-4 stroke-[2.5]" />
                     <span>Confirm Assignment</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* -------------------- DELETE CONFIRMATION MODAL -------------------- */}
+      {confirmDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in"
+          onClick={() => !deletingTestId && setConfirmDelete(null)}
+        >
+          <div
+            className="bg-[#1C1F28] border border-white/10 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="p-5 border-b border-white/[0.07] flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center">
+                <Trash2 className="w-5 h-5 text-rose-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white tracking-tight">
+                  Delete Test
+                </h3>
+                <p className="text-xs text-[#7E8594]">This action cannot be undone</p>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-5">
+              <p className="text-sm text-[#A6ADBB]">
+                Are you sure you want to delete <span className="font-semibold text-white break-words">{confirmDelete.title || "this test"}</span>?
+              </p>
+              <p className="text-xs text-[#7E8594] mt-2">
+                The test, its questions, every student assignment, and all submitted results for it will be permanently removed.
+              </p>
+              {deleteError && (
+                <div className="mt-3 flex items-start gap-2 rounded-xl border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+                  <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>{deleteError}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-white/[0.07] bg-[#181A22]/80 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(null)}
+                disabled={!!deletingTestId}
+                className="px-3.5 py-2 rounded-xl text-xs font-semibold text-[#8E95A5] hover:text-white hover:bg-white/[0.04] transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={deleteTest}
+                disabled={deletingTestId === confirmDelete._id}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-rose-500 text-white hover:bg-rose-600 active:scale-95 transition-all shadow-md cursor-pointer disabled:opacity-50"
+              >
+                {deletingTestId === confirmDelete._id ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Test</span>
                   </>
                 )}
               </button>

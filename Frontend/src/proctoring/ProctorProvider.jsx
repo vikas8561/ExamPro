@@ -81,6 +81,9 @@ export function ProctorProvider({
   const [readiness, setReadiness] = useState({ blockers: [], warnings: [], ready: true });
   const [session, setSession] = useState(null);
   const [startError, setStartError] = useState(null);
+  // Set when the server refused to open a session because the exam's window
+  // has not opened yet -- not a fault, so it gets its own wording.
+  const [startNotOpen, setStartNotOpen] = useState(false);
   // Set when the exam needs Safe Exam Browser and this browser is not it.
   const [sebLaunchInfo, setSebLaunchInfo] = useState(null);
 
@@ -420,6 +423,17 @@ export function ProctorProvider({
         setPhase("gate");
       } catch (error) {
         if (cancelled) return;
+        if (error?.code === "not_started") {
+          const opens = error.opensAt ? new Date(error.opensAt) : null;
+          setStartNotOpen(true);
+          setStartError(
+            opens && !Number.isNaN(opens.getTime())
+              ? `This test opens at ${opens.toLocaleString()}.`
+              : "This test has not opened yet."
+          );
+          setPhase("idle");
+          return;
+        }
         setStartError(
           error?.message || `Proctoring could not be started while ${step}. Please reload and try again.`
         );
@@ -800,9 +814,13 @@ export function ProctorProvider({
       {enabled && startError && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/95 p-4">
           <div className="w-full max-w-md rounded-xl border border-red-500/30 bg-slate-900 p-8 text-center">
-            <h2 className="mb-4 text-2xl font-bold text-red-400">Cannot start the test</h2>
+            <h2 className="mb-4 text-2xl font-bold text-red-400">
+              {startNotOpen ? "This test has not started yet" : "Cannot start the test"}
+            </h2>
             <p className="mb-6 text-slate-300">
-              The proctoring system could not be started, so the test cannot begin.
+              {startNotOpen
+                ? "Come back when it opens. Nothing has been started or recorded."
+                : "The proctoring system could not be started, so the test cannot begin."}
             </p>
             <p className="mb-6 break-words rounded-md bg-slate-800 px-4 py-3 text-sm text-slate-400">
               {startError}

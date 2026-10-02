@@ -12,7 +12,9 @@
     "test:detectors": "node scripts/detector-scenarios.mjs",
     "test:seb": "node scripts/seb-scenarios.mjs",
     "test:proctoring": "npm run test:focus && npm run test:detectors && npm run test:seb && npm run test:integrity",
-    "test:integrity": "node scripts/integrity-scenarios.mjs"
+    "test:integrity": "node scripts/integrity-scenarios.mjs",
+    "test:clock": "node scripts/exam-clock-scenarios.mjs",
+    "test:mcq-options": "node scripts/mcq-option-scenarios.mjs"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",

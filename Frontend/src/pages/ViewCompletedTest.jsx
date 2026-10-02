@@ -601,7 +601,14 @@ const ViewCompletedTest = () => {
                   <div className="space-y-2 pt-1">
                     <div className="flex items-center justify-between">
                       <p className="text-[11px] font-semibold uppercase tracking-wider text-[#7E8594]">
-                        Submitted Solution:
+                        {q.autoGraded ? "Graded Solution:" : "Submitted Solution:"}
+                        {/* How much of the problem the graded code solved. Only
+                            sent once results are released. */}
+                        {q.autoGraded && typeof q.passedCount === "number" && typeof q.totalHidden === "number" && (
+                          <span className="ml-2 normal-case tracking-normal font-medium text-slate-300">
+                            passed {q.passedCount} of {q.totalHidden} hidden test case{q.totalHidden === 1 ? "" : "s"}
+                          </span>
+                        )}
                       </p>
                       <button
                         onClick={() => handleCopyCode(studentAnswer, q._id)}
@@ -644,6 +651,40 @@ const ViewCompletedTest = () => {
                         {studentAnswer}
                       </SyntaxHighlighter>
                     </div>
+
+                    {/* What was in the editor at hand-in, when the student kept
+                        working after the graded submission. Shown so the reviewer
+                        sees both; only the graded code above earned marks. */}
+                    {q.autoGraded && q.draftAnswer && (
+                      <div className="space-y-2 pt-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-[#7E8594]">
+                          Last edit before hand-in <span className="normal-case tracking-normal font-medium text-amber-300">(not graded)</span>
+                        </p>
+                        <div className="rounded-xl overflow-hidden border border-amber-400/20 shadow-inner bg-[#101218]">
+                          <SyntaxHighlighter
+                            language={prismLang}
+                            style={vscDarkPlus}
+                            customStyle={{
+                              margin: 0,
+                              padding: "16px",
+                              borderRadius: "12px",
+                              fontSize: "13px",
+                              lineHeight: "1.6",
+                              backgroundColor: "#101218"
+                            }}
+                            showLineNumbers={true}
+                            lineNumberStyle={{
+                              minWidth: "2.5em",
+                              paddingRight: "1em",
+                              color: "#525866",
+                              backgroundColor: "#101218"
+                            }}
+                          >
+                            {String(q.draftAnswer)}
+                          </SyntaxHighlighter>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 

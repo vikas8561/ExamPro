@@ -6,6 +6,7 @@ import ProctorProvider from '../proctoring/ProctorProvider';
 import useProctor from '../proctoring/useProctor';
 import CodingWorkspace from '../components/coding/CodingWorkspace';
 import { TimerPill } from '../components/coding/codingUi';
+import { examClock, clockFromServer, secondsLeft } from '../utils/examClock';
 import useCodingJudge from '../hooks/useCodingJudge';
 
 import {
@@ -66,6 +67,9 @@ function TakeCodingTestInner({ submitRef }) {
   // loser of the race got a 400 back and alerted "Failed to submit test" over
   // the student's own exam as it was submitting.
   const submitInFlight = useRef(false);
+  // When this attempt ends, as the server computed it, plus the offset between
+  // the server's clock and this machine's. See utils/examClock.js.
+  const clockRef = useRef(null);
 
 
   // Auto-start test if already started, or start it automatically
@@ -276,17 +280,16 @@ function TakeCodingTestInner({ submitRef }) {
   useEffect(() => {
     if (!testStarted || timeRemaining <= 0) return;
 
+    // Counted down to the attempt's end instant, not decremented per tick: a
+    // throttled background tab fires this rarely, and a decrementing counter
+    // would come back from it with most of the elapsed time missing.
+    //
+    // The submit is fired outside any state updater. React may invoke an
+    // updater more than once, and a submit is not something to run twice.
     const timer = setInterval(() => {
-      // The submit is fired from outside the state updater. React may invoke an
-      // updater more than once, and a submit is not something to run twice --
-      // this page used to call submitTest() from inside it.
-      setTimeRemaining(prev => {
-        if (prev <= 1) {
-          handleTimeUp();
-          return 0;
-        }
-        return prev - 1;
-      });
+      const left = secondsLeft(clockRef.current);
+      setTimeRemaining(left);
+      if (left <= 0) handleTimeUp();
       setTimeSpent(prev => prev + 1);
     }, 1000);
 
@@ -296,7 +299,11 @@ function TakeCodingTestInner({ submitRef }) {
     // it. TakeTest.jsx has had this backstop; this page had none.
     const backendCheckTimer = setInterval(async () => {
       try {
-        await apiRequest(`/assignments/check-expiration/${assignmentId}`);
+        const status = await apiRequest(`/assignments/check-expiration/${assignmentId}`);
+        // Every reply carries the server's clock, so a countdown that drifted
+        // -- or an end time an admin has since changed -- is put right here.
+        const fresh = clockFromServer(status);
+        if (fresh) clockRef.current = fresh;
       } catch (error) {
         if (error.code === "attempt_expired") handleTimeUp();
       }
@@ -346,10 +353,6 @@ function TakeCodingTestInner({ submitRef }) {
         return;
       }
 
-      // Fetch current server time (same as TakeTest.jsx)
-      const timeResponse = await apiRequest("/time");
-      const serverTime = new Date(timeResponse.serverTime);
-
       const response = await apiRequest(`/assignments/${finalAssignmentId}/start`, {
         method: 'POST',
         body: JSON.stringify({}),
@@ -367,14 +370,17 @@ function TakeCodingTestInner({ submitRef }) {
       setAssignment(response.assignment);
       setTest(response.test);
 
-      // Calculate timeRemaining from scheduledStartTime + testDuration
-      const testTimeLimit = response.test.timeLimit;
-      const totalSeconds = (response.assignment.duration || testTimeLimit) * 60;
-      const testStartTime = new Date(response.assignment.startTime);
-      const currentTime = serverTime; // Use server time instead of client time
-      const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
-      const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
+      // The server says when this attempt ends -- the earlier of the window
+      // and the test's time limit. See utils/examClock.js.
+      clockRef.current = examClock(response, response.assignment, response.test.timeLimit);
+      const remainingSeconds = secondsLeft(clockRef.current);
 
+      if (remainingSeconds <= 0) {
+        setError("This test's time has expired.");
+        setLoading(false);
+        startRequestMade.current = false;
+        return;
+      }
 
       setTimeRemaining(remainingSeconds);
       setTestStarted(true);
@@ -412,22 +418,20 @@ function TakeCodingTestInner({ submitRef }) {
       }
 
 
-      // Fetch current server time (same as TakeTest.jsx)
-      const timeResponse = await apiRequest("/time");
-      const serverTime = new Date(timeResponse.serverTime);
-
       // Get assignment data (same as TakeTest.jsx loadExistingTestData)
       const assignmentData = await apiRequest(`/assignments/${finalAssignmentId}`);
       setAssignment(assignmentData);
       setTest(assignmentData.testId);
 
-      // Calculate timeRemaining from scheduledStartTime + testDuration
-      const testTimeLimit = assignmentData.testId.timeLimit;
-      const totalSeconds = (assignmentData.duration || testTimeLimit) * 60;
-      const testStartTime = new Date(assignmentData.startTime);
-      const currentTime = serverTime;
-      const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
-      const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
+      // Same clock as startTest, from the resumed assignment.
+      clockRef.current = examClock(assignmentData, assignmentData, assignmentData.testId?.timeLimit);
+      const remainingSeconds = secondsLeft(clockRef.current);
+
+      if (remainingSeconds <= 0) {
+        setError("This test's time has expired.");
+        setLoading(false);
+        return;
+      }
 
       // Put back whatever was autosaved. Without this a student who refreshed,
       // or whose tab was killed, came back to an empty editor even though their
