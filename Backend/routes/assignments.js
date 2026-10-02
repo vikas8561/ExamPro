@@ -25,7 +25,6 @@ const { sanitizeQuestions, canSeeAnswers } = require("../services/questionSaniti
 const { resolveOrderedQuestions } = require("../services/questionOrder");
 const { isAttemptExpired } = require("../services/attemptWindow");
 const { reEnableAttempt } = require("../services/reEnable");
-const { getMentorScope } = require("./mentor");
 
 /** Mongoose document -> plain object, so stripping actually sticks. */
 function toPlain(value) {
@@ -691,15 +690,12 @@ router.get("/cohorts", authenticateToken, requireRole(["admin", "Mentor"]), asyn
   }
 });
 
-// Get all assignments auto-submitted due to proctoring violations (admin or mentor)
-router.get("/terminated-violations", authenticateToken, requireRole(["admin", "mentor"]), async (req, res, next) => {
+// Get all assignments auto-submitted due to proctoring violations (admin only)
+router.get("/terminated-violations", authenticateToken, requireRole("admin"), async (req, res, next) => {
   try {
-    const scope = await getMentorScope(req.user);
-    const filter = {
-      $or: [{ cancelledDueToViolation: true }, { status: "Cancelled" }],
-      ...(scope.isAdmin ? {} : scope.assignmentFilter)
-    };
-    const assignments = await Assignment.find(filter)
+    const assignments = await Assignment.find({
+      $or: [{ cancelledDueToViolation: true }, { status: "Cancelled" }]
+    })
       .populate("userId", "name email")
       .populate("testId", "title type timeLimit")
       .sort({ updatedAt: -1 })

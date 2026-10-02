@@ -47,8 +47,9 @@ export default function AdminProctoring() {
 
   useEffect(() => {
     load();
-    loadTerminated();
-  }, [load, loadTerminated]);
+    // Re-enabling is admin-only here; mentors do it from My Students.
+    if (!isMentor) loadTerminated();
+  }, [load, loadTerminated, isMentor]);
 
   const rotate = useCallback(async () => {
     if (
@@ -212,7 +213,8 @@ export default function AdminProctoring() {
         {/* Card 2: Safe Exam Browser Card */}
         <SebSettingsCard isMentor={isMentor} />
 
-        {/* Card 3: Violation Terminations & Re-enable */}
+        {/* Card 3: Violation Terminations & Re-enable (admin only) */}
+        {!isMentor && (
         <div className="w-full rounded-2xl border border-white/[0.06] bg-[#20242D] p-5 sm:p-6 shadow-sm">
           <div className="mb-4">
             <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">Re-enable Terminated Exams</h2>
@@ -282,6 +284,7 @@ export default function AdminProctoring() {
             </div>
           )}
         </div>
+        )}
       </div>
     </div>
   );
