@@ -5,6 +5,7 @@ const Test = require("../models/Test");
 const PracticeTestSubmission = require("../models/PracticeTestSubmission");
 const { authenticateToken, requireRole } = require("../middleware/auth");
 const { attach } = require("../services/principals");
+const { sanitizeQuestions } = require("../services/questionSanitizer");
 
 
 // MEMORY OPTIMIZATION: Clean up old practice test data
@@ -136,11 +137,11 @@ router.get("/:testId", authenticateToken, async (req, res, next) => {
     }
 
     // Remove correct answers from questions for practice tests
-    const questionsWithoutAnswers = test.questions.map(q => ({
-      ...q,
-      answer: undefined, // Don't send correct answers
-      answers: undefined // Removed MSQ support
-    }));
+    // The shared sanitizer, not a hand-picked list: this used to remove only
+    // `answer`/`answers`, so a practice test holding a theory or coding question
+    // (an edit can change a test's type without re-checking its questions)
+    // served the model answer and every hidden test case.
+    const questionsWithoutAnswers = sanitizeQuestions(test.questions);
 
     res.json({
       ...test,

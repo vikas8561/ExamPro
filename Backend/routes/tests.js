@@ -9,9 +9,11 @@ const { sanitizeQuestions, canSeeAnswers } = require("../services/questionSaniti
 const { sanitizeCodingQuestion } = require("../services/testCases");
 const { recalculateScoresForTest } = require("../services/scoreCalculation");
 const { resolveOrderedQuestions } = require("../services/questionOrder");
+const { hasAttemptOpened, notStartedBody } = require("../services/attemptWindow");
 const Assignment = require("../models/Assignment");
 const Mentor = require("../models/Mentor");
 const Subject = require("../models/Subject");
+const { isAllSubject } = require("../services/subjects");
 const { invalidateTestCache } = require("../utils/testCache");
 
 // Mentor subject names arrive lowercased and trimmed.
@@ -267,7 +269,25 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
     // check a student could skip the exam page entirely and fetch the paper
     // with a direct API call, which is exactly what the old client-side-only
     // proctoring could not prevent.
+    // The student's own attempt at this test. Assignment is unique per
+    // {testId, userId}, so this is a single indexed lookup; it serves both the
+    // start-time check here and the per-student question order further down.
+    const assignment = await Assignment.findOne({
+      testId: req.params.id,
+      userId: req.user.userId,
+    }).select("_id questionOrder startTime");
+
     const proctorStatus = await resolveProctorStatusForTest(req, req.params.id);
+
+    // An exam paper is not served before the student's window opens. The
+    // proctor check below used to be the only gate, and a session could be
+    // opened early -- so the paper was one request away days in advance. Asked
+    // of every proctored test, session or not: a session left over from before
+    // a rescheduling must not unlock a paper whose window has moved.
+    if (proctorStatus.required && assignment && !hasAttemptOpened(assignment)) {
+      return res.status(403).json(notStartedBody(assignment));
+    }
+
     if (proctorStatus.required && !proctorStatus.ok) {
       return res.status(403).json({
         message: "This test must be taken with proctoring active. Please start it from your assignments page.",
@@ -284,13 +304,7 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
     // This is how TakeCodingTest loads the paper, so it has to honour the same
     // per-student order as the assignment routes -- otherwise a coding exam
     // would come back in a different order than the one the student started.
-    // No assignment travels with this request, so look it up: Assignment is
-    // unique per {testId, userId}, so this is a single indexed lookup.
-    const assignment = await Assignment.findOne({
-      testId: req.params.id,
-      userId: req.user.userId,
-    }).select("_id questionOrder");
-
+    // No assignment travels with this request; it was looked up above.
     if (assignment) {
       const { questions, order, changed } = resolveOrderedQuestions({
         test: safeTest,
@@ -317,6 +331,10 @@ router.post("/", authenticateToken, requireRole(["admin", "Mentor"]), async (req
 
     if (!title) {
       return res.status(400).json({ message: "Test title is required" });
+    }
+
+    if (isAllSubject(subject)) {
+      return res.status(400).json({ message: '"ALL" is not a subject. Pick the subject this test belongs to.' });
     }
 
     // Mentor-specific validations
@@ -459,6 +477,10 @@ router.post("/", authenticateToken, requireRole(["admin", "Mentor"]), async (req
 router.put("/:id", authenticateToken, requireRole(["admin", "Mentor"]), async (req, res, next) => {
   try {
     const { title, subject, type, instructions, timeLimit, negativeMarkingPercent, allowedTabSwitches, shuffleQuestions, sebEnabled, questions, status } = req.body;
+
+    if (subject !== undefined && isAllSubject(subject)) {
+      return res.status(400).json({ message: '"ALL" is not a subject. Pick the subject this test belongs to.' });
+    }
 
     // Mentor can only update tests they created
     const userRole = String(req.user?.role || "").toLowerCase();

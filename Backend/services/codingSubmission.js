@@ -9,6 +9,7 @@
  */
 
 const TestSubmission = require('../models/TestSubmission');
+const Assignment = require('../models/Assignment');
 
 /**
  * Write one graded coding response, without losing a concurrently written one.
@@ -132,6 +133,41 @@ async function persistCodingResponse({ assignment, test, response, maxScore, ear
   }
 
   throw new Error('Could not record the graded response');
+}
+
+/**
+ * Keep a finished attempt's score in step with a grade that landed after it.
+ *
+ * A coding submit is admitted only while the attempt is open (routes/coding.js),
+ * but grading takes time -- seconds, up to the judge's poll timeout. A student
+ * who pressed Submit with moments left can see the page auto-submit, or the
+ * sweep finalise the attempt, while their code is still being judged. The grade
+ * was earned in time, so it is kept: persistCodingResponse above has already
+ * written it, best-wins, and recomputed the submission's total.
+ *
+ * What it cannot reach is `Assignment.autoScore`, which the finalising write set
+ * from the total as it stood a moment earlier. Left alone the two disagree, and
+ * which figure a page shows decides the student's mark. So once the attempt is
+ * Completed, the assignment is brought into line with the submission.
+ *
+ * Mid-exam (still In Progress) this does nothing: the final submit sets
+ * autoScore when it happens, as it always has.
+ */
+async function syncFinalisedScore({ assignment }) {
+  const current = await Assignment.findById(assignment._id).select('status').lean();
+  if (current?.status !== 'Completed') return false;
+
+  const submission = await TestSubmission.findOne(
+    { assignmentId: assignment._id, userId: assignment.userId },
+    { totalScore: 1 }
+  ).lean();
+  if (!submission) return false;
+
+  const result = await Assignment.updateOne(
+    { _id: assignment._id, status: 'Completed' },
+    { $set: { autoScore: submission.totalScore } }
+  );
+  return result.modifiedCount > 0;
 }
 
 /**
@@ -271,6 +307,7 @@ function studentSubmissionView({
 
 module.exports = {
   persistCodingResponse,
+  syncFinalisedScore,
   readGradedAttempt,
   studentSubmissionView,
   previousIsBetter,

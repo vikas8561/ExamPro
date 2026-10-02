@@ -21,9 +21,21 @@ const { LANGUAGES, normalizeLanguageKey, LANGUAGE_KEYS } = require('../configs/l
 const { maxScoreForTest, marksPerTestCase, codingMarksEarned } = require('../services/grading');
 const {
   persistCodingResponse,
+  syncFinalisedScore,
   readGradedAttempt,
   studentSubmissionView,
 } = require('../services/codingSubmission');
+
+const { hasAttemptOpened, notStartedBody, isAttemptExpired } = require('../services/attemptWindow');
+const { resolveProctorStatus, proctorRefusal } = require('../middleware/proctorSession');
+
+/**
+ * A coding run or submit made just as the clock runs out is still accepted for
+ * this long, matching the allowance POST /api/test-submissions gives a manual
+ * submit. Grading itself may finish later -- what is checked is when the
+ * request arrived.
+ */
+const CLOCK_SLACK_MS = 5000;
 
 const OBJECT_ID = /^[0-9a-fA-F]{24}$/;
 
@@ -65,7 +77,7 @@ function sendJudgeError(res, error, fallbackMessage) {
  * allowed to run code against it. Returns { assignment, test, question } or
  * responds and returns null.
  */
-async function loadOwnedQuestion(req, res, { assignmentId, testId, questionId }) {
+async function loadOwnedQuestion(req, res, { assignmentId, testId, questionId }, { ownerOnly = false } = {}) {
   if (!questionId || !OBJECT_ID.test(questionId)) {
     res.status(400).json({ message: 'A valid questionId is required' });
     return null;
@@ -93,12 +105,63 @@ async function loadOwnedQuestion(req, res, { assignmentId, testId, questionId })
   }
 
   // Ownership: a student may only execute code against their own assignment.
-  // Mentors and admins may run against any assignment (for review/debugging).
+  // Mentors and admins may *run* against any assignment (for review/debugging),
+  // but `ownerOnly` -- used by /submit -- admits nobody but the owner, because a
+  // submit writes a graded attempt into that student's paper. A reviewer
+  // checking a question through a student's assignment used to replace the
+  // student's answer and score with their own whenever it passed more cases.
   const role = String(req.user?.role || '').toLowerCase();
-  const isPrivileged = role === 'admin' || role === 'mentor';
+  const isPrivileged = !ownerOnly && (role === 'admin' || role === 'mentor');
   if (!isPrivileged && assignment.userId.toString() !== String(req.user.userId)) {
     res.status(403).json({ message: 'Access denied. This assignment does not belong to you.' });
     return null;
+  }
+
+  // Not before the exam opens. A run returns the question's visible test
+  // cases -- inputs and expected outputs -- which are part of the paper.
+  // Reviewers running code for review are not sitting the exam and are exempt.
+  if (!isPrivileged && !hasAttemptOpened(assignment)) {
+    res.status(403).json(notStartedBody(assignment));
+    return null;
+  }
+
+  // Nor once it is over, nor outside the proctored page.
+  //
+  // None of this was checked. A student could keep submitting code to a paper
+  // that was already Completed -- days later, after comparing notes -- and
+  // best-wins grading raised the score the results page shows. Run and submit
+  // now follow the same three rules as saving an answer: the attempt is in
+  // progress, its time has not run out, and a live proctoring session stands
+  // behind the request.
+  if (!isPrivileged) {
+    if (assignment.status !== 'In Progress') {
+      res.status(400).json({
+        message: assignment.status === 'Completed' || assignment.status === 'Cancelled'
+          ? 'This test has already been submitted, so code can no longer be run or submitted.'
+          : 'This test is not in progress.',
+        code: 'attempt_not_active',
+      });
+      return null;
+    }
+
+    if (isAttemptExpired(assignment, assignment.testId, CLOCK_SLACK_MS)) {
+      res.status(400).json({
+        message: "This test's time is up, so code can no longer be run or submitted.",
+        code: 'attempt_expired',
+      });
+      return null;
+    }
+
+    // Same session rules as POST /api/answers -- including a terminated
+    // session and a lapsed Safe Exam Browser proof -- asked of the assignment
+    // just resolved, so a body carrying testId instead of assignmentId cannot
+    // slip past.
+    const proctor = await resolveProctorStatus(req, { assignmentId: assignment._id });
+    if (proctor.required && !proctor.ok) {
+      const refusal = proctorRefusal(proctor);
+      res.status(refusal.status).json(refusal.body);
+      return null;
+    }
   }
 
   const test = assignment.testId;
@@ -341,6 +404,11 @@ async function gradeHiddenCases({ owned, languageKey, sourceCode, onProgress }) 
 
   await persistCodingResponse({ assignment, test, response, maxScore, earnedMarks });
 
+  // Grading can outlast the attempt it was admitted into. If the page
+  // auto-submitted (or the sweep finalised) while this was being judged, bring
+  // the finished attempt's score into line -- see syncFinalisedScore.
+  await syncFinalisedScore({ assignment });
+
   // Which attempt actually counts now. Best-wins means this submission may have
   // been set aside in favour of a better earlier one, and the student has to be
   // told that rather than left to read a lower number as their grade.
@@ -371,7 +439,7 @@ router.post('/submit', authenticateToken, executionLimiter, async (req, res) => 
       return res.status(400).json({ message: 'sourceCode is required' });
     }
 
-    const owned = await loadOwnedQuestion(req, res, { assignmentId, testId, questionId });
+    const owned = await loadOwnedQuestion(req, res, { assignmentId, testId, questionId }, { ownerOnly: true });
     if (!owned) return undefined;
 
     const languageKey = resolveRequestedLanguage(language, owned.question, res);

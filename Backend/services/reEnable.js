@@ -139,7 +139,8 @@ async function listReEnableable(studentIds, now = Date.now()) {
   const open = assignments.filter((a) => !reEnableBlocker(a, testById.get(String(a.testId)), now));
   if (open.length === 0) return result;
 
-  const submissions = await TestSubmission.find({ assignmentId: { $in: open.map((a) => a._id) } })
+  // Each attempt's OWN submission -- see the note in reEnableAttempt below.
+  const submissions = await TestSubmission.find({ $or: open.map((a) => ({ assignmentId: a._id, userId: a.userId })) })
     .select("assignmentId cancelledDueToViolation autoSubmit submittedAt")
     .lean();
   const submissionByAssignment = new Map(submissions.map((s) => [String(s.assignmentId), s]));
@@ -208,7 +209,11 @@ async function reEnableAttempt(assignmentId, actor, now = Date.now()) {
     };
   }
 
-  const submission = await TestSubmission.findOne({ assignmentId: assignment._id }).lean();
+  // The student's own submission. By assignment alone this could pick up a row
+  // someone else wrote against the attempt (possible before submit and autosave
+  // checked ownership), and re-enable would then unlock and reset that row,
+  // leaving the student's real paper finalised underneath.
+  const submission = await TestSubmission.findOne({ assignmentId: assignment._id, userId: assignment.userId }).lean();
   const reason = endReason(assignment, submission);
   const endedByProctoring = reason === "violation";
   const endsAt = attemptEndsAt(assignment, test);

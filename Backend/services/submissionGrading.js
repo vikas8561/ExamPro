@@ -10,7 +10,7 @@
  * The per-question rules themselves live in services/grading.js.
  */
 
-const { maxMarksForQuestion, isAnswered, markMcq } = require("./grading");
+const { maxMarksForQuestion, isAnswered, markMcq, canonicalOption } = require("./grading");
 
 /**
  * Mark every question on a test against a student's answers.
@@ -48,6 +48,65 @@ function gradeSubmission({ test, responses, priorAutoGraded = new Map() }) {
       (r) => String(r.questionId) === question._id.toString()
     );
 
+    // A coding answer Judge0 has already graded.
+    //
+    // The grade stands, whatever the editor holds at hand-in, and it is stored
+    // with the code that EARNED it. The editor's contents at hand-in are kept
+    // too, as `draftAnswer`, so a mentor sees both: what was marked, and what the
+    // student was last working on. This is the rule autosave already follows
+    // (routes/answers.js) -- a graded answer's source is frozen and later
+    // editing goes to the draft -- and hand-in used to break it two ways:
+    //
+    //   - a non-blank hand-in replaced the graded source with the editor's
+    //     contents, so the marks sat next to code that never earned them;
+    //   - a blank hand-in counted as unanswered and dropped the earned grade to
+    //     zero.
+    //
+    // It also used to drop how many hidden cases had passed, which the review
+    // needs to show how much of the problem was solved.
+    //
+    // The editor's contents come from `textAnswer` on a hand-in (what the exam
+    // page sends) and from `draftAnswer` when the expiry sweep regrades the
+    // stored rows, where `textAnswer` is already the graded source.
+    const earned = question.kind === "coding"
+      ? priorAutoGraded.get(question._id.toString())
+      : null;
+
+    if (earned) {
+      const points = earned.points || 0;
+      const isCorrect = Boolean(earned.isCorrect);
+      if (isCorrect) correctCount++; else incorrectCount++;
+      totalScore += points;
+
+      const gradedSource = earned.textAnswer ?? null;
+      const latestDraft = [userResponse?.draftAnswer, userResponse?.textAnswer]
+        .find((text) => typeof text === "string" && text.trim() !== "");
+      // Only a draft that differs from what was graded is worth showing.
+      const draftAnswer = latestDraft !== undefined && latestDraft !== gradedSource ? latestDraft : null;
+
+      processedResponses.push({
+        questionId: question._id,
+        selectedOption: null,
+        textAnswer: gradedSource,
+        draftAnswer,
+        // The graded code's language. The editor may have been switched since.
+        language: earned.language || userResponse?.language || null,
+        isCorrect,
+        points,
+        autoGraded: true,
+        passedCount: earned.passedCount ?? null,
+        totalHidden: earned.totalHidden ?? null,
+        runtimeMs: earned.runtimeMs ?? null,
+        memoryKb: earned.memoryKb ?? null,
+        geminiFeedback: null,
+        correctAnswer: null,
+        errorAnalysis: null,
+        improvementSteps: [],
+        topicRecommendations: []
+      });
+      continue;
+    }
+
     if (!isAnswered(userResponse)) {
       notAnsweredCount++;
       processedResponses.push({
@@ -68,43 +127,31 @@ function gradeSubmission({ test, responses, priorAutoGraded = new Map() }) {
 
     let isCorrect = false;
     let points = 0;
-    let judged = null;
     // Tracks whether the score came from a grader rather than a mentor, so a
-    // repeat submit can carry it forward again.
-    let autoGraded = question.kind === "mcq";
+    // repeat submit can carry it forward again. A Judge0-graded coding answer
+    // never reaches here -- it is handled above.
+    const autoGraded = question.kind === "mcq";
 
     if (question.kind === "mcq") {
       const marked = markMcq(question, userResponse, negativeMarkingPercent);
       isCorrect = marked.isCorrect;
       points = marked.points;
       if (isCorrect) correctCount++; else incorrectCount++;
-    } else if (question.kind === "theory" || question.kind === "coding") {
-      judged = question.kind === "coding"
-        ? priorAutoGraded.get(question._id.toString())
-        : null;
-
-      if (judged) {
-        // Already graded by Judge0 — keep that score.
-        points = judged.points || 0;
-        isCorrect = Boolean(judged.isCorrect);
-        autoGraded = true;
-        if (isCorrect) correctCount++; else incorrectCount++;
-      } else {
-        // Mentor grades this by hand.
-        points = 0;
-        isCorrect = false;
-      }
     }
+    // Theory, and coding that was never run through Judge0, score 0 here and
+    // are marked by hand.
 
     totalScore += points;
 
     processedResponses.push({
       questionId: question._id,
-      selectedOption: userResponse.selectedOption ?? null,
+      // Stored as the option it refers to, so the review page highlights the
+      // right one even for an answer the old autosave stripped.
+      selectedOption: question.kind === "mcq"
+        ? canonicalOption(question, userResponse.selectedOption) ?? null
+        : userResponse.selectedOption ?? null,
       textAnswer: userResponse.textAnswer ?? null,
-      // TakeTest (MCQ and mixed papers) does not send a language on final
-      // submit; the Judge0 result recorded mid-test knows what was run.
-      language: userResponse.language || judged?.language || null,
+      language: userResponse.language || null,
       isCorrect,
       points,
       autoGraded,

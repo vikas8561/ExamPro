@@ -3,11 +3,12 @@ const router = express.Router();
 const Subject = require("../models/Subject");
 const { authenticateToken, requireRole } = require("../middleware/auth");
 const { attach } = require("../services/principals");
+const { REAL_SUBJECTS } = require("../services/subjects");
 
 // Get all subjects (public - for students to use in filters)
 router.get("/public", async (req, res, next) => {
   try {
-    const subjects = await Subject.find({})
+    const subjects = await Subject.find(REAL_SUBJECTS)
       .select("name description")
       .sort({ name: 1 });
 
@@ -17,11 +18,14 @@ router.get("/public", async (req, res, next) => {
   }
 });
 
-// Get all subjects (admin/mentor)
+// Get all subjects (admin/mentor). "ALL" is only listed for the admin screens
+// that assign subjects to mentors, which ask for it with ?includeAll=true.
 router.get("/", authenticateToken, requireRole(["admin", "Mentor"]), async (req, res, next) => {
   try {
+    const includeAll =
+      req.query.includeAll === "true" && String(req.user?.role || "").toLowerCase() === "admin";
     const subjects = await attach(
-      await Subject.find({}).sort({ name: 1 }).lean(),
+      await Subject.find(includeAll ? {} : REAL_SUBJECTS).sort({ name: 1 }).lean(),
       "createdBy",
       "Author"
     );

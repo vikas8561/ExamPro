@@ -2,7 +2,15 @@ const express = require("express");
 const router = express.Router();
 const TestSubmission = require("../models/TestSubmission");
 const { gradeSubmission } = require("../services/submissionGrading");
-const { isAttemptExpired, SUBMISSION_GRACE_MS } = require("../services/attemptWindow");
+const { reviewQuestion, NEVER_TO_STUDENTS } = require("../services/questionSanitizer");
+const { isAttemptExpired, SUBMISSION_GRACE_MS, hasAttemptOpened, attemptOpensAt, areResultsReleased, resultsReleaseAt } = require("../services/attemptWindow");
+
+/**
+ * A hand-in arriving this soon after the end is taken as sent -- the paper was
+ * finished in time and the request was in flight. The same allowance autosave
+ * and the coding routes give.
+ */
+const CLOCK_SLACK_MS = 5000;
 const Assignment = require("../models/Assignment");
 const Test = require("../models/Test");
 const { authenticateToken, requireRole } = require("../middleware/auth");
@@ -91,26 +99,59 @@ router.post("/", authenticateToken, requireProctorSession({ allowTerminated: tru
 
     console.log("✅ Assignment found:", assignment._id);
 
+    // Only the student the assignment belongs to may hand it in.
+    //
+    // This used to log the mismatch and carry on "for flexibility", so a student
+    // who knew (or guessed -- cohort assignments are inserted together and their
+    // ids run nearly in sequence) a classmate's assignment id could submit it:
+    // the classmate's live attempt was marked Completed and scored from the
+    // attacker's answers. No role is exempt. Nothing in the product submits on a
+    // student's behalf -- an abandoned attempt is finalised by the server's own
+    // sweep, not through this route -- so an admin or mentor here is refused
+    // too, rather than leaving a submission row under their own id against
+    // someone else's attempt.
+    //
+    // Checked before the expiry test below, so a stranger learns nothing about
+    // the attempt's timing either.
+    if (String(assignment.userId) !== String(userId)) {
+      console.warn(`⛔ Refused submission for assignment ${assignment._id}: caller ${userId} is not its owner`);
+      return res.status(403).json({
+        message: "This assignment does not belong to you.",
+        reason: "not_owner",
+      });
+    }
+
     // Has this attempt run out?
     //
-    // An auto-submit is the student's own page doing the right thing the moment
-    // the clock hit zero, so it is allowed to land late -- but only inside the
-    // grace window. This check used to be skipped entirely for an auto-submit,
-    // and `autoSubmit` is a flag the browser supplies, so anyone could submit an
-    // attempt hours after it ended just by setting it. Past the grace window the
-    // server's own sweep owns the attempt instead.
+    // Within CLOCK_SLACK_MS of the end, a hand-in is taken as sent: the paper
+    // was finished in time and the request was merely in flight.
+    //
+    // Past that, only an auto-submit is accepted -- the student's own page
+    // handing in the moment the clock hit zero, arriving late over a slow
+    // network or on a retry -- and only inside the grace window, after which the
+    // server's own sweep owns the attempt.
+    //
+    // But a late auto-submit is graded from the answers the SERVER already holds
+    // (autosave stops accepting them when time is up, see routes/answers.js),
+    // never from the ones in the request. `autoSubmit` is a flag the browser
+    // supplies: honouring the answers it carries let anyone keep working for
+    // five minutes after the end, change their answers, and hand in with the
+    // flag set. Taking the saved answers still finishes the attempt at once --
+    // the page shows it handed in, rather than waiting for the sweep -- and
+    // gives exactly the mark the sweep would have.
     //
     // Both clocks are evaluated by services/attemptWindow.js, which the sweep
     // shares, so the two can never disagree about when a sitting is over.
     const testForWindow = await Test.findById(assignment.testId).select("timeLimit");
-    const graceMs = autoSubmit ? SUBMISSION_GRACE_MS : 5000;
+    const pastEnd = isAttemptExpired(assignment, testForWindow, CLOCK_SLACK_MS);
 
-    if (isAttemptExpired(assignment, testForWindow, graceMs)) {
+    if (pastEnd && (!autoSubmit || isAttemptExpired(assignment, testForWindow, SUBMISSION_GRACE_MS))) {
       return res.status(400).json({
         message: "Test time has expired. Please contact your instructor.",
         code: "attempt_expired",
       });
     }
+    const gradeFromSavedAnswers = pastEnd;
 
     // Get assignment with test populated for scoring
     const assignmentWithTest = await Assignment.findById(assignmentId)
@@ -125,20 +166,6 @@ router.post("/", authenticateToken, requireProctorSession({ allowTerminated: tru
 
     if (!assignmentWithTest.testId) {
       return res.status(404).json({ message: "Test not found" });
-    }
-
-    // Check if user has access to this assignment
-    // console.log(`Assignment userId: ${assignment.userId.toString()}, Request userId: ${userId}`);
-    // console.log(`Assignment userId type: ${typeof assignment.userId.toString()}, Request userId type: ${typeof userId}`);
-
-    // Allow submission if the assignment belongs to the user OR if the user is assigned to this test
-    // This is more permissive to handle cases where assignments might be shared or reassigned
-    if (assignment.userId.toString() !== userId) {
-      // console.log(`Assignment ownership mismatch: Assignment belongs to user ${assignment.userId.toString()} but request is from user ${userId}`);
-      // console.log(`Allowing submission anyway for flexibility in assignment management`);
-
-      // We'll allow the submission but log the mismatch for auditing
-      // In a production system, you might want additional checks here
     }
 
     // Check if assignment is in progress
@@ -167,9 +194,12 @@ router.post("/", authenticateToken, requireProctorSession({ allowTerminated: tru
     // Mark the paper. The loop that used to live here now lives in
     // services/submissionGrading.js, so the sweep that finalises abandoned
     // attempts grades them by exactly the same rules rather than its own copy.
+    //
+    // A late auto-submit is marked on what was saved in time, not on what it
+    // carries -- see the expiry check above.
     const { processedResponses, totalScore, maxScore } = gradeSubmission({
       test: assignmentWithTest.testId,
-      responses: cleanResponses,
+      responses: gradeFromSavedAnswers ? (priorSubmission?.responses || []) : cleanResponses,
       priorAutoGraded,
     });
 
@@ -333,11 +363,25 @@ router.post("/", authenticateToken, requireProctorSession({ allowTerminated: tru
       console.warn("⚠️ Assignment status update failed, but submission was saved");
     }
 
+    // A receipt, not a result.
+    //
+    // This used to send back the whole graded submission -- every question
+    // marked right or wrong, and the total -- the instant the paper was handed
+    // in. A student who finished early knew exactly which answers were right
+    // while classmates in the same window were still sitting the test. The
+    // score now arrives with the rest of the results, once the window closes
+    // (services/attemptWindow.areResultsReleased). The exam page needs only to
+    // know the hand-in landed.
+    const releaseAt = resultsReleaseAt(assignment);
     res.status(201).json({
-      submission,
-      totalScore,
-      maxScore,
-      message: "Test submitted successfully"
+      message: "Test submitted successfully",
+      submissionId: submission._id,
+      submittedAt: submission.submittedAt,
+      // "saved" when this was a late auto-submit, graded from the answers the
+      // server held at the end rather than from the request.
+      answersFrom: gradeFromSavedAnswers ? "saved" : "request",
+      resultsReleased: areResultsReleased(assignment),
+      resultsAt: releaseAt ? releaseAt.toISOString() : null,
     });
   } catch (error) {
     console.error("Error in POST /api/test-submissions:", error.message, error.stack);
@@ -388,8 +432,28 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     const totalTime = Date.now() - startTime;
     console.log(`✅ OPTIMIZED student submissions completed in ${totalTime}ms - Found ${submissions.length} submissions`);
 
+    // Scores appear once results are released -- the student's own window has
+    // closed (services/attemptWindow.areResultsReleased). The per-question
+    // responses never go out in this list: the results page reads them from
+    // /test-submissions/assignment/:id, which applies the same rule, and here
+    // they only handed every question's right/wrong to the network tab.
+    const now = Date.now();
+    const shaped = submissions.map(({ responses, ...submission }) => {
+      const assignment = submission.assignmentId;
+      const released = Boolean(assignment) && areResultsReleased(assignment, now);
+      const releaseAt = assignment ? resultsReleaseAt(assignment) : null;
+      return {
+        ...submission,
+        resultsReleased: released,
+        resultsAt: releaseAt ? releaseAt.toISOString() : null,
+        ...(released
+          ? {}
+          : { totalScore: null, maxScore: null, mentorScore: null, mentorFeedback: null }),
+      };
+    });
+
     res.json({
-      submissions: submissions,
+      submissions: shaped,
       pagination: {
         currentPage: page,
         totalPages: Math.ceil(totalCount / limit),
@@ -414,7 +478,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
     const assignment = await Assignment.findById(assignmentId)
       .populate({
         path: "testId",
-        select: "title subject createdBy questions negativeMarkingPercent",
+        select: "title subject createdBy questions negativeMarkingPercent timeLimit",
         populate: {
           path: "questions",
           select: "kind text options answer answers guidelines examples points"
@@ -469,6 +533,74 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
       return res.status(403).json({ message: "Not authorized to view this submission" });
     }
 
+    // Backstop for every reply below: whatever a branch builds, a student never
+    // receives hidden test cases from this route. The branches already use
+    // reviewQuestion(); this is here because one of them once did not, and a
+    // future one should not be able to repeat it.
+    if (!isReviewer) {
+      const send = res.json.bind(res);
+      res.json = (body) => {
+        // Serialise first, so Mongoose sub-documents become plain data (their
+        // internals point back at their parent; walking them would loop).
+        const plain = JSON.parse(JSON.stringify(body));
+        const strip = (node) => {
+          if (Array.isArray(node)) { node.forEach(strip); return; }
+          if (!node || typeof node !== "object") return;
+          for (const field of NEVER_TO_STUDENTS) delete node[field];
+          Object.values(node).forEach(strip);
+        };
+        strip(plain);
+        return send(plain);
+      };
+    }
+
+    // A student reads their paper here only once the attempt is over.
+    //
+    // This route needs no proctoring session, and it returned the question text
+    // and options to the student whenever results were not yet released --
+    // which included before the exam had even started, and in the middle of it.
+    // Read that way, the whole paper was available days early with one request,
+    // and readable mid-exam outside the proctored page.
+    //
+    // "Over" is decided from the assignment, not from `isFinalized`: an autosave
+    // creates the submission row with the schema's default of `isFinalized:
+    // true`, so a half-sat paper would read as finished.
+    if (!isReviewer) {
+      const attemptOver =
+        hasAttemptOpened(assignment) &&
+        (["Completed", "Cancelled"].includes(assignment.status) ||
+          isAttemptExpired(assignment, assignment.testId));
+
+      if (!attemptOver) {
+        const notStarted = !hasAttemptOpened(assignment);
+        const opensAt = attemptOpensAt(assignment);
+        return res.json({
+          test: { _id: assignment.testId?._id, title: assignment.testId?.title, questions: [] },
+          submission: {
+            _id: null,
+            assignmentId: assignment._id,
+            totalScore: null,
+            maxScore: null,
+            submittedAt: null,
+            timeSpent: 0,
+            mentorReviewed: false,
+            mentorScore: null,
+            mentorFeedback: null,
+            reviewStatus: "Not Submitted",
+            finalScore: null,
+            permissions: null,
+          },
+          showResults: false,
+          ...(notStarted
+            ? { code: "not_started", opensAt: opensAt ? opensAt.toISOString() : null }
+            : { code: "attempt_in_progress" }),
+          message: notStarted
+            ? "This test has not started yet."
+            : "Your paper will be available here once the test is over.",
+        });
+      }
+    }
+
     // Find submission for the student (assignment.userId), not the current user
     const submission = await TestSubmission.findOne({ assignmentId, userId: assignment.userId })
       .populate({
@@ -506,20 +638,15 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
       }
     }
 
-    // Add a small buffer (5 seconds) to handle timing precision issues
-    const deadlineWithBuffer = assignmentDeadline
-      ? new Date(new Date(assignmentDeadline).getTime() + 5000)
-      : new Date(0);
-
-    // console.log('Deadline with buffer:', deadlineWithBuffer.toISOString());
-    // console.log('Current time >= deadline with buffer:', currentTime >= deadlineWithBuffer);
-
     // Reviewers see results straight away. A student sees them only once the
     // deadline has passed AND they have actually finished -- an unfinished
     // attempt must never unlock its own answer key.
     const hasFinished =
       assignment.status === "Completed" || submission?.isFinalized === true;
-    const showResults = isReviewer || (hasFinished && currentTime >= deadlineWithBuffer);
+    // Released by the same rule as every other student-facing score
+    // (services/attemptWindow.areResultsReleased). This used to keep its own
+    // copy, which treated an attempt with no determinable window as released.
+    const showResults = isReviewer || (hasFinished && areResultsReleased(assignment, currentTime.getTime()));
 
     // console.log('Show results:', showResults);
     // console.log('================================');
@@ -575,15 +702,15 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
           // finished paper sees the correct answer -- that is the point of the
           // review -- but never the hidden test cases, which are reused across
           // cohorts and would leak to whoever they passed them on to.
-          ...(isReviewer
-            ? question.toObject()
-            : (() => {
-                const plain = question.toObject();
-                delete plain.hiddenTestCases;
-                return plain;
-              })()),
+          ...(isReviewer ? question.toObject() : reviewQuestion(question)),
           selectedOption: response?.selectedOption || null,
           textAnswer: response?.textAnswer || null,
+          // For a coding answer graded by Judge0, textAnswer is the code that
+          // earned the marks; this is what was in the editor at hand-in, when
+          // the student kept working afterwards. Both are shown to the reviewer.
+          draftAnswer: response?.draftAnswer || null,
+          passedCount: response?.passedCount ?? null,
+          totalHidden: response?.totalHidden ?? null,
           language: response?.language || question.language || null, // Student's language or question default
           isCorrect: submission.mentorReviewed ? response?.isCorrect : false,
           points: submission.mentorReviewed ? response?.points : 0,
@@ -675,6 +802,9 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
               points: q.points,
               selectedOption: q.selectedOption,
               textAnswer: q.textAnswer,
+              // The student's own code. The pass count is left out: it is
+              // the score, and results are not released yet.
+              draftAnswer: q.draftAnswer,
               language: q.language || null, // Include language from response
               // Hide correctness, points, and answer until results can be shown
               isCorrect: false,
@@ -708,8 +838,13 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
       }
     } else {
       // No submission found - return test questions with correct answers
+      //
+      // A student here gets the review version of each question, exactly as in
+      // the branch above. This one used to send question.toObject() whole, so a
+      // student whose attempt finished with nothing submitted could read every
+      // hidden test case once results were released.
       const questionsWithPlaceholders = assignment.testId.questions.map(question => ({
-        ...question.toObject(),
+        ...(isReviewer ? question.toObject() : reviewQuestion(question)),
         selectedOption: null,
         textAnswer: null,
         isCorrect: false,

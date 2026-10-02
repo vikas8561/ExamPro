@@ -42,7 +42,7 @@ function findAssignmentId(req) {
  * not apply here at all — an admin or mentor is asking, or it is a practice
  * test — and the request proceeds untouched.
  */
-async function resolveProctorStatus(req, { allowTerminated = false } = {}) {
+async function resolveProctorStatus(req, { allowTerminated = false, assignmentId: explicitId = null } = {}) {
   const role = String(req.user?.role || "").toLowerCase();
 
   // Admins and mentors author and review tests; proctoring is not about them.
@@ -50,7 +50,10 @@ async function resolveProctorStatus(req, { allowTerminated = false } = {}) {
     return { required: false, ok: true, reason: "privileged_role" };
   }
 
-  const assignmentId = findAssignmentId(req);
+  // A caller that has already resolved the assignment (the coding routes accept
+  // a testId instead of an assignmentId) passes it explicitly, so the check
+  // cannot be skipped just because the request body named it differently.
+  const assignmentId = explicitId ? String(explicitId) : findAssignmentId(req);
   if (!assignmentId) {
     // No assignment in the request means this is not an exam route in the sense
     // we guard. Let the route's own validation deal with it.
@@ -65,9 +68,13 @@ async function resolveProctorStatus(req, { allowTerminated = false } = {}) {
     return { required: false, ok: true, reason: "assignment_not_found" };
   }
 
-  // Not the caller's exam — the route's own ownership check will reject it.
+  // Not the caller's exam. This used to return `required: false, ok: true` and
+  // leave the refusal to the route -- but the submit route never refused, so any
+  // student could finalise another student's live attempt with their own
+  // answers. A guard that waves a stranger through is not a guard; refuse here,
+  // whatever the route does.
   if (String(assignment.userId) !== String(req.user.userId)) {
-    return { required: false, ok: true, reason: "not_owner" };
+    return { required: true, ok: false, reason: "not_owner", assignmentId };
   }
 
   const test = await Test.findById(assignment.testId)
@@ -165,6 +172,50 @@ function sebFailureReason(session, { allowStale = false } = {}) {
 }
 
 /**
+ * The reply for a request the proctoring rules refuse: `{ status, body }`.
+ *
+ * Shared by the guard below and by routes that run the same check themselves
+ * (routes/coding.js), so a refusal reads the same wherever it comes from.
+ */
+function proctorRefusal(status) {
+  // Someone else's attempt is an access problem, not a proctoring one.
+  // Answered without `proctoringRequired`, so the exam page does not offer
+  // a "start proctoring" or "reopen in SEB" screen that could never help.
+  if (status.reason === "not_owner") {
+    return {
+      status: 403,
+      body: { message: "This assignment does not belong to you.", reason: "not_owner", code: "not_owner" },
+    };
+  }
+
+  // Stable `reason` codes, not message text: the frontend used to match on
+  // wording and matched the wrong string. See routes/assignments.js.
+  const MESSAGES = {
+    terminated: "This attempt was ended by the proctoring system.",
+    ended: "This attempt has already been handed in.",
+    seb_required:
+      "This test must be taken in Safe Exam Browser. Please start it again from your assignments page.",
+    seb_stale:
+      "Safe Exam Browser has stopped responding. Return to the exam window in Safe Exam Browser to continue.",
+  };
+
+  return {
+    status: 403,
+    body: {
+      message:
+        MESSAGES[status.reason] ||
+        "This test must be taken with proctoring active. Please start the test from your assignments page.",
+      proctoringRequired: true,
+      // Lets the exam page show a "reopen in Safe Exam Browser" screen rather
+      // than a generic proctoring error.
+      sebRequired: status.reason === "seb_required" || status.reason === "seb_stale",
+      reason: status.reason,
+      code: status.reason,
+    },
+  };
+}
+
+/**
  * Hard guard. Refuses the request unless proctoring was properly started.
  *
  * Note what is deliberately NOT checked here: how recently the browser last
@@ -184,26 +235,8 @@ function requireProctorSession(options = {}) {
         return next();
       }
 
-      // Stable `reason` codes, not message text: the frontend used to match on
-      // wording and matched the wrong string. See routes/assignments.js.
-      const MESSAGES = {
-        terminated: "This attempt was ended by the proctoring system.",
-        seb_required:
-          "This test must be taken in Safe Exam Browser. Please start it again from your assignments page.",
-        seb_stale:
-          "Safe Exam Browser has stopped responding. Return to the exam window in Safe Exam Browser to continue.",
-      };
-
-      return res.status(403).json({
-        message:
-          MESSAGES[status.reason] ||
-          "This test must be taken with proctoring active. Please start the test from your assignments page.",
-        proctoringRequired: true,
-        // Lets the exam page show a "reopen in Safe Exam Browser" screen rather
-        // than a generic proctoring error.
-        sebRequired: status.reason === "seb_required" || status.reason === "seb_stale",
-        reason: status.reason,
-      });
+      const refusal = proctorRefusal(status);
+      return res.status(refusal.status).json(refusal.body);
     } catch (error) {
       return next(error);
     }
@@ -292,4 +325,5 @@ module.exports = {
   resolveProctorStatus,
   resolveProctorStatusForTest,
   mayServeQuestions,
+  proctorRefusal,
 };

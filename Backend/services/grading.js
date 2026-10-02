@@ -1,3 +1,5 @@
+const { canonicalOption } = require("./legacyMcqText");
+
 /**
  * The marking rules, in one place.
  *
@@ -103,7 +105,10 @@ function isAnswered(response) {
  * response that isAnswered(); a blank scores zero with no penalty.
  */
 function markMcq(question, response, negativeMarkingPercent) {
-  const isCorrect = response.selectedOption === question.answer;
+  // An answer saved by the old autosave, which stripped anything resembling
+  // HTML from the option text, is read as the one option it came from -- see
+  // services/legacyMcqText.js. An exact match always wins.
+  const isCorrect = canonicalOption(question, response.selectedOption) === question.answer;
   const worth = maxMarksForQuestion(question);
 
   if (isCorrect) return { isCorrect: true, points: worth };
@@ -113,6 +118,7 @@ function markMcq(question, response, negativeMarkingPercent) {
 }
 
 module.exports = {
+  canonicalOption,
   maxMarksForQuestion,
   maxScoreForTest,
   marksPerTestCase,
