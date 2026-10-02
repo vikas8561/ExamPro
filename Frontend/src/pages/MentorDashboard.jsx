@@ -260,6 +260,14 @@ export default function MentorDashboard() {
               <FileCheck className="w-4 h-4 text-[#38BDF8]" />
               <span>Submissions</span>
             </Link>
+            {/* Proctoring Button */}
+            <Link
+              to="/mentor/proctoring"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-[#2A2E39] hover:bg-[#323744] text-white border border-white/[0.08] font-medium text-xs transition-all active:scale-95"
+            >
+              <ShieldCheck className="w-4 h-4 text-[#F59E0B]" />
+              <span>Proctoring</span>
+            </Link>
           </div>
         </div>
 

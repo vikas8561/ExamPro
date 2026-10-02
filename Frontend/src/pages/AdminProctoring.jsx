@@ -11,6 +11,10 @@ export default function AdminProctoring() {
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
 
+  const storedUser = localStorage.getItem("user");
+  const currentUser = storedUser ? JSON.parse(storedUser) : {};
+  const isMentor = String(currentUser?.role || "").toLowerCase() === "mentor";
+
   // Terminated attempts state
   const [terminated, setTerminated] = useState([]);
   const [loadingTerminated, setLoadingTerminated] = useState(true);
@@ -160,23 +164,24 @@ export default function AdminProctoring() {
                   >
                     {visible ? "Hide" : "Show"}
                   </button>
-                  {visible && (
-                    <button
-                      type="button"
-                      onClick={copy}
-                      className="rounded-xl border border-white/10 bg-[#2A2E39] hover:bg-[#343946] px-4 py-2 text-xs font-semibold text-white transition-all cursor-pointer"
-                    >
-                      {copied ? "Copied" : "Copy"}
-                    </button>
-                  )}
                   <button
                     type="button"
-                    onClick={rotate}
-                    disabled={rotating}
-                    className="rounded-xl bg-white hover:bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-950 transition-all shadow-sm active:scale-95 disabled:opacity-50 cursor-pointer"
+                    onClick={copy}
+                    disabled={!otp}
+                    className="rounded-xl border border-white/10 bg-[#2A2E39] hover:bg-[#343946] px-4 py-2 text-xs font-semibold text-white transition-all cursor-pointer disabled:opacity-50"
                   >
-                    {rotating ? "Generating…" : "Generate new code"}
+                    {copied ? "Copied" : "Copy"}
                   </button>
+                  {!isMentor && (
+                    <button
+                      type="button"
+                      onClick={rotate}
+                      disabled={rotating}
+                      className="rounded-xl bg-white hover:bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-950 transition-all shadow-sm active:scale-95 disabled:opacity-50 cursor-pointer"
+                    >
+                      {rotating ? "Generating…" : "Generate new code"}
+                    </button>
+                  )}
                 </div>
 
                 {updatedAt && (
@@ -205,7 +210,7 @@ export default function AdminProctoring() {
         </div>
 
         {/* Card 2: Safe Exam Browser Card */}
-        <SebSettingsCard />
+        <SebSettingsCard isMentor={isMentor} />
 
         {/* Card 3: Violation Terminations & Re-enable */}
         <div className="w-full rounded-2xl border border-white/[0.06] bg-[#20242D] p-5 sm:p-6 shadow-sm">

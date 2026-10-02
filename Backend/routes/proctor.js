@@ -983,11 +983,11 @@ router.get(
 
 // ───────────────────────── Admin settings ─────────────────────────
 
-/** Show the current global bypass code. Admin only — never sent to a student. */
+/** Show the current global bypass code. Admin and mentors — never sent to a student. */
 router.get(
   "/settings/otp",
   authenticateToken,
-  requireRole(["admin"]),
+  requireRole(["admin", "mentor"]),
   async (req, res, next) => {
     try {
       const settings = await ProctorSetting.getSettings();
@@ -1051,7 +1051,7 @@ router.get(
 router.get(
   "/settings/seb",
   authenticateToken,
-  requireRole(["admin"]),
+  requireRole(["admin", "mentor"]),
   async (req, res, next) => {
     try {
       const settings = await ProctorSetting.getSettings();
