@@ -7,6 +7,7 @@ const { attach } = require("../services/principals");
 const { resolveProctorStatusForTest } = require("../middleware/proctorSession");
 const { sanitizeQuestions, canSeeAnswers } = require("../services/questionSanitizer");
 const { sanitizeCodingQuestion } = require("../services/testCases");
+const { mcqQuestionsError } = require("../services/mcqOptions");
 const { recalculateScoresForTest } = require("../services/scoreCalculation");
 const { resolveOrderedQuestions } = require("../services/questionOrder");
 const { hasAttemptOpened, notStartedBody } = require("../services/attemptWindow");
@@ -375,6 +376,11 @@ router.post("/", authenticateToken, requireRole(["admin", "Mentor"]), async (req
       return res.status(400).json({ message: kindError });
     }
 
+    const mcqError = mcqQuestionsError(questions);
+    if (mcqError) {
+      return res.status(400).json({ message: mcqError });
+    }
+
     // Validate allowedTabSwitches (0-100 for regular tests, -1 for practice tests)
     const tabSwitchesValue = Number(allowedTabSwitches || 0);
     if (type !== "practice" && (tabSwitchesValue < 0 || tabSwitchesValue > 100)) {
@@ -520,6 +526,10 @@ router.put("/:id", authenticateToken, requireRole(["admin", "Mentor"]), async (r
       const kindError = mixedTestKindError(effectiveType, questions);
       if (kindError) {
         return res.status(400).json({ message: kindError });
+      }
+      const mcqError = mcqQuestionsError(questions);
+      if (mcqError) {
+        return res.status(400).json({ message: mcqError });
       }
     }
 

@@ -5,6 +5,7 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import QuestionText from "../components/QuestionText";
 import ProctoringReport from "../components/ProctoringReport";
+import { findOptionIndex } from "../utils/mcqOption";
 import {
   ArrowLeft,
   ArrowUp,
@@ -544,54 +545,56 @@ const ViewCompletedTest = () => {
                       Answer Choices:
                     </p>
                     <div className="grid grid-cols-1 gap-2">
-                      {q.options.map((opt, optIdx) => {
-                        const optText = getTextValue(opt);
-                        const selectedText = getTextValue(q.selectedOption);
-                        const answerText = getTextValue(q.answer);
+                      {(() => {
+                        // Answers are option TEXT and must match exactly, as the
+                        // grader does: "hello", "Hello" and "HELLO" are three
+                        // different options. Resolving each to ONE index means a
+                        // single option is ever "Your Choice" and a single one
+                        // the "Correct Key".
+                        const optionList = q.options.map((opt) => ({ text: getTextValue(opt) }));
+                        const selectedIdx = findOptionIndex(optionList, getTextValue(q.selectedOption));
+                        const correctIdx = findOptionIndex(optionList, getTextValue(q.answer));
+                        return q.options.map((opt, optIdx) => {
+                          const optText = optionList[optIdx].text;
+                          const isSelected = optIdx === selectedIdx;
+                          const isCorrectOption = optIdx === correctIdx;
 
-                        const isSelected =
-                          selectedText.trim() !== "" &&
-                          selectedText.trim().toLowerCase() === optText.trim().toLowerCase();
+                          let optStyles = "bg-[#20242D]/60 border-white/[0.04] text-slate-300";
+                          if (isCorrectOption) {
+                            optStyles = "bg-emerald-500/10 border-emerald-500/30 text-emerald-300 font-semibold";
+                          } else if (isSelected && !q.isCorrect) {
+                            optStyles = "bg-red-500/10 border-red-500/30 text-red-300 font-semibold";
+                          }
 
-                        const isCorrectOption =
-                          answerText.trim() !== "" &&
-                          answerText.trim().toLowerCase() === optText.trim().toLowerCase();
-
-                        let optStyles = "bg-[#20242D]/60 border-white/[0.04] text-slate-300";
-                        if (isCorrectOption) {
-                          optStyles = "bg-emerald-500/10 border-emerald-500/30 text-emerald-300 font-semibold";
-                        } else if (isSelected && !q.isCorrect) {
-                          optStyles = "bg-red-500/10 border-red-500/30 text-red-300 font-semibold";
-                        }
-
-                        return (
-                          <div
-                            key={optIdx}
-                            className={`p-3 rounded-xl border flex items-center justify-between text-xs transition-all ${optStyles}`}
-                          >
-                            <div className="flex items-center gap-2.5">
-                              <span className="w-5 h-5 rounded-md bg-white/[0.06] flex items-center justify-center text-[10px] font-mono font-bold">
-                                {String.fromCharCode(65 + optIdx)}
-                              </span>
-                              <span>{optText}</span>
-                            </div>
-
-                            <div className="flex items-center gap-1.5">
-                              {isSelected && (
-                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-white/10 text-white">
-                                  Your Choice
+                          return (
+                            <div
+                              key={optIdx}
+                              className={`p-3 rounded-xl border flex items-center justify-between text-xs transition-all ${optStyles}`}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <span className="w-5 h-5 rounded-md bg-white/[0.06] flex items-center justify-center text-[10px] font-mono font-bold">
+                                  {String.fromCharCode(65 + optIdx)}
                                 </span>
-                              )}
-                              {isCorrectOption && (
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 flex items-center gap-1">
-                                  <Check className="w-3 h-3" />
-                                  Correct Key
-                                </span>
-                              )}
+                                <span>{optText}</span>
+                              </div>
+
+                              <div className="flex items-center gap-1.5">
+                                {isSelected && (
+                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-white/10 text-white">
+                                    Your Choice
+                                  </span>
+                                )}
+                                {isCorrectOption && (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 flex items-center gap-1">
+                                    <Check className="w-3 h-3" />
+                                    Correct Key
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        });
+                      })()}
                     </div>
                   </div>
                 )}

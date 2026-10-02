@@ -97,3 +97,41 @@ export function findOptionIndex(options, saved) {
   });
   return matches.length === 1 ? matches[0] : -1;
 }
+
+/**
+ * Why an MCQ's options and answer cannot be saved, or null when they can.
+ *
+ * The answer is stored as an option's TEXT and graded by exact comparison, so
+ * the text has to pick out exactly one option:
+ *
+ *   - every option needs text;
+ *   - no two options may read the same. Options differing only in spacing look
+ *     identical to a student, so they count as the same; options differing in
+ *     case ("hello", "Hello", "HELLO") are different answers and are allowed;
+ *   - the answer must be, character for character, one of the options.
+ *
+ * Kept in step with Backend/services/mcqOptions.js, which the API enforces.
+ */
+export function mcqOptionsError(options, answer) {
+  const texts = (Array.isArray(options) ? options : []).map((option) =>
+    typeof option === "string" ? option : option?.text
+  );
+  if (texts.length < 2) return "needs at least 2 options";
+
+  const letter = (index) => String.fromCharCode(65 + index);
+  const blank = texts.findIndex((text) => typeof text !== "string" || text.trim() === "");
+  if (blank !== -1) return `option ${letter(blank)} is empty`;
+
+  const seen = new Map();
+  for (let index = 0; index < texts.length; index++) {
+    const key = texts[index].trim();
+    if (seen.has(key)) {
+      return `options ${letter(seen.get(key))} and ${letter(index)} are the same ("${key}") -- every option must be different`;
+    }
+    seen.set(key, index);
+  }
+
+  if (typeof answer !== "string" || answer === "") return "no correct answer is selected";
+  if (!texts.includes(answer)) return "the correct answer does not exactly match any option";
+  return null;
+}

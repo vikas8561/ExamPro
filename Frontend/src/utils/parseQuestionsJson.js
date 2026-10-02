@@ -6,6 +6,7 @@
 // the Judge0 grading pipeline needs.
 
 import { normalizeLanguageKey } from '../config/languages';
+import { mcqOptionsError } from './mcqOption';
 
 export const QUESTION_KINDS = ['mcq', 'theory', 'coding'];
 
@@ -212,6 +213,10 @@ export function parseQuestionsJson(jsonData, { languageKeys = [] } = {}) {
       const answer = toText(question.answer);
       if (!options.includes(answer)) {
         throw new Error(`Question ${index + 1} (mcq): "answer" must exactly match one of the options`);
+      }
+      const optionsError = mcqOptionsError(options, answer);
+      if (optionsError) {
+        throw new Error(`Question ${index + 1} (mcq): ${optionsError}`);
       }
       return { ...base, options, answer };
     }

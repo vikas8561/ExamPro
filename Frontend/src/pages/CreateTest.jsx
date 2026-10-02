@@ -22,6 +22,7 @@ import {
 import apiRequest from "../services/api";
 import JsonQuestionUploader from "../components/JsonQuestionUploader";
 import QuestionText from "../components/QuestionText";
+import { mcqOptionsError } from "../utils/mcqOption";
 import Editor from "@monaco-editor/react";
 
 const emptyQuestion = (kind) => ({
@@ -401,6 +402,17 @@ export default function CreateTest() {
           ? {
             ...q,
             options: q.options.map((opt, i) => (i === index ? value : opt)),
+            // The answer is stored as the option's text, so editing the text of
+            // the correct option must carry the answer with it -- otherwise it
+            // matches no option and every student is marked wrong. Only when
+            // that text is unique: with duplicates we cannot tell which one
+            // the radio meant.
+            answer:
+              q.answer !== "" &&
+              q.answer === q.options[index] &&
+              q.options.filter((opt) => opt === q.answer).length === 1
+                ? value
+                : q.answer,
           }
           : q
       ),
@@ -553,6 +565,17 @@ export default function CreateTest() {
       }
       if ((form.type === "coding" || form.type === "mixed") && !mentorCanCreateCoding) {
         alert("Only mentors assigned to DSA or Interview Preparation can create coding or MCQ + Coding tests.");
+        return;
+      }
+    }
+
+    // Each MCQ's answer must pick out exactly one option -- see utils/mcqOption.js.
+    for (let i = 0; i < form.questions.length; i++) {
+      const q = form.questions[i];
+      if (q.kind !== "mcq") continue;
+      const mcqError = mcqOptionsError(q.options, q.answer);
+      if (mcqError) {
+        alert(`Question ${i + 1}: ${mcqError}.`);
         return;
       }
     }
@@ -1538,11 +1561,21 @@ export default function CreateTest() {
                               </div>
                             ))}
                           </div>
-                          {!question.answer && (
+                          {!question.answer ? (
                             <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-300 text-xs flex items-center gap-2">
                               <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                               Please select the correct answer
                             </div>
+                          ) : (
+                            // Only flag problems once every option has text, so
+                            // a half-written question is not shouted at.
+                            question.options.every((opt) => opt.trim() !== "") &&
+                            mcqOptionsError(question.options, question.answer) && (
+                              <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-300 text-xs flex items-center gap-2">
+                                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                                {mcqOptionsError(question.options, question.answer)}
+                              </div>
+                            )
                           )}
                         </div>
                       )}
