@@ -106,9 +106,11 @@ const VIOLATION_WEIGHTS = {
   // `visibilitychange`, which IS charged, so little enforcement is lost.
   window_blur: 0,
 
-  // `screen.isExtended` is unavailable in some browsers and deliberately hidden
-  // by Brave's anti-fingerprinting. Worth showing a reviewer, not worth scoring.
-  second_monitor_detected: 0,
+  // A second display is a common and effective way to cheat. Charged at weight 1
+  // and the exam is blocked until the display is disconnected. Brave's anti-
+  // fingerprinting may withhold `screen.isExtended`; in that case the detector
+  // reports "unknown" and nobody is accused.
+  second_monitor_detected: 1,
 
   // Heuristic pattern-matching on injected DOM. Browser extensions a student
   // has no idea are installed can trip it.

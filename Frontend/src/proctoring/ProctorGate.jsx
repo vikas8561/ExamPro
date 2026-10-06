@@ -103,7 +103,7 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
     const list = [...(readiness?.warnings || [])];
     if (environment?.secondMonitor === "yes") {
       list.push(
-        "A second display is connected. This is allowed, but it will be recorded on your attempt."
+        "A second display is connected. Disconnect all additional monitors, projectors and wireless displays before starting the test."
       );
     }
     return list;
@@ -386,11 +386,13 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
         <button
           type="button"
           onClick={handleBegin}
-          disabled={!allSatisfied || beginning}
+          disabled={!allSatisfied || beginning || environment?.secondMonitor === "yes"}
           className="w-full rounded-md bg-white/90 py-3 font-semibold text-black hover:bg-white disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
         >
           {beginning
             ? "Starting…"
+            : environment?.secondMonitor === "yes"
+            ? "Disconnect secondary display to begin"
             : !allSatisfied
             ? "Allow all permissions to continue"
             : "Begin Test"}

@@ -492,6 +492,28 @@ export function ProctorProvider({
           setBlockReason("screenshare");
         }
       },
+      onSecondMonitor: () => {
+        // A second display is no longer just recorded — the exam is blocked
+        // until the student disconnects it, like screen sharing being stopped.
+        // The detector fires this both when a display appears and when it goes
+        // away, so the provider re-evaluates the block in either direction.
+        if (phaseRef.current === "active" || phaseRef.current === "blocked") {
+          const monitors = window.screen?.isExtended;
+          if (monitors === true) {
+            setPhase("blocked");
+            setBlockReason("secondmonitor");
+          } else if (monitors === false && phaseRef.current === "blocked") {
+            // Only auto-unblock if we were blocked for THIS reason.
+            setBlockReason((prev) => {
+              if (prev === "secondmonitor") {
+                setPhase("active");
+                return null;
+              }
+              return prev;
+            });
+          }
+        }
+      },
     });
     screenRef.current = screen;
 
@@ -663,6 +685,12 @@ export function ProctorProvider({
         await enterFullscreen();
         await keyboardRef.current?.reengage?.();
       }
+    }
+
+    if (blockReason === "secondmonitor") {
+      // Re-check: the student must have disconnected the second display.
+      const stillExtended = window.screen?.isExtended === true;
+      if (stillExtended) return false;
     }
 
     setBlockReason(null);

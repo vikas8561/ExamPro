@@ -48,6 +48,7 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
     const needsCheck =
       blockReason === "fullscreen" ||
       blockReason === "screenshare" ||
+      blockReason === "secondmonitor" ||
       warning?.violationType === "devtools_opened" ||
       warning?.violationType === "fullscreen_exit";
 
@@ -60,6 +61,10 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
       // The screen-share dialog has nothing to poll: whether the student is
       // sharing again is only known once they click and the browser answers.
       if (blockReason === "screenshare") return;
+      if (blockReason === "secondmonitor") {
+        setStillBroken(window.screen?.isExtended === true);
+        return;
+      }
       if (blockReason === "fullscreen" || warning?.violationType === "fullscreen_exit") {
         const fullscreen = Boolean(
           document.fullscreenElement ||
@@ -199,6 +204,33 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
               className="w-full rounded-md bg-white/90 py-3 font-semibold text-black hover:bg-white disabled:opacity-50"
             >
               {working ? "Please wait…" : "Share my screen again"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* A second display is connected. The exam does not continue with one. */}
+      {phase === "blocked" && blockReason === "secondmonitor" && (
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-950/95 p-4">
+          <div className="w-full max-w-md rounded-xl border border-red-500/30 bg-slate-900 p-8 text-center">
+            <h2 className="mb-4 text-2xl font-bold text-red-400">Second display detected</h2>
+            <p className="mb-6 text-slate-300">
+              Your exam is paused. Only one display is allowed during a proctored test.
+              Disconnect all additional monitors, projectors and wireless displays, then
+              click below to continue.
+            </p>
+            {stillBroken && (
+              <p className="mb-4 text-sm font-semibold text-red-400">
+                A second display is still connected. Disconnect it to continue.
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={handleResume}
+              disabled={working || stillBroken}
+              className="w-full rounded-md bg-white/90 py-3 font-semibold text-black hover:bg-white disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-400"
+            >
+              {working ? "Please wait…" : stillBroken ? "Disconnect the extra display" : "Continue Test"}
             </button>
           </div>
         </div>
