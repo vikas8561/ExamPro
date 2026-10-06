@@ -550,12 +550,12 @@ const ViewCompletedTest = () => {
                         const answerText = getTextValue(q.answer);
 
                         const isSelected =
-                          selectedText.trim() !== "" &&
-                          selectedText.trim().toLowerCase() === optText.trim().toLowerCase();
+                          selectedText !== "" &&
+                          selectedText === optText;
 
                         const isCorrectOption =
-                          answerText.trim() !== "" &&
-                          answerText.trim().toLowerCase() === optText.trim().toLowerCase();
+                          answerText !== "" &&
+                          answerText === optText;
 
                         let optStyles = "bg-[#20242D]/60 border-white/[0.04] text-slate-300";
                         if (isCorrectOption) {
