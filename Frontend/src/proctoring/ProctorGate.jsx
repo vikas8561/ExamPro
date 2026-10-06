@@ -22,13 +22,9 @@ const PERMISSION_LABELS = {
     title: "Screen sharing",
     detail: 'You must share your ENTIRE screen — not a window or a tab.',
   },
-  camera: {
-    title: "Camera",
-    detail: "Access is required, but no video is ever recorded, viewed or uploaded.",
-  },
-  microphone: {
-    title: "Microphone",
-    detail: "Access is required, but no audio is ever recorded or listened to.",
+  media: {
+    title: "Camera & Microphone",
+    detail: "Access is required for the proctored exam.",
   },
   location: {
     title: "Location",
@@ -91,8 +87,37 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
     [granted, bypassGranted, bypassScope]
   );
 
+  const displayItems = useMemo(() => {
+    const items = [];
+    let mediaAdded = false;
+    for (const key of required) {
+      if (key === "camera" || key === "microphone") {
+        if (!mediaAdded) {
+          items.push("media");
+          mediaAdded = true;
+        }
+      } else {
+        items.push(key);
+      }
+    }
+    return items;
+  }, [required]);
+
+  const isItemSatisfied = useCallback(
+    (key) => {
+      if (key === "media") {
+        return (
+          (!required.includes("camera") || isSatisfied("camera")) &&
+          (!required.includes("microphone") || isSatisfied("microphone"))
+        );
+      }
+      return isSatisfied(key);
+    },
+    [required, isSatisfied]
+  );
+
   const allSatisfied = required.every(isSatisfied);
-  const grantedCount = required.filter(isSatisfied).length;
+  const grantedCount = displayItems.filter(isItemSatisfied).length;
 
   /**
    * Everything the student genuinely needs to be told before starting, in one
@@ -124,21 +149,55 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
   }, []);
 
   const askMedia = useCallback(async () => {
-    setBusy("camera");
-    setErrors((prev) => ({ ...prev, camera: null, microphone: null }));
+    const needCamera = required.includes("camera") && !isSatisfied("camera");
+    const needMic = required.includes("microphone") && !isSatisfied("microphone");
 
-    const wantsCamera = required.includes("camera");
-    const wantsMic = required.includes("microphone");
+    if (!needCamera && !needMic) return;
 
-    const result = await requestMedia({ camera: wantsCamera, microphone: wantsMic });
+    setBusy("media");
+    setErrors((prev) => ({
+      ...prev,
+      ...(needCamera ? { camera: null } : {}),
+      ...(needMic ? { microphone: null } : {}),
+    }));
+
+    const result = await requestMedia({ camera: needCamera, microphone: needMic });
     if (result.ok) {
-      setMediaStream(result.stream);
-      setGranted((prev) => ({ ...prev, camera: wantsCamera, microphone: wantsMic }));
+      setMediaStream((prevStream) => {
+        if (!prevStream || (needCamera && needMic)) {
+          if (prevStream) {
+            prevStream.getTracks().forEach((t) => t.stop());
+          }
+          return result.stream;
+        }
+        const combined = new MediaStream();
+        if (!needCamera) {
+          prevStream.getVideoTracks().forEach((t) => combined.addTrack(t));
+        } else {
+          prevStream.getVideoTracks().forEach((t) => t.stop());
+        }
+        if (!needMic) {
+          prevStream.getAudioTracks().forEach((t) => combined.addTrack(t));
+        } else {
+          prevStream.getAudioTracks().forEach((t) => t.stop());
+        }
+        result.stream.getTracks().forEach((t) => combined.addTrack(t));
+        return combined;
+      });
+      setGranted((prev) => ({
+        ...prev,
+        ...(needCamera ? { camera: true } : {}),
+        ...(needMic ? { microphone: true } : {}),
+      }));
     } else {
-      setErrors((prev) => ({ ...prev, camera: result.error, microphone: result.error }));
+      setErrors((prev) => ({
+        ...prev,
+        ...(needCamera ? { camera: result.error } : {}),
+        ...(needMic ? { microphone: result.error } : {}),
+      }));
     }
     setBusy(null);
-  }, [required]);
+  }, [required, isSatisfied]);
 
   const askLocation = useCallback(async () => {
     setBusy("location");
@@ -195,8 +254,7 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
 
   const askFor = {
     screen: askScreen,
-    camera: askMedia,
-    microphone: askMedia,
+    media: askMedia,
     location: askLocation,
   };
 
@@ -241,7 +299,7 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
                 : "border-slate-600 bg-slate-800 text-slate-400"
             }`}
           >
-            {grantedCount} of {required.length} allowed
+            {grantedCount} of {displayItems.length} allowed
           </span>
         </div>
 
@@ -298,12 +356,24 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
 
         {/* Permissions */}
         <div className="mb-6 space-y-3">
-          {required.map((key) => {
+          {displayItems.map((key) => {
             const label = PERMISSION_LABELS[key];
             if (!label) return null;
 
-            const satisfied = isSatisfied(key);
-            const waived = bypassGranted && bypassScope.includes(key) && granted[key] !== true;
+            const satisfied = isItemSatisfied(key);
+            const waived =
+              key === "media"
+                ? bypassGranted &&
+                  ((required.includes("camera") && bypassScope.includes("camera") && granted.camera !== true) ||
+                    (required.includes("microphone") && bypassScope.includes("microphone") && granted.microphone !== true))
+                : bypassGranted && bypassScope.includes(key) && granted[key] !== true;
+            const error = key === "media" ? errors.camera || errors.microphone : errors[key];
+            const isBusy = busy === key;
+            const buttonLabel = isBusy
+              ? "Waiting..."
+              : key === "media"
+              ? "Allow Camera & Microphone"
+              : "Allow";
 
             return (
               <div
@@ -319,7 +389,7 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
                       {waived && <span className="ml-2 text-xs text-amber-400">waived by code</span>}
                     </p>
                     <p className="mt-1 text-xs text-slate-400">{label.detail}</p>
-                    {errors[key] && <p className="mt-2 text-xs text-red-400">{errors[key]}</p>}
+                    {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
                   </div>
 
                   {satisfied ? (
@@ -331,7 +401,7 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
                       disabled={busy !== null}
                       className="shrink-0 rounded-md bg-white/90 px-4 py-2 text-sm font-semibold text-black hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {busy === key ? "Waiting…" : "Allow"}
+                      {buttonLabel}
                     </button>
                   )}
                 </div>
