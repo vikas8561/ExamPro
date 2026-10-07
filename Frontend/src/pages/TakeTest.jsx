@@ -108,6 +108,24 @@ const TakeTestInner = ({ submitRef }) => {
   const [showSubmitConfirmModal, setShowSubmitConfirmModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const debounceTimers = useRef({});
+  const [hasEnteredExam, setHasEnteredExam] = useState(() => {
+    try {
+      return sessionStorage.getItem(`exam_entered_${assignmentId}`) === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const handleStartExam = () => {
+    try {
+      sessionStorage.setItem(`exam_entered_${assignmentId}`, "true");
+    } catch {
+      void 0;
+    }
+    setHasEnteredExam(true);
+  };
+
+  const [acknowledgedRules, setAcknowledgedRules] = useState(false);
 
   // Coding questions. The code itself lives in `answers` like every other
   // answer; the language is tracked beside it so it can be saved with the code
@@ -411,6 +429,12 @@ const TakeTestInner = ({ submitRef }) => {
       // and leaves fullscreen.
       await proctor.endSession();
 
+      try {
+        sessionStorage.removeItem(`exam_entered_${assignmentId}`);
+      } catch {
+        void 0;
+      }
+
       setIsSubmitting(false);
       // Under Safe Exam Browser the exit page is its configured quit URL, so
       // arriving there closes SEB and hands the machine back. Sending them to
@@ -627,6 +651,15 @@ const TakeTestInner = ({ submitRef }) => {
         }
       });
       setQuestionStatuses(initialStatuses);
+
+      if (answersData && answersData.some((a) => a.selectedOption || a.textAnswer)) {
+        try {
+          sessionStorage.setItem(`exam_entered_${assignmentId}`, "true");
+        } catch {
+          void 0;
+        }
+        setHasEnteredExam(true);
+      }
 
       setTest(assignmentData.testId);
       setTimeRemaining(remainingSeconds);
@@ -1014,6 +1047,25 @@ const TakeTestInner = ({ submitRef }) => {
   const isTimeLow = timeRemaining <= 300;
   const isTimeCritical = timeRemaining <= 60;
 
+  const totalMarks = (typeof test?.totalMarks === "number" && test.totalMarks > 0)
+    ? test.totalMarks
+    : (Array.isArray(test?.questions) && test.questions.length > 0)
+      ? test.questions.reduce((acc, q) => acc + (Number(q.points) || 1), 0)
+      : null;
+
+  const testDurationMinutes = assignment?.duration || test?.timeLimit || test?.duration || null;
+
+  const formatScheduleTime = (dateVal) => {
+    if (!dateVal) return null;
+    try {
+      const d = new Date(dateVal);
+      if (isNaN(d.getTime())) return null;
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ', ' + d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    } catch {
+      return null;
+    }
+  };
+
   // Everything that can sit on top of either view: the time-up sequence and
   // the submit confirmation.
   const overlays = (
@@ -1142,6 +1194,123 @@ const TakeTestInner = ({ submitRef }) => {
     } else { newStatus = "mark-for-review"; }
     setQuestionStatuses((prev) => ({ ...prev, [q._id]: newStatus }));
   };
+
+  // ═══════════ PRE-EXAM INSTRUCTIONS SCREEN ═══════════
+  if (!hasEnteredExam) {
+    const formattedStartTime = formatScheduleTime(assignment?.startTime);
+    const formattedEndTime = formatScheduleTime(assignment?.deadline || assignment?.endTime);
+    const instructionsText = test?.instructions?.trim();
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white flex items-start justify-center px-4 py-6 lg:py-8" style={{ zoom: zoomLevel / 100 }}>
+        {overlays}
+        <div className="w-full bg-slate-900/95 backdrop-blur-xl border border-slate-700/50 rounded-2xl shadow-2xl flex flex-col">
+
+          {/* ── Header ── */}
+          <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-slate-800/80 shrink-0">
+            <div className="min-w-0">
+              <h1 className="text-lg sm:text-xl font-bold text-white truncate">{test.title || "Examination"}</h1>
+              <p className="text-xs text-slate-500 mt-0.5">Review the details before starting</p>
+            </div>
+            <div className={`shrink-0 flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border text-xs sm:text-sm font-mono font-semibold tabular-nums ${isTimeCritical ? 'bg-red-500/15 text-red-300 border-red-500/30 timer-critical' : isTimeLow ? 'bg-amber-500/10 text-amber-300 border-amber-500/25' : 'bg-slate-800/70 text-slate-300 border-slate-700/50'}`}>
+              <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              {formatTime(timeRemaining)}
+            </div>
+          </div>
+
+          {/* ── Content body ── */}
+          <div className="px-6 py-5 space-y-5">
+
+            {/* Metadata row */}
+            <div className="flex flex-wrap gap-2.5">
+              {totalQuestions > 0 && (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/40 text-xs sm:text-sm">
+                  <span className="text-slate-400">Questions</span>
+                  <span className="font-bold text-white">{totalQuestions}</span>
+                </div>
+              )}
+              {totalMarks != null && (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/40 text-xs sm:text-sm">
+                  <span className="text-slate-400">Marks</span>
+                  <span className="font-bold text-white">{totalMarks}</span>
+                </div>
+              )}
+              {testDurationMinutes != null && testDurationMinutes > 0 && (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/40 text-xs sm:text-sm">
+                  <span className="text-slate-400">Duration</span>
+                  <span className="font-bold text-white">{testDurationMinutes}m</span>
+                </div>
+              )}
+              {/* {formattedStartTime && (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/40 text-xs sm:text-sm">
+                  <span className="text-slate-400">Start</span>
+                  <span className="font-semibold text-white truncate max-w-[7rem]" title={formattedStartTime}>{formattedStartTime}</span>
+                </div>
+              )}
+              {formattedEndTime && (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/40 text-xs sm:text-sm">
+                  <span className="text-slate-400">Deadline</span>
+                  <span className="font-semibold text-white truncate max-w-[7rem]" title={formattedEndTime}>{formattedEndTime}</span>
+                </div>
+              )} */}
+            </div>
+
+            {/* Instructions */}
+            <div>
+              <h2 className="text-sm sm:text-base font-semibold text-slate-200 mb-2">Test Instructions</h2>
+              <div className="rounded-xl bg-slate-800/40 border border-slate-700/40 p-4 sm:p-5 text-sm sm:text-base text-slate-300 leading-relaxed">
+                {instructionsText ? (
+                  <p className="whitespace-pre-line">{instructionsText}</p>
+                ) : (
+                  <p className="text-slate-500 italic">No special instructions have been provided.</p>
+                )}
+              </div>
+            </div>
+
+            {/* Exam rules — compact */}
+            <div>
+              <h2 className="text-sm sm:text-base font-semibold text-amber-300/90 mb-2 flex items-center gap-1.5">
+                <svg className="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+                Important Exam Rules
+              </h2>
+              <ul className="text-xs sm:text-sm text-slate-400 space-y-1.5 pl-1">
+                <li><span className="text-amber-400/70 mr-1.5">•</span><strong className="text-slate-300">Single display only</strong> — external / secondary monitors are prohibited.</li>
+                <li><span className="text-amber-400/70 mr-1.5">•</span><strong className="text-slate-300">Stay in fullscreen</strong> — switching apps or tabs may trigger violations.</li>
+                <li><span className="text-amber-400/70 mr-1.5">•</span><strong className="text-slate-300">Continuous monitoring</strong> — screen sharing and webcam are active.</li>
+                <li><span className="text-amber-400/70 mr-1.5">•</span><strong className="text-slate-300">Auto-save</strong> — answers save automatically; exam submits when time expires.</li>
+              </ul>
+            </div>
+
+          </div>
+
+          {/* ── Footer ── */}
+          <div className="shrink-0 px-6 py-4 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <label className="flex items-center gap-2.5 cursor-pointer select-none group">
+              <input
+                type="checkbox"
+                checked={acknowledgedRules}
+                onChange={(e) => setAcknowledgedRules(e.target.checked)}
+                className="accent-blue-500 w-4 h-4 rounded cursor-pointer"
+              />
+              <span className="text-xs sm:text-sm text-slate-400 leading-tight group-hover:text-slate-300 transition-colors">
+                I have read and understood the instructions and exam rules.
+              </span>
+            </label>
+            <button
+              type="button"
+              onClick={handleStartExam}
+              disabled={isSubmitting || !acknowledgedRules}
+              className="w-full sm:w-auto shrink-0 px-7 py-2.5 rounded-lg font-semibold text-sm text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-md shadow-blue-500/20 transition-all duration-150 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
+            >
+              Start Test
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+            </button>
+          </div>
+
+        </div>
+      </div>
+    );
+  }
 
   // ═══════════ CODING VIEW ═══════════
   // A coding question gets the same full-screen workspace as the coding test
@@ -1410,21 +1579,6 @@ const TakeTestInner = ({ submitRef }) => {
               <div className="text-xs text-slate-500 mt-1.5 font-medium tracking-wide uppercase">Time Remaining</div>
             </div>
           </div>
-
-          {/* Instructions Banner */}
-          {test.instructions && (
-            <div className="bg-blue-500/5 border border-blue-500/20 rounded-2xl p-4 mb-6 backdrop-blur-sm">
-              <div className="flex items-start gap-3">
-                <div className="p-1.5 bg-blue-500/15 rounded-lg flex-shrink-0 mt-0.5">
-                  <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                </div>
-                <div>
-                  <h3 className="font-semibold text-blue-300 text-sm mb-1">Instructions</h3>
-                  <p className="text-blue-200/70 text-sm leading-relaxed">{test.instructions}</p>
-                </div>
-              </div>
-            </div>
-          )}
 
           {question.kind === "theory" ? (
             <div className="grid grid-cols-1 lg:grid-cols-[45%_45%_7%] gap-4" style={{ height: '70vh' }}>

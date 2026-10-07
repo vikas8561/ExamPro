@@ -372,7 +372,7 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
             const buttonLabel = isBusy
               ? "Waiting..."
               : key === "media"
-              ? "Allow Camera & Microphone"
+              ? "Allow"
               : "Allow";
 
             return (
