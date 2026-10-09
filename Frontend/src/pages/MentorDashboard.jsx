@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from "react";
+import { formatDateTimeIST, istHour } from "../utils/istTime";
+import { serverNow } from "../utils/serverClock";
 import { Link } from "react-router-dom";
 import { API_BASE_URL } from "../config/api";
 import "../styles/StudentDashboard.mobile.css";
@@ -77,7 +79,7 @@ export default function MentorDashboard() {
   };
 
   const getGreeting = () => {
-    const hour = new Date().getHours();
+    const hour = istHour(serverNow());
     if (hour < 12) return "Good Morning";
     if (hour < 18) return "Good Afternoon";
     return "Good Evening";
@@ -312,12 +314,7 @@ export default function MentorDashboard() {
                     const testTitle = sub.testId?.title || sub.assignmentId?.testId?.title || "Assessment";
                     const targetAssignmentId = sub.assignmentId?._id || sub.assignmentId || sub._id;
                     const dateFormatted = sub.submittedAt
-                      ? new Date(sub.submittedAt).toLocaleDateString(undefined, {
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit"
-                        })
+                      ? formatDateTimeIST(sub.submittedAt)
                       : "N/A";
 
                     return (

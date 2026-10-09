@@ -26,6 +26,7 @@ const { sanitizeQuestions, canSeeAnswers } = require("../services/questionSaniti
 const { resolveOrderedQuestions } = require("../services/questionOrder");
 const { isAttemptExpired, attemptClock, hasAttemptOpened, notStartedBody, RESULTS_RELEASE_BUFFER_MS, areResultsReleased } = require("../services/attemptWindow");
 const { reEnableAttempt } = require("../services/reEnable");
+const { formatIST } = require("../utils/istTime");
 
 /** Mongoose document -> plain object, so stripping actually sticks. */
 function toPlain(value) {
@@ -565,6 +566,11 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     res.json({
       assignments,
       stats,
+      // The instant every card above was classified at. The browser decides
+      // which button to show with the server's clock (X-Server-Time, and this
+      // as a fallback), never the device's: a student whose laptop clock was
+      // hours fast was shown "View Results" for a test that was still open.
+      serverNow: now.toISOString(),
       pagination: {
         currentPage: page,
         totalPages,
@@ -626,7 +632,9 @@ router.get("/student/stats", authenticateToken, async (req, res, next) => {
 
     res.json({
       assignedCount,
-      completedCount
+      completedCount,
+      // The server's clock, so the dashboard need not trust the device's.
+      serverNow: new Date().toISOString(),
     });
   } catch (error) {
     console.error('❌ Error fetching assignment stats:', error);
@@ -1092,7 +1100,7 @@ router.post("/:id/start", authenticateToken, attachProctorStatus(), async (req, 
     if (now > endTime) {
       assignment.status = "Overdue";
       await assignment.save();
-      return res.status(400).json({ message: "Test deadline has passed. The test was available until " + endTime.toLocaleString() });
+      return res.status(400).json({ message: "Test deadline has passed. The test was available until " + formatIST(endTime) });
     }
 
     // Handle permissions (skip for coding tests)

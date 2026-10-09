@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { API_BASE_URL } from "../config/api";
+import { serverNow } from "../utils/serverClock";
 import { Eye, EyeOff, IdCard, Lock, Loader2, AlertCircle, Code2, ShieldCheck, Check } from "lucide-react";
 
 /**
@@ -61,7 +62,8 @@ export default function Login() {
     if (token && user) {
       try {
         const payload = JSON.parse(atob(token.split(".")[1]));
-        const currentTime = Date.now() / 1000;
+        // The server's clock: a fast device clock signed students out early.
+        const currentTime = serverNow() / 1000;
 
         if (payload.exp && payload.exp > currentTime) {
           const userData = JSON.parse(user);

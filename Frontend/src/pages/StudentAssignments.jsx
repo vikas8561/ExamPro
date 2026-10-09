@@ -26,16 +26,19 @@ import {
 } from "lucide-react";
 import apiRequest from "../services/api";
 import { BASE_URL } from "../config/api";
+import { serverNow, windowPhase } from "../utils/serverClock";
+import { useServerNow } from "../hooks/useServerNow";
+import { formatDateTimeIST } from "../utils/istTime";
 import "../styles/StudentAssignments.mobile.css";
 
 // Custom Countdown Timer Component
 const CountdownTimer = ({ startTime, onTimerComplete }) => {
   const [timeLeft, setTimeLeft] = useState(calculateTimeLeft());
 
+  // Counted on the server's clock: a device clock that is wrong by hours
+  // would otherwise count down to the wrong moment.
   function calculateTimeLeft() {
-    const now = new Date();
-    const start = new Date(startTime);
-    const difference = start - now;
+    const difference = Date.parse(startTime) - serverNow();
 
     if (difference <= 0) {
       return { completed: true };
@@ -138,6 +141,9 @@ const StudentAssignments = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [lastFetchTime, setLastFetchTime] = useState(0);
   const navigate = useNavigate();
+  // The server's time, ticking, so a card turns from "Continue Test" to
+  // "Deadline passed" on the second its window closes without a refetch.
+  const now = useServerNow(1000);
   const fetchInProgressRef = useRef(false);
 
   useEffect(() => {
@@ -317,39 +323,9 @@ const StudentAssignments = () => {
     }
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return "Not scheduled";
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit"
-    });
-  };
-
-  const isDeadlinePassed = (startTime, duration) => {
-    if (!startTime || !duration) return false;
-    const currentTime = new Date();
-    const startTimeDate = new Date(startTime);
-    const endTime = new Date(startTimeDate.getTime() + duration * 60000);
-    return currentTime >= endTime;
-  };
-
-  const isTestAvailable = (startTime, duration) => {
-    if (!startTime || !duration) return false;
-    const currentTime = new Date();
-    const startTimeDate = new Date(startTime);
-    const endTime = new Date(startTimeDate.getTime() + duration * 60000);
-    return currentTime >= startTimeDate && currentTime <= endTime;
-  };
-
-  const isTestNotStarted = (startTime) => {
-    if (!startTime) return false;
-    const currentTime = new Date();
-    const startTimeDate = new Date(startTime);
-    return currentTime < startTimeDate;
-  };
+  // Shown in IST whatever the device's timezone: a laptop left on US Pacific
+  // used to show a 2:30 PM test as "02:00 AM".
+  const formatDate = (dateString) => formatDateTimeIST(dateString, "Not scheduled");
 
   const handleStartTest = (assignmentId) => {
     navigate(`/student/take-test/${assignmentId}`);
@@ -664,9 +640,13 @@ const StudentAssignments = () => {
               const subject = assignment.testId?.subject || "General";
               const mentorName = assignment.mentorId?.name || "Instructor";
               const questionCount = assignment.testId?.questionCount || 0;
-              const deadlinePassed = isDeadlinePassed(assignment.startTime, assignment.duration);
-              const testAvailable = isTestAvailable(assignment.startTime, assignment.duration);
-              const testNotStarted = isTestNotStarted(assignment.startTime);
+              // Decided on the server's clock, so every student sees the same
+              // button at the same moment whatever their device says the time is.
+              const {
+                closed: deadlinePassed,
+                open: testAvailable,
+                notStarted: testNotStarted,
+              } = windowPhase(assignment, now);
 
               // Status badge styling
               const getStatusBadge = () => {

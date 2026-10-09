@@ -1,32 +1,21 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { useNavigate } from "react-router-dom";
 import apiRequest from "../services/api";
+import { useServerNow } from "../hooks/useServerNow";
+import { formatDateTimeIST, istDayKey } from "../utils/istTime";
 import { Play, CheckSquare, Clock } from "lucide-react";
 
 const UpcomingTests = ({ data }) => {
   const navigate = useNavigate();
-  const [currentTime, setCurrentTime] = useState(new Date());
+  // The server's time, not the device's: the countdown and the Start button
+  // must agree for every student in the room.
+  const currentTime = useServerNow(1000);
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, []);
-
-  const formatDate = (date) => {
-    return new Date(date).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
+  // IST whatever the device's timezone.
+  const formatDate = (date) => formatDateTimeIST(date);
 
   const getTimeRemaining = (startTime) => {
-    const start = new Date(startTime);
-    const diff = start - currentTime;
+    const diff = Date.parse(startTime) - currentTime;
 
     if (diff <= 0) return null; // Test has started
 
@@ -114,12 +103,13 @@ const UpcomingTests = ({ data }) => {
   }
 
   // Split into "Today" vs "Upcoming" if dates match today
-  const today = new Date().toDateString();
+  // "Today" is today in India, on the server's clock.
+  const today = istDayKey(currentTime);
   const todayTests = data.filter(
-    (item) => new Date(item.startTime).toDateString() === today
+    (item) => istDayKey(item.startTime) === today
   );
   const otherTests = data.filter(
-    (item) => new Date(item.startTime).toDateString() !== today
+    (item) => istDayKey(item.startTime) !== today
   );
 
   const renderSection = (title, items, totalCount) => {

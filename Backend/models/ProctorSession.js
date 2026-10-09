@@ -106,6 +106,35 @@ const ProctorSessionSchema = new mongoose.Schema(
       secondMonitor: { type: String, enum: ["yes", "no", "unknown"], default: "unknown" },
     },
 
+    // The browser, as the server worked it out from the request headers (see
+    // services/browserRequirement.js). Kept for the reviewer and for support.
+    browser: {
+      family: { type: String, default: "" },
+      label: { type: String, default: "" },
+      major: { type: Number, default: null },
+      mobile: { type: Boolean, default: false },
+      source: { type: String, default: "" },
+    },
+
+    // The external-monitor rule for this attempt.
+    //
+    // `enforced` has no default on purpose. Sessions opened before the rule
+    // existed have no value at all, and a student resuming one of those in a
+    // browser the rule would now refuse is let finish (see routes/proctor.js).
+    // Every session opened since is written with true or false.
+    //
+    // `state` is the last display report from the exam page: only "single" lets
+    // the server hand out the question paper.
+    display: {
+      enforced: { type: Boolean },
+      state: {
+        type: String,
+        enum: ["single", "multiple", "unverified"],
+        default: "unverified",
+      },
+      reportedAt: { type: Date, default: null },
+    },
+
     // Safe Exam Browser state for this attempt.
     //
     // `required` is frozen when the session is created and is never raised

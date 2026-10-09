@@ -1,4 +1,6 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
+import { formatIST, parseISTInput, toISTInputValue } from "../utils/istTime";
+import { serverNow } from "../utils/serverClock";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Search,
@@ -25,18 +27,13 @@ import {
 } from "lucide-react";
 import apiRequest from "../services/api";
 
+// "7 Oct 2026 · 2:30 PM IST", in IST whatever the viewer's device is set to.
 const formatScheduledDate = (dateVal) => {
-  if (!dateVal) return "Not scheduled";
-  const d = new Date(dateVal);
-  if (isNaN(d.getTime())) return "Not scheduled";
-  const day = d.getDate();
-  const month = d.toLocaleString("en-US", { month: "short" });
-  const year = d.getFullYear();
-  const time = d.toLocaleString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
+  const day = formatIST(dateVal, { day: "numeric" }, { fallback: "" });
+  if (!day) return "Not scheduled";
+  const month = formatIST(dateVal, { month: "short" });
+  const year = formatIST(dateVal, { year: "numeric" });
+  const time = formatIST(dateVal, { hour: "numeric", minute: "2-digit", hour12: true });
   return `${day} ${month} ${year} · ${time}`;
 };
 
@@ -196,7 +193,7 @@ export default function Tests() {
 
   // Assign test to a cohort
   const assignTestToCohort = async () => {
-    if (!selectedTest || !startTime || !duration) return;
+    if (!selectedTest || !startTime || !duration || !parseISTInput(startTime)) return;
 
     const cohort = cohorts.find((c) => c.key === assignmentMode);
     if (!cohort) return;
@@ -209,7 +206,8 @@ export default function Tests() {
         body: JSON.stringify({
           testId: selectedTest,
           cohort: cohort.key,
-          startTime: new Date(startTime).toISOString(),
+          // Typed as IST whatever the mentor's device timezone is.
+          startTime: parseISTInput(startTime).toISOString(),
           duration: parseInt(duration, 10),
         }),
       });
@@ -230,7 +228,7 @@ export default function Tests() {
 
   // Assign test to selected students
   const assignTestToSelected = async () => {
-    if (!selectedTest || !startTime || !duration || selectedStudents.length === 0) return;
+    if (!selectedTest || !startTime || !duration || !parseISTInput(startTime) || selectedStudents.length === 0) return;
 
     setAssigning(true);
     try {
@@ -240,7 +238,8 @@ export default function Tests() {
         body: JSON.stringify({
           testId: selectedTest,
           studentIds: selectedStudents,
-          startTime: new Date(startTime).toISOString(),
+          // Typed as IST whatever the mentor's device timezone is.
+          startTime: parseISTInput(startTime).toISOString(),
           duration: parseInt(duration, 10),
         }),
       });
@@ -1027,10 +1026,11 @@ export default function Tests() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                 <div>
                   <label className="block text-xs font-semibold text-[#7E8594] mb-2 uppercase tracking-wider">
-                    Start Time *
+                    Start Time (IST) *
                   </label>
                   <input
                     type="datetime-local"
+                    min={toISTInputValue(serverNow())}
                     value={startTime}
                     onChange={(e) => setStartTime(e.target.value)}
                     className="w-full bg-[#16181F] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-[#7E8594] focus:outline-none focus:border-[#00C4B4]/50 focus:ring-1 focus:ring-[#00C4B4]/50 transition-all [color-scheme:dark]"

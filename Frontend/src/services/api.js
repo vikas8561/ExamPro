@@ -1,5 +1,6 @@
 // API service with authentication
 import { API_BASE_URL } from '../config/api';
+import { recordFromResponse, recordServerTime, serverNow, SERVER_TIME_HEADER } from '../utils/serverClock';
 
 // Get auth token from localStorage
 const getAuthToken = () => {
@@ -12,7 +13,9 @@ const getAuthToken = () => {
   // Check if token is expired (basic check)
   try {
     const payload = JSON.parse(atob(token.split('.')[1]));
-    const currentTime = Date.now() / 1000;
+    // The server's clock, not the device's: a laptop 12 hours fast treated a
+    // fresh 24-hour token as half spent.
+    const currentTime = serverNow() / 1000;
     if (payload.exp && payload.exp < currentTime) {
       console.warn('Auth token has expired');
       // Clear expired token
@@ -93,8 +96,15 @@ const apiRequest = async (endpoint, options = {}) => {
     
     console.log(`🌐 Starting fetch to ${endpoint} at ${new Date().toISOString()}`);
     let response;
+    let sentPerf;
+    let receivedPerf;
     try {
+      sentPerf = performance.now();
       response = await fetch(url, optimizedConfig);
+      receivedPerf = performance.now();
+      // Every response carries the server's time; this keeps the shared clock
+      // (utils/serverClock.js) synced without a request of its own.
+      recordFromResponse(response, sentPerf, receivedPerf);
       clearTimeout(timeoutId);
     } catch (error) {
       clearTimeout(timeoutId);
@@ -189,6 +199,13 @@ const apiRequest = async (endpoint, options = {}) => {
     const jsonStart = Date.now();
     const data = await response.json();
     const jsonTime = Date.now() - jsonStart;
+
+    // A proxy that strips the header still leaves the time in the body of the
+    // responses that matter (the card lists, the dashboard, the exam).
+    if (!response.headers.get(SERVER_TIME_HEADER) && data && typeof data === 'object' && data.serverNow) {
+      const ms = typeof data.serverNow === 'number' ? data.serverNow : Date.parse(data.serverNow);
+      recordServerTime(ms, sentPerf, receivedPerf);
+    }
     
     if (jsonTime > 1000) {
       console.warn(`⚠️ response.json() took ${jsonTime}ms for ${endpoint}`);

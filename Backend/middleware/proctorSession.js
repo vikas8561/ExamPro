@@ -2,6 +2,7 @@ const ProctorSession = require("../models/ProctorSession");
 const Assignment = require("../models/Assignment");
 const Test = require("../models/Test");
 const policyService = require("../services/proctorPolicy");
+const browserRequirement = require("../services/browserRequirement");
 
 /**
  * The lock on the door.
@@ -42,7 +43,10 @@ function findAssignmentId(req) {
  * not apply here at all — an admin or mentor is asking, or it is a practice
  * test — and the request proceeds untouched.
  */
-async function resolveProctorStatus(req, { allowTerminated = false, assignmentId: explicitId = null } = {}) {
+async function resolveProctorStatus(
+  req,
+  { allowTerminated = false, assignmentId: explicitId = null, checkDisplay = false } = {}
+) {
   const role = String(req.user?.role || "").toLowerCase();
 
   // Admins and mentors author and review tests; proctoring is not about them.
@@ -126,7 +130,42 @@ async function resolveProctorStatus(req, { allowTerminated = false, assignmentId
     return { required: true, ok: false, reason: sebReason, session, assignmentId };
   }
 
+  const displayReason = checkDisplay ? displayFailureReason(session, req) : null;
+  if (displayReason) {
+    return { required: true, ok: false, reason: displayReason, session, assignmentId };
+  }
+
   return { required: true, ok: true, reason: "active", session, assignmentId };
+}
+
+/**
+ * Is the external-monitor rule stopping this request? A reason string, or null.
+ *
+ * Asked only by the routes that hand out the question paper -- never by the
+ * ones that save answers or hand the paper in. The rule is that an exam cannot
+ * *start* with a second monitor attached; once it is running, the exam page
+ * pauses itself when one appears, and refusing autosave or submit on top of
+ * that would only risk losing work the student did legitimately.
+ *
+ * Two checks, both against the session the rule was frozen into:
+ *   - this request comes from a browser the rule allows (a session opened in
+ *     Chrome cannot have its paper fetched from Firefox), and
+ *   - the page's last display report said one screen.
+ */
+function displayFailureReason(session, req) {
+  if (session?.display?.enforced !== true) return null;
+
+  const identity = browserRequirement.identifyBrowser(req.headers || {});
+  const rule = session.policy?.requireBrowser || {};
+  const verdict = browserRequirement.checkBrowser(identity, {
+    allowedFamilies: Array.isArray(rule.families) ? rule.families : undefined,
+    minMajor: Number.isFinite(rule.minMajor) ? rule.minMajor : undefined,
+  });
+  if (!verdict.ok) return verdict.code;
+
+  if (session.display.state === "multiple") return "external_display";
+  if (session.display.state !== "single") return "display_unverified";
+  return null;
 }
 
 /**
@@ -197,6 +236,11 @@ function proctorRefusal(status) {
       "This test must be taken in Safe Exam Browser. Please start it again from your assignments page.",
     seb_stale:
       "Safe Exam Browser has stopped responding. Return to the exam window in Safe Exam Browser to continue.",
+    external_display: browserRequirement.DISPLAY_MESSAGES.multiple,
+    display_unverified: browserRequirement.DISPLAY_MESSAGES.unverified,
+    browser_unsupported: "This test can only be taken in Google Chrome or Microsoft Edge.",
+    browser_outdated: "Update Google Chrome or Microsoft Edge to the latest version to take this test.",
+    browser_mobile: "This test needs a laptop or desktop computer with Google Chrome or Microsoft Edge.",
   };
 
   return {
@@ -251,11 +295,13 @@ function requireProctorSession(options = {}) {
  * they just leave the question content out until proctoring is live.
  */
 function attachProctorStatus(options = {}) {
-  const { allowTerminated = false } = options;
+  // Defaults to checking the display rule: every route using this guard is one
+  // that serves the question paper.
+  const { allowTerminated = false, checkDisplay = true } = options;
 
   return async function attach(req, res, next) {
     try {
-      req.proctor = await resolveProctorStatus(req, { allowTerminated });
+      req.proctor = await resolveProctorStatus(req, { allowTerminated, checkDisplay });
     } catch (error) {
       // Never let this break a page load. Fail closed on content instead: no
       // verdict means questions are withheld, but the request still succeeds.
@@ -302,6 +348,12 @@ async function resolveProctorStatusForTest(req, testId) {
     return { required: true, ok: false, reason: sebReason, session };
   }
 
+  // GET /api/tests/:id serves the paper, so the display rule applies here too.
+  const displayReason = displayFailureReason(session, req);
+  if (displayReason) {
+    return { required: true, ok: false, reason: displayReason, session };
+  }
+
   return { required: true, ok: true, reason: "active", session };
 }
 
@@ -320,6 +372,7 @@ function mayServeQuestions(req) {
 
 module.exports = {
   sebFailureReason,
+  displayFailureReason,
   requireProctorSession,
   attachProctorStatus,
   resolveProctorStatus,

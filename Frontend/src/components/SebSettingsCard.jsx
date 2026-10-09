@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { formatFullDateTimeIST } from "../utils/istTime";
 import apiRequest from "../services/api";
 
 export default function SebSettingsCard({ isMentor: propIsMentor }) {
@@ -319,7 +320,7 @@ export default function SebSettingsCard({ isMentor: propIsMentor }) {
 
             {updatedAt && (
               <span className="text-xs text-[#7E8594]">
-                Last changed: {new Date(updatedAt).toLocaleString()}
+                Last changed: {formatFullDateTimeIST(updatedAt)}
               </span>
             )}
           </div>

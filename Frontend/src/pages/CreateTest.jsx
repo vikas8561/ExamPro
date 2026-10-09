@@ -20,6 +20,8 @@ import {
   Code2,
 } from "lucide-react";
 import apiRequest from "../services/api";
+import { serverNow } from "../utils/serverClock";
+import { parseISTInput, toISTInputValue } from "../utils/istTime";
 import JsonQuestionUploader from "../components/JsonQuestionUploader";
 import QuestionText from "../components/QuestionText";
 import { mcqOptionsError } from "../utils/mcqOption";
@@ -599,11 +601,16 @@ export default function CreateTest() {
 
     // Validate Start Time
     if (assignmentOptions.startTime) {
-      const selectedTime = new Date(assignmentOptions.startTime);
-      const currentTime = new Date();
+      // Read as IST and compared with the server's clock, so neither the
+      // mentor's device timezone nor its clock can move the schedule.
+      const selectedTime = parseISTInput(assignmentOptions.startTime);
+      if (!selectedTime) {
+        alert("Please pick a valid Start Time.");
+        return;
+      }
       // Add a small grace period (e.g. 1 minute) to allow for "current minute" selection
       // or slight delays between selection and submission
-      if (selectedTime < new Date(currentTime.getTime() - 60000)) {
+      if (selectedTime.getTime() < serverNow() - 60000) {
         alert("Start Time cannot be in the past. Please select a current or future time.");
         return;
       }
@@ -669,9 +676,11 @@ export default function CreateTest() {
         });
 
         // Always assign test to students after creation (async - don't wait)
-        // The startTime is already in ISO format (UTC) from the DateTimePicker
-        // which converts IST to UTC automatically
-        const startTimeISO = assignmentOptions.startTime ? new Date(assignmentOptions.startTime).toISOString() : new Date().toISOString();
+        // The picker's value is IST wall time ("2026-10-07T14:30"); it is
+        // converted to the UTC instant here, whatever the device's timezone.
+        const startTimeISO = assignmentOptions.startTime
+          ? parseISTInput(assignmentOptions.startTime).toISOString()
+          : new Date(serverNow()).toISOString();
 
         // Start assignment process asynchronously - don't wait for it to complete
         // This makes test creation much faster
@@ -1158,7 +1167,7 @@ export default function CreateTest() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-[#8E95A5] mb-2">
-                      Start Time *
+                      Start Time (IST) *
                     </label>
                     <input
                       type="datetime-local"
@@ -1170,7 +1179,7 @@ export default function CreateTest() {
                         }))
                       }
                       className="w-full p-3 bg-[#14161D] border border-white/[0.08] rounded-xl text-xs text-white focus:border-[#00C4B4] focus:ring-1 focus:ring-[#00C4B4] outline-none transition-all"
-                      min={new Date().toISOString().slice(0, 16)}
+                      min={toISTInputValue(serverNow())}
                       required
                     />
                   </div>

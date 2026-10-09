@@ -19,6 +19,8 @@
  * student could be locked out mid-exam or handed an attempt they cannot submit.
  */
 
+const { formatIST } = require("../utils/istTime");
+
 /**
  * How long past expiry the server leaves an attempt alone.
  *
@@ -102,7 +104,7 @@ function notStartedBody(assignment) {
   const opensAt = attemptOpensAt(assignment);
   return {
     message: opensAt
-      ? `This test has not started yet. It opens at ${opensAt.toISOString()}.`
+      ? `This test has not started yet. It opens at ${formatIST(opensAt)}.`
       : "This test has not started yet.",
     code: "not_started",
     opensAt: opensAt ? opensAt.toISOString() : null,

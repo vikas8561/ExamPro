@@ -30,7 +30,7 @@ const STOP_SUSTAIN_CHECKS = 2;
  */
 export async function requestScreenShare() {
   if (!navigator.mediaDevices?.getDisplayMedia) {
-    return { ok: false, error: "This browser cannot share your screen. Please use Chrome, Edge or Brave." };
+    return { ok: false, error: "This browser cannot share your screen. Please use Google Chrome or Microsoft Edge." };
   }
 
   let stream;

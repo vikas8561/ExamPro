@@ -40,6 +40,8 @@ const VIOLATION_TYPES = [
 
 const VIOLATION_TYPE_SET = new Set(VIOLATION_TYPES);
 
+const browserRequirement = require("./browserRequirement");
+
 /**
  * How much each violation counts against the student's allowance.
  *
@@ -106,9 +108,14 @@ const VIOLATION_WEIGHTS = {
   // `visibilitychange`, which IS charged, so little enforcement is lost.
   window_blur: 0,
 
-  // `screen.isExtended` is unavailable in some browsers and deliberately hidden
-  // by Brave's anti-fingerprinting. Worth showing a reviewer, not worth scoring.
-  second_monitor_detected: 0,
+  // Connecting an external monitor in the middle of the exam. Charged since
+  // exams were limited to Chrome and Edge (2026-10-03): `screen.isExtended` is
+  // spec-defined there and answers the same on Windows, macOS, Linux and
+  // ChromeOS. It used to be weight 0 because Firefox, Safari and Brave could not
+  // answer, and those can no longer sit an exam. Scored 1, not 2, for the same
+  // reason as a stopped screen share: the exam is also paused until the monitor
+  // is gone, and the pause is the main enforcement.
+  second_monitor_detected: 1,
 
   // Heuristic pattern-matching on injected DOM. Browser extensions a student
   // has no idea are installed can trip it.
@@ -234,6 +241,14 @@ const STRICT = {
   allowInternalClipboard: true,
   detectDevtools: true,
   detectSecondMonitor: true,
+  // Refuse to start the exam while an external monitor is connected, and pause
+  // it if one is connected mid-exam. Needs a browser that can report displays,
+  // which is what `requireBrowser` guarantees. See services/browserRequirement.js.
+  blockExternalDisplay: true,
+  requireBrowser: {
+    families: browserRequirement.ALLOWED_FAMILIES,
+    minMajor: browserRequirement.MIN_BROWSER_MAJOR,
+  },
   detectTampering: true,
   // Capture a frame of the screen alongside each violation, from the share the
   // student already granted. Reverses this system's original "no images ever"
@@ -264,6 +279,8 @@ const OFF = {
   allowInternalClipboard: true,
   detectDevtools: false,
   detectSecondMonitor: false,
+  blockExternalDisplay: false,
+  requireBrowser: null,
   detectTampering: false,
   captureOnViolation: false,
   blockedExtensionIds: [],
@@ -442,10 +459,50 @@ function applySebPolicy(policy, sebState) {
     requireFullscreen: false,
     requireEntireScreenShare: false,
     detectSecondMonitor: false,
+    // SEB enforces the display rule itself, natively and more thoroughly than a
+    // web page can (it also refuses mirrored displays), and its own browser is
+    // neither Chrome nor Edge.
+    blockExternalDisplay: false,
+    requireBrowser: null,
     // There is no screen share inside SEB — it supports no `getDisplayMedia` on
     // any platform — so there is nothing to capture from. SEB's own lockdown is
     // what replaces the evidence here.
     captureOnViolation: false,
+  };
+}
+
+/**
+ * Does the Chrome/Edge + external-monitor rule apply to this session?
+ *
+ * Yes whenever the browser-based proctoring is what is guarding the exam. No
+ * under a verified SEB session (applySebPolicy has already cleared the flag),
+ * and no while the session is waiting for the student to open SEB: they are
+ * about to leave this browser, and telling them to switch to Chrome would send
+ * them the wrong way. A Linux student SEB cannot serve (`fallbackReason`) is
+ * on the browser path, so the rule applies to them.
+ */
+function enforcesDisplayRule(policy, seb) {
+  if (!policy || policy.enabled !== true || policy.blockExternalDisplay !== true) return false;
+  if (seb && seb.required === true && seb.verified !== true && !seb.fallbackReason) return false;
+  return true;
+}
+
+/**
+ * Write the outcome of enforcesDisplayRule back into the rulebook the browser
+ * receives, so the exam page enforces exactly what the server will.
+ *
+ * A session the rule does not cover also stops charging for a second display:
+ * that weight was raised only because the rule guarantees a browser that can
+ * see displays reliably.
+ */
+function withDisplayRule(policy, enforced) {
+  if (enforced) return { ...policy, blockExternalDisplay: true };
+  const weights = { ...(policy.violationWeights || VIOLATION_WEIGHTS), second_monitor_detected: 0 };
+  return {
+    ...policy,
+    blockExternalDisplay: false,
+    requireBrowser: null,
+    violationWeights: policy.enabled ? weights : policy.violationWeights,
   };
 }
 
@@ -516,6 +573,8 @@ module.exports = {
   sebDisabledForTest,
   getPolicyForTest,
   applySebPolicy,
+  enforcesDisplayRule,
+  withDisplayRule,
   decide,
   weightOf,
   isKnownViolationType,

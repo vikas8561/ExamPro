@@ -20,10 +20,17 @@
  *    timers in background tabs to about once a minute, so a student who
  *    switched away came back to a clock that had barely moved. Counting down to
  *    a fixed instant from Date.now() is right however often it runs.
- *  - A student's machine clock can be wrong by minutes. `offsetMs` is the
- *    difference from the server's clock, measured when the payload arrived, so
- *    the countdown follows the server's time, not the laptop's.
+ *  - A student's machine clock can be wrong by minutes -- or hours. The
+ *    countdown reads the shared server clock (serverClock.js), which every API
+ *    response keeps synced and which advances on a monotonic clock, so winding
+ *    the device's clock mid-exam does not move it. `offsetMs`, measured from
+ *    the payload's `serverNow`, is the fallback for when no server sample has
+ *    been taken at all.
  */
+
+// Explicit extension: this module also loads under plain Node
+// (scripts/exam-clock-scenarios.mjs).
+import { hasServerTime, serverNow } from "./serverClock.js";
 
 /**
  * Build a clock from a server payload carrying `attemptEndsAt` and `serverNow`
@@ -65,10 +72,18 @@ export function clockFromAssignment(assignment, timeLimitMinutes, serverNowMs) {
   return { endsAtMs: Math.min(...valid), offsetMs };
 }
 
-/** Whole seconds left on `clock` right now, never negative. */
-export function secondsLeft(clock, nowMs = Date.now()) {
+/**
+ * Whole seconds left on `clock` right now, never negative.
+ *
+ * With no `nowMs`, "now" is the shared server clock once it has a sample, and
+ * the device clock corrected by `offsetMs` until then. A given `nowMs` is a
+ * device-clock reading and is corrected by `offsetMs`.
+ */
+export function secondsLeft(clock, nowMs) {
   if (!clock) return 0;
-  return Math.max(0, Math.floor((clock.endsAtMs - (nowMs + clock.offsetMs)) / 1000));
+  const now =
+    nowMs === undefined && hasServerTime() ? serverNow() : (nowMs ?? Date.now()) + clock.offsetMs;
+  return Math.max(0, Math.floor((clock.endsAtMs - now) / 1000));
 }
 
 /**

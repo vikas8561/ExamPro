@@ -12,6 +12,7 @@ const policyService = require("../services/proctorPolicy");
 const sebVerify = require("../services/sebVerify");
 const { buildSebConfig, computeConfigKey, optionsFor } = require("../services/sebConfig");
 const { hasAttemptOpened, notStartedBody, isAttemptExpired } = require("../services/attemptWindow");
+const browserRequirement = require("../services/browserRequirement");
 
 /** "3m 12s" -- for a reviewer reading the violation log. */
 function describeGap(ms) {
@@ -79,6 +80,57 @@ function serializeSession(session) {
       fallbackReason: session.seb?.fallbackReason || null,
       disabledForTest: session.seb?.disabledForTest === true,
     },
+  };
+}
+
+/**
+ * Is this browser allowed under the session's rulebook? Same answer as
+ * checkBrowser, with the rulebook's own list and minimum version.
+ */
+function checkBrowserFor(policy, identity) {
+  const rule = policy?.requireBrowser || {};
+  return browserRequirement.checkBrowser(identity, {
+    allowedFamilies: Array.isArray(rule.families) ? rule.families : undefined,
+    minMajor: Number.isFinite(rule.minMajor) ? rule.minMajor : undefined,
+  });
+}
+
+/**
+ * Refuse to open (or resume) a session from a browser the rule does not allow.
+ * Nothing is created or saved: the student has not started anything, and the
+ * same attempt opens normally the moment they come back in Chrome or Edge.
+ */
+function refuseBrowser(res, verdict, identity) {
+  return res.status(403).json({
+    message: verdict.message,
+    code: verdict.code,
+    reason: verdict.code,
+    browserRequired: true,
+    browser: identity.label,
+    browserVersion: identity.major,
+  });
+}
+
+/** The browser identity in the shape stored on the session. */
+function browserDoc(identity) {
+  return {
+    family: identity.family,
+    label: identity.label,
+    major: Number.isFinite(identity.major) ? identity.major : null,
+    mobile: identity.mobile === true,
+    source: identity.source,
+  };
+}
+
+/** What the exam page needs to know about the display rule after a report. */
+function displayReply(session) {
+  const enforced = session.display?.enforced === true;
+  const state = session.display?.state || "unverified";
+  return {
+    enforced,
+    state,
+    allowed: !enforced || state === "single",
+    message: enforced && state !== "single" ? browserRequirement.DISPLAY_MESSAGES[state] : "",
   };
 }
 
@@ -344,6 +396,13 @@ router.post("/session/start", authenticateToken, async (req, res, next) => {
         : "unknown",
     };
 
+    // The browser is read from the request headers, never from the body. The
+    // display report can only come from the page, and is judged by the rule in
+    // services/browserRequirement.js: anything but a clear "one screen" is not
+    // "one screen".
+    const browserIdentity = browserRequirement.identifyBrowser(req.headers);
+    const displayState = browserRequirement.normalizeDisplayReport(env.display);
+
     // Resume an existing session rather than handing out a fresh counter.
     const existing = await ProctorSession.findOne({
       userId,
@@ -409,20 +468,42 @@ router.post("/session/start", authenticateToken, async (req, res, next) => {
       // SEB session that reloads without proof must stay on the SEB rulebook and
       // be blocked by the session guard, rather than quietly reverting to the
       // browser rulebook and asking for a screen share SEB cannot provide.
-      existing.policy = policyService.applySebPolicy(policyService.getPolicyForTest(test), {
+      const resumedPolicy = policyService.applySebPolicy(policyService.getPolicyForTest(test), {
         required: existing.seb.required === true,
         verified: existing.seb.verified === true,
         fallbackReason: existing.seb.fallbackReason,
       });
 
+      // The Chrome/Edge + external-monitor rule, checked again on every resume:
+      // a session opened in Chrome cannot be carried into Firefox by copying the
+      // login across.
+      //
+      // The one exception is a session opened before the rule existed (no
+      // `display.enforced` at all). If its student is mid-exam in a browser the
+      // rule now refuses, they are let finish under the old rules rather than
+      // locked out of a paper they had already started. Such sessions expire
+      // within two days of the deploy.
+      let enforced = false;
+      if (policyService.enforcesDisplayRule(resumedPolicy, existing.seb)) {
+        const verdict = checkBrowserFor(resumedPolicy, browserIdentity);
+        const openedBeforeRule = typeof existing.display?.enforced !== "boolean";
+        if (verdict.ok) enforced = true;
+        else if (!openedBeforeRule) return refuseBrowser(res, verdict, browserIdentity);
+      }
+      existing.policy = policyService.withDisplayRule(resumedPolicy, enforced);
+      existing.browser = browserDoc(browserIdentity);
+      existing.display = { enforced, state: displayState, reportedAt: new Date() };
+
       await existing.save();
       return res.json({ ...serializeSession(existing), resumed: true });
     }
 
-    const policy = policyService.applySebPolicy(
+    const basePolicy = policyService.applySebPolicy(
       policyService.getPolicyForTest(test),
       sebState
     );
+    const enforced = policyService.enforcesDisplayRule(basePolicy, sebState);
+    const policy = policyService.withDisplayRule(basePolicy, enforced);
 
     // A session that was already terminated must not be reopened by reloading.
     const terminated = await ProctorSession.findOne({
@@ -437,6 +518,13 @@ router.post("/session/start", authenticateToken, async (req, res, next) => {
       });
     }
 
+    // Only Chrome and Edge can say whether an external monitor is attached, so
+    // only Chrome and Edge may open an attempt the monitor rule covers.
+    if (enforced) {
+      const verdict = checkBrowserFor(policy, browserIdentity);
+      if (!verdict.ok) return refuseBrowser(res, verdict, browserIdentity);
+    }
+
     const session = await ProctorSession.create({
       userId,
       assignmentId,
@@ -444,6 +532,8 @@ router.post("/session/start", authenticateToken, async (req, res, next) => {
       testKind: testKind === "coding" ? "coding" : "assigned",
       policy,
       environment: environmentDoc,
+      browser: browserDoc(browserIdentity),
+      display: { enforced, state: displayState, reportedAt: new Date() },
       seb: {
         required: sebState.required,
         verified: sebState.verified,
@@ -565,6 +655,14 @@ router.post("/session/heartbeat", authenticateToken, async (req, res, next) => {
       }
     }
 
+    // The page re-reports the screens on every check-in, so a monitor plugged
+    // in or removed is known here within one heartbeat even if the page's own
+    // report of it never arrived.
+    if (req.body && req.body.display !== undefined) {
+      session.display.state = browserRequirement.normalizeDisplayReport(req.body.display);
+      session.display.reportedAt = new Date();
+    }
+
     // The browser went quiet and has now come back.
     //
     // This said "charge it once for the gap", but it never did: it counted the
@@ -586,6 +684,7 @@ router.post("/session/heartbeat", authenticateToken, async (req, res, next) => {
       limit: session.policy?.allowedViolations ?? -1,
       // Lets the exam page explain itself before the next request is refused.
       sebStale,
+      display: displayReply(session),
     });
   } catch (error) {
     next(error);
@@ -765,6 +864,33 @@ async function applyViolation(session, violationType, details, res, next) {
     next(error);
   }
 }
+
+/**
+ * "Here is what the screens look like now."
+ *
+ * Sent by the pre-exam screen whenever the display arrangement changes and
+ * immediately before Begin, and by the exam page when a monitor is connected or
+ * removed mid-exam. Begin waits for `allowed` from here, because the question
+ * paper is only served while the server's own record says one screen -- the
+ * heartbeat would get there too, but up to five seconds later.
+ */
+router.post("/session/display", authenticateToken, async (req, res, next) => {
+  try {
+    const session = await loadOwnSession(req);
+    if (!session) {
+      return res.status(404).json({ message: "Proctoring session not found" });
+    }
+
+    session.display.state = browserRequirement.normalizeDisplayReport(req.body?.display);
+    session.display.reportedAt = new Date();
+    if (session.status === "active") session.lastHeartbeatAt = new Date();
+    await session.save();
+
+    return res.json(displayReply(session));
+  } catch (error) {
+    next(error);
+  }
+});
 
 /** Record which permissions were granted. Text only — no media is ever read. */
 router.post("/session/permissions", authenticateToken, async (req, res, next) => {

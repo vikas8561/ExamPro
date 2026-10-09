@@ -70,8 +70,26 @@ const Admin = require("../../models/Admin");
 
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130 Safari/537.36";
 
+/**
+ * What Chrome's exam page reports for a computer with one screen.
+ *
+ * The server serves no question paper until a session's display report says
+ * one screen (services/browserRequirement.js), and these scripts drive the API
+ * the way the exam page does -- so a session they open says so too, unless the
+ * script supplies its own `environment.display` to test the rule itself.
+ */
+const ONE_SCREEN = { isExtended: false, policyAllowed: true };
+
+function withDisplayReport(path, body) {
+  if (path !== "/proctor/session/start" || !body || typeof body !== "object") return body;
+  const environment = body.environment || {};
+  if (environment.display !== undefined) return body;
+  return { ...body, environment: { ...environment, display: ONE_SCREEN } };
+}
+
 /** Call the API. Same shape every script already used. */
 async function api(path, { token, method = "GET", body, headers = {} } = {}) {
+  body = withDisplayReport(path, body);
   const res = await fetch(`${API}${path}`, {
     method,
     headers: {

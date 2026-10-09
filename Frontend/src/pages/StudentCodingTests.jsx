@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import apiRequest from "../services/api";
+import { serverNow, windowPhase } from "../utils/serverClock";
+import { useServerNow } from "../hooks/useServerNow";
+import { formatDateTimeIST } from "../utils/istTime";
 import {
   Code,
   Code2,
@@ -30,10 +33,9 @@ import "../styles/StudentCodingTests.mobile.css";
 const CountdownTimer = ({ startTime, onTimerComplete }) => {
   const [timeLeft, setTimeLeft] = useState(calculateTimeLeft());
 
+  // Counted on the server's clock, not the device's.
   function calculateTimeLeft() {
-    const now = new Date();
-    const start = new Date(startTime);
-    const difference = start - now;
+    const difference = Date.parse(startTime) - serverNow();
 
     if (difference <= 0) {
       return { completed: true };
@@ -122,6 +124,8 @@ export default function StudentCodingTests() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const nav = useNavigate();
+  // The server's time, ticking, so cards change state on the second they should.
+  const now = useServerNow(1000);
 
   const fetchCodingTests = async (page = currentPage) => {
     setLoading(true);
@@ -167,39 +171,8 @@ export default function StudentCodingTests() {
     }
   }, [searchTerm, statusFilter]);
 
-  const formatDate = (dateString) => {
-    if (!dateString) return "Not scheduled";
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit"
-    });
-  };
-
-  const isDeadlinePassed = (startTime, duration) => {
-    if (!startTime || !duration) return false;
-    const currentTime = new Date();
-    const startTimeDate = new Date(startTime);
-    const endTime = new Date(startTimeDate.getTime() + duration * 60000);
-    return currentTime >= endTime;
-  };
-
-  const isTestAvailable = (startTime, duration) => {
-    if (!startTime || !duration) return false;
-    const currentTime = new Date();
-    const startTimeDate = new Date(startTime);
-    const endTime = new Date(startTimeDate.getTime() + duration * 60000);
-    return currentTime >= startTimeDate && currentTime <= endTime;
-  };
-
-  const isTestNotStarted = (startTime) => {
-    if (!startTime) return false;
-    const currentTime = new Date();
-    const startTimeDate = new Date(startTime);
-    return currentTime < startTimeDate;
-  };
+  // IST whatever the device's timezone.
+  const formatDate = (dateString) => formatDateTimeIST(dateString, "Not scheduled");
 
   const handleStartTest = (assignmentId) => {
     nav(`/student/take-coding/${assignmentId}`);
@@ -473,9 +446,12 @@ export default function StudentCodingTests() {
               // send the questions themselves, so neither of the fields this
               // used to read exists - it always fell through to a hard-coded 1.
               const problemsCount = assignment.testId?.questionCount || 0;
-              const deadlinePassed = isDeadlinePassed(assignment.startTime, assignment.duration);
-              const testAvailable = isTestAvailable(assignment.startTime, assignment.duration);
-              const testNotStarted = isTestNotStarted(assignment.startTime);
+              // On the server's clock, so every student sees the same button.
+              const {
+                closed: deadlinePassed,
+                open: testAvailable,
+                notStarted: testNotStarted,
+              } = windowPhase(assignment, now);
 
               // Status badge styling
               const getStatusBadge = () => {

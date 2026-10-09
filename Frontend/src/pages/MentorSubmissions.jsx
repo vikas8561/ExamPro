@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
+import { formatDateIST } from "../utils/istTime";
 import { useNavigate } from "react-router-dom";
 import apiRequest from "../services/api";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -91,12 +92,7 @@ const MentorSubmissions = () => {
   };
 
   const formatDate = (dateString) => {
-    if (!dateString) return "N/A";
-    return new Date(dateString).toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
+    return formatDateIST(dateString, "N/A");
   };
 
   // KPI Calculations

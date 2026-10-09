@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { formatDateIST } from "../utils/istTime";
 import { useParams, useNavigate } from "react-router-dom";
 import apiRequest from "../services/api";
 
@@ -126,7 +127,7 @@ const PracticeTestResults = () => {
                 >
                   Attempt {attempt.attemptNumber}
                   <div className="text-xs mt-1">
-                    {new Date(attempt.savedAt).toLocaleDateString()}
+                    {formatDateIST(attempt.savedAt)}
                   </div>
                 </button>
               ))}

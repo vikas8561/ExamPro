@@ -5,6 +5,8 @@ import DashboardAnalytics from "../components/DashboardAnalytics";
 import apiRequest from "../services/api";
 import { io } from "socket.io-client";
 import { BASE_URL } from "../config/api";
+import { serverNow } from "../utils/serverClock";
+import { istHour } from "../utils/istTime";
 import "../styles/StudentDashboard.mobile.css";
 import {
   Trophy,
@@ -202,10 +204,12 @@ const StudentDashboard = () => {
     }
   };
 
-  const upcomingTests = assignedTests.filter(test => new Date(test.startTime) >= new Date()).slice(0, 3);
+  // Not yet open by the server's clock; the device's may be hours out.
+  const now = serverNow();
+  const upcomingTests = assignedTests.filter(test => Date.parse(test.startTime) >= now).slice(0, 3);
 
   const getGreeting = () => {
-    const hour = new Date().getHours();
+    const hour = istHour(now);
     if (hour < 12) return "Good Morning";
     if (hour < 18) return "Good Afternoon";
     return "Good Evening";

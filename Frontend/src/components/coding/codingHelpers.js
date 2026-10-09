@@ -3,6 +3,8 @@
  * Components live in codingUi.jsx.
  */
 
+import { formatTimeIST } from '../../utils/istTime';
+
 // Judge0 status ids (GET /statuses). Colours follow LeetCode's verdict palette.
 export const ACCEPTED = 3;
 export const WRONG_ANSWER = 4;
@@ -32,20 +34,16 @@ export const submitVerdict = (result) => {
 };
 
 /**
- * The clock time a submission was accepted, as the student's own clock reads it.
+ * The clock time a submission was accepted, in IST.
  *
  * The instant comes from the server -- the browser's clock belongs to the
- * student -- but it is rendered in their locale, because the point of a receipt
- * is that it matches the clock they are looking at. Returns null rather than a
- * placeholder when the server did not send one, so an older cached result shows
- * no time instead of "Invalid Date".
+ * student -- and it is shown in IST like every other time on the platform, so
+ * a receipt reads the same for the student and the mentor checking it, however
+ * either device's timezone is set. Returns null rather than a placeholder when
+ * the server did not send one, so an older cached result shows no time instead
+ * of "Invalid Date".
  */
-export const submittedAtLabel = (iso) => {
-  if (!iso) return null;
-  const at = new Date(iso);
-  if (Number.isNaN(at.getTime())) return null;
-  return at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-};
+export const submittedAtLabel = (iso) => (iso ? formatTimeIST(iso, null) : null);
 
 export const DIFFICULTY_COLOR = {
   easy: 'text-[#46c6c2]',

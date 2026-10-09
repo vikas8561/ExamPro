@@ -166,21 +166,80 @@ export function fullscreenSupported() {
 }
 
 /**
- * Is a second display attached?
+ * Is the page allowed to use the Window Management feature?
  *
- * A second monitor is a genuinely common way to cheat and the old system never
- * looked at all. Returns "yes", "no", or "unknown" — never a guess. Brave and
- * Firefox may withhold this, and an unanswered question must not become an
- * accusation.
+ * This matters more than it looks. The specification makes `screen.isExtended`
+ * return a plain `false` -- "one screen" -- whenever the page is not allowed to
+ * use the feature, so a permissions policy that blocks it (set by a proxy, an
+ * extension rewriting response headers, or an embedding page) would make every
+ * second monitor invisible while looking exactly like an honest answer.
+ *
+ * Chrome renamed the feature in version 111 ("window-placement" before,
+ * "window-management" after), so whichever name this browser knows is the one
+ * asked about. Returns true / false, or null when the browser offers no way to
+ * ask -- in which case `isExtended` is taken at its word.
  */
-export function detectSecondMonitor() {
+export function windowManagementAllowed() {
   try {
-    if (typeof window.screen?.isExtended === "boolean") {
-      return window.screen.isExtended ? "yes" : "no";
+    const policy = document.permissionsPolicy || document.featurePolicy;
+    if (!policy || typeof policy.allowsFeature !== "function") return null;
+    const known = typeof policy.features === "function" ? policy.features() : [];
+    const name = ["window-management", "window-placement"].find((feature) => known.includes(feature));
+    if (!name) return null;
+    return policy.allowsFeature(name) === true;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * How many screens does this computer have, as far as the browser can tell?
+ *
+ * Returns the report the server judges (services/browserRequirement.js):
+ *
+ *   { isExtended: true | false | null, policyAllowed: true | false | null, state }
+ *
+ * where `state` is the same verdict the server will reach:
+ *
+ *   "single"      one display, and the browser could say so
+ *   "multiple"    an external monitor is extending the desktop
+ *   "unverified"  the browser cannot answer (Firefox, Safari, Brave, Chrome or
+ *                 Edge older than 100) or the answer is blocked
+ *
+ * Only extended monitors can be seen. A monitor set to *mirror* the laptop
+ * screen is presented to the browser as one screen by every operating system,
+ * so no web page can detect it. Chargers, mice, keyboards and USB hubs are not
+ * displays and never appear here at all.
+ */
+export function detectDisplays() {
+  let isExtended = null;
+  try {
+    if (typeof window !== "undefined" && typeof window.screen?.isExtended === "boolean") {
+      isExtended = window.screen.isExtended;
     }
   } catch {
     // Privacy protections can throw here rather than return a value.
   }
+
+  const policyAllowed = typeof document !== "undefined" ? windowManagementAllowed() : null;
+
+  let state = "unverified";
+  if (policyAllowed !== false && isExtended === true) state = "multiple";
+  else if (policyAllowed !== false && isExtended === false) state = "single";
+
+  return { isExtended, policyAllowed, state };
+}
+
+/**
+ * Is a second display attached? "yes", "no" or "unknown" -- never a guess.
+ *
+ * The older, coarser answer, still recorded on the session for the reviewer.
+ * The exam's monitor rule uses detectDisplays() above.
+ */
+export function detectSecondMonitor() {
+  const { state } = detectDisplays();
+  if (state === "multiple") return "yes";
+  if (state === "single") return "no";
   return "unknown";
 }
 
@@ -206,6 +265,7 @@ export async function inspectEnvironment() {
     screenShareSupported: screenShareSupported(),
     fullscreenSupported: fullscreenSupported(),
     secondMonitor: detectSecondMonitor(),
+    display: detectDisplays(),
     // Safe Exam Browser, when the exam is running inside it.
     isSEB: seb.isSEB,
     // Running inside SEB, but with no JavaScript API to prove it. Distinguished
@@ -246,13 +306,13 @@ export function assessReadiness(env) {
 
   if (!env.isSEB && !env.fullscreenSupported) {
     blockers.push(
-      "This browser cannot enter fullscreen mode, which this test requires. Please use an up-to-date desktop browser such as Chrome, Edge, Firefox or Safari."
+      "This browser cannot enter fullscreen mode, which this test requires. Please use an up-to-date Google Chrome or Microsoft Edge."
     );
   }
 
   if (!env.isSEB && !env.screenShareSupported) {
     blockers.push(
-      "This browser cannot share your screen, which this test requires. Please use an up-to-date desktop browser such as Chrome, Edge, Firefox or Safari."
+      "This browser cannot share your screen, which this test requires. Please use an up-to-date Google Chrome or Microsoft Edge."
     );
   }
 

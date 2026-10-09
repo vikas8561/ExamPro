@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { formatFullDateTimeIST, formatTimeIST } from "../utils/istTime";
+import { serverNow } from "../utils/serverClock";
 import apiRequest from "../services/api";
 import SebSettingsCard from "../components/SebSettingsCard";
 
@@ -186,7 +188,7 @@ export default function AdminProctoring() {
 
                 {updatedAt && (
                   <p className="mt-3 text-[11px] text-[#7E8594]">
-                    Last changed: {new Date(updatedAt).toLocaleString()}
+                    Last changed: {formatFullDateTimeIST(updatedAt)}
                   </p>
                 )}
               </div>
@@ -242,7 +244,7 @@ export default function AdminProctoring() {
                 <tbody className="divide-y divide-white/[0.04]">
                   {terminated.map((a) => {
                     const deadline = a.deadline || (a.startTime && a.duration ? new Date(new Date(a.startTime).getTime() + a.duration * 60000) : null);
-                    const isExpired = deadline && new Date() >= new Date(deadline);
+                    const isExpired = deadline && serverNow() >= new Date(deadline).getTime();
                     const isActive = a.status === "In Progress";
                     const violationCount = a.tabViolations?.length || a.tabViolationCount || 0;
 
@@ -257,7 +259,7 @@ export default function AdminProctoring() {
                           <span className="text-rose-400 font-semibold">{violationCount} logged</span>
                         </td>
                         <td className="py-3 px-4 text-[#7E8594]">
-                          {deadline ? new Date(deadline).toLocaleTimeString() : "—"}
+                          {formatTimeIST(deadline)}
                         </td>
                         <td className="py-3 px-4 text-right">
                           {isActive ? (

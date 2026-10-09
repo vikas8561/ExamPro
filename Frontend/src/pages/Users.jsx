@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { API_BASE_URL } from "../config/api";
 import apiRequest from "../services/api";
+import { serverNow } from "../utils/serverClock";
 
 // Matches DEFAULT_STUDENT_PASSWORD in Backend/routes/users.js, which is what
 // actually gets set; this copy only exists so the admin is told what it will be.
@@ -68,7 +69,7 @@ export default function Users({ mentorView = false }) {
   const [reEnablingId, setReEnablingId] = useState(null);
   // Ticks so a test drops off a card the moment its re-enable window closes,
   // without waiting for a refetch. The server checks again on every press.
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState(() => serverNow());
   const [resultPopup, setResultPopup] = useState({ show: false, message: "", type: "success" });
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -467,7 +468,7 @@ export default function Users({ mentorView = false }) {
   };
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 15000);
+    const timer = setInterval(() => setNow(serverNow()), 15000);
     return () => clearInterval(timer);
   }, []);
 

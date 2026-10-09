@@ -90,6 +90,11 @@ const app = express();
 // Without this, express-rate-limit sees all users as the SAME IP (the proxy's IP)
 app.set('trust proxy', 1);
 
+// Every response carries the server's time; the browser decides with it
+// instead of the device's clock. Before CORS, so even a refusal is stamped.
+const { stampServerTime, SERVER_TIME_HEADER } = require("./middleware/serverTime");
+app.use(stampServerTime);
+
 //  Allowed origins (add more if needed)
 const allowedOrigins = [
   process.env.FRONTEND_URL,
@@ -139,6 +144,9 @@ app.use(cors({
     "Access-Control-Request-Method",
     "Access-Control-Request-Headers"
   ],
+  // A cross-origin page can read only safelisted response headers unless told
+  // otherwise, and the shared clock needs this one.
+  exposedHeaders: [SERVER_TIME_HEADER],
   credentials: true,
   optionsSuccessStatus: 200, // For legacy browser support
 }));
@@ -151,7 +159,8 @@ if (process.env.NODE_ENV === 'development') {
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
     res.header('Access-Control-Allow-Credentials', 'true');
-    
+    res.header('Access-Control-Expose-Headers', SERVER_TIME_HEADER);
+
     if (req.method === 'OPTIONS') {
       res.sendStatus(200);
     } else {
@@ -233,6 +242,7 @@ app.use((req, res, next) => {
   res.header("Access-Control-Allow-Credentials", "true");
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
   res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin");
+  res.header("Access-Control-Expose-Headers", SERVER_TIME_HEADER);
   next();
 });
 

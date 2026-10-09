@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { formatFullDateTimeIST } from "../utils/istTime";
 
 import { inspectEnvironment, assessReadiness } from "./environment";
 import {
@@ -22,6 +23,8 @@ import { createScreenDetector, requestScreenShare } from "./detectors/screen";
 import { createPermissionsDetector } from "./detectors/permissions";
 import { createNetworkDetector } from "./detectors/network";
 import { createIntegrityDetector } from "./detectors/integrity";
+import { createDisplayDetector } from "./detectors/display";
+import { detectDisplays } from "./environment";
 import { captureScreenFrame, releaseCapture } from "./screenshot";
 import ProctorGate from "./ProctorGate";
 import ProctorOverlay from "./ProctorOverlay";
@@ -40,6 +43,9 @@ import { ProctorContext } from "./context";
  * report either way.
  */
 const SILENT_VIOLATIONS = new Set(["paste_internal"]);
+
+/** Refusals from the server's browser rule. See Backend/services/browserRequirement.js. */
+const BROWSER_REFUSALS = new Set(["browser_unsupported", "browser_outdated", "browser_mobile"]);
 
 /**
  * The one thing an exam page mounts.
@@ -86,6 +92,9 @@ export function ProctorProvider({
   const [startNotOpen, setStartNotOpen] = useState(false);
   // Set when the exam needs Safe Exam Browser and this browser is not it.
   const [sebLaunchInfo, setSebLaunchInfo] = useState(null);
+  // Set when the server refused this browser: `{ code, message }`. Only
+  // Chrome and Edge can report external monitors, so only they may sit exams.
+  const [browserBlock, setBrowserBlock] = useState(null);
 
   const [violationCount, setViolationCount] = useState(0);
   const [limit, setLimit] = useState(-1);
@@ -105,6 +114,7 @@ export function ProctorProvider({
   const keyboardRef = useRef(null);
   const devtoolsRef = useRef(null);
   const screenRef = useRef(null);
+  const displayRef = useRef(null);
   const overlayRef = useRef(null);
   const heartbeatRef = useRef(null);
   const terminatedRef = useRef(false);
@@ -349,6 +359,12 @@ export function ProctorProvider({
             platform: env.platform,
             keyboardLockSupported: env.keyboardLockSupported,
             secondMonitor: env.secondMonitor,
+            // What the screens look like. The server judges this itself; only
+            // a clear "one screen" lets the paper be served.
+            display: {
+              isExtended: env.display?.isExtended ?? null,
+              policyAllowed: env.display?.policyAllowed ?? null,
+            },
             // The proof, not a secret: SEB's JavaScript API hands the page a
             // hash of its Config Key and the current URL. The server checks it
             // against the URL it stored for this attempt.
@@ -423,14 +439,17 @@ export function ProctorProvider({
         setPhase("gate");
       } catch (error) {
         if (cancelled) return;
+        // Wrong browser, too old, or a phone. Not a fault -- a thing the student
+        // can fix -- so it gets its own screen with what to do about it.
+        if (BROWSER_REFUSALS.has(error?.code)) {
+          setBrowserBlock({ code: error.code, message: error.message });
+          setPhase("idle");
+          return;
+        }
         if (error?.code === "not_started") {
-          const opens = error.opensAt ? new Date(error.opensAt) : null;
+          const opens = formatFullDateTimeIST(error.opensAt, "");
           setStartNotOpen(true);
-          setStartError(
-            opens && !Number.isNaN(opens.getTime())
-              ? `This test opens at ${opens.toLocaleString()}.`
-              : "This test has not opened yet."
-          );
+          setStartError(opens ? `This test opens at ${opens}.` : "This test has not opened yet.");
           setPhase("idle");
           return;
         }
@@ -489,11 +508,16 @@ export function ProctorProvider({
     const watchesScreenShare = policy.requireEntireScreenShare !== false;
     const watchesFullscreen = policy.requireFullscreen !== false;
 
+    // External monitors. Where the rule applies, the display detector below
+    // owns them -- it pauses the exam, not just records -- so the screen
+    // detector's older record-only check stands down rather than report twice.
+    const blocksDisplays = policy.blockExternalDisplay === true;
+
     const screen = createScreenDetector({
       report,
       isPaused,
       getStream: () => screenStreamRef.current,
-      detectSecondMonitor: policy.detectSecondMonitor !== false,
+      detectSecondMonitor: policy.detectSecondMonitor !== false && !blocksDisplays,
       onShareStopped: () => {
         // Screen sharing is a condition of sitting the exam, not a formality.
         // This used to record the violation and let the student carry on
@@ -509,7 +533,30 @@ export function ProctorProvider({
     });
     screenRef.current = screen;
 
+    const display = blocksDisplays
+      ? createDisplayDetector({
+          report,
+          isPaused,
+          onChange: (state) => {
+            // Keep the server's record in step at once, not at the next
+            // heartbeat: it stops serving the paper while this is not "single".
+            transportRef.current?.reportDisplay();
+
+            // A monitor appeared (or the browser stopped being able to say):
+            // pause the exam until it is put right. Removing it does not
+            // resume by itself -- the overlay's button does, because coming
+            // back may need a click to restore fullscreen.
+            if (state !== "single" && ["active", "blocked"].includes(phaseRef.current)) {
+              setPhase("blocked");
+              setBlockReason("display");
+            }
+          },
+        })
+      : null;
+    displayRef.current = display;
+
     const detectors = [
+      display,
       keyboard,
       devtools,
       createClipboardDetector({
@@ -579,6 +626,7 @@ export function ProctorProvider({
     detectorsRef.current = [];
     keyboardRef.current = null;
     devtoolsRef.current = null;
+    displayRef.current = null;
     releaseCapture();
   }, []);
 
@@ -659,6 +707,27 @@ export function ProctorProvider({
       return false;
     }
 
+    if (blockReason === "display") {
+      // Read fresh, not from the last poll: the student may have plugged it
+      // back in a moment ago.
+      if (detectDisplays().state !== "single") return false;
+
+      // The click is the only thing a browser accepts for fullscreen, so use
+      // it before awaiting anything. Plugging a monitor in can knock the page
+      // out of fullscreen on some systems.
+      if (session?.policy?.requireFullscreen !== false && !isFullscreen()) {
+        const ok = await enterFullscreen();
+        if (!ok) return false;
+        await keyboardRef.current?.reengage?.();
+      }
+
+      // The server must agree before the exam carries on. A failed request
+      // is not held against the student -- the heartbeat sends the same report
+      // within five seconds -- but a clear "no" is.
+      const verdict = await transportRef.current?.reportDisplay();
+      if (verdict && verdict.allowed === false) return false;
+    }
+
     if (blockReason === "screenshare") {
       // Ask again, and accept nothing less than the whole screen -- the same
       // standard as the pre-exam gate. Only a real, live track releases them.
@@ -682,7 +751,7 @@ export function ProctorProvider({
     setBlockReason(null);
     setPhase("active");
     return true;
-  }, [blockReason]);
+  }, [blockReason, session]);
 
   /** Dismiss a warning and carry on. */
   const dismissWarning = useCallback(async () => {
@@ -733,6 +802,14 @@ export function ProctorProvider({
       mediaStreamRef.current?.getTracks?.().forEach((t) => t.stop());
     };
   }, [stopDetectors]);
+
+  // Stable, so the gate's and overlay's polling effects do not restart on
+  // every render.
+  const reportDisplayFromGate = useCallback(
+    () => transportRef.current?.reportDisplay() ?? Promise.resolve(null),
+    []
+  );
+  const getDisplayState = useCallback(() => detectDisplays().state, []);
 
   const contextValue = useMemo(
     () => ({
@@ -787,6 +864,7 @@ export function ProctorProvider({
           environment={environment}
           readiness={readiness}
           onBegin={beginExam}
+          reportDisplay={reportDisplayFromGate}
         />
       )}
 
@@ -800,9 +878,55 @@ export function ProctorProvider({
           blockReason={blockReason}
           offline={offline}
           isDevtoolsOpen={() => devtoolsRef.current?.isOpen() === true}
+          getDisplayState={getDisplayState}
           onDismissWarning={dismissWarning}
           onResume={resumeFromBlock}
         />
+      )}
+
+      {/* The server refused this browser. */}
+      {enabled && browserBlock && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/95 p-4">
+          <div className="w-full max-w-md rounded-xl border border-amber-500/30 bg-slate-900 p-8 text-center">
+            <h2 className="mb-4 text-2xl font-bold text-amber-400">
+              {browserBlock.code === "browser_mobile"
+                ? "Use a laptop or desktop computer"
+                : browserBlock.code === "browser_outdated"
+                ? "Update your browser"
+                : "Open this test in Chrome or Edge"}
+            </h2>
+            <p className="mb-6 text-slate-300">{browserBlock.message}</p>
+            <p className="mb-6 text-sm text-slate-400">
+              This test checks that no external monitor is connected, and only Google Chrome and
+              Microsoft Edge can do that check. Nothing has been started or recorded.
+            </p>
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row">
+              <a
+                href="https://www.google.com/chrome/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 rounded-md border border-slate-600 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800"
+              >
+                Get Google Chrome
+              </a>
+              <a
+                href="https://www.microsoft.com/edge"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 rounded-md border border-slate-600 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800"
+              >
+                Get Microsoft Edge
+              </a>
+            </div>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="w-full rounded-md bg-white/90 py-3 font-semibold text-black hover:bg-white"
+            >
+              Try again
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Proctoring could not be started.
