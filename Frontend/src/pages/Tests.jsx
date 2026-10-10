@@ -746,14 +746,10 @@ export default function Tests() {
                           </div>
                           <div className="min-w-0">
                             <span className="text-[10px] text-[#7E8594] uppercase tracking-wider block">
-                              {assignedBatches.length > 1 ? "Batches" : "Batch"}
+                              Subject
                             </span>
                             <span className="text-xs font-semibold text-white truncate block">
-                              {assignedBatches.length === 0
-                                ? "Unassigned"
-                                : assignedBatches.length === 1
-                                ? assignedBatches[0]
-                                : `${assignedBatches[0]} (+${assignedBatches.length - 1})`}
+                              {t.subject || "General"}
                             </span>
                           </div>
                         </div>
