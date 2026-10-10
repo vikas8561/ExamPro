@@ -37,6 +37,33 @@ const formatScheduledDate = (dateVal) => {
   return `${day} ${month} ${year} · ${time}`;
 };
 
+const getTestStats = (test) => {
+  const count =
+    typeof test.questionCount === "number"
+      ? test.questionCount
+      : Array.isArray(test.questions)
+      ? test.questions.length
+      : 0;
+
+  let marks = 0;
+  if (typeof test.totalMarks === "number") {
+    marks = test.totalMarks;
+  } else if (Array.isArray(test.questions)) {
+    marks = test.questions.reduce((sum, q) => {
+      if (q.kind === "coding") {
+        const codingMarks = (q.hiddenTestCases || []).reduce(
+          (acc, h) => acc + (typeof h.marks === "number" ? h.marks : 0),
+          0
+        );
+        return sum + (codingMarks > 0 ? codingMarks : (typeof q.points === "number" ? q.points : 1));
+      }
+      return sum + (typeof q.points === "number" ? q.points : 1);
+    }, 0);
+  }
+
+  return { count, marks };
+};
+
 export default function Tests() {
   const [tests, setTests] = useState([]);
   const [students, setStudents] = useState([]);
@@ -370,24 +397,24 @@ export default function Tests() {
           style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.05)", minHeight: "3.5rem" }}
         >
           {/* Left: Branding & Subtitle */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="w-9 h-9 rounded-xl bg-[#133B42] border border-[#00C4B4]/20 flex items-center justify-center flex-shrink-0">
               <ClipboardList className="w-5 h-5 text-[#00C4B4]" />
             </div>
-            <div>
-              <h1 className="text-base sm:text-lg font-semibold text-white tracking-tight leading-tight">
+            <div className="min-w-0">
+              <h1 className="text-base sm:text-lg font-semibold text-white tracking-tight leading-tight whitespace-nowrap">
                 Tests Management
               </h1>
-              <p className="text-xs text-[#7E8594] mt-0.5">
+              <p className="text-xs text-[#7E8594] mt-0.5 truncate">
                 Author, schedule, assign cohorts & export examination results
               </p>
             </div>
           </div>
 
           {/* Right: Search, Refresh & Create Test White Button */}
-          <div className="flex items-center flex-wrap gap-3">
-            {/* Search Input */}
-            <div className="relative w-full sm:w-64">
+          <div className="flex items-center gap-2.5 sm:gap-3 w-full md:w-auto shrink-0">
+            {/* Flexible Search Input */}
+            <div className="relative flex-1 min-w-[120px] sm:min-w-[140px] md:w-48 lg:w-64 md:flex-initial">
               <Search className="w-4 h-4 text-[#7E8594] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
@@ -410,7 +437,7 @@ export default function Tests() {
             <button
               onClick={() => fetchTests(currentPage, searchTerm)}
               disabled={loading}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-[#133B42] text-[#00C4B4] border border-[#00C4B4]/30 hover:bg-[#1A4C55] transition-all cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-[#133B42] text-[#00C4B4] border border-[#00C4B4]/30 hover:bg-[#1A4C55] transition-all cursor-pointer disabled:opacity-50 shrink-0"
               title="Refresh tests"
             >
               <Zap className={`w-3.5 h-3.5 fill-[#00C4B4] ${loading ? "animate-spin" : ""}`} />
@@ -420,7 +447,7 @@ export default function Tests() {
             {/* ⚪ White Button: Create Test */}
             <Link
               to={createTestPath}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-white hover:bg-slate-100 text-slate-950 shadow-sm transition-all hover:scale-105 active:scale-95 cursor-pointer"
+              className="inline-flex items-center justify-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-white hover:bg-slate-100 text-slate-950 shadow-sm transition-all hover:scale-105 active:scale-95 cursor-pointer shrink-0 whitespace-nowrap"
             >
               <Plus className="w-4 h-4 stroke-[2.5]" />
               <span>Create Test</span>
@@ -514,14 +541,18 @@ export default function Tests() {
               {[1, 2, 3, 4, 5, 6].map((n) => (
                 <div
                   key={n}
-                  className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-6 h-[340px] animate-pulse flex flex-col justify-between"
+                  className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-6 min-h-[380px] animate-pulse flex flex-col justify-between"
                 >
                   <div className="space-y-4">
                     <div className="h-5 bg-white/[0.05] rounded-lg w-3/4" />
                     <div className="h-4 bg-white/[0.03] rounded-lg w-1/2" />
-                    <div className="space-y-2 pt-4">
-                      <div className="h-10 bg-white/[0.04] rounded-xl" />
-                      <div className="h-10 bg-white/[0.04] rounded-xl" />
+                    <div className="grid grid-cols-2 gap-2.5 pt-4">
+                      <div className="h-11 bg-white/[0.04] rounded-xl" />
+                      <div className="h-11 bg-white/[0.04] rounded-xl" />
+                      <div className="h-11 bg-white/[0.04] rounded-xl" />
+                      <div className="h-11 bg-white/[0.04] rounded-xl" />
+                      <div className="h-11 bg-white/[0.04] rounded-xl" />
+                      <div className="h-11 bg-white/[0.04] rounded-xl" />
                     </div>
                   </div>
                   <div className="h-10 bg-white/[0.05] rounded-xl" />
@@ -561,6 +592,13 @@ export default function Tests() {
               {tests.map((t) => {
                 const isDownloading = downloadingResults[t._id];
                 const hasParticipants = t.participants && t.participants > 0;
+                const { count: questionCount, marks: totalMarks } = getTestStats(t);
+                const assignedBatches = Array.isArray(t.assignedBatches) ? t.assignedBatches.filter(Boolean) : [];
+                const subjectName = t.subject || "General Assessment";
+                const subjectAndBatchesText =
+                  assignedBatches.length > 0
+                    ? `${subjectName} | ${assignedBatches.join(", ")}`
+                    : subjectName;
 
                 return (
                   <div
@@ -577,9 +615,22 @@ export default function Tests() {
                           >
                             {t.title}
                           </h3>
-                          <p className="text-[11px] text-[#7E8594] mt-0.5 truncate">
-                            {t.subject || "General Assessment"}
-                          </p>
+                          <div
+                            className="flex items-center gap-1.5 mt-0.5 min-w-0"
+                            title={subjectAndBatchesText}
+                          >
+                            <span className="text-[11px] font-medium text-[#7E8594] truncate">
+                              {subjectName}
+                            </span>
+                            {assignedBatches.length > 0 && (
+                              <>
+                                <span className="text-[10px] text-white/20 select-none">|</span>
+                                <span className="text-[11px] font-medium text-[#00C4B4] truncate">
+                                  {assignedBatches.join(", ")}
+                                </span>
+                              </>
+                            )}
+                          </div>
                         </div>
 
                         {/* Status Pill */}
@@ -606,10 +657,40 @@ export default function Tests() {
 
                       {/* Detail Metrics Matrix */}
                       <div className="grid grid-cols-2 gap-2.5 mb-5">
-                        {/* Time Limit */}
+                        {/* Total Questions */}
                         <div className="bg-[#181A22] border border-white/[0.04] rounded-xl p-2.5 flex items-center gap-2.5">
                           <div className="w-7 h-7 rounded-lg bg-[#133B42] flex items-center justify-center flex-shrink-0">
-                            <Clock className="w-3.5 h-3.5 text-[#00C4B4]" />
+                            <BookOpen className="w-3.5 h-3.5 text-[#00C4B4]" />
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-[10px] text-[#7E8594] uppercase tracking-wider block">
+                              Total Questions
+                            </span>
+                            <span className="text-xs font-semibold text-white truncate block">
+                              {questionCount}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Total Marks */}
+                        <div className="bg-[#181A22] border border-white/[0.04] rounded-xl p-2.5 flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-lg bg-[#3A2B18] flex items-center justify-center flex-shrink-0">
+                            <FileCheck2 className="w-3.5 h-3.5 text-[#FBBF24]" />
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-[10px] text-[#7E8594] uppercase tracking-wider block">
+                              Total Marks
+                            </span>
+                            <span className="text-xs font-semibold text-white truncate block">
+                              {totalMarks}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Time Limit */}
+                        <div className="bg-[#181A22] border border-white/[0.04] rounded-xl p-2.5 flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-lg bg-[#1E293B] flex items-center justify-center flex-shrink-0">
+                            <Clock className="w-3.5 h-3.5 text-[#38BDF8]" />
                           </div>
                           <div className="min-w-0">
                             <span className="text-[10px] text-[#7E8594] uppercase tracking-wider block">
@@ -647,7 +728,7 @@ export default function Tests() {
                           </div>
                           <div className="min-w-0">
                             <span className="text-[10px] text-[#7E8594] uppercase tracking-wider block">
-                              Turnout
+                              Submissions
                             </span>
                             <span className="text-xs font-semibold text-white truncate block">
                               {t.participants || 0} students
@@ -655,10 +736,13 @@ export default function Tests() {
                           </div>
                         </div>
 
-                        {/* Subject Badge */}
-                        <div className="bg-[#181A22] border border-white/[0.04] rounded-xl p-2.5 flex items-center gap-2.5">
-                          <div className="w-7 h-7 rounded-lg bg-[#3A2B18] flex items-center justify-center flex-shrink-0">
-                            <FileCheck2 className="w-3.5 h-3.5 text-[#FBBF24]" />
+                        {/* Assigned Batches */}
+                        <div
+                          className="bg-[#181A22] border border-white/[0.04] rounded-xl p-2.5 flex items-center gap-2.5"
+                          title={assignedBatches.length > 0 ? assignedBatches.join(", ") : "No batches currently assigned"}
+                        >
+                          <div className="w-7 h-7 rounded-lg bg-[#28203B] flex items-center justify-center flex-shrink-0">
+                            <Building className="w-3.5 h-3.5 text-[#A78BFA]" />
                           </div>
                           <div className="min-w-0">
                             <span className="text-[10px] text-[#7E8594] uppercase tracking-wider block">
@@ -707,13 +791,28 @@ export default function Tests() {
                       {/* Primary Actions: Edit, Assign & Delete */}
                       <div className="grid grid-cols-3 gap-2">
                         {/* Edit Button */}
-                        <button
-                          onClick={() => nav(`${createTestPath}?id=${t._id}`)}
-                          className="py-2 px-2 rounded-xl text-xs font-semibold bg-[#2A2E39] hover:bg-[#323744] text-white border border-white/10 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <Edit3 className="w-3.5 h-3.5 text-[#8E95A5]" />
-                          <span>Edit</span>
-                        </button>
+                        {(() => {
+                          const isStarted = Boolean(
+                            t.hasStarted ||
+                            (t.startTime && new Date(t.startTime) <= new Date()) ||
+                            (t.participants > 0)
+                          );
+                          return (
+                            <button
+                              disabled={isStarted}
+                              onClick={() => !isStarted && nav(`${createTestPath}?id=${t._id}`)}
+                              title={isStarted ? "Editing is disabled once the test has started" : "Edit Test"}
+                              className={`py-2 px-2 rounded-xl text-xs font-semibold border transition-all flex items-center justify-center gap-1.5 ${
+                                isStarted
+                                  ? "bg-[#1E2128] text-[#555C6D] border-white/5 opacity-50 cursor-not-allowed"
+                                  : "bg-[#2A2E39] hover:bg-[#323744] text-white border border-white/10 cursor-pointer"
+                              }`}
+                            >
+                              <Edit3 className={`w-3.5 h-3.5 ${isStarted ? "text-[#555C6D]" : "text-[#8E95A5]"}`} />
+                              <span>Edit</span>
+                            </button>
+                          );
+                        })()}
 
                         {/* Assign Button */}
                         <button

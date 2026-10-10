@@ -3,7 +3,8 @@ const router = express.Router();
 const mongoose = require("mongoose");
 const Test = require("../models/Test");
 const { authenticateToken, requireRole } = require("../middleware/auth");
-const { attach } = require("../services/principals");
+const { attach, COHORTS } = require("../services/principals");
+const Student = require("../models/Student");
 const { resolveProctorStatusForTest } = require("../middleware/proctorSession");
 const { sanitizeQuestions, canSeeAnswers } = require("../services/questionSanitizer");
 const { sanitizeCodingQuestion } = require("../services/testCases");
@@ -16,6 +17,8 @@ const Mentor = require("../models/Mentor");
 const Subject = require("../models/Subject");
 const { isAllSubject } = require("../services/subjects");
 const { invalidateTestCache } = require("../utils/testCache");
+
+const isAllSubject = (s) => typeof s === "string" && s.trim().toUpperCase() === "ALL";
 
 // Mentor subject names arrive lowercased and trimmed.
 const isDSASubject = (s) => s === "dsa" || s.includes("dsa") || s.includes("data structure");
@@ -136,6 +139,49 @@ router.get("/", authenticateToken, requireRole(["admin", "Mentor"]), async (req,
       // Remove heavy submissions array
       { $project: { submissions: 0 } },
 
+      // Compute questionCount and totalMarks from questions before dropping them
+      {
+        $addFields: {
+          questionCount: { $size: { $ifNull: ["$questions", []] } },
+          totalMarks: {
+            $sum: {
+              $map: {
+                input: { $ifNull: ["$questions", []] },
+                as: "q",
+                in: {
+                  $let: {
+                    vars: {
+                      codingMarks: {
+                        $cond: [
+                          { $eq: ["$$q.kind", "coding"] },
+                          {
+                            $sum: {
+                              $map: {
+                                input: { $ifNull: ["$$q.hiddenTestCases", []] },
+                                as: "h",
+                                in: { $ifNull: ["$$h.marks", 0] },
+                              },
+                            },
+                          },
+                          0,
+                        ],
+                      },
+                    },
+                    in: {
+                      $cond: [
+                        { $gt: ["$$codingMarks", 0] },
+                        "$$codingMarks",
+                        { $convert: { input: "$$q.points", to: "double", onError: 1, onNull: 1 } },
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+          },
+        }
+      },
+
       // Populate createdBy (Note: $lookup is needed for aggregation populate)
       {
         $lookup: {
@@ -191,10 +237,90 @@ router.get("/", authenticateToken, requireRole(["admin", "Mentor"]), async (req,
           }
         }
       },
-      { $project: { scheduledAssignment: 0 } }
+      {
+        $addFields: {
+          hasStarted: {
+            $cond: {
+              if: { $and: [{ $ne: ["$startTime", null] }, { $lte: ["$startTime", new Date()] }] },
+              then: true,
+              else: { $gt: ["$participants", 0] }
+            }
+          }
+        }
+      },
+      // Remove heavy/temporary fields from card list response
+      { $project: { scheduledAssignment: 0, questions: 0 } }
     ];
 
     const tests = await Test.aggregate(pipeline);
+
+    // Enrich the current page of tests with currently assigned batch labels
+    if (tests.length > 0) {
+      const testIds = tests.map((t) => t._id);
+      const assignments = await Assignment.find({
+        testId: { $in: testIds },
+        status: { $ne: "Cancelled" }
+      })
+        .select("testId userId cohort")
+        .lean();
+
+      const assignmentsByTestId = new Map();
+      const uncachedUserIds = [];
+
+      for (const a of assignments) {
+        const tId = String(a.testId);
+        if (!assignmentsByTestId.has(tId)) {
+          assignmentsByTestId.set(tId, []);
+        }
+        assignmentsByTestId.get(tId).push(a);
+        if (!a.cohort && a.userId) {
+          uncachedUserIds.push(a.userId);
+        }
+      }
+
+      let studentUnivMap = new Map();
+      if (uncachedUserIds.length > 0) {
+        const students = await Student.find({ _id: { $in: uncachedUserIds } })
+          .select("University")
+          .lean();
+        for (const s of students) {
+          studentUnivMap.set(String(s._id), s.University);
+        }
+      }
+
+      for (const t of tests) {
+        const testAssignments = assignmentsByTestId.get(String(t._id)) || [];
+        const batchLabels = new Set();
+
+        for (const a of testAssignments) {
+          if (a.cohort) {
+            const c = COHORTS.find((co) => co.key === a.cohort);
+            if (c && c.key !== "all") {
+              batchLabels.add(c.label);
+            } else if (c && c.key === "all") {
+              batchLabels.add("All Students");
+            } else if (a.cohort) {
+              batchLabels.add(a.cohort);
+            }
+          } else if (a.userId) {
+            const univ = studentUnivMap.get(String(a.userId));
+            if (univ) {
+              for (const c of COHORTS) {
+                if (c.key === "all") continue;
+                const filterUniv = c.filter?.University;
+                if (typeof filterUniv === "string" && filterUniv === univ) {
+                  batchLabels.add(c.label);
+                } else if (filterUniv?.$in && filterUniv.$in.includes(univ)) {
+                  batchLabels.add(c.label);
+                }
+              }
+            }
+          }
+        }
+
+        t.assignedBatches = Array.from(batchLabels);
+      }
+    }
 
     const totalTime = Date.now() - startTime;
     // console.log(`✅ ULTRA FAST admin tests completed in ${totalTime}ms - Found ${tests.length} tests`);
@@ -260,7 +386,97 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
         }
       }
 
-      return res.json(test);
+      // Enrich test with schedule, cohort/batch, and assigned students if missing or from assignments
+      const testObj = typeof test.toObject === "function" ? test.toObject() : { ...test };
+
+      const existingAssignments = await Assignment.find({ testId: req.params.id })
+        .select("startTime duration userId cohort")
+        .lean();
+
+      if (existingAssignments.length > 0) {
+        if (!testObj.startTime) testObj.startTime = existingAssignments[0].startTime;
+        if (!testObj.duration) testObj.duration = existingAssignments[0].duration;
+        if (!testObj.selectedStudents || testObj.selectedStudents.length === 0) {
+          testObj.selectedStudents = existingAssignments.map((a) => a.userId);
+        }
+        if (!testObj.cohort && existingAssignments[0].cohort) {
+          testObj.cohort = existingAssignments[0].cohort;
+        }
+      }
+
+      if (!testObj.assignmentMode) {
+        if (testObj.cohort) {
+          testObj.assignmentMode = testObj.cohort;
+        } else if (existingAssignments.length > 0) {
+          const studentIds = existingAssignments.map((a) => a.userId);
+          const Student = require("../models/Student");
+          const students = await Student.find({ _id: { $in: studentIds } }).select("University").lean();
+          const univs = new Set(students.map((s) => s.University).filter(Boolean));
+
+          let matchedCohort = null;
+          const { COHORTS } = require("../services/principals");
+          for (const c of COHORTS) {
+            if (c.key === "all") continue;
+            const filterUniv = c.filter?.University;
+            if (typeof filterUniv === "string" && univs.size === 1 && univs.has(filterUniv)) {
+              matchedCohort = c.key;
+              break;
+            } else if (filterUniv?.$in && univs.size > 0 && [...univs].every((u) => filterUniv.$in.includes(u))) {
+              matchedCohort = c.key;
+              break;
+            }
+          }
+          testObj.assignmentMode = matchedCohort || (existingAssignments.length > 0 ? "manual" : "all");
+          testObj.cohort = matchedCohort || "";
+        } else {
+          testObj.assignmentMode = "all";
+        }
+      }
+
+      const TestSubmission = require("../models/TestSubmission");
+      const hasSubmissions = Boolean(await TestSubmission.exists({ testId: req.params.id }));
+      const hasStartedAttempt = existingAssignments.some((a) => a.status === "In Progress" || a.status === "Completed" || a.startedAt != null);
+      const isPastStartTime = Boolean(testObj.startTime && new Date(testObj.startTime) <= new Date());
+      testObj.questionCount = (testObj.questions || []).length;
+      testObj.totalMarks = (testObj.questions || []).reduce((sum, q) => {
+        if (q.kind === "coding") {
+          const codingMarks = (q.hiddenTestCases || []).reduce(
+            (acc, h) => acc + (typeof h.marks === "number" ? h.marks : 0),
+            0
+          );
+          return sum + (codingMarks > 0 ? codingMarks : (typeof q.points === "number" ? q.points : 1));
+        }
+        return sum + (typeof q.points === "number" ? q.points : 1);
+      }, 0);
+
+      const batchLabels = new Set();
+      const uncachedIds = [];
+      for (const a of existingAssignments) {
+        if (a.cohort) {
+          const c = COHORTS.find((co) => co.key === a.cohort);
+          if (c && c.key !== "all") batchLabels.add(c.label);
+          else if (c && c.key === "all") batchLabels.add("All Students");
+          else if (a.cohort) batchLabels.add(a.cohort);
+        } else if (a.userId) {
+          uncachedIds.push(a.userId);
+        }
+      }
+      if (uncachedIds.length > 0) {
+        const students = await Student.find({ _id: { $in: uncachedIds } }).select("University").lean();
+        const univs = new Set(students.map((s) => s.University).filter(Boolean));
+        for (const c of COHORTS) {
+          if (c.key === "all") continue;
+          const filterUniv = c.filter?.University;
+          if (typeof filterUniv === "string" && univs.has(filterUniv)) {
+            batchLabels.add(c.label);
+          } else if (filterUniv?.$in && filterUniv.$in.some((u) => univs.has(u))) {
+            batchLabels.add(c.label);
+          }
+        }
+      }
+      testObj.assignedBatches = Array.from(batchLabels);
+
+      return res.json(testObj);
     }
 
     // attach() already returned a plain object, virtuals included.
@@ -327,7 +543,7 @@ router.get("/:id", authenticateToken, async (req, res, next) => {
 // Create new test (admin/mentor)
 router.post("/", authenticateToken, requireRole(["admin", "Mentor"]), async (req, res, next) => {
   try {
-    const { title, subject, type, instructions, timeLimit, negativeMarkingPercent, allowedTabSwitches, shuffleQuestions, sebEnabled, questions } = req.body;
+    const { title, subject, type, instructions, timeLimit, negativeMarkingPercent, allowedTabSwitches, shuffleQuestions, sebEnabled, questions, startTime, duration, assignmentMode, cohort, selectedStudents } = req.body;
     console.log('DEBUG: Creating test with allowedTabSwitches:', allowedTabSwitches);
 
     if (!title) {
@@ -422,6 +638,11 @@ router.post("/", authenticateToken, requireRole(["admin", "Mentor"]), async (req
       // false opts the test out.
       sebEnabled: sebEnabled !== false,
       questions: processedQuestions,
+      startTime: startTime ? new Date(startTime) : null,
+      duration: duration ? Number(duration) : Number(timeLimit || 30),
+      assignmentMode: assignmentMode || "all",
+      cohort: cohort || (assignmentMode !== "manual" ? (assignmentMode || "") : ""),
+      selectedStudents: Array.isArray(selectedStudents) ? selectedStudents : [],
       createdBy: req.user.userId
     };
 
@@ -462,6 +683,11 @@ router.post("/", authenticateToken, requireRole(["admin", "Mentor"]), async (req
       sebEnabled: test.sebEnabled,
       status: test.status,
       questions: test.questions,
+      startTime: test.startTime,
+      duration: test.duration,
+      assignmentMode: test.assignmentMode,
+      cohort: test.cohort,
+      selectedStudents: test.selectedStudents,
       createdBy: {
         _id: req.user.userId,
         name: req.user.name || '',
@@ -482,7 +708,44 @@ router.post("/", authenticateToken, requireRole(["admin", "Mentor"]), async (req
 // Update test (admin/mentor - mentors can only update their own)
 router.put("/:id", authenticateToken, requireRole(["admin", "Mentor"]), async (req, res, next) => {
   try {
-    const { title, subject, type, instructions, timeLimit, negativeMarkingPercent, allowedTabSwitches, shuffleQuestions, sebEnabled, questions, status } = req.body;
+    const { title, subject, type, instructions, timeLimit, negativeMarkingPercent, allowedTabSwitches, shuffleQuestions, sebEnabled, questions, status, startTime, duration, assignmentMode, cohort, selectedStudents } = req.body;
+
+    if (subject !== undefined && isAllSubject(subject)) {
+      return res.status(400).json({ message: '"ALL" is not a subject. Pick the subject this test belongs to.' });
+    }
+
+    // Check if test exists and whether editing is allowed
+    const testToEdit = await Test.findById(req.params.id).select("createdBy subject type startTime").lean();
+    if (!testToEdit) {
+      return res.status(404).json({ message: "Test not found" });
+    }
+
+    // Disable editing once the test has started (editing must remain available before start time)
+    const now = new Date();
+    let testStartTime = testToEdit.startTime;
+    if (!testStartTime) {
+      const earliestAssignment = await Assignment.findOne({ testId: req.params.id, startTime: { $ne: null } })
+        .sort({ startTime: 1 })
+        .select("startTime")
+        .lean();
+      if (earliestAssignment) {
+        testStartTime = earliestAssignment.startTime;
+      }
+    }
+
+    const TestSubmission = require("../models/TestSubmission");
+    const hasSubmissions = await TestSubmission.exists({ testId: req.params.id });
+    const hasStartedAttempt = await Assignment.exists({
+      testId: req.params.id,
+      $or: [
+        { status: { $in: ["In Progress", "Completed"] } },
+        { startedAt: { $exists: true, $ne: null } }
+      ]
+    });
+
+    if ((testStartTime && new Date(testStartTime) <= now) || hasSubmissions || hasStartedAttempt) {
+      return res.status(400).json({ message: "Test has already started and cannot be edited" });
+    }
 
     if (subject !== undefined && isAllSubject(subject)) {
       return res.status(400).json({ message: '"ALL" is not a subject. Pick the subject this test belongs to.' });
@@ -491,8 +754,7 @@ router.put("/:id", authenticateToken, requireRole(["admin", "Mentor"]), async (r
     // Mentor can only update tests they created
     const userRole = String(req.user?.role || "").toLowerCase();
     if (userRole === "mentor") {
-      const existingTest = await Test.findById(req.params.id).select("createdBy subject type").lean();
-      if (!existingTest || String(existingTest.createdBy) !== String(req.user.userId)) {
+      if (String(testToEdit.createdBy) !== String(req.user.userId)) {
         return res.status(403).json({ message: "You can only edit tests you created." });
       }
 
@@ -510,19 +772,19 @@ router.put("/:id", authenticateToken, requireRole(["admin", "Mentor"]), async (r
 
       const hasAllSubject = mentorSubjectNames.includes("all");
 
-      const targetSubject = subject !== undefined ? subject : existingTest.subject;
+      const targetSubject = subject !== undefined ? subject : testToEdit.subject;
       if (!hasAllSubject && (!targetSubject || !mentorSubjectNames.includes(targetSubject.trim().toLowerCase()))) {
         return res.status(403).json({ message: `You are not assigned to the subject "${targetSubject}". You can only edit tests for your assigned subjects.` });
       }
 
-      const restriction = mentorTypeRestriction(type || existingTest.type, mentorSubjectNames, hasAllSubject);
+      const restriction = mentorTypeRestriction(type || testToEdit.type, mentorSubjectNames, hasAllSubject);
       if (restriction) {
         return res.status(403).json({ message: restriction });
       }
     }
 
     if (questions) {
-      const effectiveType = type || (await Test.findById(req.params.id).select("type").lean())?.type;
+      const effectiveType = type || testToEdit.type;
       const kindError = mixedTestKindError(effectiveType, questions);
       if (kindError) {
         return res.status(400).json({ message: kindError });
@@ -560,6 +822,11 @@ router.put("/:id", authenticateToken, requireRole(["admin", "Mentor"]), async (r
     // sitting the test inside SEB stays on SEB; one blocked at the SEB launch
     // screen is let through on their next reload. See routes/proctor.js.
     if (sebEnabled !== undefined) updateData.sebEnabled = Boolean(sebEnabled);
+    if (startTime !== undefined) updateData.startTime = startTime ? new Date(startTime) : null;
+    if (duration !== undefined) updateData.duration = Number(duration);
+    if (assignmentMode !== undefined) updateData.assignmentMode = assignmentMode;
+    if (cohort !== undefined) updateData.cohort = cohort;
+    if (selectedStudents !== undefined) updateData.selectedStudents = Array.isArray(selectedStudents) ? selectedStudents : [];
 
     // Process questions to ensure test cases are properly formatted
     if (questions) {
@@ -631,6 +898,85 @@ router.put("/:id", authenticateToken, requireRole(["admin", "Mentor"]), async (r
 
     if (!test) {
       return res.status(404).json({ message: "Test not found" });
+    }
+
+    // Synchronize schedule and assignments if schedule fields are present
+    const targetStartTime = updateData.startTime !== undefined ? updateData.startTime : test.startTime;
+    const targetDuration = updateData.duration !== undefined ? updateData.duration : (test.duration || test.timeLimit);
+    const targetMode = updateData.assignmentMode !== undefined ? updateData.assignmentMode : test.assignmentMode;
+    const targetCohort = updateData.cohort !== undefined ? updateData.cohort : (targetMode !== "manual" ? (targetMode || "") : "");
+    const targetSelectedStudents = updateData.selectedStudents !== undefined ? updateData.selectedStudents : (test.selectedStudents || []);
+
+    if (targetStartTime && targetDuration) {
+      const startTimeDate = new Date(targetStartTime);
+      const deadline = new Date(startTimeDate);
+      deadline.setMinutes(deadline.getMinutes() + Number(targetDuration));
+
+      // 1. Update schedule on all existing assignments for this test
+      await Assignment.updateMany(
+        { testId: req.params.id },
+        {
+          $set: {
+            startTime: startTimeDate,
+            duration: Number(targetDuration),
+            deadline: deadline,
+            ...(targetCohort ? { cohort: targetCohort } : {})
+          }
+        }
+      );
+
+      // 2. Determine target student IDs according to assignmentMode
+      let targetStudentIds = [];
+      if (targetMode === "manual") {
+        targetStudentIds = targetSelectedStudents.map((s) => String(s?._id || s));
+      } else if (targetMode) {
+        const { findStudentsByCohort } = require("../services/principals");
+        const cohortStudents = await findStudentsByCohort(targetMode);
+        if (cohortStudents) {
+          targetStudentIds = cohortStudents.map((s) => String(s._id));
+        }
+      }
+
+      if (targetStudentIds.length > 0) {
+        // Find existing assignment userIds
+        const existingAssignments = await Assignment.find({ testId: req.params.id }).select("userId status").lean();
+        const existingUserIds = new Set(existingAssignments.map((a) => String(a.userId)));
+
+        // Insert assignments for any newly targeted students (no duplicates!)
+        const assignmentsToInsert = [];
+        const effectiveMentorId = String(req.user?.role || "").toLowerCase() === "mentor" ? req.user.userId : null;
+        for (const sId of targetStudentIds) {
+          if (!existingUserIds.has(sId)) {
+            assignmentsToInsert.push({
+              testId: req.params.id,
+              userId: sId,
+              mentorId: effectiveMentorId,
+              startTime: startTimeDate,
+              duration: Number(targetDuration),
+              deadline,
+              cohort: targetCohort || null,
+              status: "Assigned"
+            });
+          }
+        }
+
+        if (assignmentsToInsert.length > 0) {
+          await Assignment.insertMany(assignmentsToInsert, { ordered: false });
+        }
+
+        // Clean up unstarted assignments for students no longer in target
+        await Assignment.deleteMany({
+          testId: req.params.id,
+          status: "Assigned",
+          userId: { $nin: targetStudentIds }
+        });
+
+        // Ensure test status is Active if assignments exist and test was Draft
+        if (test.status === "Draft") {
+          await Test.findByIdAndUpdate(req.params.id, { status: "Active" });
+          test.status = "Active";
+        }
+      }
     }
 
     // Recalculate scores for all submissions of this test

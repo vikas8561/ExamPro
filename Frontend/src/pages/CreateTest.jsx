@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -26,6 +26,54 @@ import JsonQuestionUploader from "../components/JsonQuestionUploader";
 import QuestionText from "../components/QuestionText";
 import { mcqOptionsError } from "../utils/mcqOption";
 import Editor from "@monaco-editor/react";
+
+function formatDateTimeLocal(dateInput) {
+  if (!dateInput) return "";
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+const AutoResizeTextarea = ({ value, onChange, className = "", placeholder, required, ...props }) => {
+  const textareaRef = useRef(null);
+
+  const adjustHeight = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, []);
+
+  useEffect(() => {
+    adjustHeight();
+  }, [value, adjustHeight]);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => adjustHeight());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [adjustHeight]);
+
+  return (
+    <textarea
+      ref={textareaRef}
+      value={value}
+      onChange={(e) => {
+        onChange?.(e);
+        e.target.style.height = "auto";
+        e.target.style.height = `${e.target.scrollHeight}px`;
+      }}
+      placeholder={placeholder}
+      required={required}
+      rows={1}
+      className={`overflow-hidden resize-none ${className}`}
+      {...props}
+    />
+  );
+};
 
 const emptyQuestion = (kind) => ({
   id: crypto.randomUUID(),
@@ -98,6 +146,7 @@ export default function CreateTest() {
   // Whether SEB is switched on system-wide. null while loading or if the lookup
   // failed — the switch below still works, it just cannot explain itself.
   const [sebGloballyRequired, setSebGloballyRequired] = useState(null);
+  const [isTestStarted, setIsTestStarted] = useState(false);
   const nav = useNavigate();
 
   // ── Role-awareness: detect if the user is a Mentor or Admin ──
@@ -208,49 +257,82 @@ export default function CreateTest() {
       const test = await apiRequest(`/tests/${editId}`);
       setAllowedTabSwitchesError(""); // Clear any previous errors
       setForm({
-        title: capitalizeWords(test.title || ""),
+        title: test.title || "",
         subject: test.subject || "",
-        type: test.type,
-        instructions: test.instructions,
-        timeLimit: test.timeLimit,
-        negativeMarkingPercent: test.negativeMarkingPercent || 0,
+        type: test.type || "mcq",
+        instructions: test.instructions || "",
+        timeLimit: test.timeLimit || 30,
+        negativeMarkingPercent: Number(test.negativeMarkingPercent) || 0,
         allowedTabSwitches: test.allowedTabSwitches ?? "",
         shuffleQuestions: Boolean(test.shuffleQuestions),
         // Tests saved before this switch existed have no value and follow the
         // system-wide setting, which is what "on" means.
         sebEnabled: test.sebEnabled !== false,
-        questions: test.questions.map((q) => ({
-          id: crypto.randomUUID(),
-          // The question's identity in the database. `id` above is only a React
-          // key for this form; `_id` is what every stored student response is
-          // matched against, so it has to survive the edit round-trip or every
-          // answer to this question is orphaned. New questions have none.
-          _id: q._id,
-          kind: q.kind === "theoretical" ? "theory" : q.kind,
-          text: q.text,
-          points: q.points,
-          expectedAnswer: q.expectedAnswer || "",
-          ...(q.kind === "mcq" && {
-            options: q.options.map((opt) => opt.text),
-            answer: q.answer,
-          }),
-          ...(false && { // MSQ removed
-            options: q.options.map((opt) => opt.text),
-            answers: q.answers || [],
-          }),
-
-          ...(q.kind === "coding" && {
-            examples: q.examples || [],
-            visibleTestCases: (q.visibleTestCases || []).map(tc => ({ input: tc.input, output: tc.output })),
-            hiddenTestCases: (q.hiddenTestCases || []).map(tc => ({ input: tc.input, output: tc.output, marks: tc.marks || 0 })),
-            ...(q.language ? { language: q.language } : {}),
-            ...(q.guidelines ? { guidelines: q.guidelines } : {}),
-          }),
-          ...(q.kind === "theory" && {
+        questions: (test.questions || []).map((q) => {
+          const rawOptions = Array.isArray(q.options) ? q.options : [];
+          const opts = rawOptions.map((opt) => typeof opt === "string" ? opt : (opt?.text ?? ""));
+          if (q.kind === "mcq") {
+            while (opts.length < 4) opts.push("");
+          }
+          return {
+            id: crypto.randomUUID(),
+            // The question's identity in the database. `id` above is only a React
+            // key for this form; `_id` is what every stored student response is
+            // matched against, so it has to survive the edit round-trip or every
+            // answer to this question is orphaned. New questions have none.
+            _id: q._id,
+            kind: q.kind === "theoretical" ? "theory" : q.kind,
+            text: q.text || "",
+            points: q.points ?? 1,
             expectedAnswer: q.expectedAnswer || "",
-          }),
-        })),
+            ...(q.kind === "mcq" && {
+              options: opts,
+              answer: q.answer || "",
+            }),
+            ...(q.kind === "coding" && {
+              examples: (q.examples || []).map((ex) => ({ input: ex.input || "", output: ex.output || "" })),
+              visibleTestCases: (q.visibleTestCases && q.visibleTestCases.length > 0)
+                ? q.visibleTestCases.map((tc) => ({ input: tc.input || "", output: tc.output || "" }))
+                : [{ input: "", output: "" }],
+              hiddenTestCases: (q.hiddenTestCases && q.hiddenTestCases.length > 0)
+                ? q.hiddenTestCases.map((tc) => ({ input: tc.input || "", output: tc.output || "", marks: Number(tc.marks ?? 1) }))
+                : [{ input: "", output: "", marks: 1 }],
+              ...(q.language ? { language: q.language } : {}),
+              ...(q.guidelines ? { guidelines: q.guidelines } : {}),
+            }),
+            ...(q.kind === "theory" && {
+              expectedAnswer: q.expectedAnswer || "",
+            }),
+          };
+        }),
       });
+
+      // Check if test has started
+      const testHasStarted = Boolean(
+        test.hasStarted ||
+        (test.startTime && new Date(test.startTime) <= new Date())
+      );
+      setIsTestStarted(testHasStarted);
+
+      // Populate schedule
+      const formattedStartTime = test.startTime ? formatDateTimeLocal(test.startTime) : "";
+      setAssignmentOptions({
+        startTime: formattedStartTime,
+        duration: test.duration ? String(test.duration) : (test.timeLimit ? String(test.timeLimit) : ""),
+      });
+
+      // Populate batches / assignment mode
+      const mode = test.assignmentMode || test.cohort || "all";
+      setAssignmentMode(mode);
+
+      // Populate selected students
+      const studentIds = (test.selectedStudents || []).map((s) => String(s?._id || s));
+      setSelectedStudents(studentIds);
+
+      // If manual mode, fetch students roster immediately
+      if (mode === "manual") {
+        fetchStudents();
+      }
     } catch (error) {
       console.error("Error fetching test:", error);
       alert("Error loading test data");
@@ -356,6 +438,43 @@ export default function CreateTest() {
       questions: prev.questions.filter((q) => q.id !== id),
     }));
   };
+
+  // Calculate total marks and marks distribution from all questions
+  const { totalMarks, marksDistributionText } = useMemo(() => {
+    let total = 0;
+    const pointsMap = {};
+
+    (form.questions || []).forEach((q) => {
+      let qMarks = 0;
+      if (q.kind === "coding" && Array.isArray(q.hiddenTestCases) && q.hiddenTestCases.length > 0) {
+        const codingMarks = q.hiddenTestCases.reduce(
+          (sum, tc) => sum + (Number(tc?.marks) || 0),
+          0
+        );
+        qMarks = codingMarks > 0 ? codingMarks : (Number(q.points) || 1);
+      } else {
+        const pts = Number(q.points);
+        qMarks = q.points === "" || isNaN(pts) ? 0 : Math.max(0, pts);
+      }
+
+      total += qMarks;
+      pointsMap[qMarks] = (pointsMap[qMarks] || 0) + 1;
+    });
+
+    const sortedPoints = Object.keys(pointsMap)
+      .map(Number)
+      .sort((a, b) => a - b);
+
+    const distributionText =
+      sortedPoints.length > 0
+        ? sortedPoints.map((pts) => `${pointsMap[pts]} × ${pts}m`).join(", ")
+        : "0m";
+
+    return {
+      totalMarks: total,
+      marksDistributionText: distributionText,
+    };
+  }, [form.questions]);
 
   // Handle test type change and validate existing questions
   const handleTestTypeChange = (newType) => {
@@ -549,6 +668,11 @@ export default function CreateTest() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (isTestStarted) {
+      alert("This test has already started and cannot be edited.");
+      return;
+    }
+
     // Check if there are any questions
     if (form.questions.length === 0) {
       alert("Please add at least one question to the test.");
@@ -616,10 +740,18 @@ export default function CreateTest() {
       }
     }
 
+    if (assignmentOptions.duration && Number(assignmentOptions.duration) < Number(form.timeLimit)) {
+      alert(`Duration (${assignmentOptions.duration} minutes) must be greater than or equal to test time limit (${form.timeLimit} minutes).`);
+      return;
+    }
 
     setLoading(true);
 
     try {
+      const startTimeISO = assignmentOptions.startTime
+        ? new Date(assignmentOptions.startTime).toISOString()
+        : null;
+
       const payload = {
         title: capitalizeWords(form.title.trim()),
         subject: form.subject.trim(),
@@ -630,6 +762,11 @@ export default function CreateTest() {
         allowedTabSwitches: Number(form.allowedTabSwitches) || 0,
         shuffleQuestions: Boolean(form.shuffleQuestions),
         sebEnabled: form.sebEnabled !== false,
+        startTime: startTimeISO,
+        duration: assignmentOptions.duration ? Number(assignmentOptions.duration) : Number(form.timeLimit),
+        assignmentMode: assignmentMode,
+        cohort: assignmentMode !== "manual" ? assignmentMode : "",
+        selectedStudents: assignmentMode === "manual" ? selectedStudents : [],
         questions: form.questions.map((q) => ({
           // Only present for questions that came from the database; the server
           // ignores anything that is not already one of this test's own ids.
@@ -760,6 +897,15 @@ export default function CreateTest() {
             <span>Back to Tests</span>
           </button>
         </div>
+
+        {isTestStarted && (
+          <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center gap-3 text-amber-300 text-xs sm:text-sm shadow-sm mb-4">
+            <AlertTriangle className="w-5 h-5 shrink-0 text-amber-400" />
+            <div>
+              <span className="font-semibold text-white">Editing Disabled:</span> This test has already started and cannot be modified.
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Card 1: Basic Test Info */}
@@ -1305,17 +1451,43 @@ export default function CreateTest() {
               </div>
             )}
 
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/[0.06]">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-[#00C4B4]/10 rounded-xl text-[#00C4B4]">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 pb-4 border-b border-white/[0.06]">
+              {/* Left: Section Title & Grouped Question Metadata */}
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-2.5 bg-[#00C4B4]/10 rounded-xl text-[#00C4B4] shrink-0">
                   <FileText className="w-5 h-5" />
                 </div>
-                <div>
-                  <h2 className="text-base font-semibold text-white tracking-tight">Questions</h2>
-                  <p className="text-xs text-slate-400">{form.questions.length} question{form.questions.length !== 1 ? 's' : ''} added</p>
+                <div className="min-w-0">
+                  <h2 className="text-base font-semibold text-white tracking-tight leading-tight">Questions</h2>
+                  {/* Logically grouped metadata badges */}
+                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                    {/* Question Count Badge */}
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-white/5 border border-white/10 text-slate-300 shrink-0">
+                      {form.questions.length} {form.questions.length === 1 ? "question" : "questions"}
+                    </span>
+
+                    {/* Total Marks Badge */}
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-[#133B42] border border-[#00C4B4]/30 text-[#00C4B4] shrink-0">
+                      <span className="text-slate-300 font-normal">Total:</span>
+                      <span className="text-white font-bold">{totalMarks} {totalMarks === 1 ? "mark" : "marks"}</span>
+                    </span>
+
+                    {/* Marks Distribution Badge */}
+                    {form.questions.length > 0 && (
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-[#181A22] border border-white/10 text-slate-300 shrink-0"
+                        title={`Marks Distribution: ${marksDistributionText}`}
+                      >
+                        <span className="text-[#7E8594]">Dist:</span>
+                        <span className="text-[#FBBF24] font-semibold">{marksDistributionText}</span>
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
-              <div className="flex gap-2 flex-wrap items-center">
+
+              {/* Right: Action Buttons (Add MCQ, Add Coding, Add Theory) */}
+              <div className="flex items-center gap-2 shrink-0 self-start sm:self-center">
                 {getAllowedQuestionTypes(form.type).map((questionType) => {
                   const buttonConfig = {
                     mcq: {
@@ -1340,7 +1512,7 @@ export default function CreateTest() {
                       key={questionType}
                       type="button"
                       onClick={() => addQuestion(questionType)}
-                      className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium border transition-all cursor-pointer ${config.className}`}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer shrink-0 whitespace-nowrap active:scale-95 shadow-sm ${config.className}`}
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>{config.label}</span>
@@ -1461,13 +1633,12 @@ export default function CreateTest() {
                             {question.text.length} chars
                           </span>
                         </div>
-                        <textarea
+                        <AutoResizeTextarea
                           value={question.text}
                           onChange={(e) =>
                             updateQuestion(question.id, "text", e.target.value)
                           }
-                          className="w-full p-3 bg-[#181A22] border border-white/10 rounded-xl focus:border-[#00C4B4] focus:ring-1 focus:ring-[#00C4B4] outline-none text-white text-sm transition-all resize-none"
-                          rows={3}
+                          className="w-full p-3 bg-[#181A22] border border-white/10 rounded-xl focus:border-[#00C4B4] focus:ring-1 focus:ring-[#00C4B4] outline-none text-white text-sm transition-colors"
                           placeholder="Enter your question here..."
                           required
                         />
@@ -1487,10 +1658,11 @@ export default function CreateTest() {
                               onChange={(e) =>
                                 updateQuestion(question.id, "points", e.target.value)
                               }
-                              className="w-full p-2.5 bg-[#181A22] border border-white/10 rounded-xl focus:border-[#00C4B4] focus:ring-1 focus:ring-[#00C4B4] outline-none text-white text-sm transition-all"
+                              onWheel={(e) => e.currentTarget.blur()}
+                              className="w-full p-2.5 bg-[#181A22] border border-white/10 rounded-xl focus:border-[#00C4B4] focus:ring-1 focus:ring-[#00C4B4] outline-none text-white text-sm transition-all [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                               placeholder="1"
                             />
-                            <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-500 text-xs">
+                            <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-500 text-xs pointer-events-none">
                               pts
                             </div>
                           </div>
@@ -1816,16 +1988,22 @@ export default function CreateTest() {
           <div className="flex justify-end pt-2 pb-10">
             <button
               type="submit"
-              disabled={loading}
-              className="px-7 py-3 bg-white hover:bg-slate-100 text-slate-950 font-semibold rounded-xl text-sm transition-all shadow-md active:scale-95 disabled:opacity-50 cursor-pointer"
+              disabled={loading || isTestStarted}
+              className={`px-7 py-3 font-semibold rounded-xl text-sm transition-all shadow-md active:scale-95 cursor-pointer ${
+                isTestStarted
+                  ? "bg-slate-700 text-slate-400 opacity-60 cursor-not-allowed"
+                  : "bg-white hover:bg-slate-100 text-slate-950 disabled:opacity-50"
+              }`}
             >
               {loading
                 ? isEdit
                   ? "Updating..."
                   : "Creating..."
-                : isEdit
-                  ? "Update Test"
-                  : "Create Test"}
+                : isTestStarted
+                  ? "Test Started (Editing Disabled)"
+                  : isEdit
+                    ? "Update Test"
+                    : "Create Test"}
             </button>
           </div>
         </form>

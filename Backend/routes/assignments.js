@@ -1400,6 +1400,7 @@ router.post("/assign-cohort", authenticateToken, requireRole(["admin", "Mentor"]
           startTime: startTimeDate,
           duration: Number(duration),
           deadline,
+          cohort: cohortDef.key,
           status: "Assigned"
         });
         studentIdsForSocket.push(studentIdStr);

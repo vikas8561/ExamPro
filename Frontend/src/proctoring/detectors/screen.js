@@ -72,6 +72,7 @@ export function createScreenDetector({
   getStream,
   detectSecondMonitor: enabled = true,
   onShareStopped,
+  onSecondMonitor,
 }) {
   let timer = null;
   let running = false;
@@ -138,10 +139,16 @@ export function createScreenDetector({
 
     if (enabled) {
       const monitors = detectSecondMonitor();
-      // Report only when it changes to "yes", and only once — plugging a second
-      // screen in mid-exam is the event worth flagging.
+      // Report when it changes to "yes" — plugging a second screen in mid-exam
+      // is the event worth flagging. Also block the exam until it is gone.
       if (monitors === "yes" && lastMonitorState !== "yes") {
         report("second_monitor_detected", "A second display was detected");
+        onSecondMonitor?.();
+      }
+      // When the second display is disconnected, tell the provider so it can
+      // unblock. The provider re-checks before actually unblocking.
+      if (monitors !== "yes" && lastMonitorState === "yes") {
+        onSecondMonitor?.();
       }
       lastMonitorState = monitors;
     }
@@ -159,6 +166,7 @@ export function createScreenDetector({
       // so the reviewer sees the full picture of the environment.
       if (lastMonitorState === "yes") {
         report("second_monitor_detected", "A second display was connected when the test began");
+        onSecondMonitor?.();
       }
 
       // The track's own end event is faster than polling when it works; the

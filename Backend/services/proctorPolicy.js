@@ -108,13 +108,10 @@ const VIOLATION_WEIGHTS = {
   // `visibilitychange`, which IS charged, so little enforcement is lost.
   window_blur: 0,
 
-  // Connecting an external monitor in the middle of the exam. Charged since
-  // exams were limited to Chrome and Edge (2026-10-03): `screen.isExtended` is
-  // spec-defined there and answers the same on Windows, macOS, Linux and
-  // ChromeOS. It used to be weight 0 because Firefox, Safari and Brave could not
-  // answer, and those can no longer sit an exam. Scored 1, not 2, for the same
-  // reason as a stopped screen share: the exam is also paused until the monitor
-  // is gone, and the pause is the main enforcement.
+  // A second display is a common and effective way to cheat. Charged at weight 1
+  // and the exam is blocked until the display is disconnected. Brave's anti-
+  // fingerprinting may withhold `screen.isExtended`; in that case the detector
+  // reports "unknown" and nobody is accused.
   second_monitor_detected: 1,
 
   // Heuristic pattern-matching on injected DOM. Browser extensions a student

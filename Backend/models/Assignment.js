@@ -78,6 +78,10 @@ const AssignmentSchema = new mongoose.Schema({
     enum: ["Assigned", "In Progress", "Completed", "Overdue", "Cancelled"],
     default: "Assigned"
   },
+  cohort: {
+    type: String,
+    default: null
+  },
   startTime: {
     type: Date,
     required: true
