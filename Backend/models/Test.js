@@ -104,6 +104,12 @@ const TestSchema = new mongoose.Schema(
       default: "Draft",
     },
     questions: { type: [QuestionSchema], default: [] },
+    // Scheduling & assignment metadata
+    startTime: { type: Date, default: null },
+    duration: { type: Number, default: null },
+    assignmentMode: { type: String, default: "all" },
+    cohort: { type: String, default: "" },
+    selectedStudents: [{ type: mongoose.Schema.Types.ObjectId, ref: "Student" }],
     // Created by an admin or a mentor, so no single ref fits: hydrate via
     // services/principals.authorMap.
     createdBy: { type: mongoose.Schema.Types.ObjectId, required: true },

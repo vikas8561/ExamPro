@@ -544,27 +544,28 @@ export default function AdminMentorManagement() {
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Top Header Bar */}
         <div
-          className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 mb-6 gap-4"
+          className="flex flex-col md:flex-row md:items-center justify-between pb-5 mb-6 gap-4"
           style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.05)", minHeight: "3.5rem" }}
         >
           {/* Title & Badge */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 rounded-xl bg-[#133B42] border border-[#00C4B4]/25 flex items-center justify-center flex-shrink-0 shadow-sm">
               <UserCheck className="w-5 h-5 text-[#00C4B4]" />
             </div>
-            <div>
-              <h1 className="text-lg sm:text-xl font-bold text-white tracking-tight">
+            <div className="min-w-0">
+              <h1 className="text-lg sm:text-xl font-bold text-white tracking-tight whitespace-nowrap">
                 Mentor Management
               </h1>
-              <p className="text-xs text-[#7E8594] mt-0.5">
+              <p className="text-xs text-[#7E8594] mt-0.5 truncate">
                 Assign subjects & batches, regulate test authoring permissions, and restrict student access
               </p>
             </div>
           </div>
 
-          {/* Search & Refresh */}
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="relative w-full sm:w-72">
+          {/* Search, Refresh & Create Mentor Button */}
+          <div className="flex items-center gap-2.5 sm:gap-3 w-full md:w-auto shrink-0">
+            {/* Flexible Search Input */}
+            <div className="relative flex-1 min-w-[130px] sm:min-w-[150px] md:w-52 lg:w-72 md:flex-initial">
               <Search className="w-4 h-4 text-[#7E8594] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
@@ -587,7 +588,7 @@ export default function AdminMentorManagement() {
               onClick={fetchInitialData}
               disabled={loading}
               title="Refresh Mentors"
-              className="p-2 rounded-xl bg-[#20242D] border border-white/[0.06] hover:bg-white/[0.04] text-[#7E8594] hover:text-white transition-colors cursor-pointer"
+              className="p-2 rounded-xl bg-[#20242D] border border-white/[0.06] hover:bg-white/[0.04] text-[#7E8594] hover:text-white transition-colors cursor-pointer shrink-0"
             >
               <RotateCcw className={`w-4 h-4 ${loading ? "animate-spin text-[#00C4B4]" : ""}`} />
             </button>
@@ -595,7 +596,7 @@ export default function AdminMentorManagement() {
             {/* Create Mentor Button */}
             <button
               onClick={openCreateModal}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-white hover:bg-slate-100 text-slate-950 shadow-sm transition-all hover:scale-105 active:scale-95 cursor-pointer"
+              className="inline-flex items-center justify-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-white hover:bg-slate-100 text-slate-950 shadow-sm transition-all hover:scale-105 active:scale-95 cursor-pointer shrink-0 whitespace-nowrap"
             >
               <UserPlus className="w-4 h-4 stroke-[2.5]" />
               <span>Create Mentor</span>

@@ -24,6 +24,14 @@ import JsonQuestionUploader from "../components/JsonQuestionUploader";
 import QuestionText from "../components/QuestionText";
 import Editor from "@monaco-editor/react";
 
+function formatDateTimeLocal(dateInput) {
+  if (!dateInput) return "";
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 const emptyQuestion = (kind) => ({
   id: crypto.randomUUID(),
   kind,
@@ -95,6 +103,7 @@ export default function CreateTest() {
   // Whether SEB is switched on system-wide. null while loading or if the lookup
   // failed — the switch below still works, it just cannot explain itself.
   const [sebGloballyRequired, setSebGloballyRequired] = useState(null);
+  const [isTestStarted, setIsTestStarted] = useState(false);
   const nav = useNavigate();
 
   // ── Role-awareness: detect if the user is a Mentor or Admin ──
@@ -125,11 +134,12 @@ export default function CreateTest() {
         setUserRole(role);
 
         if (String(role).toLowerCase() === "mentor") {
-          // If stored user already has assigned subjects
+          // If stored user already has assigned subjects. "ALL" is not a
+          // subject; the fetch below expands it into every real one.
           if (Array.isArray(user.subjects) && user.subjects.length > 0) {
-            const list = user.subjects.map((s) =>
-              typeof s === "string" ? { _id: s, name: s } : s
-            );
+            const list = user.subjects
+              .map((s) => (typeof s === "string" ? { _id: s, name: s } : s))
+              .filter((s) => (s.name || "").trim().toLowerCase() !== "all");
             setMentorSubjectList(list);
             setMentorSubjects(
               list.map((s) => (s.name || "").toLowerCase()).filter(Boolean)
@@ -204,49 +214,82 @@ export default function CreateTest() {
       const test = await apiRequest(`/tests/${editId}`);
       setAllowedTabSwitchesError(""); // Clear any previous errors
       setForm({
-        title: capitalizeWords(test.title || ""),
+        title: test.title || "",
         subject: test.subject || "",
-        type: test.type,
-        instructions: test.instructions,
-        timeLimit: test.timeLimit,
-        negativeMarkingPercent: test.negativeMarkingPercent || 0,
+        type: test.type || "mcq",
+        instructions: test.instructions || "",
+        timeLimit: test.timeLimit || 30,
+        negativeMarkingPercent: Number(test.negativeMarkingPercent) || 0,
         allowedTabSwitches: test.allowedTabSwitches ?? "",
         shuffleQuestions: Boolean(test.shuffleQuestions),
         // Tests saved before this switch existed have no value and follow the
         // system-wide setting, which is what "on" means.
         sebEnabled: test.sebEnabled !== false,
-        questions: test.questions.map((q) => ({
-          id: crypto.randomUUID(),
-          // The question's identity in the database. `id` above is only a React
-          // key for this form; `_id` is what every stored student response is
-          // matched against, so it has to survive the edit round-trip or every
-          // answer to this question is orphaned. New questions have none.
-          _id: q._id,
-          kind: q.kind === "theoretical" ? "theory" : q.kind,
-          text: q.text,
-          points: q.points,
-          expectedAnswer: q.expectedAnswer || "",
-          ...(q.kind === "mcq" && {
-            options: q.options.map((opt) => opt.text),
-            answer: q.answer,
-          }),
-          ...(false && { // MSQ removed
-            options: q.options.map((opt) => opt.text),
-            answers: q.answers || [],
-          }),
-
-          ...(q.kind === "coding" && {
-            examples: q.examples || [],
-            visibleTestCases: (q.visibleTestCases || []).map(tc => ({ input: tc.input, output: tc.output })),
-            hiddenTestCases: (q.hiddenTestCases || []).map(tc => ({ input: tc.input, output: tc.output, marks: tc.marks || 0 })),
-            ...(q.language ? { language: q.language } : {}),
-            ...(q.guidelines ? { guidelines: q.guidelines } : {}),
-          }),
-          ...(q.kind === "theory" && {
+        questions: (test.questions || []).map((q) => {
+          const rawOptions = Array.isArray(q.options) ? q.options : [];
+          const opts = rawOptions.map((opt) => typeof opt === "string" ? opt : (opt?.text ?? ""));
+          if (q.kind === "mcq") {
+            while (opts.length < 4) opts.push("");
+          }
+          return {
+            id: crypto.randomUUID(),
+            // The question's identity in the database. `id` above is only a React
+            // key for this form; `_id` is what every stored student response is
+            // matched against, so it has to survive the edit round-trip or every
+            // answer to this question is orphaned. New questions have none.
+            _id: q._id,
+            kind: q.kind === "theoretical" ? "theory" : q.kind,
+            text: q.text || "",
+            points: q.points ?? 1,
             expectedAnswer: q.expectedAnswer || "",
-          }),
-        })),
+            ...(q.kind === "mcq" && {
+              options: opts,
+              answer: q.answer || "",
+            }),
+            ...(q.kind === "coding" && {
+              examples: (q.examples || []).map((ex) => ({ input: ex.input || "", output: ex.output || "" })),
+              visibleTestCases: (q.visibleTestCases && q.visibleTestCases.length > 0)
+                ? q.visibleTestCases.map((tc) => ({ input: tc.input || "", output: tc.output || "" }))
+                : [{ input: "", output: "" }],
+              hiddenTestCases: (q.hiddenTestCases && q.hiddenTestCases.length > 0)
+                ? q.hiddenTestCases.map((tc) => ({ input: tc.input || "", output: tc.output || "", marks: Number(tc.marks ?? 1) }))
+                : [{ input: "", output: "", marks: 1 }],
+              ...(q.language ? { language: q.language } : {}),
+              ...(q.guidelines ? { guidelines: q.guidelines } : {}),
+            }),
+            ...(q.kind === "theory" && {
+              expectedAnswer: q.expectedAnswer || "",
+            }),
+          };
+        }),
       });
+
+      // Check if test has started
+      const testHasStarted = Boolean(
+        test.hasStarted ||
+        (test.startTime && new Date(test.startTime) <= new Date())
+      );
+      setIsTestStarted(testHasStarted);
+
+      // Populate schedule
+      const formattedStartTime = test.startTime ? formatDateTimeLocal(test.startTime) : "";
+      setAssignmentOptions({
+        startTime: formattedStartTime,
+        duration: test.duration ? String(test.duration) : (test.timeLimit ? String(test.timeLimit) : ""),
+      });
+
+      // Populate batches / assignment mode
+      const mode = test.assignmentMode || test.cohort || "all";
+      setAssignmentMode(mode);
+
+      // Populate selected students
+      const studentIds = (test.selectedStudents || []).map((s) => String(s?._id || s));
+      setSelectedStudents(studentIds);
+
+      // If manual mode, fetch students roster immediately
+      if (mode === "manual") {
+        fetchStudents();
+      }
     } catch (error) {
       console.error("Error fetching test:", error);
       alert("Error loading test data");
@@ -400,6 +443,17 @@ export default function CreateTest() {
           ? {
             ...q,
             options: q.options.map((opt, i) => (i === index ? value : opt)),
+            // The answer is stored as the option's text, so editing the text of
+            // the correct option must carry the answer with it -- otherwise it
+            // matches no option and every student is marked wrong. Only when
+            // that text is unique: with duplicates we cannot tell which one
+            // the radio meant.
+            answer:
+              q.answer !== "" &&
+              q.answer === q.options[index] &&
+              q.options.filter((opt) => opt === q.answer).length === 1
+                ? value
+                : q.answer,
           }
           : q
       ),
@@ -534,6 +588,11 @@ export default function CreateTest() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (isTestStarted) {
+      alert("This test has already started and cannot be edited.");
+      return;
+    }
+
     // Check if there are any questions
     if (form.questions.length === 0) {
       alert("Please add at least one question to the test.");
@@ -553,6 +612,21 @@ export default function CreateTest() {
       if ((form.type === "coding" || form.type === "mixed") && !mentorCanCreateCoding) {
         alert("Only mentors assigned to DSA or Interview Preparation can create coding or MCQ + Coding tests.");
         return;
+      }
+    }
+
+    // Validate MCQ options and answers
+    for (let i = 0; i < form.questions.length; i++) {
+      const q = form.questions[i];
+      if (q.kind === "mcq") {
+        if (!q.answer) {
+          alert(`Question ${i + 1}: Please select the correct answer.`);
+          return;
+        }
+        if (q.options.some((opt) => !opt.trim())) {
+          alert(`Question ${i + 1}: Please fill in all options.`);
+          return;
+        }
       }
     }
 
@@ -576,19 +650,30 @@ export default function CreateTest() {
     // Validate Start Time
     if (assignmentOptions.startTime) {
       const selectedTime = new Date(assignmentOptions.startTime);
-      const currentTime = new Date();
+      if (isNaN(selectedTime.getTime())) {
+        alert("Please pick a valid Start Time.");
+        return;
+      }
       // Add a small grace period (e.g. 1 minute) to allow for "current minute" selection
       // or slight delays between selection and submission
-      if (selectedTime < new Date(currentTime.getTime() - 60000)) {
+      if (!isEdit && selectedTime.getTime() < Date.now() - 60000) {
         alert("Start Time cannot be in the past. Please select a current or future time.");
         return;
       }
     }
 
+    if (assignmentOptions.duration && Number(assignmentOptions.duration) < Number(form.timeLimit)) {
+      alert(`Duration (${assignmentOptions.duration} minutes) must be greater than or equal to test time limit (${form.timeLimit} minutes).`);
+      return;
+    }
 
     setLoading(true);
 
     try {
+      const startTimeISO = assignmentOptions.startTime
+        ? new Date(assignmentOptions.startTime).toISOString()
+        : null;
+
       const payload = {
         title: capitalizeWords(form.title.trim()),
         subject: form.subject.trim(),
@@ -599,6 +684,11 @@ export default function CreateTest() {
         allowedTabSwitches: Number(form.allowedTabSwitches) || 0,
         shuffleQuestions: Boolean(form.shuffleQuestions),
         sebEnabled: form.sebEnabled !== false,
+        startTime: startTimeISO,
+        duration: assignmentOptions.duration ? Number(assignmentOptions.duration) : Number(form.timeLimit),
+        assignmentMode: assignmentMode,
+        cohort: assignmentMode !== "manual" ? assignmentMode : "",
+        selectedStudents: assignmentMode === "manual" ? selectedStudents : [],
         questions: form.questions.map((q) => ({
           // Only present for questions that came from the database; the server
           // ignores anything that is not already one of this test's own ids.
@@ -645,9 +735,11 @@ export default function CreateTest() {
         });
 
         // Always assign test to students after creation (async - don't wait)
-        // The startTime is already in ISO format (UTC) from the DateTimePicker
-        // which converts IST to UTC automatically
-        const startTimeISO = assignmentOptions.startTime ? new Date(assignmentOptions.startTime).toISOString() : new Date().toISOString();
+        // The picker's value is IST wall time ("2026-10-07T14:30"); it is
+        // converted to the UTC instant here, whatever the device's timezone.
+        const startTimeISO = assignmentOptions.startTime
+          ? new Date(assignmentOptions.startTime).toISOString()
+          : new Date().toISOString();
 
         // Start assignment process asynchronously - don't wait for it to complete
         // This makes test creation much faster
@@ -727,6 +819,15 @@ export default function CreateTest() {
             <span>Back to Tests</span>
           </button>
         </div>
+
+        {isTestStarted && (
+          <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center gap-3 text-amber-300 text-xs sm:text-sm shadow-sm mb-4">
+            <AlertTriangle className="w-5 h-5 shrink-0 text-amber-400" />
+            <div>
+              <span className="font-semibold text-white">Editing Disabled:</span> This test has already started and cannot be modified.
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Card 1: Basic Test Info */}
@@ -1134,7 +1235,7 @@ export default function CreateTest() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-[#8E95A5] mb-2">
-                      Start Time *
+                      Start Time (IST) *
                     </label>
                     <input
                       type="datetime-local"
@@ -1145,8 +1246,9 @@ export default function CreateTest() {
                           startTime: e.target.value,
                         }))
                       }
-                      className="w-full p-3 bg-[#14161D] border border-white/[0.08] rounded-xl text-xs text-white focus:border-[#00C4B4] focus:ring-1 focus:ring-[#00C4B4] outline-none transition-all"
-                      min={new Date().toISOString().slice(0, 16)}
+                      className="w-full p-3 bg-[#14161D] border border-white/[0.08] rounded-xl text-xs text-white focus:border-[#00C4B4] focus:ring-1 focus:ring-[#00C4B4] outline-none transition-all disabled:opacity-50"
+                      min={!isEdit ? formatDateTimeLocal(new Date()) : undefined}
+                      disabled={isTestStarted}
                       required
                     />
                   </div>
@@ -1773,16 +1875,22 @@ export default function CreateTest() {
           <div className="flex justify-end pt-2 pb-10">
             <button
               type="submit"
-              disabled={loading}
-              className="px-7 py-3 bg-white hover:bg-slate-100 text-slate-950 font-semibold rounded-xl text-sm transition-all shadow-md active:scale-95 disabled:opacity-50 cursor-pointer"
+              disabled={loading || isTestStarted}
+              className={`px-7 py-3 font-semibold rounded-xl text-sm transition-all shadow-md active:scale-95 cursor-pointer ${
+                isTestStarted
+                  ? "bg-slate-700 text-slate-400 opacity-60 cursor-not-allowed"
+                  : "bg-white hover:bg-slate-100 text-slate-950 disabled:opacity-50"
+              }`}
             >
               {loading
                 ? isEdit
                   ? "Updating..."
                   : "Creating..."
-                : isEdit
-                  ? "Update Test"
-                  : "Create Test"}
+                : isTestStarted
+                  ? "Test Started (Editing Disabled)"
+                  : isEdit
+                    ? "Update Test"
+                    : "Create Test"}
             </button>
           </div>
         </form>
