@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
+import { formatDateIST, formatDateTimeIST } from "../utils/istTime";
 import { useNavigate } from "react-router-dom";
 import { API_BASE_URL } from "../config/api";
 import "../styles/StudentDashboard.mobile.css";
@@ -107,7 +108,7 @@ export default function MentorAssignments() {
       const subject = (assignment.testId?.subject || "").toLowerCase();
       const type = (assignment.testId?.type || "").toLowerCase();
       const dateStr = assignment.createdAt
-        ? new Date(assignment.createdAt).toLocaleDateString().toLowerCase()
+        ? formatDateIST(assignment.createdAt).toLowerCase()
         : "";
       return (
         title.includes(searchLower) ||
@@ -476,11 +477,7 @@ export default function MentorAssignments() {
                         : 0;
 
                     const dateFormatted = assignment.createdAt
-                      ? new Date(assignment.createdAt).toLocaleDateString(undefined, {
-                          year: "numeric",
-                          month: "short",
-                          day: "numeric",
-                        })
+                      ? formatDateIST(assignment.createdAt)
                       : "N/A";
 
                     return (
@@ -907,31 +904,16 @@ export default function MentorAssignments() {
                               {/* Start Time */}
                               <td className="py-3.5 px-4 hidden sm:table-cell text-xs text-[#8E95A5]">
                                 {assignment.startedAt
-                                  ? new Date(assignment.startedAt).toLocaleString(undefined, {
-                                      month: "short",
-                                      day: "numeric",
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    })
+                                  ? formatDateTimeIST(assignment.startedAt)
                                   : "N/A"}
                               </td>
 
                               {/* Submitted At */}
                               <td className="py-3.5 px-4 text-xs text-[#8E95A5]">
                                 {assignment.submittedAt
-                                  ? new Date(assignment.submittedAt).toLocaleString(undefined, {
-                                      month: "short",
-                                      day: "numeric",
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    })
+                                  ? formatDateTimeIST(assignment.submittedAt)
                                   : assignment.completedAt
-                                  ? new Date(assignment.completedAt).toLocaleString(undefined, {
-                                      month: "short",
-                                      day: "numeric",
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    })
+                                  ? formatDateTimeIST(assignment.completedAt)
                                   : "N/A"}
                               </td>
 

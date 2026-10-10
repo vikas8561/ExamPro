@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatIST } from '../utils/istTime';
 import {
     LineChart,
     Line,
@@ -71,7 +72,7 @@ const DashboardAnalytics = ({ assignments = [] }) => {
             const when = test.completedAt || test.startTime;
             return {
                 name: when
-                    ? new Date(when).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+                    ? formatIST(when, { month: 'short', day: 'numeric' })
                     : '',
                 fullName: test.testId?.title || 'Unknown Test',
                 score: test.scorePercent,

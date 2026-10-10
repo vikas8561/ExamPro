@@ -32,6 +32,9 @@ router.get("/assignments", authenticateToken, requireRole(["Mentor", "Admin"]), 
       .skip(skip)
       .lean(); // Use lean() for 2x faster queries
 
+    // Each attempt's owner, read before attach() replaces the id with a record.
+    const ownerByAssignment = new Map(assignments.map((a) => [String(a._id), String(a.userId)]));
+
     // Filter out assignments where testId is null (due to the match filter above)
     // then resolve each student from the university's database.
     const filteredAssignments = await attach(
@@ -47,7 +50,7 @@ router.get("/assignments", authenticateToken, requireRole(["Mentor", "Admin"]), 
     const submissions = await TestSubmission.find({
       assignmentId: { $in: assignmentIds }
     })
-      .select('assignmentId submittedAt score autoScore')
+      .select('assignmentId userId submittedAt score autoScore')
       .lean();
     
     // console.log(`📊 Found ${submissions.length} submissions in ${Date.now() - startTime}ms`);
@@ -55,6 +58,10 @@ router.get("/assignments", authenticateToken, requireRole(["Mentor", "Admin"]), 
     // STEP 3: Create lookup map
     const submissionMap = new Map();
     submissions.forEach(sub => {
+      // Only the owner's row counts. A row someone else wrote against this
+      // attempt (possible before submit and autosave checked ownership) must
+      // not stand in for the student's submission.
+      if (String(sub.userId) !== ownerByAssignment.get(String(sub.assignmentId))) return;
       submissionMap.set(sub.assignmentId.toString(), {
         submittedAt: sub.submittedAt,
         score: sub.score || sub.autoScore || null

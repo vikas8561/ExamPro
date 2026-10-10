@@ -1,4 +1,6 @@
 import React, { useEffect, useState, useMemo } from "react";
+import { formatIST, istDayKey } from "../utils/istTime";
+import { serverNow } from "../utils/serverClock";
 import { Link } from "react-router-dom";
 import { API_BASE_URL } from "../config/api";
 import "../styles/StudentDashboard.mobile.css";
@@ -87,21 +89,23 @@ export default function Dashboard() {
 
   // 1. User Growth (Last 6 Months)
   const userGrowthData = useMemo(() => {
+    // Months as they fall in IST, counted back from the server's today, so a
+    // sign-up just after midnight in India lands in the right month whatever
+    // the viewer's device is set to.
     const months = [];
-    const today = new Date();
+    const [thisYear, thisMonth] = istDayKey(serverNow()).split("-").map(Number);
     for (let i = 5; i >= 0; i--) {
-      const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      const first = new Date(Date.UTC(thisYear, thisMonth - 1 - i, 15));
       months.push({
-        name: d.toLocaleString("default", { month: "short" }),
-        key: `${d.getFullYear()}-${d.getMonth()}`,
+        name: formatIST(first, { month: "short" }),
+        key: istDayKey(first).slice(0, 7),
         students: 0,
       });
     }
 
     users.forEach((user) => {
       if (!user.createdAt) return;
-      const d = new Date(user.createdAt);
-      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      const key = istDayKey(user.createdAt).slice(0, 7);
       const monthData = months.find((m) => m.key === key);
       if (monthData) {
         monthData.students = (monthData.students || 0) + 1;
@@ -156,16 +160,10 @@ export default function Dashboard() {
   // 5. Counts & Statistics
   const activeTestsCount = tests.filter((t) => t.status === "Active").length;
   const pendingReviewsCount = reviews.filter((r) => r.status === "Pending").length;
-  const usersThisMonth = users.filter((u) => {
-    const d = new Date(u.createdAt);
-    const now = new Date();
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  }).length;
-  const testsThisMonth = tests.filter((t) => {
-    const d = new Date(t.createdAt);
-    const now = new Date();
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  }).length;
+  // "This month" is the current month in IST, by the server's clock.
+  const thisMonthIST = istDayKey(serverNow()).slice(0, 7);
+  const usersThisMonth = users.filter((u) => istDayKey(u.createdAt).slice(0, 7) === thisMonthIST).length;
+  const testsThisMonth = tests.filter((t) => istDayKey(t.createdAt).slice(0, 7) === thisMonthIST).length;
 
   const avgCohortScore =
     testPerformanceData.length > 0
@@ -565,10 +563,7 @@ export default function Dashboard() {
                     </div>
 
                     <span className="text-[10px] text-[#7E8594] whitespace-nowrap flex-shrink-0">
-                      {new Date(item.date).toLocaleDateString(undefined, {
-                        month: "short",
-                        day: "numeric",
-                      })}
+                      {formatIST(item.date, { month: "short", day: "numeric" })}
                     </span>
                   </div>
                 ))

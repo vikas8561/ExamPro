@@ -2,6 +2,7 @@ const ProctorSession = require("../models/ProctorSession");
 const Assignment = require("../models/Assignment");
 const Test = require("../models/Test");
 const policyService = require("../services/proctorPolicy");
+const browserRequirement = require("../services/browserRequirement");
 
 /**
  * The lock on the door.
@@ -42,7 +43,10 @@ function findAssignmentId(req) {
  * not apply here at all — an admin or mentor is asking, or it is a practice
  * test — and the request proceeds untouched.
  */
-async function resolveProctorStatus(req, { allowTerminated = false } = {}) {
+async function resolveProctorStatus(
+  req,
+  { allowTerminated = false, assignmentId: explicitId = null, checkDisplay = false } = {}
+) {
   const role = String(req.user?.role || "").toLowerCase();
 
   // Admins and mentors author and review tests; proctoring is not about them.
@@ -50,7 +54,10 @@ async function resolveProctorStatus(req, { allowTerminated = false } = {}) {
     return { required: false, ok: true, reason: "privileged_role" };
   }
 
-  const assignmentId = findAssignmentId(req);
+  // A caller that has already resolved the assignment (the coding routes accept
+  // a testId instead of an assignmentId) passes it explicitly, so the check
+  // cannot be skipped just because the request body named it differently.
+  const assignmentId = explicitId ? String(explicitId) : findAssignmentId(req);
   if (!assignmentId) {
     // No assignment in the request means this is not an exam route in the sense
     // we guard. Let the route's own validation deal with it.
@@ -65,9 +72,13 @@ async function resolveProctorStatus(req, { allowTerminated = false } = {}) {
     return { required: false, ok: true, reason: "assignment_not_found" };
   }
 
-  // Not the caller's exam — the route's own ownership check will reject it.
+  // Not the caller's exam. This used to return `required: false, ok: true` and
+  // leave the refusal to the route -- but the submit route never refused, so any
+  // student could finalise another student's live attempt with their own
+  // answers. A guard that waves a stranger through is not a guard; refuse here,
+  // whatever the route does.
   if (String(assignment.userId) !== String(req.user.userId)) {
-    return { required: false, ok: true, reason: "not_owner" };
+    return { required: true, ok: false, reason: "not_owner", assignmentId };
   }
 
   const test = await Test.findById(assignment.testId)
@@ -119,7 +130,42 @@ async function resolveProctorStatus(req, { allowTerminated = false } = {}) {
     return { required: true, ok: false, reason: sebReason, session, assignmentId };
   }
 
+  const displayReason = checkDisplay ? displayFailureReason(session, req) : null;
+  if (displayReason) {
+    return { required: true, ok: false, reason: displayReason, session, assignmentId };
+  }
+
   return { required: true, ok: true, reason: "active", session, assignmentId };
+}
+
+/**
+ * Is the external-monitor rule stopping this request? A reason string, or null.
+ *
+ * Asked only by the routes that hand out the question paper -- never by the
+ * ones that save answers or hand the paper in. The rule is that an exam cannot
+ * *start* with a second monitor attached; once it is running, the exam page
+ * pauses itself when one appears, and refusing autosave or submit on top of
+ * that would only risk losing work the student did legitimately.
+ *
+ * Two checks, both against the session the rule was frozen into:
+ *   - this request comes from a browser the rule allows (a session opened in
+ *     Chrome cannot have its paper fetched from Firefox), and
+ *   - the page's last display report said one screen.
+ */
+function displayFailureReason(session, req) {
+  if (session?.display?.enforced !== true) return null;
+
+  const identity = browserRequirement.identifyBrowser(req.headers || {});
+  const rule = session.policy?.requireBrowser || {};
+  const verdict = browserRequirement.checkBrowser(identity, {
+    allowedFamilies: Array.isArray(rule.families) ? rule.families : undefined,
+    minMajor: Number.isFinite(rule.minMajor) ? rule.minMajor : undefined,
+  });
+  if (!verdict.ok) return verdict.code;
+
+  if (session.display.state === "multiple") return "external_display";
+  if (session.display.state !== "single") return "display_unverified";
+  return null;
 }
 
 /**
@@ -165,6 +211,55 @@ function sebFailureReason(session, { allowStale = false } = {}) {
 }
 
 /**
+ * The reply for a request the proctoring rules refuse: `{ status, body }`.
+ *
+ * Shared by the guard below and by routes that run the same check themselves
+ * (routes/coding.js), so a refusal reads the same wherever it comes from.
+ */
+function proctorRefusal(status) {
+  // Someone else's attempt is an access problem, not a proctoring one.
+  // Answered without `proctoringRequired`, so the exam page does not offer
+  // a "start proctoring" or "reopen in SEB" screen that could never help.
+  if (status.reason === "not_owner") {
+    return {
+      status: 403,
+      body: { message: "This assignment does not belong to you.", reason: "not_owner", code: "not_owner" },
+    };
+  }
+
+  // Stable `reason` codes, not message text: the frontend used to match on
+  // wording and matched the wrong string. See routes/assignments.js.
+  const MESSAGES = {
+    terminated: "This attempt was ended by the proctoring system.",
+    ended: "This attempt has already been handed in.",
+    seb_required:
+      "This test must be taken in Safe Exam Browser. Please start it again from your assignments page.",
+    seb_stale:
+      "Safe Exam Browser has stopped responding. Return to the exam window in Safe Exam Browser to continue.",
+    external_display: browserRequirement.DISPLAY_MESSAGES.multiple,
+    display_unverified: browserRequirement.DISPLAY_MESSAGES.unverified,
+    browser_unsupported: "This test can only be taken in Google Chrome or Microsoft Edge.",
+    browser_outdated: "Update Google Chrome or Microsoft Edge to the latest version to take this test.",
+    browser_mobile: "This test needs a laptop or desktop computer with Google Chrome or Microsoft Edge.",
+  };
+
+  return {
+    status: 403,
+    body: {
+      message:
+        MESSAGES[status.reason] ||
+        "This test must be taken with proctoring active. Please start the test from your assignments page.",
+      proctoringRequired: true,
+      // Lets the exam page show a "reopen in Safe Exam Browser" screen rather
+      // than a generic proctoring error.
+      sebRequired: status.reason === "seb_required" || status.reason === "seb_stale",
+      reason: status.reason,
+      code: status.reason,
+    },
+  };
+}
+
+/**
  * Hard guard. Refuses the request unless proctoring was properly started.
  *
  * Note what is deliberately NOT checked here: how recently the browser last
@@ -184,26 +279,8 @@ function requireProctorSession(options = {}) {
         return next();
       }
 
-      // Stable `reason` codes, not message text: the frontend used to match on
-      // wording and matched the wrong string. See routes/assignments.js.
-      const MESSAGES = {
-        terminated: "This attempt was ended by the proctoring system.",
-        seb_required:
-          "This test must be taken in Safe Exam Browser. Please start it again from your assignments page.",
-        seb_stale:
-          "Safe Exam Browser has stopped responding. Return to the exam window in Safe Exam Browser to continue.",
-      };
-
-      return res.status(403).json({
-        message:
-          MESSAGES[status.reason] ||
-          "This test must be taken with proctoring active. Please start the test from your assignments page.",
-        proctoringRequired: true,
-        // Lets the exam page show a "reopen in Safe Exam Browser" screen rather
-        // than a generic proctoring error.
-        sebRequired: status.reason === "seb_required" || status.reason === "seb_stale",
-        reason: status.reason,
-      });
+      const refusal = proctorRefusal(status);
+      return res.status(refusal.status).json(refusal.body);
     } catch (error) {
       return next(error);
     }
@@ -218,11 +295,13 @@ function requireProctorSession(options = {}) {
  * they just leave the question content out until proctoring is live.
  */
 function attachProctorStatus(options = {}) {
-  const { allowTerminated = false } = options;
+  // Defaults to checking the display rule: every route using this guard is one
+  // that serves the question paper.
+  const { allowTerminated = false, checkDisplay = true } = options;
 
   return async function attach(req, res, next) {
     try {
-      req.proctor = await resolveProctorStatus(req, { allowTerminated });
+      req.proctor = await resolveProctorStatus(req, { allowTerminated, checkDisplay });
     } catch (error) {
       // Never let this break a page load. Fail closed on content instead: no
       // verdict means questions are withheld, but the request still succeeds.
@@ -269,6 +348,12 @@ async function resolveProctorStatusForTest(req, testId) {
     return { required: true, ok: false, reason: sebReason, session };
   }
 
+  // GET /api/tests/:id serves the paper, so the display rule applies here too.
+  const displayReason = displayFailureReason(session, req);
+  if (displayReason) {
+    return { required: true, ok: false, reason: displayReason, session };
+  }
+
   return { required: true, ok: true, reason: "active", session };
 }
 
@@ -287,9 +372,11 @@ function mayServeQuestions(req) {
 
 module.exports = {
   sebFailureReason,
+  displayFailureReason,
   requireProctorSession,
   attachProctorStatus,
   resolveProctorStatus,
   resolveProctorStatusForTest,
   mayServeQuestions,
+  proctorRefusal,
 };

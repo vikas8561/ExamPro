@@ -24,8 +24,9 @@ const { getCachedTestIds, setCachedTestIds, invalidateTestCache } = require("../
 const { attachProctorStatus, mayServeQuestions } = require("../middleware/proctorSession");
 const { sanitizeQuestions, canSeeAnswers } = require("../services/questionSanitizer");
 const { resolveOrderedQuestions } = require("../services/questionOrder");
-const { isAttemptExpired } = require("../services/attemptWindow");
+const { isAttemptExpired, attemptClock, hasAttemptOpened, notStartedBody, RESULTS_RELEASE_BUFFER_MS, areResultsReleased } = require("../services/attemptWindow");
 const { reEnableAttempt } = require("../services/reEnable");
+const { formatIST } = require("../utils/istTime");
 
 /** Mongoose document -> plain object, so stripping actually sticks. */
 function toPlain(value) {
@@ -55,6 +56,11 @@ function forStudent(assignment, user, sanitizedTest) {
   if (!plain || canSeeAnswers(user)) return plain;
   delete plain.questionOrder;
   if (plain.testId && sanitizedTest) plain.testId = sanitizedTest;
+  // No mark before results are released -- a re-enabled attempt can still
+  // carry a mentor's earlier one.
+  if (!areResultsReleased(plain)) {
+    Object.assign(plain, { score: null, autoScore: null, mentorScore: null, mentorFeedback: null });
+  }
   return plain;
 }
 
@@ -292,6 +298,33 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     // Overdue by the database and then started a millisecond later here.
     const now = new Date();
 
+    // Results are released once the student's own window has closed -- the
+    // same rule as services/attemptWindow.areResultsReleased, expressed for the
+    // pipeline. Until then a card carries no score and the average ignores it:
+    // the cards used to show the mark the moment a paper was handed in, while
+    // classmates in the same window were still sitting it. Fails closed when
+    // the window cannot be determined.
+    const windowEnd = {
+      $ifNull: [
+        "$deadline",
+        {
+          $cond: [
+            { $and: [{ $ne: [{ $ifNull: ["$startTime", null] }, null] }, { $ne: [{ $ifNull: ["$duration", null] }, null] }] },
+            { $add: ["$startTime", { $multiply: ["$duration", 60000] }] },
+            null,
+          ],
+        },
+      ],
+    };
+    const releasedExpr = {
+      $cond: [
+        { $eq: [windowEnd, null] },
+        false,
+        { $gte: [now, { $add: [windowEnd, RESULTS_RELEASE_BUFFER_MS] }] },
+      ],
+    };
+    const hideUnlessReleased = (field) => ({ $cond: ["$resultsReleased", field, null] });
+
     const [result] = await Assignment.aggregate([
       { $match: { userId } },
       {
@@ -436,7 +469,7 @@ router.get("/student", authenticateToken, async (req, res, next) => {
           // same stages the cards use, so the tile and the plotted points can
           // never disagree; the lookup runs only over completed rows.
           scoreSummary: [
-            { $match: { status: "Completed" } },
+            { $match: { status: "Completed", $expr: releasedExpr } },
             ...withScore,
             { $match: { scorePercent: { $ne: null } } },
             { $group: { _id: null, average: { $avg: "$scorePercent" }, graded: { $sum: 1 } } },
@@ -460,6 +493,18 @@ router.get("/student", authenticateToken, async (req, res, next) => {
                 // What the card badge shows. Sent so a client grouping by
                 // status reaches the same answer as the summary counts above.
                 effectiveStatus: 1,
+              },
+            },
+            { $set: { resultsReleased: releasedExpr, resultsAt: { $add: [windowEnd, RESULTS_RELEASE_BUFFER_MS] } } },
+            {
+              $set: {
+                score: hideUnlessReleased("$score"),
+                autoScore: hideUnlessReleased("$autoScore"),
+                mentorScore: hideUnlessReleased("$mentorScore"),
+                mentorFeedback: hideUnlessReleased("$mentorFeedback"),
+                totalScore: hideUnlessReleased("$totalScore"),
+                maxScore: hideUnlessReleased("$maxScore"),
+                scorePercent: hideUnlessReleased("$scorePercent"),
               },
             },
           ],
@@ -521,6 +566,11 @@ router.get("/student", authenticateToken, async (req, res, next) => {
     res.json({
       assignments,
       stats,
+      // The instant every card above was classified at. The browser decides
+      // which button to show with the server's clock (X-Server-Time, and this
+      // as a fallback), never the device's: a student whose laptop clock was
+      // hours fast was shown "View Results" for a test that was still open.
+      serverNow: now.toISOString(),
       pagination: {
         currentPage: page,
         totalPages,
@@ -582,7 +632,9 @@ router.get("/student/stats", authenticateToken, async (req, res, next) => {
 
     res.json({
       assignedCount,
-      completedCount
+      completedCount,
+      // The server's clock, so the dashboard need not trust the device's.
+      serverNow: new Date().toISOString(),
     });
   } catch (error) {
     console.error('❌ Error fetching assignment stats:', error);
@@ -731,6 +783,12 @@ router.get("/:id", authenticateToken, attachProctorStatus(), async (req, res, ne
       return res.status(404).json({ message: "Assignment not found" });
     }
 
+    // Read the owner before attach() replaces the id with the student's record.
+    // attach() leaves null where that record is missing, and the check below
+    // used to read the replaced field -- so an assignment whose student had left
+    // the university roster had no owner as far as it could tell, and was
+    // served to anyone who asked for it.
+    const ownerId = String(assignment.userId);
     await attach(assignment, "userId", "Student");
 
     // Check if user has access to this assignment.
@@ -741,7 +799,7 @@ router.get("/:id", authenticateToken, attachProctorStatus(), async (req, res, ne
     // while the very next lines already treat admins as privileged when
     // deciding whether to strip the answers.
     const isPrivileged = String(req.user.role || "").toLowerCase() === "admin";
-    if (!isPrivileged && assignment.userId && assignment.userId._id && assignment.userId._id.toString() !== req.user.userId) {
+    if (!isPrivileged && ownerId !== String(req.user.userId)) {
       return res.status(403).json({ message: "Access denied" });
     }
 
@@ -750,6 +808,12 @@ router.get("/:id", authenticateToken, attachProctorStatus(), async (req, res, ne
     // subdocuments, which is how the previous version leaked every answer while
     // looking like it was removing them.
     const payload = assignment.toObject ? assignment.toObject() : { ...assignment };
+
+    // The assignment carries its own copy of the mark. Like everything else
+    // about how the student did, it waits for the window to close.
+    if (!canSeeAnswers(req.user) && !areResultsReleased(payload)) {
+      Object.assign(payload, { score: null, autoScore: null, mentorScore: null, mentorFeedback: null });
+    }
 
     if (payload.testId && Array.isArray(payload.testId.questions) && !canSeeAnswers(req.user)) {
       payload.testId.questions = sanitizeQuestions(payload.testId.questions);
@@ -776,9 +840,24 @@ router.get("/:id", authenticateToken, attachProctorStatus(), async (req, res, ne
       payload.status === "Completed" ||
       (payload.status === "In Progress" && isAttemptExpired(payload, payload.testId));
 
+    // The countdown the exam page shows. Computed here, by the same rule the
+    // submit route and the expiry sweep use, so the page cannot disagree with
+    // them about when the attempt ends. See services/attemptWindow.attemptClock.
+    Object.assign(payload, attemptClock(payload, payload.testId));
+
     if (!canSeeAnswers(req.user) && attemptOver && payload.testId) {
       payload.testId.questions = [];
       payload.expired = true;
+      return res.status(200).json(payload);
+    }
+
+    // Nor before it begins. The exam page calls this route before the start
+    // time to show the title and instructions, so it still answers -- just
+    // without the paper. This used to depend only on whether a proctoring
+    // session existed, and nothing stopped a session being opened early.
+    if (!canSeeAnswers(req.user) && !hasAttemptOpened(payload) && payload.testId) {
+      payload.testId.questions = [];
+      Object.assign(payload, { notStarted: true, opensAt: notStartedBody(payload).opensAt });
       return res.status(200).json(payload);
     }
 
@@ -808,38 +887,36 @@ router.get("/check-expiration/:id", authenticateToken, async (req, res, next) =>
       return res.status(404).json({ message: "Assignment not found" });
     }
 
-    const now = new Date();
-
-    // Check availability window (assignment duration)
-    let endTime = assignment.deadline;
-    if (!endTime) {
-      endTime = new Date(assignment.startTime);
-      endTime.setMinutes(endTime.getMinutes() + assignment.duration);
+    // A student may only ask about their own attempt's clock.
+    const isPrivileged = ["admin", "mentor"].includes(String(req.user.role || "").toLowerCase());
+    if (!isPrivileged && String(assignment.userId) !== String(req.user.userId)) {
+      return res.status(403).json({ message: "Access denied" });
     }
-    // Add buffer to avoid timing issues
-    const endTimeWithBuffer = new Date(endTime.getTime() + 5000);
 
-    if (now > endTimeWithBuffer) {
+    // The exam page's 30-second backstop. It used to check only the
+    // availability window (plus, once started, the same window again), so it
+    // never fired at the test's own time limit -- the one that actually ends
+    // most attempts. It now asks the same question, with the same five-second
+    // allowance, as the submit route does for a manual submit.
+    //
+    // A stable code, because the exam page keys its auto-submit off this reply.
+    // It used to match on the message text -- and matched the wrong string, so
+    // the backstop never once fired.
+    if (isAttemptExpired(assignment, assignment.testId, 5000)) {
       return res.status(400).json({
-        message: "Test availability window has expired.",
-        // A stable code, because the exam page keys its auto-submit backstop off
-        // this reply. It used to match on the message text -- and matched the
-        // wrong string, so the backstop never once fired.
+        message: "This attempt's time is up.",
         code: "attempt_expired",
+        ...attemptClock(assignment, assignment.testId),
       });
     }
 
-    // Check test time limit if test has started
-    if (assignment.startedAt) {
-      const testEndTime = assignment.deadline || endTime;
-      const testEndTimeWithBuffer = new Date(new Date(testEndTime).getTime() + 5000);
-
-      if (now > testEndTimeWithBuffer) {
-        return res.status(400).json({ message: "Test time limit has expired.", code: "attempt_expired" });
-      }
-    }
-
-    res.status(200).json({ message: "Test is still active." });
+    // Still running: send the clock back, so a page whose countdown has drifted
+    // -- a throttled background tab, a laptop that slept -- is put right every
+    // time it asks.
+    res.status(200).json({
+      message: "Test is still active.",
+      ...attemptClock(assignment, assignment.testId),
+    });
   } catch (error) {
     next(error);
   }
@@ -948,6 +1025,14 @@ router.post("/:id/start", authenticateToken, attachProctorStatus(), async (req, 
       return res.status(400).json({ message: "Test already completed" });
     }
 
+    // Not before the window opens -- whatever the status says. This used to be
+    // checked only on the fresh-start path below, so an assignment that was
+    // already "In Progress" (an admin status edit, a rescheduled exam) went
+    // straight to the branch that hands out the paper.
+    if (!hasAttemptOpened(assignment)) {
+      return res.status(400).json(notStartedBody(assignment));
+    }
+
     // An attempt whose time has gone is not re-openable.
     //
     // Pressing Start flips the assignment to "In Progress" before the student
@@ -968,15 +1053,11 @@ router.post("/:id/start", authenticateToken, attachProctorStatus(), async (req, 
 
     // Check if already in progress - return 200 with special flag instead of 400
     if (assignment.status === "In Progress") {
-      // Calculate remaining time
-      const now = new Date();
-      let timeRemaining = 0;
-
-      if (assignment.startTime && (assignment.duration || assignment.testId?.timeLimit)) {
-        const testEndTime = new Date(new Date(assignment.startTime).getTime() + (assignment.duration || assignment.testId.timeLimit) * 60000);
-        const remainingMs = testEndTime.getTime() - now.getTime();
-        timeRemaining = Math.max(0, Math.floor(remainingMs / 1000)); // Convert to seconds
-      }
+      // Remaining time, by the shared rule: the earlier of the availability
+      // window and startedAt + the test's time limit. This used to count down
+      // the window alone, which over-reported whenever the window was longer.
+      const clock = attemptClock(assignment, assignment.testId);
+      const timeRemaining = clock.remainingSeconds ?? 0;
 
       // Strip answers before sending to the student.
       //
@@ -1003,6 +1084,8 @@ router.post("/:id/start", authenticateToken, attachProctorStatus(), async (req, 
         message: "Test already started",
         alreadyStarted: true,
         timeRemaining,
+        attemptEndsAt: clock.attemptEndsAt,
+        serverNow: clock.serverNow,
         proctoringRequired: !mayServeQuestions(req)
       });
     }
@@ -1012,14 +1095,12 @@ router.post("/:id/start", authenticateToken, attachProctorStatus(), async (req, 
     const startTime = new Date(assignment.startTime);
     const endTime = new Date(startTime.getTime() + assignment.duration * 60000); // Convert minutes to milliseconds
 
-    if (now < startTime) {
-      return res.status(400).json({ message: "Test is not available yet. It will start at " + startTime.toLocaleString() });
-    }
+    // "Not yet open" is refused near the top of this route, for every status.
 
     if (now > endTime) {
       assignment.status = "Overdue";
       await assignment.save();
-      return res.status(400).json({ message: "Test deadline has passed. The test was available until " + endTime.toLocaleString() });
+      return res.status(400).json({ message: "Test deadline has passed. The test was available until " + formatIST(endTime) });
     }
 
     // Handle permissions (skip for coding tests)
@@ -1107,26 +1188,11 @@ router.post("/:id/start", authenticateToken, attachProctorStatus(), async (req, 
 
     await assignment.save();
 
-    // Calculate remaining time in seconds
-    // Use startTime + duration so the timer is anchored to the scheduled window
-    const startTimeMs = new Date(assignment.startTime).getTime();
-    const testEndTime = startTimeMs + ((assignment.duration || timeLimitMinutes) * 60000);
-    const nowTimestamp = Date.now();
-    const remainingMs = testEndTime - nowTimestamp;
-    const timeRemaining = Math.max(0, Math.floor(remainingMs / 1000)); // Convert to seconds
-
-    console.log('⏰ Time calculation:', {
-      timeLimitMinutes,
-      startedAt: startedAt.toISOString(),
-      startTimeMs,
-      testEndTime,
-      nowTimestamp,
-      remainingMs,
-      timeRemaining,
-      'testEndTime - nowTimestamp (ms)': remainingMs,
-      'timeRemaining (seconds)': timeRemaining,
-      'timeRemaining (minutes)': Math.floor(timeRemaining / 60)
-    });
+    // Remaining time, by the shared rule -- see the in-progress branch above.
+    // startedAt has just been set, so this is the earlier of the window's end
+    // and now + the test's time limit.
+    const clock = attemptClock(assignment, { timeLimit: timeLimitMinutes });
+    const timeRemaining = clock.remainingSeconds ?? 0;
 
     // Ensure testId is populated in response (without answers for students)
     const populatedAssignment = await Assignment.findById(assignment._id)
@@ -1155,7 +1221,9 @@ router.post("/:id/start", authenticateToken, attachProctorStatus(), async (req, 
       assignment: forStudent(populatedAssignment, req.user, testData),
       test: testData,
       message: "Test started successfully",
-      timeRemaining: timeRemaining,
+      timeRemaining,
+      attemptEndsAt: clock.attemptEndsAt,
+      serverNow: clock.serverNow,
       proctoringRequired: !mayServeQuestions(req)
     });
   } catch (error) {

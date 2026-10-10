@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import apiRequest from "../services/api";
+import { serverNow } from "../utils/serverClock";
+import { formatDateIST } from "../utils/istTime";
 import { getRandomFeedback } from "../utils/feedbackMessages";
 import {
   Trophy,
@@ -93,7 +95,11 @@ const StudentResults = () => {
     const testType = item.testId?.type || "Standard";
     const assignmentId = item.assignmentId?._id || item.assignmentId;
     const assignmentDeadline = item.assignmentId?.deadline ? new Date(item.assignmentId.deadline) : null;
-    const deadlinePassed = !assignmentDeadline || new Date() > assignmentDeadline;
+    // The server says whether results are out: it withholds the score until
+    // the window has closed, and its clock -- not this machine's -- decides.
+    const deadlinePassed = typeof item.resultsReleased === "boolean"
+      ? item.resultsReleased
+      : !assignmentDeadline || serverNow() > assignmentDeadline.getTime();
 
     const score = item.mentorScore !== null && item.mentorScore !== undefined
       ? item.mentorScore
@@ -122,11 +128,7 @@ const StudentResults = () => {
       feedback,
       isReviewed,
       formattedTime,
-      submittedDate: item.submittedAt ? new Date(item.submittedAt).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric"
-      }) : "N/A"
+      submittedDate: formatDateIST(item.submittedAt, "N/A")
     };
   };
 

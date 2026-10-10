@@ -20,8 +20,11 @@ import {
   Code2,
 } from "lucide-react";
 import apiRequest from "../services/api";
+import { serverNow } from "../utils/serverClock";
+import { parseISTInput, toISTInputValue } from "../utils/istTime";
 import JsonQuestionUploader from "../components/JsonQuestionUploader";
 import QuestionText from "../components/QuestionText";
+import { mcqOptionsError } from "../utils/mcqOption";
 import Editor from "@monaco-editor/react";
 
 function formatDateTimeLocal(dateInput) {
@@ -615,18 +618,14 @@ export default function CreateTest() {
       }
     }
 
-    // Validate MCQ options and answers
+    // Each MCQ's answer must pick out exactly one option -- see utils/mcqOption.js.
     for (let i = 0; i < form.questions.length; i++) {
       const q = form.questions[i];
-      if (q.kind === "mcq") {
-        if (!q.answer) {
-          alert(`Question ${i + 1}: Please select the correct answer.`);
-          return;
-        }
-        if (q.options.some((opt) => !opt.trim())) {
-          alert(`Question ${i + 1}: Please fill in all options.`);
-          return;
-        }
+      if (q.kind !== "mcq") continue;
+      const mcqError = mcqOptionsError(q.options, q.answer);
+      if (mcqError) {
+        alert(`Question ${i + 1}: ${mcqError}.`);
+        return;
       }
     }
 
@@ -649,14 +648,16 @@ export default function CreateTest() {
 
     // Validate Start Time
     if (assignmentOptions.startTime) {
-      const selectedTime = new Date(assignmentOptions.startTime);
-      if (isNaN(selectedTime.getTime())) {
+      // Read as IST and compared with the server's clock, so neither the
+      // mentor's device timezone nor its clock can move the schedule.
+      const selectedTime = parseISTInput(assignmentOptions.startTime);
+      if (!selectedTime) {
         alert("Please pick a valid Start Time.");
         return;
       }
       // Add a small grace period (e.g. 1 minute) to allow for "current minute" selection
       // or slight delays between selection and submission
-      if (!isEdit && selectedTime.getTime() < Date.now() - 60000) {
+      if (selectedTime.getTime() < serverNow() - 60000) {
         alert("Start Time cannot be in the past. Please select a current or future time.");
         return;
       }
@@ -738,8 +739,8 @@ export default function CreateTest() {
         // The picker's value is IST wall time ("2026-10-07T14:30"); it is
         // converted to the UTC instant here, whatever the device's timezone.
         const startTimeISO = assignmentOptions.startTime
-          ? new Date(assignmentOptions.startTime).toISOString()
-          : new Date().toISOString();
+          ? parseISTInput(assignmentOptions.startTime).toISOString()
+          : new Date(serverNow()).toISOString();
 
         // Start assignment process asynchronously - don't wait for it to complete
         // This makes test creation much faster
@@ -1246,9 +1247,8 @@ export default function CreateTest() {
                           startTime: e.target.value,
                         }))
                       }
-                      className="w-full p-3 bg-[#14161D] border border-white/[0.08] rounded-xl text-xs text-white focus:border-[#00C4B4] focus:ring-1 focus:ring-[#00C4B4] outline-none transition-all disabled:opacity-50"
-                      min={!isEdit ? formatDateTimeLocal(new Date()) : undefined}
-                      disabled={isTestStarted}
+                      className="w-full p-3 bg-[#14161D] border border-white/[0.08] rounded-xl text-xs text-white focus:border-[#00C4B4] focus:ring-1 focus:ring-[#00C4B4] outline-none transition-all"
+                      min={toISTInputValue(serverNow())}
                       required
                     />
                   </div>
@@ -1639,11 +1639,21 @@ export default function CreateTest() {
                               </div>
                             ))}
                           </div>
-                          {!question.answer && (
+                          {!question.answer ? (
                             <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-300 text-xs flex items-center gap-2">
                               <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                               Please select the correct answer
                             </div>
+                          ) : (
+                            // Only flag problems once every option has text, so
+                            // a half-written question is not shouted at.
+                            question.options.every((opt) => opt.trim() !== "") &&
+                            mcqOptionsError(question.options, question.answer) && (
+                              <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-300 text-xs flex items-center gap-2">
+                                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                                {mcqOptionsError(question.options, question.answer)}
+                              </div>
+                            )
                           )}
                         </div>
                       )}

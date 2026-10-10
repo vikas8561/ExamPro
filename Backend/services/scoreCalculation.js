@@ -1,6 +1,6 @@
 const TestSubmission = require("../models/TestSubmission");
 const Test = require("../models/Test");
-const { maxScoreForTest, isAnswered, markMcq } = require("./grading");
+const { maxScoreForTest, isAnswered, markMcq, canonicalOption } = require("./grading");
 
 /**
  * Recalculates scores for all submissions of a given test
@@ -49,6 +49,9 @@ async function recalculateSubmissionScore(submission, test) {
       // A blank is not a wrong answer. Grading it as one handed every student a
       // negative marking penalty for questions they never touched.
       if (isAnswered(response)) {
+        // Repair an answer the old autosave stripped (services/legacyMcqText.js),
+        // so the stored choice and the mark agree from here on.
+        response.selectedOption = canonicalOption(question, response.selectedOption);
         const marked = markMcq(question, response, test.negativeMarkingPercent);
         response.isCorrect = marked.isCorrect;
         response.points = marked.points;

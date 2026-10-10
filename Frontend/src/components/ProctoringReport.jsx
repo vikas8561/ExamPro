@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { formatFullDateTimeIST, formatTimeIST } from "../utils/istTime";
 import apiRequest from "../services/api";
 import { API_BASE_URL } from "../config/api";
 
@@ -292,7 +293,7 @@ export default function ProctoringReport({ submission, assignmentId, onReEnabled
                       {VIOLATION_LABELS[shot.violationType] || shot.violationType}
                     </span>
                     <span className="block text-slate-500">
-                      {new Date(shot.takenAt).toLocaleTimeString()}
+                      {formatTimeIST(shot.takenAt)}
                     </span>
                   </button>
                 ))}
@@ -312,7 +313,7 @@ export default function ProctoringReport({ submission, assignmentId, onReEnabled
               <p className="text-sm text-slate-200">
                 {VIOLATION_LABELS[openShot.violationType] || openShot.violationType}
                 <span className="ml-2 text-xs text-slate-500">
-                  {new Date(openShot.takenAt).toLocaleString()}
+                  {formatFullDateTimeIST(openShot.takenAt)}
                 </span>
               </p>
               <button
@@ -365,9 +366,7 @@ export default function ProctoringReport({ submission, assignmentId, onReEnabled
                   )}
                 </span>
                 <span className="shrink-0 font-mono text-slate-500">
-                  {violation.timestamp
-                    ? new Date(violation.timestamp).toLocaleTimeString()
-                    : "—"}
+                  {formatTimeIST(violation.timestamp)}
                 </span>
               </li>
             );

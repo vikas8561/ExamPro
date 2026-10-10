@@ -51,6 +51,27 @@ function sanitizeQuestions(questions) {
   return questions.map(sanitizeQuestion);
 }
 
+/** Never shown to a student, even reviewing a released paper. */
+const NEVER_TO_STUDENTS = ["hiddenTestCases"];
+
+/**
+ * A question as a student may see it when reviewing their released results.
+ *
+ * The answer key and the model answer are the point of the review and stay.
+ * The hidden test cases never do: the same cases grade every cohort that sits
+ * the question, so once one student has them, everyone they pass them to can
+ * hard-code the expected outputs. Their count is kept so the review can still
+ * say how many there were.
+ */
+function reviewQuestion(question) {
+  if (!question) return question;
+  const plain = typeof question.toObject === "function" ? question.toObject() : { ...question };
+  const hidden = Array.isArray(plain.hiddenTestCases) ? plain.hiddenTestCases : [];
+  for (const field of NEVER_TO_STUDENTS) delete plain[field];
+  if (plain.kind === "coding") plain.hiddenTestCaseCount = hidden.length;
+  return plain;
+}
+
 /**
  * Should this request be allowed to see answers at all?
  *
@@ -64,6 +85,8 @@ function canSeeAnswers(user) {
 }
 
 module.exports = {
+  NEVER_TO_STUDENTS,
+  reviewQuestion,
   SECRET_QUESTION_FIELDS,
   sanitizeQuestion,
   sanitizeQuestions,

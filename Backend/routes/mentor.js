@@ -8,6 +8,7 @@ const Mentor = require("../models/Mentor");
 const Subject = require("../models/Subject");
 const { authenticateToken, requireRole } = require("../middleware/auth");
 const { attach, cohortCounts, getStudentIdsForBatches } = require("../services/principals");
+const { expandMentorSubjects } = require("../services/subjects");
 
 // Get mentor's assigned subjects (for filtering what they can create)
 router.get("/me/subjects", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res) => {
@@ -20,7 +21,7 @@ router.get("/me/subjects", authenticateToken, requireRole(["Mentor", "Admin"]), 
       return res.status(404).json({ message: "Mentor profile not found" });
     }
 
-    res.json({ subjects: mentor.subjects || [] });
+    res.json({ subjects: await expandMentorSubjects(mentor.subjects) });
   } catch (err) {
     console.error("Error fetching mentor subjects:", err);
     res.status(500).json({ error: err.message });
@@ -562,21 +563,22 @@ router.get("/monitor/:assignmentId", authenticateToken, requireRole(["Mentor", "
       }
     }
     
-    const assignment = await attach(
-      await Assignment.findById(assignmentId).populate("testId").lean(),
-      "userId",
-      "Student"
-    );
-
-    const submission = await attach(
-      await TestSubmission.findOne({ assignmentId }).lean(),
-      "userId",
-      "Student"
-    );
-    
-    if (!assignment) {
+    const raw = await Assignment.findById(assignmentId).populate("testId").lean();
+    if (!raw) {
       return res.status(404).json({ error: "Assignment not found" });
     }
+    // The owner's id, read before attach() replaces it with their record.
+    const ownerId = raw.userId;
+    const assignment = await attach(raw, "userId", "Student");
+
+    // The OWNER's submission. Looked up by assignment alone, this could return a
+    // row someone else wrote against the attempt (possible before the ownership
+    // checks on submit and autosave existed) and show it as the student's work.
+    const submission = await attach(
+      await TestSubmission.findOne({ assignmentId, userId: ownerId }).lean(),
+      "userId",
+      "Student"
+    );
 
     res.json({
       assignment,

@@ -187,8 +187,10 @@ const idsOf = (questions) => (questions || []).map((q) => String(q._id));
     const aliceResult = await submit(aliceAssignment, alice, aliceIds);
     const bobResult = await submit(bobAssignment, bob, bobIds);
 
-    const score = (r) => r.body?.submission || r.body || {};
-    const a = score(aliceResult), b = score(bobResult);
+    // The hand-in reply is a receipt, not a result (results wait for the
+    // window to close), so read the marks from the stored submission.
+    const storedFor = (assignment) => TestSubmission.findOne({ assignmentId: assignment._id }).lean();
+    const a = (await storedFor(aliceAssignment)) || {}, b = (await storedFor(bobAssignment)) || {};
 
     check(aliceResult.status === 201 || aliceResult.status === 200,
       "alice's submission was accepted", `status ${aliceResult.status}: ${JSON.stringify(aliceResult.body)}`);
@@ -278,7 +280,8 @@ const idsOf = (questions) => (questions || []).map((q) => String(q._id));
         timeSpent: 60,
       },
     });
-    const m = mixedSubmit.body?.submission || mixedSubmit.body || {};
+    check(mixedSubmit.status === 201, "the mixed paper is handed in", `status ${mixedSubmit.status}`);
+    const m = (await TestSubmission.findOne({ assignmentId: mixedAssignment._id }).lean()) || {};
 
     // 3 MCQs x 2 points = 6, theory 5, coding 5. A coding question is worth its
     // `points`; its hidden test cases split that worth rather than add their own

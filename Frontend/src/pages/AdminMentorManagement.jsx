@@ -72,7 +72,7 @@ export default function AdminMentorManagement() {
       setLoading(true);
       const [mentorsRes, subjectsRes, batchesRes] = await Promise.all([
         apiRequest("/admin/mentors"),
-        apiRequest("/subjects"),
+        apiRequest("/subjects?includeAll=true"),
         apiRequest("/admin/mentors/batches")
       ]);
 

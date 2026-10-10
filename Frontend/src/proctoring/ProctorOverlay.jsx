@@ -24,6 +24,7 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
     blockReason,
     offline,
     isDevtoolsOpen,
+    getDisplayState,
     onDismissWarning,
     onDismissNotice,
     onResume,
@@ -47,6 +48,7 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
   useEffect(() => {
     const needsCheck =
       blockReason === "fullscreen" ||
+      blockReason === "display" ||
       blockReason === "screenshare" ||
       blockReason === "secondmonitor" ||
       warning?.violationType === "devtools_opened" ||
@@ -61,8 +63,8 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
       // The screen-share dialog has nothing to poll: whether the student is
       // sharing again is only known once they click and the browser answers.
       if (blockReason === "screenshare") return;
-      if (blockReason === "secondmonitor") {
-        setStillBroken(window.screen?.isExtended === true);
+      if (blockReason === "display") {
+        setStillBroken(getDisplayState?.() !== "single");
         return;
       }
       if (blockReason === "fullscreen" || warning?.violationType === "fullscreen_exit") {
@@ -82,7 +84,7 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
     check();
     const timer = setInterval(check, 500);
     return () => clearInterval(timer);
-  }, [blockReason, warning, isDevtoolsOpen]);
+  }, [blockReason, warning, isDevtoolsOpen, getDisplayState]);
 
   const handleDismiss = async () => {
     setWorking(true);
@@ -209,19 +211,27 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
         </div>
       )}
 
-      {/* A second display is connected. The exam does not continue with one. */}
-      {phase === "blocked" && blockReason === "secondmonitor" && (
+      {/* An external monitor appeared mid-exam. The exam stays paused, and the
+          server stops serving the paper, until it is gone. The button unlocks
+          by itself the moment the monitor is disconnected. */}
+      {phase === "blocked" && blockReason === "display" && (
         <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-950/95 p-4">
           <div className="w-full max-w-md rounded-xl border border-red-500/30 bg-slate-900 p-8 text-center">
-            <h2 className="mb-4 text-2xl font-bold text-red-400">Second display detected</h2>
+            <h2 className="mb-4 text-2xl font-bold text-red-400">External monitor connected</h2>
             <p className="mb-6 text-slate-300">
-              Your exam is paused. Only one display is allowed during a proctored test.
-              Disconnect all additional monitors, projectors and wireless displays, then
-              click below to continue.
+              Your exam is paused. Only your computer's own screen may be used during this test.
+              Disconnect the external monitor, or turn it off in your display settings, to carry on.
             </p>
-            {stillBroken && (
+            <p className="mb-6 text-sm text-slate-500">
+              Chargers, mice and keyboards are fine and do not need to be removed.
+            </p>
+            {stillBroken ? (
               <p className="mb-4 text-sm font-semibold text-red-400">
-                A second display is still connected. Disconnect it to continue.
+                A second screen is still connected.
+              </p>
+            ) : (
+              <p className="mb-4 text-sm font-semibold text-emerald-400">
+                Only one screen now. You can continue.
               </p>
             )}
             <button
@@ -230,7 +240,7 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
               disabled={working || stillBroken}
               className="w-full rounded-md bg-white/90 py-3 font-semibold text-black hover:bg-white disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-400"
             >
-              {working ? "Please wait…" : stillBroken ? "Disconnect the extra display" : "Continue Test"}
+              {working ? "Please wait…" : "Continue test"}
             </button>
           </div>
         </div>

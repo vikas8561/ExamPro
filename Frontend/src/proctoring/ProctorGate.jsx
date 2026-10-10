@@ -2,6 +2,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { requestScreenShare } from "./detectors/screen";
 import { requestMedia, requestLocation } from "./detectors/permissions";
 import { redeemBypass } from "./transport";
+import { detectDisplays } from "./environment";
+
+/** How often the screens are re-read while the gate is open. */
+const DISPLAY_POLL_MS = 1000;
 
 /**
  * The pre-exam screen.
@@ -32,7 +36,7 @@ const PERMISSION_LABELS = {
   },
 };
 
-export default function ProctorGate({ session, environment, readiness, onBegin }) {
+export default function ProctorGate({ session, environment, readiness, onBegin, reportDisplay }) {
   const policy = session?.policy || {};
   const required = useMemo(
     () => policy.requiredPermissions || ["screen", "camera", "microphone", "location"],
@@ -53,6 +57,62 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
   const [otp, setOtp] = useState("");
   const [otpError, setOtpError] = useState("");
   const [otpBusy, setOtpBusy] = useState(false);
+
+  // ── The external-monitor rule ──
+  //
+  // Two answers are needed before Begin unlocks: this page's own reading of the
+  // screens, and the server's agreement with it. The server only serves the
+  // question paper while its record says one screen, so unlocking on the local
+  // reading alone could start an exam whose paper then never arrives.
+  const blocksDisplays = policy.blockExternalDisplay === true;
+  const [displayState, setDisplayState] = useState(() => detectDisplays().state);
+  const [serverDisplay, setServerDisplay] = useState(null);
+  const lastSentRef = useRef(null);
+  const reportSeqRef = useRef(0);
+
+  useEffect(() => {
+    if (!blocksDisplays) return undefined;
+    let cancelled = false;
+
+    const sync = async (state, force = false) => {
+      setDisplayState(state);
+      if (!force && lastSentRef.current === state) return;
+      lastSentRef.current = state;
+      // Only the newest report's answer counts. Unplugging right after
+      // plugging in sends two reports; if their replies came back in the wrong
+      // order, the stale "multiple" would stick and Begin would never unlock.
+      const seq = ++reportSeqRef.current;
+      const verdict = await reportDisplay?.();
+      if (cancelled || seq !== reportSeqRef.current) return;
+      // A failed request leaves the old verdict and is retried next tick.
+      if (verdict) setServerDisplay(verdict);
+      else lastSentRef.current = null;
+    };
+
+    sync(detectDisplays().state, true);
+    const timer = setInterval(() => sync(detectDisplays().state), DISPLAY_POLL_MS);
+    const onScreenChange = () => sync(detectDisplays().state);
+    try {
+      window.screen?.addEventListener?.("change", onScreenChange);
+    } catch {
+      // The poll covers it.
+    }
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      try {
+        window.screen?.removeEventListener?.("change", onScreenChange);
+      } catch {
+        // Nothing to undo.
+      }
+    };
+  }, [blocksDisplays, reportDisplay]);
+
+  const displayOk =
+    !blocksDisplays ||
+    (displayState === "single" && serverDisplay?.state === "single" && serverDisplay?.allowed !== false);
+  const displayChecking = blocksDisplays && displayState === "single" && !displayOk;
 
   // Streams collected here are handed to the provider on Begin. If the student
   // abandons the gate instead, release them rather than leaving the camera on.
@@ -126,13 +186,15 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
    */
   const notices = useMemo(() => {
     const list = [...(readiness?.warnings || [])];
-    if (environment?.secondMonitor === "yes") {
+    // Where monitors are blocked outright, the Screens row below says so; this
+    // softer note is for sessions the rule does not cover.
+    if (!blocksDisplays && environment?.secondMonitor === "yes") {
       list.push(
         "A second display is connected. Disconnect all additional monitors, projectors and wireless displays before starting the test."
       );
     }
     return list;
-  }, [readiness, environment]);
+  }, [readiness, environment, blocksDisplays]);
 
   const askScreen = useCallback(async () => {
     setBusy("screen");
@@ -235,6 +297,18 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
   const handleBegin = useCallback(async () => {
     if (!allSatisfied || beginning) return;
 
+    // Re-read synchronously at the click. Nothing may be awaited before Begin
+    // hands over -- fullscreen only works while the click is still fresh -- and
+    // the server already agreed with the last reading, so only a monitor
+    // plugged in during the last second can get here, and this catches it.
+    if (blocksDisplays) {
+      const now = detectDisplays().state;
+      if (now !== "single" || !displayOk) {
+        setDisplayState(now);
+        return;
+      }
+    }
+
     // Claim the streams BEFORE any state change, so no cleanup can decide they
     // are still the gate's to stop. The provider owns them from here.
     handedOverRef.current = true;
@@ -250,7 +324,7 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
         location: isSatisfied("location"),
       },
     });
-  }, [allSatisfied, beginning, onBegin, screenStream, mediaStream, isSatisfied]);
+  }, [allSatisfied, beginning, onBegin, screenStream, mediaStream, isSatisfied, blocksDisplays, displayOk]);
 
   const askFor = {
     screen: askScreen,
@@ -351,6 +425,48 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
               extensions and additional screens are blocked for its duration, so no
               camera or screen-sharing permissions are needed.
             </p>
+          </div>
+        )}
+
+        {/* Screens. Not a permission -- nothing to allow -- but a condition of
+            starting, so it sits with the things that are. It updates by itself
+            the moment a monitor is unplugged. */}
+        {blocksDisplays && (
+          <div
+            className={`mb-3 rounded-lg border p-4 ${
+              displayOk
+                ? "border-emerald-500/40 bg-emerald-500/5"
+                : displayChecking
+                ? "border-slate-700 bg-slate-800/50"
+                : "border-red-500/40 bg-red-500/5"
+            }`}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="font-semibold text-white">One screen only</p>
+                <p className="mt-1 text-xs text-slate-400">
+                  {displayOk
+                    ? "Only your computer's own screen is in use."
+                    : displayChecking
+                    ? "Confirming with the server…"
+                    : displayState === "multiple"
+                    ? "An external monitor is connected. Disconnect it, or turn it off in your display settings, to start the test. Chargers, mice and keyboards are fine."
+                    : "This browser could not confirm how many screens are connected. Use an up-to-date Google Chrome or Microsoft Edge, and turn off any extension that changes site permissions."}
+                </p>
+                {!displayOk && displayState === "multiple" && (
+                  <p className="mt-2 text-xs text-slate-500">
+                    A monitor set to mirror (duplicate) your screen must be disconnected too.
+                  </p>
+                )}
+              </div>
+              <span
+                className={`shrink-0 text-sm font-semibold ${
+                  displayOk ? "text-emerald-400" : displayChecking ? "text-slate-400" : "text-red-400"
+                }`}
+              >
+                {displayOk ? "OK" : displayChecking ? "Checking…" : "Blocked"}
+              </span>
+            </div>
           </div>
         )}
 
@@ -456,15 +572,19 @@ export default function ProctorGate({ session, environment, readiness, onBegin }
         <button
           type="button"
           onClick={handleBegin}
-          disabled={!allSatisfied || beginning || environment?.secondMonitor === "yes"}
+          disabled={!allSatisfied || !displayOk || beginning}
           className="w-full rounded-md bg-white/90 py-3 font-semibold text-black hover:bg-white disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
         >
           {beginning
             ? "Starting…"
-            : environment?.secondMonitor === "yes"
-            ? "Disconnect secondary display to begin"
+            : !displayOk && !displayChecking
+            ? displayState === "multiple"
+              ? "Disconnect the external monitor to continue"
+              : "Use Chrome or Edge to continue"
             : !allSatisfied
             ? "Allow all permissions to continue"
+            : displayChecking
+            ? "Checking your screens…"
             : "Begin Test"}
         </button>
       </div>

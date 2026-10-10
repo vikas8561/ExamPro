@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import { formatDateIST } from "../utils/istTime";
+import { serverNow } from "../utils/serverClock";
 import { getRandomFeedback } from "../utils/feedbackMessages";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import '../styles/StudentTable.mobile.css';
@@ -191,9 +193,9 @@ const StudentTable = ({ type, data, currentPage = 1, totalPages = 1, totalItems 
                       <>
                         <td className="p-6">
                           {(() => {
-                            const currentTime = new Date();
+                            const currentTime = serverNow();
                             const assignmentDeadline = item.assignmentId?.deadline ? new Date(item.assignmentId.deadline) : null;
-                            if (assignmentDeadline && currentTime < assignmentDeadline) {
+                            if (assignmentDeadline && currentTime < assignmentDeadline.getTime()) {
                               return (
                                 <div className="flex items-center space-x-2">
                                   <div
@@ -287,7 +289,7 @@ const StudentTable = ({ type, data, currentPage = 1, totalPages = 1, totalItems 
                         </td>
                         <td className="p-6">
                           <div className="text-sm font-bold text-right pr-4" style={{ color: '#9CA3AF' }}>
-                            {item.submittedAt ? new Date(item.submittedAt).toLocaleDateString() : 'N/A'}
+                            {formatDateIST(item.submittedAt, 'N/A')}
                           </div>
                         </td>
                       </>
@@ -425,9 +427,9 @@ const StudentTable = ({ type, data, currentPage = 1, totalPages = 1, totalItems 
                               <div className="test-detail-label">Score</div>
                               <div className="test-detail-value">
                                 {(() => {
-                                  const currentTime = new Date();
+                                  const currentTime = serverNow();
                                   const assignmentDeadline = item.assignmentId?.deadline ? new Date(item.assignmentId.deadline) : null;
-                                  if (assignmentDeadline && currentTime < assignmentDeadline) {
+                                  if (assignmentDeadline && currentTime < assignmentDeadline.getTime()) {
                                     return (
                                       <div className="score-container">
                                         <div
@@ -523,7 +525,7 @@ const StudentTable = ({ type, data, currentPage = 1, totalPages = 1, totalItems 
                               <div className="test-detail-label">Completed</div>
                               <div className="test-detail-value">
                                 <div className="date-container text-sm font-bold" style={{ color: '#9CA3AF' }}>
-                                  {item.submittedAt ? new Date(item.submittedAt).toLocaleDateString() : 'N/A'}
+                                  {formatDateIST(item.submittedAt, 'N/A')}
                                 </div>
                               </div>
                             </div>

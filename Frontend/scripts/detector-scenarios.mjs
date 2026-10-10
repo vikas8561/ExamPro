@@ -204,9 +204,12 @@ const fire = (type, target) => {
   return { prevented, reports: clipReports.length };
 };
 
-// The clipboard itself stays shut everywhere -- that has not changed.
-check("copy is still prevented in an answer field", fire("copy", ta).prevented);
-check("paste is still prevented in an answer field", fire("paste", ta).prevented);
+// Copying inside an answer field is allowed through to the clipboard by
+// default (05911eb): the student's own code has to reach the clipboard for a
+// paste of it to be recognised as theirs. Everywhere else the clipboard stays
+// shut, and a paste of anything not copied here is still blocked.
+check("copy inside an answer field reaches the clipboard (allowInternalClipboard default)", !fire("copy", ta).prevented);
+check("paste of outside text into an answer field is still prevented", fire("paste", ta).prevented);
 check("copy is still prevented outside an answer field", fire("copy", field("div")).prevented);
 
 // What changed: copying your own writing no longer costs a violation. It used
@@ -224,6 +227,19 @@ check("pasting into an answer field IS reported", fire("paste", ta).reports === 
 check("pasting outside an answer field IS reported", fire("paste", field("div")).reports === 1);
 
 clip.stop();
+
+// Deployments that want the clipboard shut entirely set
+// allowInternalClipboard: false and get the old behaviour back.
+const strictClip = createClipboardDetector({
+  report: (t, d) => clipReports.push(`${t}:${d}`),
+  isPaused: () => false,
+  allowInternalClipboard: false,
+});
+strictClip.start();
+check("allowInternalClipboard:false -- copy in an answer field is prevented", fire("copy", ta).prevented);
+check("allowInternalClipboard:false -- cut in an answer field is prevented", fire("cut", ta).prevented);
+check("allowInternalClipboard:false -- but still not reported as a violation", fire("copy", ta).reports === 0);
+strictClip.stop();
 
 // ── Devtools ───────────────────────────────────────────────────────────────
 console.log("\n════ Devtools: tall browser chrome must not lock a student out ════\n");

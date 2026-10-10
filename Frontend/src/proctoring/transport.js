@@ -1,5 +1,12 @@
 import apiRequest from "../services/api";
 import { readSebKeyHash } from "./seb.js";
+import { detectDisplays } from "./environment.js";
+
+/** The display report in the shape the server judges. */
+const displayReport = () => {
+  const { isExtended, policyAllowed } = detectDisplays();
+  return { isExtended, policyAllowed };
+};
 
 /**
  * The line between the browser and the referee.
@@ -101,10 +108,32 @@ export function createTransport({ sessionId, onVerdict, onError }) {
           // session while this keeps arriving — otherwise a student could pass
           // the gate inside SEB, carry their session into an ordinary browser,
           // and simply go quiet.
-          body: JSON.stringify({ sessionId, sebKeyHash: readSebKeyHash() }),
+          //
+          // The screens are re-reported on every check-in too, so the server's
+          // record of them is never more than one heartbeat out of date.
+          body: JSON.stringify({ sessionId, sebKeyHash: readSebKeyHash(), display: displayReport() }),
         });
         deliver(verdict);
         return verdict;
+      } catch (error) {
+        onError?.(error);
+        return null;
+      }
+    },
+
+    /**
+     * Tell the server what the screens look like right now, and wait for its
+     * verdict: `{ enforced, state, allowed, message }`. The question paper is
+     * only served while the server's own record says one screen, so Begin waits
+     * on this. Returns null if the request failed.
+     */
+    async reportDisplay() {
+      if (stopped) return null;
+      try {
+        return await apiRequest("/proctor/session/display", {
+          method: "POST",
+          body: JSON.stringify({ sessionId, display: displayReport() }),
+        });
       } catch (error) {
         onError?.(error);
         return null;

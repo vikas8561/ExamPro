@@ -33,7 +33,8 @@ blocking — all of it bypassed in one request. That hole is now closed.
 | Reloading to escape a cancellation | 🟢 Blocked |
 | Opening developer tools | 🟡 Detected, cannot be prevented |
 | `Cmd+Tab` / `Alt+Tab` to another app | 🟡 **Cannot block.** Detected instantly |
-| Second monitor | 🟡 Detected |
+| External monitor extending the desktop | 🟢 **Blocked** — the exam will not start, and pauses if one is plugged in |
+| External monitor set to *mirror* the laptop screen | 🔴 **Cannot detect** in any browser — only SEB blocks it |
 | Cheating browser extension | 🔴 **Cannot block.** Crude ones detected |
 | Phone, second laptop, notes, another person in the room | 🔴 **Cannot detect** |
 
@@ -186,7 +187,8 @@ a check later means adding one file.
 | `keyboard.js` | All keys, via an allowlist, plus the Keyboard Lock API |
 | `clipboard.js` | Copy, cut, paste, right-click, drag — and whether a paste came from inside the exam |
 | `devtools.js` | Developer tools, via three independent signals |
-| `screen.js` | Screen sharing stopped, wrong share type, second monitor |
+| `screen.js` | Screen sharing stopped, wrong share type (and second monitor, for sessions the monitor rule does not cover) |
+| `display.js` | External monitor connected mid-exam — pauses the exam until it is removed |
 | `permissions.js` | Camera / microphone / location revoked mid-exam |
 | `network.js` | Connection loss (recorded, never charged) |
 | `integrity.js` | Injected extension content, hidden shadow-DOM panels, patched page functions, removed overlay |
@@ -200,22 +202,70 @@ list forgot still worked.
 | Browser | Status |
 |---|---|
 | **Safe Exam Browser** | Windows 3.10+ / macOS 3.6+. See the SEB section below |
-| Chrome, Edge, **Brave** | Full support, including keyboard locking |
-| Firefox, Safari | Works, but no Keyboard Lock — `Escape` can leave fullscreen; it is detected, recorded, and the student is asked to return |
-| Phones and tablets | Blocked with an explanation |
+| **Google Chrome, Microsoft Edge** — any version from 100 | Full support. The only browsers that may sit a proctored exam outside SEB |
+| Chrome / Edge older than 100 | Refused with "update your browser" |
+| Brave, Opera, Vivaldi, plain Chromium, Firefox, Safari, old EdgeHTML Edge | Refused with "open this test in Chrome or Edge" |
+| Phones and tablets, in any browser | Refused with an explanation |
+
+## External monitors
+
+**An exam cannot start while an external monitor is connected** (Vikas's
+decision, 2026-10-03). Chargers, mice, keyboards and USB hubs are not displays
+and are never affected — a USB-C dock with a monitor plugged into it is.
+
+**Why Chrome and Edge only.** The check is `screen.isExtended`, which Chrome and
+Edge have had since version 100 (March 2022). Firefox and Safari have never
+shipped it, and Brave blanks it. In those browsers the answer is "cannot tell",
+and an exam cannot start on "cannot tell". Version 100 is the floor because it
+is where the API begins; there is no upper limit, so new releases need no
+change. Every machine that runs Chrome at all can run 100+: the last builds for
+Windows 7/8.1 (109) and macOS 10.13–10.15 (116, 128) are all past it.
+
+**How the server enforces it** (`Backend/services/browserRequirement.js`):
+
+- The browser is read from the `Sec-CH-UA` request header, which names the real
+  product ("Google Chrome", "Microsoft Edge", "Brave", "Opera") where every one
+  of their User-Agent strings says "Chrome". The User-Agent is the fallback when
+  no brand list arrives.
+- `POST /proctor/session/start` refuses any other browser (`browser_unsupported`,
+  `browser_outdated`, `browser_mobile`) and creates nothing.
+- The page reports `{ isExtended, policyAllowed }` at session start, on every
+  heartbeat, and through `POST /proctor/session/display` whenever it changes.
+  Only a clear "one screen" counts: a missing API, or `isExtended` read while a
+  permissions policy blocks the window-management feature (where the spec makes
+  it a meaningless `false`), is `unverified` and treated like a monitor.
+- The routes that serve the question paper (`GET /assignments/:id`,
+  `POST /assignments/:id/start`, `GET /tests/:id`) withhold it unless the
+  session's last report says one screen **and** the request itself comes from
+  Chrome or Edge, so a Chrome session's paper cannot be fetched from Firefox.
+- Saving answers and handing in are **never** blocked by this rule, so a
+  monitor plugged in mid-exam cannot cost anyone work they already did.
+- Plugging a monitor in mid-exam pauses the exam behind an overlay and is
+  charged once (`second_monitor_detected`, weight 1). Unplugging it unlocks the
+  overlay's Continue button.
+- Under a verified SEB session the rule is off: SEB enforces displays natively
+  (`allowedDisplaysMaxNumber: 1`, and it refuses mirroring too). A session
+  waiting for the student to open SEB is not told to use Chrome. A Linux student
+  SEB cannot serve is on the browser path, so the rule applies to them.
+- Sessions opened before this rule existed may finish in any browser; they have
+  no `display.enforced` value and expire within two days.
+
+**What it cannot catch.** A monitor set to *mirror* the laptop screen looks like
+one screen to every browser on every operating system — only SEB catches that.
+Nor can it catch an HDMI splitter or capture card, a screen shared over a video
+call, or a student who edits the page to always report one screen. As with the
+rest of this system: it raises the cost, it does not make cheating impossible.
 
 **Keyboard Lock needs HTTPS.** On plain HTTP it fails silently. Serve production
 over HTTPS or that protection is quietly absent.
 
-**Brave** is detected explicitly via `navigator.brave.isBrave()`. Its
-anti-fingerprinting may withhold `screen.isExtended`; when it does, the second
-monitor is recorded as "unknown" rather than treated as an accusation. Brave was
-previously the worst-supported browser here because its canvas protections
-corrupt the pixel reads face-api.js depended on — removing face recognition
-removed that failure mode entirely.
+**Brave** is refused by the server from its `Sec-CH-UA` brand. Its
+anti-fingerprinting may withhold `screen.isExtended`, which would make the
+monitor check unanswerable.
 
-Every detector degrades honestly: a missing API reports "unavailable", never
-blocks the student, and never invents a violation.
+Every other detector degrades honestly: a missing API reports "unavailable",
+never blocks the student, and never invents a violation. The monitor check is
+the deliberate exception — "cannot tell" stops the exam starting.
 
 ## Configuring it
 

@@ -5,6 +5,14 @@ const TestSubmission = require("../models/TestSubmission");
 const Assignment = require("../models/Assignment");
 const { authenticateToken } = require("../middleware/auth");
 const { requireProctorSession } = require("../middleware/proctorSession");
+const { isAttemptExpired } = require("../services/attemptWindow");
+
+/**
+ * An answer sent just as the clock runs out -- typed at 59:59, arriving a
+ * moment later -- is still accepted for this long. The same allowance the
+ * submit route gives a manual hand-in and the coding routes give a run.
+ */
+const CLOCK_SLACK_MS = 5000;
 
 // Health check endpoint
 router.get("/health", (req, res) => {
@@ -40,23 +48,58 @@ router.post("/", authenticateToken, requireProctorSession(), async (req, res, ne
       return res.status(400).json({ message: "Invalid questionId format" });
     }
 
+    // Only the student the assignment belongs to may save answers to it. Without
+    // this, saving against someone else's assignment id quietly created a
+    // submission row under the caller's id on that attempt, which readers that
+    // look submissions up by assignment alone could then pick up as the real one.
+    const assignment = await Assignment.findById(assignmentId)
+      .select("userId testId status startTime duration deadline startedAt")
+      .populate("testId", "timeLimit")
+      .lean();
+    if (!assignment) {
+      console.error("❌ Assignment not found:", assignmentId);
+      return res.status(404).json({ message: "Assignment not found" });
+    }
+    if (String(assignment.userId) !== String(userId)) {
+      return res.status(403).json({
+        message: "This assignment does not belong to you.",
+        reason: "not_owner",
+      });
+    }
+
+    // Only while the attempt is running.
+    //
+    // The proctoring session was the only gate, and a session stays "active"
+    // after the clock runs out until the expiry sweep closes it -- the 5-minute
+    // grace plus up to a minute for the sweep to come round. For those minutes a
+    // student could keep answering a paper whose time was up, and the sweep then
+    // graded what they had added. The attempt's status was never checked either,
+    // so a test that needs no proctoring session accepted answers after it had
+    // been handed in.
+    if (assignment.status !== "In Progress") {
+      return res.status(400).json({
+        message: assignment.status === "Completed" || assignment.status === "Cancelled"
+          ? "This test has already been submitted, so answers can no longer be changed."
+          : "This test is not in progress.",
+        code: "attempt_not_active",
+      });
+    }
+    if (isAttemptExpired(assignment, assignment.testId, CLOCK_SLACK_MS)) {
+      return res.status(400).json({
+        message: "This test's time is up, so answers can no longer be changed.",
+        code: "attempt_expired",
+      });
+    }
+
     // Get or create submission
     let submission = await TestSubmission.findOne({ assignmentId, userId });
     console.log("🔍 Found existing submission:", !!submission);
 
     if (!submission) {
-      // Create new submission if it doesn't exist
-      console.log("📋 Looking up assignment:", assignmentId);
-      const assignment = await Assignment.findById(assignmentId);
-      if (!assignment) {
-        console.error("❌ Assignment not found:", assignmentId);
-        return res.status(404).json({ message: "Assignment not found" });
-      }
-
       console.log("✅ Assignment found, creating new submission");
       submission = new TestSubmission({
         assignmentId,
-        testId: assignment.testId,
+        testId: assignment.testId?._id || assignment.testId,
         userId,
         responses: [],
         totalScore: 0,
@@ -120,10 +163,9 @@ router.post("/", authenticateToken, requireProctorSession(), async (req, res, ne
     await submission.save();
     console.log("✅ Answer saved successfully");
 
-    res.status(200).json({
-      message: "Answer saved successfully",
-      submission
-    });
+    // Just an acknowledgement. This used to echo the whole submission document,
+    // which carries every response's marks once a coding answer has been graded.
+    res.status(200).json({ message: "Answer saved successfully" });
   } catch (error) {
     console.error("❌ Error in POST /api/answers:", error.message, error.stack);
     next(error);
@@ -136,13 +178,28 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
     const { assignmentId } = req.params;
     const userId = req.user.userId;
 
-    const submission = await TestSubmission.findOne({ assignmentId, userId });
+    const submission = await TestSubmission.findOne({ assignmentId, userId }).lean();
 
     if (!submission) {
       return res.status(404).json({ message: "No answers found for this assignment" });
     }
 
-    res.json(submission.responses);
+    // What the exam page needs to put the student's work back after a reload --
+    // and nothing that marks it. This used to return the stored responses
+    // whole, so once a paper was graded, each question's `isCorrect` and
+    // `points` were one request away, long before results were released.
+    // Pass counts stay: they are what /coding/submit already tells the student
+    // during the exam.
+    res.json((submission.responses || []).map((response) => ({
+      questionId: response.questionId,
+      selectedOption: response.selectedOption ?? null,
+      textAnswer: response.textAnswer ?? null,
+      draftAnswer: response.draftAnswer ?? null,
+      language: response.language ?? null,
+      passedCount: response.passedCount ?? null,
+      totalHidden: response.totalHidden ?? null,
+      submittedAt: response.submittedAt ?? null,
+    })));
   } catch (error) {
     next(error);
   }

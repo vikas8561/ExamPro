@@ -178,7 +178,8 @@ async function main() {
       token: ashaToken, method: "POST",
       body: { assignmentId: String(a1._id), responses: [[0, "2"], [1, "4"]].map(([i, o]) => ({ questionId: String(test.questions[i]._id), selectedOption: o })), timeSpent: 120 },
     });
-    check(r.status === 201 && r.body.totalScore === 2, "resubmitted and regraded with both answers", r.body?.totalScore);
+    const resubmitted = await TestSubmission.findOne({ assignmentId: a1._id }).lean();
+    check(r.status === 201 && resubmitted?.totalScore === 2, "resubmitted and regraded with both answers", resubmitted?.totalScore);
     const a1Final = await Assignment.findById(a1._id).lean();
     const sub1Final = await TestSubmission.findOne({ assignmentId: a1._id }).lean();
     check(a1Final.status === "Completed" && a1Final.autoScore === 2 && sub1Final.isFinalized === true, "attempt is Completed again with the new score", { status: a1Final.status, score: a1Final.autoScore });

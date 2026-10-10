@@ -7,6 +7,8 @@ import useProctor from "../proctoring/useProctor";
 import QuestionText from "../components/QuestionText";
 import CodingWorkspace from "../components/coding/CodingWorkspace";
 import { TimerPill } from "../components/coding/codingUi";
+import { examClock, clockFromServer, secondsLeft } from "../utils/examClock";
+import { findOptionIndex } from "../utils/mcqOption";
 import useCodingJudge from "../hooks/useCodingJudge";
 import {
   FALLBACK_LANGUAGES,
@@ -172,6 +174,9 @@ const TakeTestInner = ({ submitRef }) => {
   const [autoSubmitPhase, setAutoSubmitPhase] = useState(null);
   const [autoSubmitError, setAutoSubmitError] = useState('');
   const autoSubmitTriggered = useRef(false);
+  // When this attempt ends, as the server computed it, plus the offset between
+  // the server's clock and this machine's. See utils/examClock.js.
+  const clockRef = useRef(null);
 
   // Zoom level state (80% to 150%, default 100%)
   const [zoomLevel, setZoomLevel] = useState(() => {
@@ -288,14 +293,13 @@ const TakeTestInner = ({ submitRef }) => {
     let backendCheckTimer;
 
     if (testStarted && timeRemaining > 0 && !isSubmitting && !autoSubmitTriggered.current) {
+      // Counted down to the attempt's end instant, not decremented per tick: a
+      // throttled background tab fires this rarely, and a decrementing counter
+      // would come back from it with most of the elapsed time missing.
       timer = setInterval(() => {
-        setTimeRemaining((prev) => {
-          if (prev <= 1) {
-            handleTimeUp();
-            return 0;
-          }
-          return prev - 1;
-        });
+        const left = secondsLeft(clockRef.current);
+        setTimeRemaining(left);
+        if (left <= 0) handleTimeUp();
         setTimeSpent((prev) => prev + 1);
       }, 1000);
 
@@ -309,7 +313,11 @@ const TakeTestInner = ({ submitRef }) => {
       // route has ever contained -- so the backstop never fired at all.
       backendCheckTimer = setInterval(async () => {
         try {
-          await apiRequest(`/assignments/check-expiration/${assignmentId}`);
+          const status = await apiRequest(`/assignments/check-expiration/${assignmentId}`);
+          // Every reply carries the server's clock, so a countdown that drifted
+          // -- or an end time an admin has since changed -- is put right here.
+          const fresh = clockFromServer(status);
+          if (fresh) clockRef.current = fresh;
         } catch (error) {
           if (
             error.code === "attempt_expired" &&
@@ -460,11 +468,6 @@ const TakeTestInner = ({ submitRef }) => {
     try {
       setLoading(true);
 
-      // Fetch current server time and browser timezone
-      const timeResponse = await apiRequest("/time");
-      const serverTime = new Date(timeResponse.serverTime);
-      const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
       const response = await apiRequest(`/assignments/${assignmentId}/start`, {
         method: "POST",
         body: JSON.stringify({}),
@@ -492,12 +495,10 @@ const TakeTestInner = ({ submitRef }) => {
       });
       setQuestionStatuses(initialStatuses);
 
-      const testTimeLimit = response.test.timeLimit;
-      const totalSeconds = (response.assignment.duration || testTimeLimit) * 60;
-      const testStartTime = new Date(response.assignment.startTime);
-      const currentTime = serverTime; // Use server time instead of client time
-      const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
-      const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
+      // The server says when this attempt ends -- the earlier of the window
+      // and the test's time limit. See utils/examClock.js.
+      clockRef.current = examClock(response, response.assignment, response.test.timeLimit);
+      const remainingSeconds = secondsLeft(clockRef.current);
 
       if (remainingSeconds <= 0) {
         setError("This test's time has expired.");
@@ -527,20 +528,12 @@ const TakeTestInner = ({ submitRef }) => {
   const loadExistingTestData = async () => {
     try {
 
-      // Fetch current server time and browser timezone
-      const timeResponse = await apiRequest("/time");
-      const serverTime = new Date(timeResponse.serverTime);
-      const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
       const assignmentData = await apiRequest(`/assignments/${assignmentId}`);
       setAssignment(assignmentData);
 
-      const testTimeLimit = assignmentData.testId.timeLimit;
-      const totalSeconds = (assignmentData.duration || testTimeLimit) * 60;
-      const testStartTime = new Date(assignmentData.startTime);
-      const currentTime = serverTime; // Use server time instead of client time
-      const elapsedSeconds = Math.floor((currentTime - testStartTime) / 1000);
-      const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
+      // Same clock as startTest, from the resumed assignment.
+      clockRef.current = examClock(assignmentData, assignmentData, assignmentData.testId?.timeLimit);
+      const remainingSeconds = secondsLeft(clockRef.current);
 
       if (remainingSeconds <= 0) {
         setError("This test's time has expired.");
@@ -605,9 +598,10 @@ const TakeTestInner = ({ submitRef }) => {
               // For MCQ, get the last response (most recent)
               const mcqResponse = responses.find(r => r.selectedOption);
               if (mcqResponse) {
-                const index = question.options.findIndex(
-                  (opt) => opt.text === mcqResponse.selectedOption
-                );
+                // Exact text, or an answer the old autosave stripped -- see
+                // utils/mcqOption.js. Without the second, a student resuming
+                // an exam saved before that fix lost their choice silently.
+                const index = findOptionIndex(question.options, mcqResponse.selectedOption);
                 if (index !== -1) {
                   existingAnswers[questionId] = index;
                 }
@@ -742,29 +736,17 @@ const TakeTestInner = ({ submitRef }) => {
     const shouldSave = question && (question.kind === "theory" || question.kind === "coding") ? true : hasAnswer;
 
     if (shouldSave) {
-      // Sanitize selectedOption to extract plain text from HTML if needed
-      let sanitizedSelectedOption = selectedOption;
-      if (typeof selectedOption === "object" && selectedOption !== null) {
-        sanitizedSelectedOption = String(selectedOption);
-      }
-
-      // If selectedOption contains HTML, extract plain text
-      if (
-        typeof sanitizedSelectedOption === "string" &&
-        sanitizedSelectedOption.includes("<")
-      ) {
-        // Create a temporary DOM element to extract text content
-        const tempDiv = document.createElement("div");
-        tempDiv.innerHTML = sanitizedSelectedOption;
-        sanitizedSelectedOption =
-          tempDiv.textContent || tempDiv.innerText || sanitizedSelectedOption;
-      }
-
+      // The option's text goes exactly as written. It is the answer key's own
+      // currency -- grading compares it character for character -- so nothing
+      // may be "cleaned" out of it. This used to strip anything that looked
+      // like HTML by assigning it to innerHTML, which turned `vector<int>` into
+      // `vector` (lost on reload, marked wrong by the expiry sweep) and ran any
+      // script an option carried. See utils/mcqOption.js.
       try {
         const payload = {
           assignmentId,
           questionId,
-          selectedOption: sanitizedSelectedOption,
+          selectedOption,
           textAnswer: textAnswer || "", // Ensure textAnswer is always a string
           ...(question.kind === "coding" ? { language: languageFor(question) } : {}),
         };

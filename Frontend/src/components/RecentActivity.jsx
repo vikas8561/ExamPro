@@ -1,5 +1,6 @@
 import React from "react";
 import { Activity, CheckCircle2, PlayCircle, BookCheck, ClipboardList } from "lucide-react";
+import { serverNow } from "../utils/serverClock";
 
 const RecentActivity = ({ data }) => {
   if (!data || data.length === 0) {
@@ -12,9 +13,11 @@ const RecentActivity = ({ data }) => {
     );
   }
 
+  // "5m ago" measured on the server's clock: a fast device clock made fresh
+  // activity read as hours old.
   const formatDate = (date) => {
-    const now = new Date();
-    const activityDate = new Date(date);
+    const now = serverNow();
+    const activityDate = Date.parse(date);
     const diffInHours = Math.floor((now - activityDate) / (1000 * 60 * 60));
 
     if (diffInHours < 1) {

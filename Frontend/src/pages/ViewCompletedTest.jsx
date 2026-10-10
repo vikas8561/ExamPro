@@ -5,6 +5,7 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import QuestionText from "../components/QuestionText";
 import ProctoringReport from "../components/ProctoringReport";
+import { findOptionIndex } from "../utils/mcqOption";
 import {
   ArrowLeft,
   ArrowUp,
@@ -544,54 +545,56 @@ const ViewCompletedTest = () => {
                       Answer Choices:
                     </p>
                     <div className="grid grid-cols-1 gap-2">
-                      {q.options.map((opt, optIdx) => {
-                        const optText = getTextValue(opt);
-                        const selectedText = getTextValue(q.selectedOption);
-                        const answerText = getTextValue(q.answer);
+                      {(() => {
+                        // Answers are option TEXT and must match exactly, as the
+                        // grader does: "hello", "Hello" and "HELLO" are three
+                        // different options. Resolving each to ONE index means a
+                        // single option is ever "Your Choice" and a single one
+                        // the "Correct Key".
+                        const optionList = q.options.map((opt) => ({ text: getTextValue(opt) }));
+                        const selectedIdx = findOptionIndex(optionList, getTextValue(q.selectedOption));
+                        const correctIdx = findOptionIndex(optionList, getTextValue(q.answer));
+                        return q.options.map((opt, optIdx) => {
+                          const optText = optionList[optIdx].text;
+                          const isSelected = optIdx === selectedIdx;
+                          const isCorrectOption = optIdx === correctIdx;
 
-                        const isSelected =
-                          selectedText !== "" &&
-                          selectedText === optText;
+                          let optStyles = "bg-[#20242D]/60 border-white/[0.04] text-slate-300";
+                          if (isCorrectOption) {
+                            optStyles = "bg-emerald-500/10 border-emerald-500/30 text-emerald-300 font-semibold";
+                          } else if (isSelected && !q.isCorrect) {
+                            optStyles = "bg-red-500/10 border-red-500/30 text-red-300 font-semibold";
+                          }
 
-                        const isCorrectOption =
-                          answerText !== "" &&
-                          answerText === optText;
-
-                        let optStyles = "bg-[#20242D]/60 border-white/[0.04] text-slate-300";
-                        if (isCorrectOption) {
-                          optStyles = "bg-emerald-500/10 border-emerald-500/30 text-emerald-300 font-semibold";
-                        } else if (isSelected && !q.isCorrect) {
-                          optStyles = "bg-red-500/10 border-red-500/30 text-red-300 font-semibold";
-                        }
-
-                        return (
-                          <div
-                            key={optIdx}
-                            className={`p-3 rounded-xl border flex items-center justify-between text-xs transition-all ${optStyles}`}
-                          >
-                            <div className="flex items-center gap-2.5">
-                              <span className="w-5 h-5 rounded-md bg-white/[0.06] flex items-center justify-center text-[10px] font-mono font-bold">
-                                {String.fromCharCode(65 + optIdx)}
-                              </span>
-                              <span>{optText}</span>
-                            </div>
-
-                            <div className="flex items-center gap-1.5">
-                              {isSelected && (
-                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-white/10 text-white">
-                                  Your Choice
+                          return (
+                            <div
+                              key={optIdx}
+                              className={`p-3 rounded-xl border flex items-center justify-between text-xs transition-all ${optStyles}`}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <span className="w-5 h-5 rounded-md bg-white/[0.06] flex items-center justify-center text-[10px] font-mono font-bold">
+                                  {String.fromCharCode(65 + optIdx)}
                                 </span>
-                              )}
-                              {isCorrectOption && (
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 flex items-center gap-1">
-                                  <Check className="w-3 h-3" />
-                                  Correct Key
-                                </span>
-                              )}
+                                <span>{optText}</span>
+                              </div>
+
+                              <div className="flex items-center gap-1.5">
+                                {isSelected && (
+                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-white/10 text-white">
+                                    Your Choice
+                                  </span>
+                                )}
+                                {isCorrectOption && (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 flex items-center gap-1">
+                                    <Check className="w-3 h-3" />
+                                    Correct Key
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        });
+                      })()}
                     </div>
                   </div>
                 )}
@@ -601,7 +604,14 @@ const ViewCompletedTest = () => {
                   <div className="space-y-2 pt-1">
                     <div className="flex items-center justify-between">
                       <p className="text-[11px] font-semibold uppercase tracking-wider text-[#7E8594]">
-                        Submitted Solution:
+                        {q.autoGraded ? "Graded Solution:" : "Submitted Solution:"}
+                        {/* How much of the problem the graded code solved. Only
+                            sent once results are released. */}
+                        {q.autoGraded && typeof q.passedCount === "number" && typeof q.totalHidden === "number" && (
+                          <span className="ml-2 normal-case tracking-normal font-medium text-slate-300">
+                            passed {q.passedCount} of {q.totalHidden} hidden test case{q.totalHidden === 1 ? "" : "s"}
+                          </span>
+                        )}
                       </p>
                       <button
                         onClick={() => handleCopyCode(studentAnswer, q._id)}
@@ -644,6 +654,40 @@ const ViewCompletedTest = () => {
                         {studentAnswer}
                       </SyntaxHighlighter>
                     </div>
+
+                    {/* What was in the editor at hand-in, when the student kept
+                        working after the graded submission. Shown so the reviewer
+                        sees both; only the graded code above earned marks. */}
+                    {q.autoGraded && q.draftAnswer && (
+                      <div className="space-y-2 pt-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-[#7E8594]">
+                          Last edit before hand-in <span className="normal-case tracking-normal font-medium text-amber-300">(not graded)</span>
+                        </p>
+                        <div className="rounded-xl overflow-hidden border border-amber-400/20 shadow-inner bg-[#101218]">
+                          <SyntaxHighlighter
+                            language={prismLang}
+                            style={vscDarkPlus}
+                            customStyle={{
+                              margin: 0,
+                              padding: "16px",
+                              borderRadius: "12px",
+                              fontSize: "13px",
+                              lineHeight: "1.6",
+                              backgroundColor: "#101218"
+                            }}
+                            showLineNumbers={true}
+                            lineNumberStyle={{
+                              minWidth: "2.5em",
+                              paddingRight: "1em",
+                              color: "#525866",
+                              backgroundColor: "#101218"
+                            }}
+                          >
+                            {String(q.draftAnswer)}
+                          </SyntaxHighlighter>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 

@@ -8,11 +8,14 @@ const Student = require("../models/Student");
 const { resolveProctorStatusForTest } = require("../middleware/proctorSession");
 const { sanitizeQuestions, canSeeAnswers } = require("../services/questionSanitizer");
 const { sanitizeCodingQuestion } = require("../services/testCases");
+const { mcqQuestionsError } = require("../services/mcqOptions");
 const { recalculateScoresForTest } = require("../services/scoreCalculation");
 const { resolveOrderedQuestions } = require("../services/questionOrder");
+const { hasAttemptOpened, notStartedBody } = require("../services/attemptWindow");
 const Assignment = require("../models/Assignment");
 const Mentor = require("../models/Mentor");
 const Subject = require("../models/Subject");
+const { isAllSubject } = require("../services/subjects");
 const { invalidateTestCache } = require("../utils/testCache");
 
 const isAllSubject = (s) => typeof s === "string" && s.trim().toUpperCase() === "ALL";
@@ -589,6 +592,11 @@ router.post("/", authenticateToken, requireRole(["admin", "Mentor"]), async (req
       return res.status(400).json({ message: kindError });
     }
 
+    const mcqError = mcqQuestionsError(questions);
+    if (mcqError) {
+      return res.status(400).json({ message: mcqError });
+    }
+
     // Validate allowedTabSwitches (0-100 for regular tests, -1 for practice tests)
     const tabSwitchesValue = Number(allowedTabSwitches || 0);
     if (type !== "practice" && (tabSwitchesValue < 0 || tabSwitchesValue > 100)) {
@@ -739,6 +747,10 @@ router.put("/:id", authenticateToken, requireRole(["admin", "Mentor"]), async (r
       return res.status(400).json({ message: "Test has already started and cannot be edited" });
     }
 
+    if (subject !== undefined && isAllSubject(subject)) {
+      return res.status(400).json({ message: '"ALL" is not a subject. Pick the subject this test belongs to.' });
+    }
+
     // Mentor can only update tests they created
     const userRole = String(req.user?.role || "").toLowerCase();
     if (userRole === "mentor") {
@@ -776,6 +788,10 @@ router.put("/:id", authenticateToken, requireRole(["admin", "Mentor"]), async (r
       const kindError = mixedTestKindError(effectiveType, questions);
       if (kindError) {
         return res.status(400).json({ message: kindError });
+      }
+      const mcqError = mcqQuestionsError(questions);
+      if (mcqError) {
+        return res.status(400).json({ message: mcqError });
       }
     }
 
