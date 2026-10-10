@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -34,6 +34,46 @@ function formatDateTimeLocal(dateInput) {
   const pad = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+
+const AutoResizeTextarea = ({ value, onChange, className = "", placeholder, required, ...props }) => {
+  const textareaRef = useRef(null);
+
+  const adjustHeight = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, []);
+
+  useEffect(() => {
+    adjustHeight();
+  }, [value, adjustHeight]);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => adjustHeight());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [adjustHeight]);
+
+  return (
+    <textarea
+      ref={textareaRef}
+      value={value}
+      onChange={(e) => {
+        onChange?.(e);
+        e.target.style.height = "auto";
+        e.target.style.height = `${e.target.scrollHeight}px`;
+      }}
+      placeholder={placeholder}
+      required={required}
+      rows={1}
+      className={`overflow-hidden resize-none ${className}`}
+      {...props}
+    />
+  );
+};
 
 const emptyQuestion = (kind) => ({
   id: crypto.randomUUID(),
@@ -398,6 +438,43 @@ export default function CreateTest() {
       questions: prev.questions.filter((q) => q.id !== id),
     }));
   };
+
+  // Calculate total marks and marks distribution from all questions
+  const { totalMarks, marksDistributionText } = useMemo(() => {
+    let total = 0;
+    const pointsMap = {};
+
+    (form.questions || []).forEach((q) => {
+      let qMarks = 0;
+      if (q.kind === "coding" && Array.isArray(q.hiddenTestCases) && q.hiddenTestCases.length > 0) {
+        const codingMarks = q.hiddenTestCases.reduce(
+          (sum, tc) => sum + (Number(tc?.marks) || 0),
+          0
+        );
+        qMarks = codingMarks > 0 ? codingMarks : (Number(q.points) || 1);
+      } else {
+        const pts = Number(q.points);
+        qMarks = q.points === "" || isNaN(pts) ? 0 : Math.max(0, pts);
+      }
+
+      total += qMarks;
+      pointsMap[qMarks] = (pointsMap[qMarks] || 0) + 1;
+    });
+
+    const sortedPoints = Object.keys(pointsMap)
+      .map(Number)
+      .sort((a, b) => a - b);
+
+    const distributionText =
+      sortedPoints.length > 0
+        ? sortedPoints.map((pts) => `${pointsMap[pts]} × ${pts}m`).join(", ")
+        : "0m";
+
+    return {
+      totalMarks: total,
+      marksDistributionText: distributionText,
+    };
+  }, [form.questions]);
 
   // Handle test type change and validate existing questions
   const handleTestTypeChange = (newType) => {
@@ -1374,17 +1451,43 @@ export default function CreateTest() {
               </div>
             )}
 
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/[0.06]">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-[#00C4B4]/10 rounded-xl text-[#00C4B4]">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 pb-4 border-b border-white/[0.06]">
+              {/* Left: Section Title & Grouped Question Metadata */}
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-2.5 bg-[#00C4B4]/10 rounded-xl text-[#00C4B4] shrink-0">
                   <FileText className="w-5 h-5" />
                 </div>
-                <div>
-                  <h2 className="text-base font-semibold text-white tracking-tight">Questions</h2>
-                  <p className="text-xs text-slate-400">{form.questions.length} question{form.questions.length !== 1 ? 's' : ''} added</p>
+                <div className="min-w-0">
+                  <h2 className="text-base font-semibold text-white tracking-tight leading-tight">Questions</h2>
+                  {/* Logically grouped metadata badges */}
+                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                    {/* Question Count Badge */}
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-white/5 border border-white/10 text-slate-300 shrink-0">
+                      {form.questions.length} {form.questions.length === 1 ? "question" : "questions"}
+                    </span>
+
+                    {/* Total Marks Badge */}
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-[#133B42] border border-[#00C4B4]/30 text-[#00C4B4] shrink-0">
+                      <span className="text-slate-300 font-normal">Total:</span>
+                      <span className="text-white font-bold">{totalMarks} {totalMarks === 1 ? "mark" : "marks"}</span>
+                    </span>
+
+                    {/* Marks Distribution Badge */}
+                    {form.questions.length > 0 && (
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-[#181A22] border border-white/10 text-slate-300 shrink-0"
+                        title={`Marks Distribution: ${marksDistributionText}`}
+                      >
+                        <span className="text-[#7E8594]">Dist:</span>
+                        <span className="text-[#FBBF24] font-semibold">{marksDistributionText}</span>
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
-              <div className="flex gap-2 flex-wrap items-center">
+
+              {/* Right: Action Buttons (Add MCQ, Add Coding, Add Theory) */}
+              <div className="flex items-center gap-2 shrink-0 self-start sm:self-center">
                 {getAllowedQuestionTypes(form.type).map((questionType) => {
                   const buttonConfig = {
                     mcq: {
@@ -1409,7 +1512,7 @@ export default function CreateTest() {
                       key={questionType}
                       type="button"
                       onClick={() => addQuestion(questionType)}
-                      className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium border transition-all cursor-pointer ${config.className}`}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer shrink-0 whitespace-nowrap active:scale-95 shadow-sm ${config.className}`}
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>{config.label}</span>
@@ -1530,13 +1633,12 @@ export default function CreateTest() {
                             {question.text.length} chars
                           </span>
                         </div>
-                        <textarea
+                        <AutoResizeTextarea
                           value={question.text}
                           onChange={(e) =>
                             updateQuestion(question.id, "text", e.target.value)
                           }
-                          className="w-full p-3 bg-[#181A22] border border-white/10 rounded-xl focus:border-[#00C4B4] focus:ring-1 focus:ring-[#00C4B4] outline-none text-white text-sm transition-all resize-none"
-                          rows={3}
+                          className="w-full p-3 bg-[#181A22] border border-white/10 rounded-xl focus:border-[#00C4B4] focus:ring-1 focus:ring-[#00C4B4] outline-none text-white text-sm transition-colors"
                           placeholder="Enter your question here..."
                           required
                         />
@@ -1556,10 +1658,11 @@ export default function CreateTest() {
                               onChange={(e) =>
                                 updateQuestion(question.id, "points", e.target.value)
                               }
-                              className="w-full p-2.5 bg-[#181A22] border border-white/10 rounded-xl focus:border-[#00C4B4] focus:ring-1 focus:ring-[#00C4B4] outline-none text-white text-sm transition-all"
+                              onWheel={(e) => e.currentTarget.blur()}
+                              className="w-full p-2.5 bg-[#181A22] border border-white/10 rounded-xl focus:border-[#00C4B4] focus:ring-1 focus:ring-[#00C4B4] outline-none text-white text-sm transition-all [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                               placeholder="1"
                             />
-                            <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-500 text-xs">
+                            <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-500 text-xs pointer-events-none">
                               pts
                             </div>
                           </div>
