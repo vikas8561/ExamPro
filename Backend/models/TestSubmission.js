@@ -73,7 +73,8 @@ const TabViolationSchema = new mongoose.Schema({
       "context_menu",
       "blocked_key", "screen_share_stopped", "screen_share_wrong_surface",
       "second_monitor_detected", "permission_revoked", "heartbeat_lost",
-      "page_tampered", "network_lost", "seb_integrity_lost"],
+      "page_tampered", "network_lost", "seb_integrity_lost",
+      "tab_switch_brief", "screen_idle_off", "media_device_lost"],
     required: true
   },
   details: { 

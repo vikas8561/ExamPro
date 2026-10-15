@@ -263,6 +263,11 @@ function previousIsBetter(cast) {
  * about the hidden cases, and withholding it would fail somebody for a missing
  * semicolon they were never allowed to see.
  *
+ * `compileNote` is the same kind of exception: it says the source only compiled
+ * once a helper written below main() was declared, or made static in Java (see
+ * services/sourceFixups.js). It is derived from the student's source alone and
+ * is identical for every case, so it says nothing about any hidden case either.
+ *
  * The score and the question's worth are absent too. Both are computed and
  * stored; neither is shown while the test is still running.
  */
@@ -272,6 +277,7 @@ function studentSubmissionView({
   totalHidden,
   language,
   compileOutput,
+  compileNote,
   submittedAt,
   graded,
 }) {
@@ -289,6 +295,7 @@ function studentSubmissionView({
     totalHidden,
     language,
     compileOutput: compileOutput || null,
+    compileNote: compileNote || null,
     submittedAt: iso(submittedAt),
 
     // The attempt that now counts, which is not necessarily this one. Telling a

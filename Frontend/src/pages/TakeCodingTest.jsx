@@ -5,6 +5,7 @@ import { API_BASE_URL } from '../config/api';
 import ProctorProvider from '../proctoring/ProctorProvider';
 import useProctor from '../proctoring/useProctor';
 import CodingWorkspace from '../components/coding/CodingWorkspace';
+import { preloadMonaco } from '../components/coding/loadMonaco';
 import { TimerPill } from '../components/coding/codingUi';
 import { examClock, clockFromServer, secondsLeft } from '../utils/examClock';
 import useCodingJudge from '../hooks/useCodingJudge';
@@ -39,6 +40,10 @@ function TakeCodingTestInner({ submitRef }) {
   // untouched template even if the served boilerplate changes mid-session.
   const insertedTemplateRef = useRef({});
 
+  // Every question here needs the code editor, so start downloading it now,
+  // while the student is still working through the proctoring gate.
+  useEffect(() => { preloadMonaco(); }, []);
+
   // Ask the backend which languages this Judge0 deployment can actually run.
   useEffect(() => {
     let cancelled = false;
@@ -60,6 +65,10 @@ function TakeCodingTestInner({ submitRef }) {
   const startRequestMade = useRef(false);
   const [showSubmitConfirmModal, setShowSubmitConfirmModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // A submit that failed, shown in the page. Not alert(): Chrome drops out of
+  // fullscreen for every JavaScript dialog, so a submit that failed on a bad
+  // connection also charged the student with leaving fullscreen.
+  const [submitError, setSubmitError] = useState(null);
   const debounceTimers = useRef({});
   // A ref, not state: the countdown can fire the auto-submit more than once in
   // a single tick, and `isSubmitting` would still read false in the second
@@ -156,8 +165,10 @@ function TakeCodingTestInner({ submitRef }) {
           setError(e.message || 'Failed to load assignment');
           setLoading(false);
           if (e.message && e.message.includes('Authentication required')) {
-            alert('Your session has expired. Please log in again.');
-            window.location.href = '/login';
+            // Said in the page, not with alert(), which would knock the exam
+            // out of fullscreen and record that against the student first.
+            setError('Your session has expired. Taking you to the login page...');
+            setTimeout(() => { window.location.href = '/login'; }, 2500);
           }
         }
       };
@@ -258,7 +269,7 @@ function TakeCodingTestInner({ submitRef }) {
         return;
       }
 
-      alert(error.message || 'Failed to submit test. Please try again or contact support.');
+      setSubmitError(error.message || 'Failed to submit test. Please try again or contact support.');
       // Don't navigate away - let user try again
     }
   };
@@ -275,10 +286,20 @@ function TakeCodingTestInner({ submitRef }) {
     submitTest(false, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assignment, test, codeByQ, languageByQ, timeSpent]);
+  // The intervals below outlive many renders; they reach the latest
+  // handleTimeUp through this, so an auto-submit sends the code as it is now.
+  const handleTimeUpRef = useRef(handleTimeUp);
+  handleTimeUpRef.current = handleTimeUp;
+
+  // Whether the countdown should be ticking. The effect depends on this rather
+  // than on `timeRemaining`: depending on the remaining time tore both
+  // intervals down and rebuilt them every second, so the 30-second server check
+  // below never once got to fire.
+  const clockRunning = testStarted && timeRemaining > 0;
 
   // Timer countdown
   useEffect(() => {
-    if (!testStarted || timeRemaining <= 0) return;
+    if (!clockRunning) return;
 
     // Counted down to the attempt's end instant, not decremented per tick: a
     // throttled background tab fires this rarely, and a decrementing counter
@@ -289,7 +310,7 @@ function TakeCodingTestInner({ submitRef }) {
     const timer = setInterval(() => {
       const left = secondsLeft(clockRef.current);
       setTimeRemaining(left);
-      if (left <= 0) handleTimeUp();
+      if (left <= 0) handleTimeUpRef.current();
       setTimeSpent(prev => prev + 1);
     }, 1000);
 
@@ -305,7 +326,7 @@ function TakeCodingTestInner({ submitRef }) {
         const fresh = clockFromServer(status);
         if (fresh) clockRef.current = fresh;
       } catch (error) {
-        if (error.code === "attempt_expired") handleTimeUp();
+        if (error.code === "attempt_expired") handleTimeUpRef.current();
       }
     }, 30000);
 
@@ -313,8 +334,7 @@ function TakeCodingTestInner({ submitRef }) {
       clearInterval(timer);
       clearInterval(backendCheckTimer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [testStarted, timeRemaining, assignmentId]);
+  }, [clockRunning, assignmentId]);
 
 
   const startTest = async () => {
@@ -633,6 +653,24 @@ function TakeCodingTestInner({ submitRef }) {
 
   return (
     <>
+      {submitError && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4" role="alertdialog" aria-modal="true">
+          <div className="bg-[#262626] border border-[#ef4743]/30 rounded-lg p-6 max-w-sm w-full">
+            <h2 className="text-[16px] font-medium mb-2 text-[#ef4743]">Your test was not submitted</h2>
+            <p className="text-[13px] text-white/70 mb-2 break-words">{submitError}</p>
+            <p className="text-[12px] text-white/50 mb-5">Your code is still here. Check your connection and submit again.</p>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setSubmitError(null)}
+                className="h-9 px-4 rounded-md text-[13px] text-white/90 bg-white/[0.08] hover:bg-white/15 transition-colors"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showSubmitConfirmModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <div className="bg-[#262626] border border-white/10 rounded-lg p-6 max-w-sm w-full">

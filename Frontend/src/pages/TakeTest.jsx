@@ -6,6 +6,7 @@ import ProctorProvider from "../proctoring/ProctorProvider";
 import useProctor from "../proctoring/useProctor";
 import QuestionText from "../components/QuestionText";
 import CodingWorkspace from "../components/coding/CodingWorkspace";
+import { preloadMonaco } from "../components/coding/loadMonaco";
 import { TimerPill } from "../components/coding/codingUi";
 import { examClock, clockFromServer, secondsLeft } from "../utils/examClock";
 import { findOptionIndex } from "../utils/mcqOption";
@@ -109,6 +110,10 @@ const TakeTestInner = ({ submitRef }) => {
   const startRequestMade = useRef(false);
   const [showSubmitConfirmModal, setShowSubmitConfirmModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // A submit that failed, shown in the page. Not alert(): Chrome drops out of
+  // fullscreen for every JavaScript dialog, so a submit that failed on a bad
+  // connection also charged the student with leaving fullscreen.
+  const [submitError, setSubmitError] = useState(null);
   const debounceTimers = useRef({});
   const [hasEnteredExam, setHasEnteredExam] = useState(() => {
     try {
@@ -154,6 +159,9 @@ const TakeTestInner = ({ submitRef }) => {
   // answer already said otherwise.
   useEffect(() => {
     if (!test?.questions) return;
+    // Start fetching the code editor as soon as the paper turns out to have a
+    // coding question, rather than when the student first navigates to one.
+    if (test.questions.some((q) => q.kind === "coding")) preloadMonaco();
     const defaults = {};
     for (const q of test.questions) {
       if (q.kind === "coding" && !languageRef.current[q._id]) {
@@ -288,18 +296,27 @@ const TakeTestInner = ({ submitRef }) => {
     checkExistingTest();
   }, [assignmentId, testStarted, proctor.ready]);
 
+  // Whether the countdown should be ticking. The effect below depends on this,
+  // not on `timeRemaining` itself: depending on the remaining time tore both
+  // intervals down and rebuilt them every second, so the 30-second server check
+  // never once got to fire.
+  const clockRunning = testStarted && timeRemaining > 0 && !isSubmitting;
+
   useEffect(() => {
     let timer;
     let backendCheckTimer;
 
-    if (testStarted && timeRemaining > 0 && !isSubmitting && !autoSubmitTriggered.current) {
+    if (clockRunning && !autoSubmitTriggered.current) {
       // Counted down to the attempt's end instant, not decremented per tick: a
       // throttled background tab fires this rarely, and a decrementing counter
       // would come back from it with most of the elapsed time missing.
       timer = setInterval(() => {
         const left = secondsLeft(clockRef.current);
         setTimeRemaining(left);
-        if (left <= 0) handleTimeUp();
+        // Through the ref: this interval now outlives many renders, and the
+        // submit must carry the answers as they are now, not as they were
+        // when the interval was created.
+        if (left <= 0) handleTimeUpRef.current();
         setTimeSpent((prev) => prev + 1);
       }, 1000);
 
@@ -319,12 +336,8 @@ const TakeTestInner = ({ submitRef }) => {
           const fresh = clockFromServer(status);
           if (fresh) clockRef.current = fresh;
         } catch (error) {
-          if (
-            error.code === "attempt_expired" &&
-            !isSubmitting &&
-            !autoSubmitTriggered.current
-          ) {
-            handleTimeUp();
+          if (error.code === "attempt_expired" && !autoSubmitTriggered.current) {
+            handleTimeUpRef.current();
           }
         }
       }, 30000);
@@ -334,7 +347,7 @@ const TakeTestInner = ({ submitRef }) => {
       clearInterval(timer);
       clearInterval(backendCheckTimer);
     };
-  }, [testStarted, timeRemaining, isSubmitting]);
+  }, [clockRunning, assignmentId]);
 
 
   const submitTest = async (
@@ -452,7 +465,7 @@ const TakeTestInner = ({ submitRef }) => {
       console.error("Test submission failed:", error);
       setIsSubmitting(false);
       // Show error to student so they know what happened
-      alert(error.message || "Failed to submit test. Please try again.");
+      setSubmitError(error.message || "Failed to submit test. Please try again.");
       // Don't navigate away - let user try again
     }
   };
@@ -700,11 +713,13 @@ const TakeTestInner = ({ submitRef }) => {
       }));
     }
 
-    // Update question status to 'answered' when answer is provided
-    setQuestionStatuses((prev) => ({
-      ...prev,
-      [questionId]: hasAnswer ? "answered" : "not-answered",
-    }));
+    // Update question status to 'answered' when answer is provided. Left alone
+    // when it is already right: this runs on every keystroke in the code
+    // editor, and a fresh object each time re-renders everything that reads it.
+    const nextStatus = hasAnswer ? "answered" : "not-answered";
+    setQuestionStatuses((prev) =>
+      prev[questionId] === nextStatus ? prev : { ...prev, [questionId]: nextStatus }
+    );
 
     // Clear existing debounce timer for this question
     if (debounceTimers.current[questionId]) {
@@ -924,6 +939,10 @@ const TakeTestInner = ({ submitRef }) => {
       setIsSubmitting(false);
     }
   };
+  // The countdown and the server check call the latest handleTimeUp through
+  // this, so an auto-submit always sends the answers as they currently are.
+  const handleTimeUpRef = useRef(handleTimeUp);
+  handleTimeUpRef.current = handleTimeUp;
 
 
   const handleSubmitClick = () => {
@@ -1052,6 +1071,23 @@ const TakeTestInner = ({ submitRef }) => {
   // the submit confirmation.
   const overlays = (
     <>
+      {/* ═══════════ SUBMIT FAILED ═══════════ */}
+      {submitError && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[70] p-4" role="alertdialog" aria-modal="true">
+          <div className="bg-slate-800 rounded-2xl p-6 max-w-sm w-full text-center border border-red-500/30 shadow-2xl">
+            <h2 className="text-lg font-semibold text-red-400 mb-2">Your test was not submitted</h2>
+            <p className="text-sm text-slate-300 mb-5 break-words">{submitError}</p>
+            <p className="text-xs text-slate-400 mb-5">Your answers are still here. Check your connection and submit again.</p>
+            <button
+              type="button"
+              onClick={() => setSubmitError(null)}
+              className="w-full py-2.5 rounded-xl font-semibold bg-white/90 text-black hover:bg-white"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
       {/* ═══════════ AUTO-SUBMIT TIME-UP MODAL ═══════════ */}
       {autoSubmitPhase && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-[60] p-4 auto-submit-overlay">

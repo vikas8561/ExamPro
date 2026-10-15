@@ -27,6 +27,24 @@ const displayReport = () => {
 const FLUSH_DELAY_MS = 400;
 const MAX_QUEUE = 50;
 
+/**
+ * A unique id per report. A batch whose reply is lost -- a timeout on a slow
+ * connection after the server had already counted it -- is resent, and the id is
+ * how the server recognises it instead of charging the student a second time.
+ */
+let fallbackCounter = 0;
+const newEventId = () => {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+  } catch {
+    // Not in a secure context; use the fallback below.
+  }
+  fallbackCounter += 1;
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}-${fallbackCounter}`;
+};
+
 export function createTransport({ sessionId, onVerdict, onError }) {
   let queue = [];
   let flushTimer = null;
@@ -79,7 +97,7 @@ export function createTransport({ sessionId, onVerdict, onError }) {
     /** Record a violation. Fire and forget; the verdict arrives via onVerdict. */
     report(violationType, details) {
       if (stopped) return;
-      queue.push({ violationType, details: String(details || "").slice(0, 300) });
+      queue.push({ id: newEventId(), violationType, details: String(details || "").slice(0, 300) });
       if (queue.length > MAX_QUEUE) queue = queue.slice(-MAX_QUEUE);
       scheduleFlush();
     },

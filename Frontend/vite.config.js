@@ -31,12 +31,15 @@ export default defineConfig({
         manualChunks: {
           // Separate vendor chunks for better caching
           vendor: ['react', 'react-dom', 'react-router-dom'],
-          monaco: ['@monaco-editor/react'],
           icons: ['@heroicons/react', 'react-icons', 'lucide-react'],
           utils: ['socket.io-client']
         }
       }
     },
+    // One stylesheet for the whole app, Monaco's included (~22 kB gzipped).
+    // Split per chunk, the editor's CSS arrives through a preload that a retry
+    // after a failed download skips, leaving a working but unstyled editor.
+    cssCodeSplit: false,
     // Enable compression
     minify: 'terser',
     terserOptions: {

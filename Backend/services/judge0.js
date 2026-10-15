@@ -25,6 +25,10 @@ const {
   FALLBACK_LANGUAGE_IDS,
   normalizeLanguageKey,
 } = require('../configs/languages');
+const { repairCandidates } = require('./sourceFixups');
+
+// How many repaired versions of a program that failed to compile are tried.
+const MAX_REPAIRS = 2;
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -700,7 +704,67 @@ async function runAgainstCases({ sourceCode, language, cases = [], limits = null
   }
   if (!Array.isArray(cases) || cases.length === 0) return [];
 
-  const { languageId, compilerOptions } = await resolveLanguage(language);
+  const resolved = await resolveLanguage(language);
+  const results = await runCasesOnce({ sourceCode, resolved, cases, limits, onProgress });
+
+  // Did it fail to compile only because of where something was written?
+  //
+  // A struct, class, global or function below main() in C or C++, or a helper
+  // without `static` in Java, is a compile error -- which students experience
+  // as "anything outside main does not work". See services/sourceFixups.js.
+  //
+  // The original source always runs first, so a program that compiles is never
+  // touched. Only when every case failed to compile are the repairs tried, in
+  // order, each first compiled against a single case so that a program no
+  // repair can save costs one extra case per repair, not a full rerun. The
+  // first repair that compiles is run on every case; if none does, the student
+  // sees the compiler errors from their own code.
+  const allFailedToCompile = results.length > 0 &&
+    results.every((result) => !result.infrastructureError && result.status?.id === STATUS.COMPILATION_ERROR);
+  if (!allFailedToCompile) return results;
+
+  const compiled = (list) => list.length > 0 && list.every((result) =>
+    !result.infrastructureError && result.status?.id !== STATUS.COMPILATION_ERROR
+  );
+
+  // Compiler errors from a repair that changed only the order of the code,
+  // when they differ from the original's -- see `stillFailingNote`.
+  let remaining = null;
+
+  for (const repair of repairCandidates(resolved.key, sourceCode).slice(0, MAX_REPAIRS)) {
+    const probe = await runCasesOnce({ sourceCode: repair.source, resolved, cases: cases.slice(0, 1), limits, onProgress: null });
+    if (!compiled(probe)) {
+      const output = probe[0]?.status?.id === STATUS.COMPILATION_ERROR ? probe[0].compileOutput : '';
+      if (!remaining && repair.stillFailingNote && output && output !== results[0].compileOutput) {
+        remaining = `${repair.stillFailingNote}\n\n${output}`;
+      }
+      continue;
+    }
+
+    const retried = cases.length === 1
+      ? probe
+      : await runCasesOnce({ sourceCode: repair.source, resolved, cases, limits, onProgress });
+    if (!compiled(retried)) continue;
+
+    return retried.map((result) => ({
+      ...result,
+      repairedForCompile: true,
+      // Kept apart from `message` so a caller can pass the note on without
+      // passing on anything the judge said about one particular case.
+      repairNote: repair.note,
+      message: result.message ? `${repair.note}\n${result.message}` : repair.note,
+    }));
+  }
+
+  // Still a compile error: show the one that names the student's real mistake.
+  // A compile error is identical for every case, so every result gets it.
+  if (remaining) return results.map((result) => ({ ...result, compileOutput: remaining }));
+  return results;
+}
+
+/** One pass of a program over its cases. See runAgainstCases. */
+async function runCasesOnce({ sourceCode, resolved, cases, limits, onProgress }) {
+  const { languageId, compilerOptions } = resolved;
   const { batchSize, enableCompilerOptions } = await ensureDiscovery();
 
   const submissions = cases.map((testCase) =>

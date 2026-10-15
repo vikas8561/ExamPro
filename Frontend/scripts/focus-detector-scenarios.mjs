@@ -63,12 +63,18 @@ const browser = {
   /** Switching to another app; the exam window may stay on screen. */
   switchedToAnotherApp() { globalThis.__hasFocus = false; fire("win", "blur"); },
   studentInteracts() { fire("doc", "mousemove"); },
+  /** A modifier key, which the keyboard lockdown stops at the window. */
+  modifierKeyAtWindow() { fire("win", "keydown"); },
 };
 
 // ── Test harness ───────────────────────────────────────────────────────────
 let pass = 0, fail = 0;
 
-function scenario(label, expected, script) {
+/**
+ * `expected` is a count, or the exact list of violation types in order.
+ * `keptAwake` is what the screen wake lock reports (see ../src/proctoring/wakeLock.js).
+ */
+function scenario(label, expected, script, { keptAwake = true } = {}) {
   now = 0; timers.length = 0;
   for (const k of Object.keys(listeners.doc)) delete listeners.doc[k];
   for (const k of Object.keys(listeners.win)) delete listeners.win[k];
@@ -76,16 +82,21 @@ function scenario(label, expected, script) {
   globalThis.__hasFocus = true;
 
   const reported = [];
-  const det = createFocusDetector({ report: (type) => reported.push(type), isPaused: () => false });
+  const det = createFocusDetector({
+    report: (type) => reported.push(type),
+    isPaused: () => false,
+    isScreenKeptAwake: () => keptAwake,
+  });
   det.start();
   script();
   det.stop();
 
-  const got = reported.length;
-  const ok = got === expected;
+  const got = Array.isArray(expected) ? reported.join(",") : reported.length;
+  const ok = Array.isArray(expected) ? got === expected.join(",") : got === expected;
   ok ? pass++ : fail++;
   const detail = reported.length ? `  [${reported.join(", ")}]` : "";
-  console.log(`${ok ? "PASS" : "FAIL"}  expected ${expected}, got ${got}${detail}   ${label}`);
+  const want = Array.isArray(expected) ? `[${expected.join(", ")}]` : expected;
+  console.log(`${ok ? "PASS" : "FAIL"}  expected ${want}, got ${Array.isArray(expected) ? `[${got}]` : got}${Array.isArray(expected) ? "" : detail}   ${label}`);
 }
 
 console.log("\n════ The false positives you reported ════\n");
@@ -185,6 +196,68 @@ scenario("Alt+Tab away, come back, Alt+Tab away again", 2, () => {
 
 scenario("Window pushed behind another without a blur event (poll fallback)", 1, () => {
   globalThis.__hasFocus = false;   // no event fired at all
+  advance(10000);
+});
+
+console.log("\n════ The page hidden by the operating system, not the student ════\n");
+
+scenario("macOS fullscreen Space animation hides the page for 0.6s", ["tab_switch_brief"], () => {
+  browser.tabHidden();
+  advance(600);
+  browser.tabVisible();
+  advance(10000);
+});
+
+scenario("A system overlay flickers the page out of view three times", ["tab_switch_brief", "tab_switch_brief", "tab_switch_brief"], () => {
+  for (let i = 0; i < 3; i++) {
+    browser.tabHidden();
+    advance(300);
+    browser.tabVisible();
+    advance(5000);
+  }
+});
+
+scenario("Idle 3 min, screen turns off (wake lock refused), back 2 min later", ["screen_idle_off"], () => {
+  advance(180000);
+  browser.tabHidden();
+  advance(120000);
+  browser.tabVisible();
+  advance(5000);
+}, { keptAwake: false });
+
+console.log("\n════ …while a real switch is still charged ════\n");
+
+scenario("Hidden for exactly the confirmation window: charged", ["tab_switch"], () => {
+  browser.tabHidden();
+  advance(1500);
+  browser.tabVisible();
+});
+
+scenario("Idle 3 min, then hidden, with the screen kept awake: a real switch", ["tab_switch"], () => {
+  advance(180000);
+  browser.tabHidden();
+  advance(30000);
+}, { keptAwake: true });
+
+scenario("Idle 3 min, Alt pressed (stopped at the window), then hidden: charged", ["tab_switch"], () => {
+  advance(180000);
+  browser.modifierKeyAtWindow();
+  browser.tabHidden();
+  advance(30000);
+}, { keptAwake: false });
+
+scenario("Hidden 20s right after the exam starts, wake lock refused: charged", ["tab_switch"], () => {
+  advance(5000);
+  browser.tabHidden();
+  advance(20000);
+}, { keptAwake: false });
+
+scenario("A brief flicker, then a real switch moments later: both recorded, one charged", ["tab_switch_brief", "tab_switch"], () => {
+  browser.tabHidden();
+  advance(400);
+  browser.tabVisible();
+  advance(800);
+  browser.tabHidden();
   advance(10000);
 });
 

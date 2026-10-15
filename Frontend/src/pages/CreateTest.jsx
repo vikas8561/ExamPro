@@ -25,7 +25,6 @@ import { parseISTInput, toISTInputValue } from "../utils/istTime";
 import JsonQuestionUploader from "../components/JsonQuestionUploader";
 import QuestionText from "../components/QuestionText";
 import { mcqOptionsError } from "../utils/mcqOption";
-import Editor from "@monaco-editor/react";
 
 function formatDateTimeLocal(dateInput) {
   if (!dateInput) return "";

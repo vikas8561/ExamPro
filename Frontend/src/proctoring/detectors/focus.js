@@ -29,8 +29,9 @@
  *
  * Signals are ranked by how much they actually prove:
  *
- *   visibilitychange → hidden   Conclusive. The tab really is not on screen.
- *                               Reported immediately.
+ *   visibilitychange → hidden   Conclusive that the tab is not on screen --
+ *                               but not that the student caused it. Charged
+ *                               once it has lasted HIDDEN_CONFIRM_MS; see there.
  *   blur                        Only a hint. Confirmed over a window, and
  *                               abandoned at the first sign the student is
  *                               still there.
@@ -60,13 +61,45 @@ const CONFIRM_MS = 4000;
 // The fallback poll. Only ever *starts* a confirmation, never reports directly.
 const POLL_INTERVAL_MS = 1000;
 
-export function createFocusDetector({ report, isPaused }) {
+// How long the page must stay hidden before it is charged as a tab switch.
+//
+// It used to be charged the instant the page was hidden. But the operating
+// system hides a page for a fraction of a second without anyone touching
+// anything: macOS animating the exam into its fullscreen Space, a system overlay
+// passing over the window, a display renegotiating. Every one of those was a
+// charged "tab switch". Going to look at something else and reading it takes
+// longer than this; a hide that ends sooner is recorded as `tab_switch_brief`,
+// weight 0, so the reviewer still sees every one of them.
+//
+// Timers in a hidden page are throttled to about once a second, not stopped, so
+// the confirmation still fires on time (within a second) while the student is away.
+const HIDDEN_CONFIRM_MS = 1500;
+
+// No input at all for this long before the page went out of view, on a machine
+// where the screen could not be kept awake, is the operating system's idle timer
+// turning the display off or locking the screen -- which Chrome reports exactly
+// like a tab switch. One minute is the shortest display-off and screensaver delay
+// Windows and macOS offer. Switching away deliberately takes a key press (Alt,
+// Cmd, the Windows key) that the page sees first, so it is not idle.
+const IDLE_SCREEN_OFF_MS = 60000;
+
+/**
+ * `isScreenKeptAwake` reports whether the screen wake lock was holding the
+ * display on (see ../wakeLock.js). While it is, the operating system cannot
+ * have turned the screen off for idleness, so the idle allowance does not apply.
+ */
+export function createFocusDetector({ report, isPaused, isScreenKeptAwake = () => true }) {
   let running = false;
   let pollTimer = null;
   let confirmTimer = null;
+  let hiddenTimer = null;
+  let hiddenAt = 0;
+  let idleWhenHidden = 0;
+  let awakeWhenHidden = true;
 
   // present  — the student is here
   // pending  — focus was lost; deciding whether it means anything
+  // hidden   — the page went out of view; deciding whether it was a tab switch
   // away     — confirmed gone and already reported; stays quiet until they return
   let state = "present";
 
@@ -77,10 +110,38 @@ export function createFocusDetector({ report, isPaused }) {
     }
   };
 
+  const clearHidden = () => {
+    if (hiddenTimer) {
+      clearTimeout(hiddenTimer);
+      hiddenTimer = null;
+    }
+  };
+
   /** The student is demonstrably back. Reset so the next departure can count. */
   const markPresent = () => {
+    // A focus event can arrive before the page is visible again on some
+    // systems. The hidden episode is settled by visibilitychange, not by that.
+    if (document.visibilityState === "hidden") return;
     clearConfirm();
     state = "present";
+  };
+
+  /** The page has been hidden for HIDDEN_CONFIRM_MS: rule on it. */
+  const confirmHidden = () => {
+    hiddenTimer = null;
+    if (!running || state !== "hidden") return;
+    state = "away";
+    if (isPaused?.()) return;
+
+    if (!awakeWhenHidden && idleWhenHidden >= IDLE_SCREEN_OFF_MS) {
+      const minutes = Math.round(idleWhenHidden / 60000);
+      report(
+        "screen_idle_off",
+        `The screen turned off or locked after ${minutes} min with no activity`
+      );
+      return;
+    }
+    report("tab_switch", "Switched away from the exam tab");
   };
 
   // When the student last did something on the page. Input is the strongest
@@ -138,14 +199,29 @@ export function createFocusDetector({ report, isPaused }) {
     if (!running) return;
 
     if (document.visibilityState === "hidden") {
-      // Conclusive, and worth reporting at once: a hidden tab is unambiguous,
-      // and waiting risks the browser suspending our timers first.
       clearConfirm();
-      if (state !== "away") {
+      if (state === "away" || state === "hidden") return;
+      if (isPaused?.()) {
         state = "away";
-        if (!isPaused?.()) report("tab_switch", "Switched away from the exam tab");
+        return;
       }
+      // Sampled now: the wake lock is released as the page hides, and the idle
+      // time is what it was at the moment the screen went.
+      state = "hidden";
+      hiddenAt = Date.now();
+      idleWhenHidden = hiddenAt - lastInputAt;
+      awakeWhenHidden = isScreenKeptAwake() !== false;
+      clearHidden();
+      hiddenTimer = setTimeout(confirmHidden, HIDDEN_CONFIRM_MS);
     } else {
+      if (state === "hidden") {
+        // Back before it counted. Recorded, never charged.
+        clearHidden();
+        if (!isPaused?.()) {
+          const seconds = ((Date.now() - hiddenAt) / 1000).toFixed(1);
+          report("tab_switch_brief", `The exam was out of view for ${seconds}s`);
+        }
+      }
       // Back on screen. Only truly "present" once focus is ours as well.
       if (document.hasFocus()) markPresent();
       else state = "present"; // allow a fresh blur to be judged on its own merits
@@ -192,6 +268,9 @@ export function createFocusDetector({ report, isPaused }) {
     start() {
       running = true;
       state = "present";
+      // Counted from the start of the exam, not from the epoch, or the first
+      // departure would always look like a machine left idle for decades.
+      lastInputAt = Date.now();
 
       document.addEventListener("visibilitychange", handleVisibilityChange);
       window.addEventListener("blur", handleBlur);
@@ -204,6 +283,11 @@ export function createFocusDetector({ report, isPaused }) {
       document.addEventListener("keydown", onProofOfPresence, opts);
       document.addEventListener("wheel", onProofOfPresence, opts);
       document.addEventListener("mousemove", onProofOfPresence, opts);
+      // Also on the window. The keyboard lockdown stops modifier keys from
+      // propagating past the window, so Alt, Cmd and the Windows key -- exactly
+      // the presses that begin a switch to another app -- never reach the
+      // document. Listeners on the same target still see them.
+      window.addEventListener("keydown", onProofOfPresence, opts);
 
       pollTimer = setInterval(poll, POLL_INTERVAL_MS);
     },
@@ -211,6 +295,7 @@ export function createFocusDetector({ report, isPaused }) {
     stop() {
       running = false;
       clearConfirm();
+      clearHidden();
 
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("blur", handleBlur);
@@ -221,6 +306,7 @@ export function createFocusDetector({ report, isPaused }) {
       document.removeEventListener("keydown", onProofOfPresence, opts);
       document.removeEventListener("wheel", onProofOfPresence, opts);
       document.removeEventListener("mousemove", onProofOfPresence, opts);
+      window.removeEventListener("keydown", onProofOfPresence, opts);
 
       if (pollTimer) {
         clearInterval(pollTimer);
