@@ -18,8 +18,6 @@ const Subject = require("../models/Subject");
 const { isAllSubject } = require("../services/subjects");
 const { invalidateTestCache } = require("../utils/testCache");
 
-const isAllSubject = (s) => typeof s === "string" && s.trim().toUpperCase() === "ALL";
-
 // Mentor subject names arrive lowercased and trimmed.
 const isDSASubject = (s) => s === "dsa" || s.includes("dsa") || s.includes("data structure");
 const isInterviewPrepSubject = (s) => s.includes("interview");
