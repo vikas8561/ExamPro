@@ -250,7 +250,9 @@ const note = (l) => console.log(`  NOTE  ${l}`);
       check(ids(reload.body?.testId?.questions).join() === p.order.join(), "the resume path returns the same order", "order changed on reload");
       check(ids(viaTest.body?.questions).join() === p.order.join(), "the test route returns the same order", "order changed via /tests");
 
-      // Now that a test edit preserves question ids, an edit must not reshuffle.
+      // A test that is being sat cannot be edited (PUT /tests/:id refuses once it
+      // has started), so a mid-exam edit can neither reword a question nor
+      // reshuffle anyone's paper.
       const admin = await mkUser("Admin");
       const edit = shuffleTest.questions.map((q) => ({
         _id: String(q._id), kind: q.kind, text: q.text, points: q.points,
@@ -259,12 +261,16 @@ const note = (l) => console.log(`  NOTE  ${l}`);
       edit[0].text = "Question 0 (reworded)";
       const put = await api(`/tests/${shuffleTest._id}`, { token: admin.token, method: "PUT", body: { questions: edit } });
       const afterEdit = await api(`/assignments/${p.a._id}`, { token: p.s.token });
-      check(put.status === 200 && ids(afterEdit.body?.testId?.questions).join() === p.order.join(),
-        "a mid-exam edit does not reshuffle the paper (ids now survive edits)",
-        `status ${put.status}; order now ${ids(afterEdit.body?.testId?.questions).join()}`);
+      check(put.status === 400 && /already started and cannot be edited/.test(put.body?.message || ""),
+        "a mid-exam edit is refused",
+        `status ${put.status}: ${JSON.stringify(put.body)}`);
+      check(ids(afterEdit.body?.testId?.questions).join() === p.order.join() &&
+        !(afterEdit.body?.testId?.questions || []).some((q) => q.text === "Question 0 (reworded)"),
+        "…and the paper is unchanged and in the same order",
+        `order now ${ids(afterEdit.body?.testId?.questions).join()}`);
 
-      // The edit just changed a question's wording, so the local fixture is now
-      // stale. Everything below compares against the test as it really is.
+      // Re-read anyway, so everything below compares against the test as it
+      // really is.
       shuffleTest = await Test.findById(shuffleTest._id);
     }
 

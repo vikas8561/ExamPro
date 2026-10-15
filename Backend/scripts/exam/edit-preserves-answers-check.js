@@ -1,15 +1,23 @@
 /**
- * Verification: editing a test must not throw away its students' answers.
+ * Verification: editing a test must never cost its students their answers.
  *
- * Student responses are matched to questions by `_id` and nothing else. The
- * admin edit form used to drop `_id`, so every save minted brand new question
- * ids and orphaned every answer ever given to that test -- finished papers
- * rendered as "Not answered" throughout, and the re-grade that runs after an
- * edit matched nothing.
+ * Two rules, checked separately:
  *
- * The property that matters is a fixed point: an edit that does not touch the
- * marking must leave every score and every answer exactly as it found them.
- * An edit that DOES change an answer key must re-grade correctly.
+ *   1. Once a test has started -- its start time has passed, or anyone has
+ *      started or submitted it -- it cannot be edited at all (routes/tests.js,
+ *      PUT /tests/:id, 2026-10-10). Every kind of edit is refused, and the
+ *      paper, its question ids, the student's answers and their score are left
+ *      exactly as they were.
+ *
+ *   2. Before then, edits are allowed, and student responses are matched to
+ *      questions by `_id` and nothing else. The admin edit form used to drop
+ *      `_id`, so every save minted brand new question ids; an edit must keep
+ *      every existing id, give new questions fresh ones, and never adopt an id
+ *      the client made up.
+ *
+ * Re-grading after an answer-key change used to be checked here too. The edit
+ * lock makes that path unreachable through the API -- a key can no longer
+ * change under answers that already exist -- so it is no longer checked.
  *
  * Runs against a local API and database only -- see scripts/lib/examHarness.js.
  */
@@ -119,37 +127,36 @@ const check = (cond, label, detail) => (cond ? pass(label) : fail(label, detail)
       `got ${before.totalScore}/${before.maxScore}, points ${before.points}`);
 
     // ───────────────────────────────────────────────────────────────────────
-    console.log("\n════ 1. An edit that changes no marking changes no marks ════\n");
+    console.log("\n════ 1. A test that has been sat cannot be edited ════\n");
 
-    const edited = asEditPayload(test);
-    edited[0].text = "answered right (reworded)";
-    let put = await api(`/tests/${testId}`, {
-      token: admin.token, method: "PUT",
-      body: { title: "ZZ Edit renamed", questions: edited },
-    });
-    check(put.status === 200, "the edit was accepted", `status ${put.status}: ${JSON.stringify(put.body)}`);
+    const snapshot = async () => JSON.stringify((await Test.findById(testId).lean()).questions);
+    const paperBefore = await snapshot();
 
-    const idsAfter = await questionIds(testId);
-    check(JSON.stringify(idsAfter) === JSON.stringify(originalIds),
-      "every question kept its id",
-      `before ${JSON.stringify(originalIds)}\n        after  ${JSON.stringify(idsAfter)}`);
+    const attempt = async (label, mutate, extra = {}) => {
+      const body = { questions: mutate(asEditPayload(test)), ...extra };
+      const put = await api(`/tests/${testId}`, { token: admin.token, method: "PUT", body });
+      check(put.status === 400 && /already started and cannot be edited/.test(put.body?.message || ""),
+        `${label}: refused (400)`, `status ${put.status}: ${JSON.stringify(put.body)}`);
+    };
 
-    test = await Test.findById(testId);
+    await attempt("rewording a question", (qs) => { qs[0].text = "answered right (reworded)"; return qs; }, { title: "ZZ Edit renamed" });
+    await attempt("changing an answer key", (qs) => { qs[1].answer = "wrong-1"; return qs; });
+    await attempt("changing a question's marks", (qs) => { qs[0].points = 10; return qs; });
+    await attempt("adding a question", (qs) => [...qs, { kind: "mcq", text: "brand new", options: [{ text: "a" }, { text: "b" }], answer: "a", points: 3 }]);
+    await attempt("removing a question", (qs) => qs.slice(1));
+    await attempt("reordering the questions", (qs) => qs.reverse());
+
+    check(await snapshot() === paperBefore, "the paper is exactly as it was", "the questions changed");
+    check(JSON.stringify(await questionIds(testId)) === JSON.stringify(originalIds), "every question kept its id", "ids changed");
+    check((await Test.findById(testId).lean()).title === `ZZ Edit ${MARK}`, "the title is unchanged", "the title changed");
+
     const after = await readScore();
     check(after.orphans === 0, "no student response was orphaned", `${after.orphans} orphaned`);
-    check(after.totalScore === before.totalScore && after.maxScore === before.maxScore,
-      "the score is untouched by the edit",
-      `was ${before.totalScore}/${before.maxScore}, now ${after.totalScore}/${after.maxScore}`);
-    check(JSON.stringify(after.points) === JSON.stringify(before.points),
-      "every per-question mark is untouched",
-      `was ${JSON.stringify(before.points)}, now ${JSON.stringify(after.points)}`);
-    check(JSON.stringify(after.answers) === JSON.stringify(before.answers),
-      "the student's answers are still there",
-      `was ${JSON.stringify(before.answers)}, now ${JSON.stringify(after.answers)}`);
-    check(test.questions[0].text === "answered right (reworded)",
-      "the edit itself actually took effect", `text is "${test.questions[0].text}"`);
+    check(JSON.stringify(after) === JSON.stringify(before),
+      "the score, every per-question mark and every answer are untouched",
+      `was ${JSON.stringify(before)}\n        now ${JSON.stringify(after)}`);
 
-    // The review screen is where the orphaning used to show up as "Not answered".
+    // The review screen is where an orphaned answer would show as "Not answered".
     const review = await api(`/test-submissions/assignment/${assignment._id}`, { token: admin.token });
     const merged = review.body?.test?.questions || [];
     const answeredRows = merged.filter((row) => row.selectedOption || row.textAnswer).length;
@@ -157,69 +164,91 @@ const check = (cond, label, detail) => (cond ? pass(label) : fail(label, detail)
       "the review screen still shows all 4 questions and all 3 given answers",
       `${merged.length} rows, ${answeredRows} of an expected 3 carry an answer`);
 
+    // A start time that has passed locks the test even before anyone opens it.
+    const scheduled = await api("/tests", {
+      token: admin.token, method: "POST",
+      body: {
+        title: `ZZ Scheduled ${MARK}`, type: "mcq", timeLimit: 30, allowedTabSwitches: 0,
+        questions: [{ kind: "mcq", text: "q", options: [{ text: "a" }, { text: "b" }], answer: "a", points: 1 }],
+      },
+    });
+    bin.tests.push(scheduled.body._id);
+    const lapsed = await Assignment.create({
+      testId: scheduled.body._id, userId: student.user._id, status: "Assigned",
+      startTime: new Date(Date.now() - 60000), duration: 30, mentorId: null,
+    });
+    bin.assignments.push(lapsed._id);
+    const lapsedTest = await Test.findById(scheduled.body._id);
+    const lapsedPut = await api(`/tests/${scheduled.body._id}`, {
+      token: admin.token, method: "PUT", body: { questions: asEditPayload(lapsedTest).map((x) => ({ ...x, text: "changed" })) },
+    });
+    check(lapsedPut.status === 400, "a test whose start time has passed is locked even if nobody has opened it", `status ${lapsedPut.status}`);
+
     // ───────────────────────────────────────────────────────────────────────
-    console.log("\n════ 2. An edit that DOES change the answer key re-grades ════\n");
+    console.log("\n════ 2. Before it starts, an edit keeps every question id ════\n");
 
-    const rekeyed = asEditPayload(test);
-    rekeyed[1].answer = "wrong-1"; // what the student actually picked
-    await api(`/tests/${testId}`, { token: admin.token, method: "PUT", body: { questions: rekeyed } });
-    test = await Test.findById(testId);
-    const regraded = await readScore();
-
-    check(JSON.stringify(await questionIds(testId)) === JSON.stringify(originalIds),
-      "ids still preserved through the re-key", "ids changed");
-    check(regraded.totalScore === 4,
-      "the student now scores 4: the -1 penalty became +2",
-      `got ${regraded.totalScore}, points ${JSON.stringify(regraded.points)}`);
-    check(regraded.points[2] === 0,
-      "the unanswered question is still worth 0, not a negative-marking penalty",
-      `blank scored ${regraded.points[2]}`);
-    check(regraded.points[3] === 0 && regraded.maxScore === 11,
-      "the theory answer still awaits the mentor, and maxScore is unchanged",
-      `theory ${regraded.points[3]}, max ${regraded.maxScore}`);
+    // A separate test nobody has been assigned yet, so editing is allowed.
+    const draft = await api("/tests", {
+      token: admin.token, method: "POST",
+      body: {
+        title: `ZZ Draft ${MARK}`, type: "mcq", timeLimit: 60, allowedTabSwitches: 0,
+        questions: [
+          { kind: "mcq", text: "one", options: [{ text: "a" }, { text: "b" }], answer: "a", points: 1 },
+          { kind: "mcq", text: "two", options: [{ text: "a" }, { text: "b" }], answer: "a", points: 1 },
+          { kind: "mcq", text: "three", options: [{ text: "a" }, { text: "b" }], answer: "a", points: 1 },
+          { kind: "theory", text: "four", expectedAnswer: "M", points: 2 },
+        ],
+      },
+    });
+    const draftId = draft.body._id;
+    bin.tests.push(draftId);
+    const draftIds = await questionIds(draftId);
+    test = await Test.findById(draftId);
+    const reworded = asEditPayload(test);
+    reworded[0].text = "one (reworded)";
+    const draftPut = await api(`/tests/${draftId}`, { token: admin.token, method: "PUT", body: { questions: reworded } });
+    check(draftPut.status === 200, "an edit before the test starts is accepted", `status ${draftPut.status}: ${JSON.stringify(draftPut.body)}`);
+    check(JSON.stringify(await questionIds(draftId)) === JSON.stringify(draftIds), "every question kept its id", "ids changed");
+    check((await Test.findById(draftId)).questions[0].text === "one (reworded)", "the edit itself actually took effect", "text unchanged");
 
     // ───────────────────────────────────────────────────────────────────────
-    console.log("\n════ 3. Adding, removing and reordering questions ════\n");
+    console.log("\n════ 3. Adding, removing and reordering questions before the start ════\n");
 
+    test = await Test.findById(draftId);
     const withExtra = asEditPayload(test);
     withExtra.push({ kind: "mcq", text: "brand new", options: [{ text: "a" }, { text: "b" }], answer: "a", points: 3 });
-    await api(`/tests/${testId}`, { token: admin.token, method: "PUT", body: { questions: withExtra } });
-    let ids = await questionIds(testId);
-    check(ids.length === 5 && JSON.stringify(ids.slice(0, 4)) === JSON.stringify(originalIds),
+    await api(`/tests/${draftId}`, { token: admin.token, method: "PUT", body: { questions: withExtra } });
+    let ids = await questionIds(draftId);
+    check(ids.length === 5 && JSON.stringify(ids.slice(0, 4)) === JSON.stringify(draftIds),
       "adding a question keeps the existing four ids and mints one new id",
       `got ${JSON.stringify(ids)}`);
-    check(!originalIds.includes(ids[4]), "the new question got an id of its own", `new id ${ids[4]}`);
+    check(!draftIds.includes(ids[4]), "the new question got an id of its own", `new id ${ids[4]}`);
 
-    test = await Test.findById(testId);
+    test = await Test.findById(draftId);
     const reordered = asEditPayload(test).reverse();
-    await api(`/tests/${testId}`, { token: admin.token, method: "PUT", body: { questions: reordered } });
-    ids = await questionIds(testId);
+    await api(`/tests/${draftId}`, { token: admin.token, method: "PUT", body: { questions: reordered } });
+    ids = await questionIds(draftId);
     check(JSON.stringify(ids) === JSON.stringify(reordered.map((x) => x._id)),
       "reordering moves the ids with their questions",
       `got ${JSON.stringify(ids)}`);
 
-    test = await Test.findById(testId);
+    test = await Test.findById(draftId);
     const trimmed = asEditPayload(test).filter((x) => x.text !== "brand new");
-    await api(`/tests/${testId}`, { token: admin.token, method: "PUT", body: { questions: trimmed } });
-    ids = await questionIds(testId);
-    check(ids.length === 4 && JSON.stringify([...ids].sort()) === JSON.stringify([...originalIds].sort()),
+    await api(`/tests/${draftId}`, { token: admin.token, method: "PUT", body: { questions: trimmed } });
+    ids = await questionIds(draftId);
+    check(ids.length === 4 && JSON.stringify([...ids].sort()) === JSON.stringify([...draftIds].sort()),
       "deleting a question leaves the other four ids alone",
       `got ${JSON.stringify(ids)}`);
-
-    const survived = await readScore();
-    check(survived.totalScore === 4,
-      "the student's score survived all three structural edits",
-      `got ${survived.totalScore}`);
 
     // ───────────────────────────────────────────────────────────────────────
     console.log("\n════ 4. Ids that must NOT be honoured ════\n");
 
-    test = await Test.findById(testId);
-    const idsBeforeCopy = await questionIds(testId);
+    test = await Test.findById(draftId);
+    const idsBeforeCopy = await questionIds(draftId);
     const collide = asEditPayload(test);
     collide.push({ ...collide[0], text: "a duplicate of Q1" }); // same _id twice
-    await api(`/tests/${testId}`, { token: admin.token, method: "PUT", body: { questions: collide } });
-    ids = await questionIds(testId);
+    await api(`/tests/${draftId}`, { token: admin.token, method: "PUT", body: { questions: collide } });
+    ids = await questionIds(draftId);
     check(new Set(ids).size === ids.length,
       "a duplicated _id does not produce two questions sharing one id",
       `got ${JSON.stringify(ids)}`);
@@ -230,12 +259,12 @@ const check = (cond, label, detail) => (cond ? pass(label) : fail(label, detail)
       "the copy is a new question with a fresh id of its own",
       `got ${JSON.stringify(ids)}`);
 
-    test = await Test.findById(testId);
+    test = await Test.findById(draftId);
     const forged = asEditPayload(test).filter((x) => x.text !== "a duplicate of Q1");
     const foreignId = String(new mongoose.Types.ObjectId());
     forged[0]._id = foreignId;
-    await api(`/tests/${testId}`, { token: admin.token, method: "PUT", body: { questions: forged } });
-    ids = await questionIds(testId);
+    await api(`/tests/${draftId}`, { token: admin.token, method: "PUT", body: { questions: forged } });
+    ids = await questionIds(draftId);
     check(!ids.includes(foreignId),
       "an id that does not belong to this test is ignored, not adopted",
       `the foreign id ${foreignId} was accepted`);
