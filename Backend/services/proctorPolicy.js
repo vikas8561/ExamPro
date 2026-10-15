@@ -36,6 +36,12 @@ const VIOLATION_TYPES = [
   "network_lost",
   // Safe Exam Browser stopped proving it was there mid-exam.
   "seb_integrity_lost",
+  // Recorded-only companions to tab_switch and permission_revoked: the same
+  // browser signals, in circumstances where they do not show the student did
+  // anything. See VIOLATION_WEIGHTS below.
+  "tab_switch_brief",
+  "screen_idle_off",
+  "media_device_lost",
 ];
 
 const VIOLATION_TYPE_SET = new Set(VIOLATION_TYPES);
@@ -140,6 +146,27 @@ const VIOLATION_WEIGHTS = {
   // middleware/proctorSession.js, which blocks the session while the proof is
   // stale and unblocks it the moment SEB checks in again.
   seb_integrity_lost: 0,
+
+  // The exam went out of view for under a second and a half and came straight
+  // back. A real look at something else takes longer; what produces these is
+  // the operating system -- a fullscreen Space animation on macOS, a system
+  // overlay, a display renegotiating. Charging them as tab switches is what
+  // warned students who had not touched anything.
+  tab_switch_brief: 0,
+
+  // The page went out of view after a long stretch with no input at all, on a
+  // machine where the exam could not keep the screen awake. That is the
+  // operating system's idle timer turning the display off or locking the
+  // screen, which Chrome reports exactly like a tab switch. The exam asks the
+  // browser to keep the screen on (a screen wake lock) so this should be rare;
+  // it is only recorded when that request was not granted.
+  screen_idle_off: 0,
+
+  // The camera or microphone stopped while its permission was still granted
+  // and could not be reopened: unplugged, taken by another application, or a
+  // Bluetooth headset that disconnected. Nothing is ever read from these
+  // devices, and a revoked permission is still charged as permission_revoked.
+  media_device_lost: 0,
 };
 
 /**
@@ -547,7 +574,12 @@ function decide(policy, weightedCount) {
 function weightOf(policy, violationType) {
   const weights = policy.violationWeights || VIOLATION_WEIGHTS;
   const weight = weights[violationType];
-  return typeof weight === "number" ? weight : 1;
+  if (typeof weight === "number") return weight;
+  // A session's rulebook is frozen when it opens, so one that was already
+  // running when a type was added does not list it. Use the current weight
+  // rather than charging a recorded-only event as if it were unknown.
+  const current = VIOLATION_WEIGHTS[violationType];
+  return typeof current === "number" ? current : 1;
 }
 
 function isKnownViolationType(violationType) {

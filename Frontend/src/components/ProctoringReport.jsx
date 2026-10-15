@@ -37,6 +37,9 @@ const VIOLATION_LABELS = {
   page_tampered: "Exam page was modified",
   network_lost: "Lost internet connection",
   seb_integrity_lost: "Safe Exam Browser stopped responding",
+  tab_switch_brief: "Exam briefly out of view",
+  screen_idle_off: "Screen turned off or locked while idle",
+  media_device_lost: "Camera or microphone stopped working",
 };
 
 /** Violations that are recorded for context but never count against a student. */
@@ -50,6 +53,15 @@ const UNCHARGED = new Set([
   // The exam is blocked while this is true, which is the enforcement. Charging
   // it as well would let a momentary blank from SEB's key API end an exam.
   "seb_integrity_lost",
+  // The page was out of view for under a second and a half -- the operating
+  // system, not the student. Kept so a pattern of them is still visible.
+  "tab_switch_brief",
+  // The display slept or locked after a long idle stretch, on a machine where
+  // the exam could not keep the screen on.
+  "screen_idle_off",
+  // A device dropped out while its permission stayed granted. Nothing is ever
+  // read from it; a withdrawn permission is still charged separately.
+  "media_device_lost",
 ]);
 
 /** How the attempt stood in relation to Safe Exam Browser. */

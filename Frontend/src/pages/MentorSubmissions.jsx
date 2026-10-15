@@ -2,8 +2,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { formatDateIST } from "../utils/istTime";
 import { useNavigate } from "react-router-dom";
 import apiRequest from "../services/api";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import SyntaxHighlighter, { vscDarkPlus } from "../components/SyntaxHighlighter";
 import "../styles/StudentDashboard.mobile.css";
 import {
   FileCheck,

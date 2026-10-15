@@ -71,6 +71,11 @@ const ProctorSessionSchema = new mongoose.Schema(
       default: () => new Map(),
     },
 
+    // Ids of the most recent violation reports, so a batch the browser resends
+    // after losing the reply -- a timeout on a bad connection -- is not charged
+    // a second time. Bounded; see routes/proctor.js.
+    recentEventIds: { type: [String], default: [] },
+
     // Whether the browser is still checking in. A browser that goes quiet is
     // treated as a browser that is hiding something.
     lastHeartbeatAt: { type: Date, default: Date.now },

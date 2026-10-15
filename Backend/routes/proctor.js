@@ -57,6 +57,9 @@ function recordAbsence(session, sinceMs, how) {
  * count they can reach is only a display copy of the number held on the server.
  */
 
+/** How many processed event ids a session remembers for resend detection. */
+const RECENT_EVENT_IDS = 200;
+
 /** Trim free text coming from the browser so nothing oversized reaches the DB. */
 const clean = (value, max = 300) =>
   typeof value === "string" ? value.slice(0, max) : "";
@@ -750,9 +753,22 @@ router.post("/session/event", authenticateToken, async (req, res, next) => {
       if (policyService.causeGroups().includes(group)) causeSeenAt.set(group, now);
     }
 
+    // A batch whose reply never reached the browser (a timeout on a slow
+    // connection) is sent again, and the server has already counted it. Without
+    // this the student paid twice for one event -- long after the dedupe window
+    // below had closed. Older pages send no ids and are handled as before.
+    const seenIds = new Set(session.recentEventIds || []);
+
     for (const event of batch) {
       const violationType = clean(event?.violationType, 60);
       if (!policyService.isKnownViolationType(violationType)) continue;
+
+      const eventId = clean(event?.id, 64);
+      if (eventId) {
+        if (seenIds.has(eventId)) continue;
+        seenIds.add(eventId);
+        session.recentEventIds.push(eventId);
+      }
 
       // One action can fire several browser events, and not always the same
       // one: a tab switch makes the browser fire both `visibilitychange` and
@@ -791,6 +807,10 @@ router.post("/session/event", authenticateToken, async (req, res, next) => {
       session.violationCount += weight;
       if (weight > 0) charged = true;
       else recorded.push({ violationType, details: recordedDetails });
+    }
+
+    if (session.recentEventIds.length > RECENT_EVENT_IDS) {
+      session.recentEventIds = session.recentEventIds.slice(-RECENT_EVENT_IDS);
     }
 
     // Nothing was charged, so nothing interrupts the exam — but the student is

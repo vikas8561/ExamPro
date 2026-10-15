@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { testSubmissionsAPI } from "../services/api";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import SyntaxHighlighter, { vscDarkPlus } from "../components/SyntaxHighlighter";
 import QuestionText from "../components/QuestionText";
 import ProctoringReport from "../components/ProctoringReport";
 import { findOptionIndex } from "../utils/mcqOption";

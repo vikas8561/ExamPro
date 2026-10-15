@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import LazyMonacoEditor from '../LazyMonacoEditor';
+import CodeEditor from './CodeEditor';
 import QuestionText from '../QuestionText';
 import { findLanguage } from '../../config/languages';
 import { CustomDropdown, LcBox, Spinner } from './codingUi';
@@ -216,6 +216,12 @@ export default function CodingWorkspace({
     openConsole();
     await execute({ mode: 'submit', question, code, language });
   };
+
+  // One handler for the life of the workspace, so the memoised editor is not
+  // re-rendered by every countdown tick of the page around it.
+  const onCodeChangeRef = useRef(onCodeChange);
+  onCodeChangeRef.current = onCodeChange;
+  const handleEditorChange = useCallback((value) => onCodeChangeRef.current(value ?? ''), []);
 
   const formatCode = () => {
     const formatted = tidyCode(code);
@@ -516,38 +522,13 @@ export default function CodingWorkspace({
                     for all of them: Ctrl+Z on a new question undid the switch
                     itself and wrote the previous question's code into this one,
                     where it was saved and submitted as this question's answer. */}
-                <LazyMonacoEditor
+                <CodeEditor
                   key={questionId || 'no-question'}
-                  height="100%"
                   language={findLanguage(supportedLanguages, language || 'python')?.monacoLanguage || 'plaintext'}
                   theme={editorTheme}
                   value={code || ''}
-                  onChange={(value) => onCodeChange(value ?? '')}
-                  options={{
-                    fontSize: FONT_SIZES[fontSize],
-                    minimap: { enabled: false },
-                    lineNumbers: 'on',
-                    scrollBeyondLastLine: false,
-                    automaticLayout: true,
-                    tabSize: 4,
-                    insertSpaces: true,
-                    wordWrap: 'on',
-                    folding: true,
-                    matchBrackets: 'always',
-                    autoClosingBrackets: 'always',
-                    autoClosingQuotes: 'always',
-                    suggestOnTriggerCharacters: true,
-                    quickSuggestions: { other: true, comments: false, strings: false },
-                    parameterHints: { enabled: true },
-                    renderLineHighlight: 'line',
-                    smoothScrolling: true,
-                    fontFamily: "'Menlo', 'Monaco', 'Consolas', 'Courier New', monospace",
-                    lineHeight: 1.6,
-                    padding: { top: 12, bottom: 12 },
-                    bracketPairColorization: { enabled: true },
-                    guides: { bracketPairs: true, indentation: true },
-                    scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
-                  }}
+                  onChange={handleEditorChange}
+                  fontSize={FONT_SIZES[fontSize]}
                 />
               </div>
             </div>

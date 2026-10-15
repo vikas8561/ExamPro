@@ -20,7 +20,8 @@ import { createKeyboardDetector } from "./detectors/keyboard";
 import { createClipboardDetector } from "./detectors/clipboard";
 import { createDevtoolsDetector } from "./detectors/devtools";
 import { createScreenDetector, requestScreenShare } from "./detectors/screen";
-import { createPermissionsDetector } from "./detectors/permissions";
+import { createPermissionsDetector, CAMERA_CONSTRAINTS } from "./detectors/permissions";
+import { createScreenWakeLock } from "./wakeLock";
 import { createNetworkDetector } from "./detectors/network";
 import { createIntegrityDetector } from "./detectors/integrity";
 import { createDisplayDetector } from "./detectors/display";
@@ -42,7 +43,17 @@ import { ProctorContext } from "./context";
  * that trains students to ignore the notices that matter. It stays on the
  * report either way.
  */
-const SILENT_VIOLATIONS = new Set(["paste_internal"]);
+const SILENT_VIOLATIONS = new Set([
+  "paste_internal",
+  // A hide too short to be a tab switch. Telling the student "the exam was out
+  // of view for 0.4s" about something the operating system did would only
+  // alarm them; it stays on the reviewer's record.
+  "tab_switch_brief",
+]);
+
+// A device reopened mid-exam that does not answer within this long is treated
+// as unavailable; getUserMedia has no timeout of its own.
+const REACQUIRE_TIMEOUT_MS = 10000;
 
 /** Refusals from the server's browser rule. See Backend/services/browserRequirement.js. */
 const BROWSER_REFUSALS = new Set(["browser_unsupported", "browser_outdated", "browser_mobile"]);
@@ -482,10 +493,59 @@ export function ProctorProvider({
 
   // ── Starting and stopping the sensors ──────────────────────────────────
 
+  /**
+   * Reopen the camera or microphone after its track ended, and swap the new
+   * track into the held stream. No prompt appears while the permission is
+   * still granted. See detectors/permissions.js for when this is used.
+   */
+  const reacquireMedia = useCallback(async (kind) => {
+    const stream = mediaStreamRef.current;
+    if (!stream || !navigator.mediaDevices?.getUserMedia) return { ok: false, name: "Unsupported" };
+
+    let timeout;
+    const opening = navigator.mediaDevices.getUserMedia(
+      kind === "camera" ? { video: CAMERA_CONSTRAINTS } : { audio: true }
+    );
+    try {
+      const fresh = await Promise.race([
+        opening,
+        new Promise((_, reject) => {
+          timeout = setTimeout(
+            () => reject(Object.assign(new Error("timed out"), { name: "TimeoutError" })),
+            REACQUIRE_TIMEOUT_MS
+          );
+        }),
+      ]);
+      const [track] = kind === "camera" ? fresh.getVideoTracks() : fresh.getAudioTracks();
+      if (!track) return { ok: false, name: "NotFoundError" };
+
+      const stale = kind === "camera" ? stream.getVideoTracks() : stream.getAudioTracks();
+      stale.forEach((old) => {
+        old.stop();
+        stream.removeTrack(old);
+      });
+      stream.addTrack(track);
+      return { ok: true };
+    } catch (error) {
+      // Gave up waiting: if the device answers after all, let it go again
+      // rather than leaving a camera open that nothing holds.
+      if (error?.name === "TimeoutError") {
+        opening.then((late) => late.getTracks().forEach((t) => t.stop())).catch(() => {});
+      }
+      return { ok: false, name: error?.name || "Error" };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }, []);
+
   const startDetectors = useCallback(() => {
     if (detectorsRef.current.length > 0) return;
 
     const policy = session?.policy || {};
+
+    // Keeps the display from sleeping or locking while the student sits and
+    // thinks -- which the browser would otherwise report as leaving the exam.
+    const wakeLock = createScreenWakeLock();
 
     const keyboard = createKeyboardDetector({ report, isPaused });
     const devtools = createDevtoolsDetector({
@@ -556,6 +616,7 @@ export function ProctorProvider({
     displayRef.current = display;
 
     const detectors = [
+      wakeLock,
       display,
       keyboard,
       devtools,
@@ -565,7 +626,7 @@ export function ProctorProvider({
         blockContextMenu: policy.blockContextMenu !== false,
         allowInternalClipboard: policy.allowInternalClipboard !== false,
       }),
-      createFocusDetector({ report, isPaused }),
+      createFocusDetector({ report, isPaused, isScreenKeptAwake: () => wakeLock.isHeld() }),
       watchesFullscreen &&
         createFullscreenDetector({
           report,
@@ -587,6 +648,7 @@ export function ProctorProvider({
         required: (policy.requiredPermissions || []).filter((p) =>
           ["camera", "microphone"].includes(p)
         ),
+        reacquire: reacquireMedia,
       }),
       createNetworkDetector({
         report,
@@ -613,7 +675,7 @@ export function ProctorProvider({
     });
 
     detectorsRef.current = detectors;
-  }, [session, report, isPaused]);
+  }, [session, report, isPaused, reacquireMedia]);
 
   const stopDetectors = useCallback(() => {
     detectorsRef.current.forEach((detector) => {

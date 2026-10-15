@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import apiRequest from "../services/api";
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import SyntaxHighlighter, { vscDarkPlus } from '../components/SyntaxHighlighter';
 import QuestionText from "../components/QuestionText";
 
 const ViewTestResults = () => {
