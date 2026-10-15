@@ -612,15 +612,15 @@ export default function Users({ mentorView = false }) {
           style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.05)", minHeight: "3.5rem" }}
         >
           {/* Left: Branding & Subtitle */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="w-9 h-9 rounded-xl bg-[#133B42] border border-[#00C4B4]/20 flex items-center justify-center flex-shrink-0">
               <UsersIcon className="w-5 h-5 text-[#00C4B4]" />
             </div>
-            <div>
-              <h1 className="text-base sm:text-lg font-semibold text-white tracking-tight leading-tight">
+            <div className="min-w-0">
+              <h1 className="text-base sm:text-lg font-semibold text-white tracking-tight leading-tight whitespace-nowrap">
                 {mentorView ? "My Students" : "User Directory"}
               </h1>
-              <p className="text-xs text-[#7E8594] mt-0.5">
+              <p className="text-xs text-[#7E8594] mt-0.5 truncate">
                 {mentorView
                   ? "Students in your assigned batches · unblock logins & reset passwords"
                   : "Institutional accounts, role governance & proctoring profiles"}
@@ -629,9 +629,9 @@ export default function Users({ mentorView = false }) {
           </div>
 
           {/* Right: Search, Filter, Reset Images, Sync & ⚪ White Button */}
-          <div className="flex items-center flex-wrap gap-2.5 sm:gap-3">
-            {/* Search Input */}
-            <div className="relative w-full sm:w-56">
+          <div className="flex items-center gap-2 sm:gap-2.5 md:gap-3 w-full md:w-auto shrink-0">
+            {/* Flexible Search Input */}
+            <div className="relative flex-1 min-w-[120px] sm:min-w-[140px] md:w-44 lg:w-56 md:flex-initial">
               <Search className="w-4 h-4 text-[#7E8594] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
@@ -651,11 +651,11 @@ export default function Users({ mentorView = false }) {
             </div>
 
             {/* Filter Dropdown */}
-            <div className="relative filter-dropdown">
+            <div className="relative filter-dropdown shrink-0">
               <button
                 type="button"
                 onClick={() => setIsFilterOpen(!isFilterOpen)}
-                className="flex items-center gap-2 bg-[#20242D] hover:bg-[#282D39] border border-white/[0.08] text-white px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-sm"
+                className="flex items-center gap-2 bg-[#20242D] hover:bg-[#282D39] border border-white/[0.08] text-white px-3 sm:px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-sm shrink-0 whitespace-nowrap"
               >
                 <Filter className="w-3.5 h-3.5 text-[#00C4B4]" />
                 <span className="max-w-[110px] truncate">
@@ -702,7 +702,7 @@ export default function Users({ mentorView = false }) {
             {!mentorView && (
             <button
               onClick={deleteAllProfileImages}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-all cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-all cursor-pointer shrink-0 whitespace-nowrap"
               title="Reset all user profile images"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -714,7 +714,7 @@ export default function Users({ mentorView = false }) {
             <button
               onClick={() => fetchUsers(currentPage, searchTerm, filter)}
               disabled={loading}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-[#133B42] text-[#00C4B4] border border-[#00C4B4]/30 hover:bg-[#1A4C55] transition-all cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-[#133B42] text-[#00C4B4] border border-[#00C4B4]/30 hover:bg-[#1A4C55] transition-all cursor-pointer disabled:opacity-50 shrink-0"
               title="Refresh users"
             >
               <Zap className={`w-3.5 h-3.5 fill-[#00C4B4] ${loading ? "animate-spin" : ""}`} />
@@ -732,7 +732,7 @@ export default function Users({ mentorView = false }) {
                   setShowAddForm(true);
                 }
               }}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-white hover:bg-slate-100 text-slate-950 shadow-sm transition-all hover:scale-105 active:scale-95 cursor-pointer"
+              className="inline-flex items-center justify-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-white hover:bg-slate-100 text-slate-950 shadow-sm transition-all hover:scale-105 active:scale-95 cursor-pointer shrink-0 whitespace-nowrap"
             >
               <UserPlus className="w-4 h-4 stroke-[2.5]" />
               <span>{showAddForm ? "Close Form" : "Add User"}</span>

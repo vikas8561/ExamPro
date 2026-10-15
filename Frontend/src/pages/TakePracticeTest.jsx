@@ -51,6 +51,31 @@ const TakePracticeTest = () => {
       
       // Fetch the practice test
       const testData = await apiRequest(`/practice-tests/${testId}`);
+
+      // Batch access check in Student UI
+      const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+      if (storedUser.role === "Student") {
+        const cohort = testData?.cohort;
+        const cohortMap = {
+          ru: ["Rai University"],
+          su702: ["SUxCG 702"],
+          su714: ["SUxCG 714", "CGXSU 714"],
+          cglab3: ["CG LAB 3"],
+          cglab4: ["CG LAB 4"],
+          ssiu: ["Swarrnim Startup & Innovation University"],
+        };
+        if (cohort && cohort !== "all") {
+          const allowedUnivs = Array.isArray(cohort)
+            ? cohort.flatMap((c) => cohortMap[c] || [])
+            : cohortMap[cohort] || [];
+          if (allowedUnivs.length > 0 && !allowedUnivs.includes(storedUser.university)) {
+            setError("This practice test is not available for your batch");
+            setLoading(false);
+            return;
+          }
+        }
+      }
+
       setTest(testData);
       
       // Initialize timer
@@ -99,7 +124,7 @@ const TakePracticeTest = () => {
       
     } catch (error) {
       console.error("Error fetching practice test:", error);
-      setError("Failed to load practice test");
+      setError(error.message || "Failed to load practice test");
     } finally {
       setLoading(false);
     }

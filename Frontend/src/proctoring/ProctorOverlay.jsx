@@ -50,6 +50,7 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
       blockReason === "fullscreen" ||
       blockReason === "display" ||
       blockReason === "screenshare" ||
+      blockReason === "secondmonitor" ||
       warning?.violationType === "devtools_opened" ||
       warning?.violationType === "fullscreen_exit";
 

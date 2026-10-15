@@ -4,8 +4,77 @@ const router = express.Router();
 const Test = require("../models/Test");
 const PracticeTestSubmission = require("../models/PracticeTestSubmission");
 const { authenticateToken, requireRole } = require("../middleware/auth");
-const { attach } = require("../services/principals");
+const { attach, getCohort } = require("../services/principals");
 const { sanitizeQuestions } = require("../services/questionSanitizer");
+const Student = require("../models/Student");
+
+/**
+ * Build a MongoDB $match filter that limits practice tests to those whose
+ * cohort includes the given student's University. Tests with no cohort or
+ * cohort "all" remain visible to everyone (backward compatibility).
+ */
+async function buildBatchFilter(userId) {
+  const student = await Student.findById(userId).select("University").lean();
+  if (!student) return { _id: null };
+  const university = student.University || "";
+
+  // A practice test is visible when:
+  //  - it has no cohort set (legacy tests, available to everyone)
+  //  - cohort is "all"
+  //  - the cohort's University filter matches this student
+  //
+  // We build a list of cohort keys whose filter covers this student's
+  // University, then match tests whose cohort field is one of those keys.
+  const { COHORTS } = require("../services/principals");
+  const matchingKeys = [];
+  for (const c of COHORTS) {
+    if (c.key === "all") { matchingKeys.push("all"); continue; }
+    const f = c.filter?.University;
+    if (!f) continue;
+    if (typeof f === "string" && f === university) matchingKeys.push(c.key);
+    else if (f?.$in && f.$in.includes(university)) matchingKeys.push(c.key);
+  }
+
+  // Show tests matching the student's batches, or tests open to all / legacy unassigned
+  return {
+    $or: [
+      { cohort: { $in: matchingKeys } },
+      { assignmentMode: { $in: matchingKeys } },
+      {
+        $and: [
+          { $or: [{ cohort: { $exists: false } }, { cohort: null }, { cohort: "" }, { cohort: "all" }] },
+          { $or: [{ assignmentMode: { $exists: false } }, { assignmentMode: null }, { assignmentMode: "" }, { assignmentMode: "all" }] },
+        ],
+      },
+    ],
+  };
+}
+
+/**
+ * Returns true when the student identified by `userId` is allowed to access
+ * the practice test. Reuses the same cohort logic as the listing endpoint.
+ */
+async function studentCanAccessPracticeTest(test, userId) {
+  const cohort = test.cohort || (test.assignmentMode !== "all" && test.assignmentMode !== "manual" ? test.assignmentMode : "") || "";
+  // No cohort restriction — everyone can access (backward compatibility / all)
+  if (!cohort || cohort === "all") return true;
+
+  if (Array.isArray(cohort)) {
+    if (cohort.includes("all")) return true;
+    const { getStudentFilterForBatches } = require("../services/principals");
+    return Boolean(
+      await Student.exists({ _id: userId, ...getStudentFilterForBatches(cohort) })
+    );
+  }
+
+  const cohortDef = getCohort(cohort);
+  if (!cohortDef) return false; // unknown cohort key
+
+  // Check if the student matches the cohort's filter
+  return Boolean(
+    await Student.exists({ _id: userId, ...cohortDef.filter })
+  );
+}
 
 
 // MEMORY OPTIMIZATION: Clean up old practice test data
@@ -42,8 +111,16 @@ router.get("/", authenticateToken, async (req, res, next) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 9, 1), 50);
     const skip = (page - 1) * limit;
 
+    // Students only see practice tests assigned to their batch.
+    const userRole = String(req.user?.role || "").toLowerCase();
+    const matchFilter = { type: "practice", status: "Active" };
+    if (userRole === "student") {
+      const batchFilter = await buildBatchFilter(req.user.userId);
+      if (batchFilter) Object.assign(matchFilter, batchFilter);
+    }
+
     const [result] = await Test.aggregate([
-      { $match: { type: "practice", status: "Active" } },
+      { $match: matchFilter },
       { $sort: { createdAt: -1 } },
       {
         $facet: {
@@ -58,6 +135,7 @@ router.get("/", authenticateToken, async (req, res, next) => {
                 instructions: 1,
                 timeLimit: 1,
                 createdBy: 1,
+                cohort: 1,
                 questionCount: { $size: { $ifNull: ["$questions", []] } },
               },
             },
@@ -129,11 +207,20 @@ router.get("/:testId", authenticateToken, async (req, res, next) => {
       type: "practice", 
       status: "Active" 
     })
-    .select("title subject instructions timeLimit questions")
+    .select("title subject instructions timeLimit questions cohort")
     .lean();
 
     if (!test) {
       return res.status(404).json({ message: "Practice test not found" });
+    }
+
+    // Batch access check: students may only access tests assigned to their batch
+    const userRole = String(req.user?.role || "").toLowerCase();
+    if (userRole === "student") {
+      const allowed = await studentCanAccessPracticeTest(test, req.user.userId);
+      if (!allowed) {
+        return res.status(403).json({ message: "This practice test is not available for your batch" });
+      }
     }
 
     // Remove correct answers from questions for practice tests
@@ -157,6 +244,15 @@ router.get("/:testId/current-attempt", authenticateToken, async (req, res, next)
   try {
     const { testId } = req.params;
     const userId = req.user.userId;
+
+    // Batch access check
+    const test = await Test.findOne({ _id: testId, type: "practice", status: "Active" }).select("cohort").lean();
+    if (!test) return res.status(404).json({ message: "Practice test not found" });
+    const userRole = String(req.user?.role || "").toLowerCase();
+    if (userRole === "student") {
+      const allowed = await studentCanAccessPracticeTest(test, userId);
+      if (!allowed) return res.status(403).json({ message: "This practice test is not available for your batch" });
+    }
 
     // Get the current attempt data for this user and test
     const currentAttempt = await PracticeTestSubmission.findOne({
@@ -197,6 +293,15 @@ router.post("/:testId/save-current", authenticateToken, async (req, res, next) =
 
     if (!responses) {
       return res.status(400).json({ message: "responses are required" });
+    }
+
+    // Batch access check
+    const test = await Test.findOne({ _id: testId, type: "practice", status: "Active" }).select("cohort").lean();
+    if (!test) return res.status(404).json({ message: "Practice test not found" });
+    const userRole = String(req.user?.role || "").toLowerCase();
+    if (userRole === "student") {
+      const allowed = await studentCanAccessPracticeTest(test, userId);
+      if (!allowed) return res.status(403).json({ message: "This practice test is not available for your batch" });
     }
 
     // Find existing submission or create new one
@@ -254,6 +359,13 @@ router.post("/:testId/save", authenticateToken, async (req, res, next) => {
 
     if (!test) {
       return res.status(404).json({ message: "Practice test not found" });
+    }
+
+    // Batch access check
+    const userRole = String(req.user?.role || "").toLowerCase();
+    if (userRole === "student") {
+      const allowed = await studentCanAccessPracticeTest(test, userId);
+      if (!allowed) return res.status(403).json({ message: "This practice test is not available for your batch" });
     }
 
     // Calculate score and correctness

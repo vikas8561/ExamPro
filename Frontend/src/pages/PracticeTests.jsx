@@ -20,7 +20,31 @@ import {
 } from "lucide-react";
 import "../styles/PracticeTests.mobile.css";
 
+const COHORT_UNIVERSITY_MAP = {
+  ru: ["Rai University"],
+  su702: ["SUxCG 702"],
+  su714: ["SUxCG 714", "CGXSU 714"],
+  cglab3: ["CG LAB 3"],
+  cglab4: ["CG LAB 4"],
+  ssiu: ["Swarrnim Startup & Innovation University"],
+};
+
+const canStudentAccessPracticeTest = (test, user) => {
+  if (!user || user.role !== "Student") return true;
+  const cohort = test?.cohort || test?.assignmentMode;
+  if (!cohort || cohort === "all") return true;
+
+  const userUniv = user.university || "";
+  const allowedUnivs = Array.isArray(cohort)
+    ? cohort.flatMap((c) => COHORT_UNIVERSITY_MAP[c] || [c])
+    : COHORT_UNIVERSITY_MAP[cohort] || [cohort];
+
+  if (Array.isArray(cohort) && cohort.includes("all")) return true;
+  return allowedUnivs.length === 0 || allowedUnivs.includes(userUniv);
+};
+
 const PracticeTests = () => {
+  const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
   const [tests, setTests] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -100,8 +124,12 @@ const PracticeTests = () => {
     }
   };
 
-  const handleStartPracticeTest = (testId) => {
-    navigate(`/student/practice-test/${testId}`);
+  const handleStartPracticeTest = (test) => {
+    if (!canStudentAccessPracticeTest(test, currentUser)) {
+      alert("This practice test is not available for your batch.");
+      return;
+    }
+    navigate(`/student/practice-test/${test._id}`);
   };
 
   const handleViewResults = (testId) => {
@@ -109,6 +137,9 @@ const PracticeTests = () => {
   };
 
   const filteredTests = tests.filter((test) => {
+    if (!canStudentAccessPracticeTest(test, currentUser)) {
+      return false;
+    }
     if (subjectFilter !== "all" && test.subject !== subjectFilter) {
       return false;
     }
@@ -397,9 +428,9 @@ const PracticeTests = () => {
                   <div>
                     {/* Top Row: Subject pill + Attempted badge */}
                     <div className="flex items-center justify-between gap-2 mb-3">
-                      <span className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#133B42] text-[#00C4B4] border border-[#00C4B4]/25 capitalize tracking-wide">
-                        {test.subject || "General"}
-                      </span>
+                        <span className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#133B42] text-[#00C4B4] border border-[#00C4B4]/25 capitalize tracking-wide">
+                          {test.subject || "General"}
+                        </span>
 
                       {isAttempted && (
                         <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-500/10 text-[#34D399] border border-emerald-500/20 inline-flex items-center gap-1">
@@ -438,7 +469,7 @@ const PracticeTests = () => {
                   {/* Actions Row */}
                   <div className="pt-3 border-t border-white/[0.05] space-y-2">
                     <button
-                      onClick={() => handleStartPracticeTest(test._id)}
+                      onClick={() => handleStartPracticeTest(test)}
                       className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs bg-white hover:bg-slate-100 text-slate-900 transition-all duration-200 active:scale-95 shadow-sm"
                     >
                       <Play className="w-3.5 h-3.5 fill-current" />
