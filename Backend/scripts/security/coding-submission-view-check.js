@@ -65,7 +65,7 @@ const internal = {
 const view = studentSubmissionView(internal);
 const keys = Object.keys(view).sort();
 
-const ALLOWED = ['compileOutput', 'graded', 'language', 'passedCount', 'submittedAt', 'totalHidden', 'verdict'];
+const ALLOWED = ['compileNote', 'compileOutput', 'graded', 'language', 'passedCount', 'submittedAt', 'totalHidden', 'verdict'];
 
 check(
   'the student view has exactly the allowed keys, no more and no fewer',
@@ -128,6 +128,16 @@ check(
     "error: expected ';'"
 );
 check('an absent compile error is null, not undefined', view.compileOutput === null);
+
+// The note that a helper below main() was declared (or made static in Java) so
+// the source would compile. From the student's source alone, the same for every
+// case -- so, like a compile error, it reveals nothing about the hidden cases.
+check(
+  'a compile repair note IS passed through',
+  studentSubmissionView({ ...internal, compileNote: 'add() is written below main()' }).compileNote ===
+    'add() is written below main()'
+);
+check('an absent compile note is null, not undefined', view.compileNote === null);
 
 // ── Best-wins: which attempt counts ──────────────────────────────────────
 //

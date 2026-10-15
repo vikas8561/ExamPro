@@ -424,6 +424,7 @@ async function gradeHiddenCases({ owned, languageKey, sourceCode, onProgress }) 
     totalHidden: hiddenCases.length,
     language: languageKey,
     compileOutput: compileError ? compileError.compileOutput : null,
+    compileNote: results.find((result) => result.repairNote)?.repairNote || null,
     submittedAt,
     graded,
   });

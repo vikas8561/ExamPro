@@ -13,7 +13,7 @@
     "test:seb": "node scripts/security/seb-verification-check.js",
     "test:shuffle": "node scripts/exam/shuffle-order-check.js",
     "test:edit": "node scripts/exam/edit-preserves-answers-check.js",
-    "test:exam": "npm run test:shuffle && npm run test:edit && npm run test:autosubmit && npm run test:kinds && npm run test:deep && npm run test:reported && npm run test:output-matching && npm run test:reenable && npm run test:clock && npm run test:blank-coding && npm run test:all-subject && npm run test:mcq-text && npm run test:mcq-case && npm run test:answer-window && npm run test:late-autosubmit",
+    "test:exam": "npm run test:shuffle && npm run test:edit && npm run test:autosubmit && npm run test:kinds && npm run test:deep && npm run test:reported && npm run test:output-matching && npm run test:reenable && npm run test:clock && npm run test:blank-coding && npm run test:all-subject && npm run test:mcq-text && npm run test:mcq-case && npm run test:answer-window && npm run test:late-autosubmit && npm run test:source-repair",
     "test:all-subject": "node scripts/exam/all-subject-check.js",
     "test:autosubmit": "node scripts/exam/auto-submit-check.js",
     "test:kinds": "node scripts/exam/submit-all-kinds-check.js",
@@ -43,7 +43,8 @@
     "test:proctor-gap": "node scripts/security/proctor-gap-check.js",
     "test:browser": "node scripts/security/browser-requirement-check.js",
     "test:display": "node scripts/security/display-rule-check.js",
-    "test:false-positives": "node scripts/security/proctor-false-positive-check.js"
+    "test:false-positives": "node scripts/security/proctor-false-positive-check.js",
+    "test:source-repair": "node scripts/exam/source-repair-check.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

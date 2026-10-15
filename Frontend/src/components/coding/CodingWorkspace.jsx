@@ -378,6 +378,16 @@ export default function CodingWorkspace({
                       </div>
                     )}
 
+                    {/* The source compiled only after a helper written below
+                        main() was declared (or made static, in Java). Said
+                        plainly, so the student learns the rule instead of
+                        meeting it as a compile error in the next exam. */}
+                    {activeSubmitResult.compileNote && (
+                      <div className="mt-4 text-[12px] leading-5 rounded-lg bg-[#ffb800]/10 border border-[#ffb800]/25 px-3 py-2 text-[#ffb800]">
+                        {activeSubmitResult.compileNote}
+                      </div>
+                    )}
+
                     {activeSubmitResult.compileOutput && (
                       <div className="mt-4">
                         <div className="text-[12px] text-white/50 mb-1.5">Compile Error</div>
@@ -707,6 +717,10 @@ export default function CodingWorkspace({
                           <div className="text-[12px] text-white/50 mb-3">
                             Your best submission is the one graded.
                           </div>
+                        )}
+
+                        {activeSubmitResult.compileNote && (
+                          <div className="text-[12px] leading-5 text-[#ffb800] mb-2">{activeSubmitResult.compileNote}</div>
                         )}
 
                         {activeSubmitResult.compileOutput && (
