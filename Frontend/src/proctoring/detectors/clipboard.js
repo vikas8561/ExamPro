@@ -153,6 +153,9 @@ export function createClipboardDetector({
           (typeof target.closest === "function" && target.closest(".monaco-editor")))
     );
 
+  const isCodeEditor = (target) =>
+    Boolean(target && typeof target.closest === "function" && target.closest(".monaco-editor"));
+
   // Copying inside an answer field is the student copying their own writing.
   // It is not counted against them, for two reasons. The question text cannot
   // be selected in the first place (see handleSelectStart), so there is nothing
@@ -255,9 +258,27 @@ export function createClipboardDetector({
     report("paste_attempt", "Tried to paste content into the exam");
   };
 
+  /**
+   * Right-click.
+   *
+   * Everywhere except the code editor -- MCQ options, theory answers, the
+   * question text, the page around them -- the menu is simply blocked, always
+   * and silently. Nothing in it helps answer an MCQ or theory question, and a
+   * right-click there is a slip of the finger, not misconduct: reporting each
+   * one put a "recorded for the reviewer" notice in front of the student and a
+   * line in the "logged" tally an invigilator reads. It is blocked even while
+   * the exam is paused on a dialog, where it used to fall through to the
+   * browser's own menu -- Back, Reload, Inspect -- each of which a student could
+   * pick by accident and be charged for.
+   *
+   * The code editor keeps its previous rule: blocked, and recorded (weight 0)
+   * while the exam runs, because cut, copy and paste are what that menu offers.
+   */
   const handleContextMenu = (event) => {
-    if (!active() || !blockContextMenu) return;
+    if (!running || !blockContextMenu) return;
     event.preventDefault();
+    if (!isCodeEditor(event.target)) return;
+    if (!active()) return;
     report("context_menu", "Opened the right-click menu");
   };
 

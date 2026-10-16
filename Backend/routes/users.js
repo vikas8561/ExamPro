@@ -9,7 +9,7 @@ const Admin = require("../models/Admin");
 const Profile = require("../models/Profile");
 const Subject = require("../models/Subject");
 const AuthSession = require("../models/AuthSession");
-const { authenticateToken, requireRole } = require("../middleware/auth");
+const { authenticateToken, requireRole, revokeSessions } = require("../middleware/auth");
 const {
   normalizeStudent,
   getCohort,
@@ -447,9 +447,13 @@ router.post("/:id/reset-password", authenticateToken, requireRole(["Admin", "Men
     }
 
     // A reset is useless while the old lockout still stands, and a session opened
-    // with the previous password must not outlive it.
+    // with the previous password must not outlive it -- except one sitting a live
+    // exam. Students are typically reset at the start of an exam because they
+    // are locked out on a second device; throwing their exam session out with it
+    // cost them the answers it had not saved yet. It is revoked by the next
+    // sign-in once the exam is over (middleware/auth.js).
     lockout.clearAll(studentLoginKeys(student));
-    await AuthSession.deleteMany({ principalId: String(student._id) });
+    await revokeSessions(student._id, { keepLiveExam: true });
 
     res.json({
       message: `Password for ${student.name} reset to ${DEFAULT_STUDENT_PASSWORD}.`,

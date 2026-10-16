@@ -9,11 +9,11 @@
     "create-indexes": "node scripts/createIndexes.js",
     "performance-test": "node scripts/performanceMonitor.js",
     "check-judge0": "node scripts/checkJudge0.js",
-    "test:security": "node scripts/security/answer-leak-audit.js && node scripts/security/answer-access-regression.js && node scripts/security/submission-ownership-check.js && node scripts/security/paper-before-start-check.js && node scripts/security/results-release-check.js && node scripts/security/hidden-cases-review-check.js && node scripts/security/proctor-gap-check.js && node scripts/security/browser-requirement-check.js && node scripts/security/display-rule-check.js && node scripts/security/proctor-false-positive-check.js",
+    "test:security": "node scripts/security/answer-leak-audit.js && node scripts/security/answer-access-regression.js && node scripts/security/submission-ownership-check.js && node scripts/security/paper-before-start-check.js && node scripts/security/results-release-check.js && node scripts/security/hidden-cases-review-check.js && node scripts/security/proctor-gap-check.js && node scripts/security/browser-requirement-check.js && node scripts/security/display-rule-check.js && node scripts/security/proctor-false-positive-check.js && node scripts/security/linked-act-check.js",
     "test:seb": "node scripts/security/seb-verification-check.js",
     "test:shuffle": "node scripts/exam/shuffle-order-check.js",
     "test:edit": "node scripts/exam/edit-preserves-answers-check.js",
-    "test:exam": "npm run test:shuffle && npm run test:edit && npm run test:autosubmit && npm run test:kinds && npm run test:deep && npm run test:reported && npm run test:output-matching && npm run test:reenable && npm run test:clock && npm run test:blank-coding && npm run test:all-subject && npm run test:mcq-text && npm run test:mcq-case && npm run test:answer-window && npm run test:late-autosubmit && npm run test:source-repair",
+    "test:exam": "npm run test:shuffle && npm run test:edit && npm run test:autosubmit && npm run test:kinds && npm run test:deep && npm run test:reported && npm run test:output-matching && npm run test:reenable && npm run test:clock && npm run test:blank-coding && npm run test:all-subject && npm run test:mcq-text && npm run test:mcq-case && npm run test:answer-window && npm run test:late-autosubmit && npm run test:source-repair && npm run test:session",
     "test:all-subject": "node scripts/exam/all-subject-check.js",
     "test:autosubmit": "node scripts/exam/auto-submit-check.js",
     "test:kinds": "node scripts/exam/submit-all-kinds-check.js",
@@ -44,7 +44,9 @@
     "test:browser": "node scripts/security/browser-requirement-check.js",
     "test:display": "node scripts/security/display-rule-check.js",
     "test:false-positives": "node scripts/security/proctor-false-positive-check.js",
-    "test:source-repair": "node scripts/exam/source-repair-check.js"
+    "test:source-repair": "node scripts/exam/source-repair-check.js",
+    "test:session": "node scripts/exam/session-continuity-check.js",
+    "test:linked-acts": "node scripts/security/linked-act-check.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

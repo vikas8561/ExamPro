@@ -2,7 +2,13 @@ const express = require("express");
 const rateLimit = require("express-rate-limit");
 const router = express.Router();
 
-const { authenticateToken, requireRole } = require("../middleware/auth");
+const {
+  authenticateToken,
+  requireRole,
+  markExamSession,
+  clearExamSession,
+  examOpenElsewhere,
+} = require("../middleware/auth");
 const ProctorSession = require("../models/ProctorSession");
 const ProctorScreenshot = require("../models/ProctorScreenshot");
 const ProctorSetting = require("../models/ProctorSetting");
@@ -350,6 +356,17 @@ router.get("/policy", authenticateToken, async (req, res, next) => {
  * session with the same violation count, otherwise refreshing would be a free
  * way to wipe the slate.
  */
+/**
+ * Can this session actually sit the exam, as far as Safe Exam Browser goes?
+ *
+ * A browser that opened a session only to be sent to the SEB launch screen must
+ * not claim the exam for its sign-in: the student is about to sign in again
+ * inside SEB, and that window would be refused as "open on another device".
+ */
+function sebSatisfied(seb) {
+  return !(seb?.required === true && seb?.verified !== true && !seb?.fallbackReason);
+}
+
 router.post("/session/start", authenticateToken, async (req, res, next) => {
   try {
     const { assignmentId, testKind, environment } = req.body || {};
@@ -386,6 +403,20 @@ router.post("/session/start", authenticateToken, async (req, res, next) => {
     );
     if (!test) {
       return res.status(404).json({ message: "Test not found" });
+    }
+
+    // One exam, one device. A second sign-in no longer throws the first out of
+    // a live exam (middleware/auth.js), so this is what keeps a second person
+    // from opening the same paper alongside the student. The first device holds
+    // it for as long as its heartbeat keeps coming, plus EXAM_BIND_MS -- so a
+    // crashed browser frees it within a minute.
+    const proctored = policyService.isProctoredTest(test);
+    if (proctored && (await examOpenElsewhere(userId, req.authToken))) {
+      return res.status(409).json({
+        message:
+          "This test is already open on another device or browser. Close it there and wait a minute, then try again here.",
+        code: "exam_open_elsewhere",
+      });
     }
 
     const env = environment || {};
@@ -498,6 +529,7 @@ router.post("/session/start", authenticateToken, async (req, res, next) => {
       existing.display = { enforced, state: displayState, reportedAt: new Date() };
 
       await existing.save();
+      if (proctored && sebSatisfied(existing.seb)) await markExamSession(req.authToken).catch(() => {});
       return res.json({ ...serializeSession(existing), resumed: true });
     }
 
@@ -586,6 +618,7 @@ router.post("/session/start", authenticateToken, async (req, res, next) => {
       });
     }
 
+    if (proctored && sebSatisfied(session.seb)) await markExamSession(req.authToken).catch(() => {});
     return res.json({ ...serializeSession(session), resumed: false });
   } catch (error) {
     next(error);
@@ -680,6 +713,11 @@ router.post("/session/heartbeat", authenticateToken, async (req, res, next) => {
 
     await session.save();
 
+    // This sign-in is sitting a live exam: a sign-in elsewhere must not revoke
+    // it, and no second device may open the paper. Best effort -- a failed mark
+    // must never fail the heartbeat itself.
+    await markExamSession(req.authToken).catch(() => {});
+
     return res.json({
       action: "continue",
       status: session.status,
@@ -753,6 +791,19 @@ router.post("/session/event", authenticateToken, async (req, res, next) => {
       if (policyService.causeGroups().includes(group)) causeSeenAt.set(group, now);
     }
 
+    // When each group last actually cost the student something, for the
+    // linked-act rule below (policyService.linkedGroupsOf). Read from the tail
+    // of the log: only the last few seconds matter.
+    const chargedAt = new Map();
+    for (let i = session.violations.length - 1; i >= 0; i--) {
+      const v = session.violations[i];
+      const at = new Date(v.timestamp).getTime();
+      if (now - at > policyService.LINKED_ACT_WINDOW_MS) break;
+      const group = policyService.groupOf(v.violationType);
+      if (v.weight > 0 && !chargedAt.has(group)) chargedAt.set(group, at);
+    }
+    let lastCharged = null;
+
     // A batch whose reply never reached the browser (a timeout on a slow
     // connection) is sent again, and the server has already counted it. Without
     // this the student paid twice for one event -- long after the dedupe window
@@ -797,7 +848,21 @@ router.post("/session/event", authenticateToken, async (req, res, next) => {
           break;
         }
       }
+      // The same act seen twice: leaving the exam and losing fullscreen together.
+      if (weight > 0) {
+        for (const linked of policyService.linkedGroupsOf(dedupeKey)) {
+          const at = chargedAt.get(linked);
+          if (at !== undefined && now - at < policyService.LINKED_ACT_WINDOW_MS) {
+            weight = 0;
+            break;
+          }
+        }
+      }
       const recordedDetails = clean(event?.details, 300);
+      if (weight > 0) {
+        chargedAt.set(dedupeKey, now);
+        lastCharged = { violationType, details: recordedDetails };
+      }
       session.violations.push({
         timestamp: new Date(),
         violationType,
@@ -832,8 +897,10 @@ router.post("/session/event", authenticateToken, async (req, res, next) => {
       });
     }
 
-    const last = session.violations[session.violations.length - 1];
-    return applyViolation(session, last.violationType, last.details, res, next);
+    // The warning names what was charged, not whatever happened to be last in
+    // the batch -- a weight-0 companion such as window_blur would otherwise
+    // title the warning, and the page would not know it was about fullscreen.
+    return applyViolation(session, lastCharged.violationType, lastCharged.details, res, next);
   } catch (error) {
     next(error);
   }
@@ -966,6 +1033,9 @@ router.post("/session/end", authenticateToken, async (req, res, next) => {
       session.endedAt = new Date();
       await session.save();
     }
+
+    // The exam is over for this sign-in, so it is an ordinary session again.
+    await clearExamSession(req.authToken).catch(() => {});
 
     return res.json({ ok: true, status: session.status });
   } catch (error) {

@@ -17,6 +17,7 @@ import {
   isFullscreen,
 } from "./detectors/fullscreen";
 import { createKeyboardDetector } from "./detectors/keyboard";
+import { createGestureGuard } from "./detectors/gestures";
 import { createClipboardDetector } from "./detectors/clipboard";
 import { createDevtoolsDetector } from "./detectors/devtools";
 import { createScreenDetector, requestScreenShare } from "./detectors/screen";
@@ -29,6 +30,7 @@ import { detectDisplays } from "./environment";
 import { captureScreenFrame, releaseCapture } from "./screenshot";
 import ProctorGate from "./ProctorGate";
 import ProctorOverlay from "./ProctorOverlay";
+import { isLateWarningForClearedPause } from "./pauseWarnings";
 import SebLaunchScreen from "./SebLaunchScreen";
 import { ProctorContext } from "./context";
 
@@ -129,6 +131,8 @@ export function ProctorProvider({
   const overlayRef = useRef(null);
   const heartbeatRef = useRef(null);
   const terminatedRef = useRef(false);
+  // The pause the student last cleared, and when. See handleVerdict.
+  const resolvedBlockRef = useRef(null);
   const phaseRef = useRef("idle");
   // Read inside `report`, which is created once and must not close over stale
   // state. Kept as refs for the same reason `phaseRef` is.
@@ -226,6 +230,18 @@ export function ProctorProvider({
       }
 
       if (verdict.action === "warn") {
+        // The warning for an act whose pause the student has already cleared.
+        //
+        // A pause dialog appears the instant fullscreen is lost; the server's
+        // warning for it takes a batch delay and a round trip. A student who
+        // clicked "Return to fullscreen" quickly got the warning afterwards as a
+        // second dialog with a second button -- for the same act. The pause
+        // dialog already told them it was recorded, so this one passes as a
+        // notice instead.
+        if (isLateWarningForClearedPause(verdict, resolvedBlockRef.current)) {
+          setNotice({ id: Date.now(), message: verdict.details || "A proctoring violation was recorded." });
+          return;
+        }
         setWarning({
           kind: verdict.final ? "final" : "warning",
           title: verdict.final ? "Final Warning" : "Warning",
@@ -639,6 +655,10 @@ export function ProctorProvider({
 
     const detectors = [
       wakeLock,
+      // Two-finger swipe Back, mouse Back buttons and pinch-zoom. The OS's own
+      // three- and four-finger gestures cannot be blocked by a page; see
+      // detectors/gestures.js.
+      createGestureGuard(),
       display,
       keyboard,
       devtools,
@@ -838,6 +858,10 @@ export function ProctorProvider({
       if (stillExtended) return false;
     }
 
+    // The pause dialog carried the warning for the same act (ProctorOverlay),
+    // so its button settles both. A final cancellation is never dismissed here.
+    setWarning((current) => (current && current.kind !== "terminate" ? null : current));
+    resolvedBlockRef.current = { reason: blockReason, at: Date.now() };
     setBlockReason(null);
     setPhase("active");
     return true;

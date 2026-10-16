@@ -1,4 +1,5 @@
 import React, { forwardRef, useEffect, useState } from "react";
+import { warningForPause } from "./pauseWarnings";
 
 /**
  * What the student sees while the exam runs: a small status strip, and the
@@ -100,6 +101,25 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
     if (!ok) setStillBroken(true);
   };
 
+  // One act, one dialog (see pauseWarnings.js). While the exam is paused, the
+  // server's warning for the same act is shown inside the pause dialog rather
+  // than as a second dialog on top of it, and the pause dialog's one button
+  // settles both (resumeFromBlock clears the warning).
+  const blockWarning = warningForPause({ phase, blockReason, warning });
+  const warningNote = blockWarning ? (
+    <div
+      className={`mb-6 rounded-lg border px-4 py-3 text-left text-sm ${
+        blockWarning.kind === "final"
+          ? "border-orange-500/40 bg-orange-950/40 text-orange-200"
+          : "border-yellow-500/40 bg-yellow-950/30 text-yellow-100"
+      }`}
+    >
+      <p className="font-semibold">{blockWarning.title}</p>
+      <p className="mt-1 text-slate-300">{blockWarning.message}</p>
+      <p className="mt-1 text-xs text-slate-400">This has been recorded and sent to your proctor.</p>
+    </div>
+  ) : null;
+
   return (
     <div ref={ref}>
       {/* Status strip. Always visible, so nobody can claim they did not know.
@@ -158,6 +178,7 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
         <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-950/95 p-4">
           <div className="w-full max-w-md rounded-xl border border-amber-500/30 bg-slate-900 p-8 text-center">
             <h2 className="mb-4 text-2xl font-bold text-amber-400">Return to fullscreen</h2>
+            {warningNote}
             <p className="mb-6 text-slate-300">
               Your test must stay in fullscreen. This has been recorded. Click below to carry on.
             </p>
@@ -186,6 +207,7 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
         <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-950/95 p-4">
           <div className="w-full max-w-md rounded-xl border border-red-500/30 bg-slate-900 p-8 text-center">
             <h2 className="mb-4 text-2xl font-bold text-red-400">Screen sharing stopped</h2>
+            {warningNote}
             <p className="mb-6 text-slate-300">
               Your exam is paused. Screen sharing is required for the whole test, so you will need
               to share your entire screen again before you can carry on.
@@ -218,6 +240,7 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
         <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-950/95 p-4">
           <div className="w-full max-w-md rounded-xl border border-red-500/30 bg-slate-900 p-8 text-center">
             <h2 className="mb-4 text-2xl font-bold text-red-400">External monitor connected</h2>
+            {warningNote}
             <p className="mb-6 text-slate-300">
               Your exam is paused. Only your computer's own screen may be used during this test.
               Disconnect the external monitor, or turn it off in your display settings, to carry on.
@@ -246,8 +269,9 @@ const ProctorOverlay = forwardRef(function ProctorOverlay(
         </div>
       )}
 
-      {/* Warnings and the final cancellation notice. */}
-      {warning && (
+      {/* Warnings and the final cancellation notice -- unless the exam is paused,
+          in which case the pause dialog above already carries the warning. */}
+      {warning && !blockWarning && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 p-4">
           <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-800 p-8">
             <h2
