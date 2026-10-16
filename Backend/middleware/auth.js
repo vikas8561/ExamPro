@@ -1,7 +1,7 @@
-const jwt = require('jsonwebtoken');
-const AuthSession = require('../models/AuthSession');
+const jwt = require("jsonwebtoken");
+const AuthSession = require("../models/AuthSession");
 
-const TOKEN_TTL_HOURS = 24;
+const TOKEN_TTL_HOURS = 24 * 30 * 6;
 
 /**
  * Short-lived memo of "this token still has a live session".
@@ -51,21 +51,21 @@ function forgetSessions(tokens) {
 // Authentication middleware
 const authenticateToken = async (req, res, next) => {
   // Skip authentication for OPTIONS requests (CORS preflight)
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return next();
   }
 
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
 
   if (!token) {
-    return res.status(401).json({ message: 'Access token required' });
+    return res.status(401).json({ message: "Access token required" });
   }
 
   // Fail if JWT_SECRET is not configured
   if (!process.env.JWT_SECRET) {
-    console.error('FATAL: JWT_SECRET environment variable is not set!');
-    return res.status(500).json({ message: 'Server configuration error' });
+    console.error("FATAL: JWT_SECRET environment variable is not set!");
+    return res.status(500).json({ message: "Server configuration error" });
   }
 
   // A bad signature or a passed expiry is the token's own fault, and it is the
@@ -74,7 +74,7 @@ const authenticateToken = async (req, res, next) => {
   try {
     decoded = jwt.verify(token, process.env.JWT_SECRET);
   } catch (err) {
-    return res.status(403).json({ message: 'Invalid or expired token' });
+    return res.status(403).json({ message: "Invalid or expired token" });
   }
 
   // Single-session check. This used to read `User.activeSessions`, but a
@@ -98,7 +98,7 @@ const authenticateToken = async (req, res, next) => {
     }
     if (!session) {
       sessionCache.delete(token);
-      return res.status(403).json({ message: 'Invalid or expired session' });
+      return res.status(403).json({ message: "Invalid or expired session" });
     }
     rememberSession(token);
   }
@@ -111,19 +111,21 @@ const authenticateToken = async (req, res, next) => {
 const requireRole = (role) => {
   return (req, res, next) => {
     if (!req.user) {
-      return res.status(401).json({ message: 'Authentication required' });
+      return res.status(401).json({ message: "Authentication required" });
     }
 
     // Allow array of roles
     const allowedRoles = Array.isArray(role) ? role : [role];
 
     // Normalize role to string and lowercase for comparison
-    const userRole = String(req.user?.role || '').toLowerCase();
-    const normalizedAllowedRoles = allowedRoles.map(r => String(r).toLowerCase());
+    const userRole = String(req.user?.role || "").toLowerCase();
+    const normalizedAllowedRoles = allowedRoles.map((r) =>
+      String(r).toLowerCase(),
+    );
 
     if (!normalizedAllowedRoles.includes(userRole)) {
       return res.status(403).json({
-        message: `Access denied. ${allowedRoles.join(' or ')} role required. Your role: ${req.user.role}`
+        message: `Access denied. ${allowedRoles.join(" or ")} role required. Your role: ${req.user.role}`,
       });
     }
 
@@ -135,12 +137,12 @@ const requireRole = (role) => {
 // shape from services/principals - a student, mentor or admin alike.
 const generateToken = (principal) => {
   if (!process.env.JWT_SECRET) {
-    throw new Error('FATAL: JWT_SECRET environment variable is not set!');
+    throw new Error("FATAL: JWT_SECRET environment variable is not set!");
   }
   return jwt.sign(
     { userId: principal._id, email: principal.email, role: principal.role },
     process.env.JWT_SECRET,
-    { expiresIn: `${TOKEN_TTL_HOURS}h` }
+    { expiresIn: `${TOKEN_TTL_HOURS}h` },
   );
 };
 
@@ -150,8 +152,10 @@ const startSession = async (principal, token) => {
   // Read the tokens before deleting them, so the ones this sign-in invalidates
   // are dropped from the cache too -- otherwise the kicked-out device would
   // keep working for up to SESSION_CACHE_MS.
-  const replaced = await AuthSession.find({ principalId: String(principal._id) })
-    .select('token')
+  const replaced = await AuthSession.find({
+    principalId: String(principal._id),
+  })
+    .select("token")
     .lean();
   forgetSessions(replaced.map((s) => s.token));
 
@@ -169,4 +173,11 @@ const endSession = async (token) => {
   await AuthSession.deleteMany({ token });
 };
 
-module.exports = { authenticateToken, generateToken, requireRole, startSession, endSession, TOKEN_TTL_HOURS };
+module.exports = {
+  authenticateToken,
+  generateToken,
+  requireRole,
+  startSession,
+  endSession,
+  TOKEN_TTL_HOURS,
+};
