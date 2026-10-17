@@ -10,6 +10,10 @@ import { preloadMonaco } from "../components/coding/loadMonaco";
 import { TimerPill } from "../components/coding/codingUi";
 import { examClock, clockFromServer, secondsLeft } from "../utils/examClock";
 import { findOptionIndex } from "../utils/mcqOption";
+import { recordPending, recordSaved, pendingAnswers, clearPending } from "../utils/unsavedAnswers";
+import SaveStatusBanner from "../components/SaveStatusBanner";
+import { ExamStyles, ExamStatusScreen, McqOptions, QuestionNavigator } from "../components/exam/ExamParts";
+import { isAnsweredValue, wordCount } from "../utils/examAnswers";
 import useCodingJudge from "../hooks/useCodingJudge";
 import {
   FALLBACK_LANGUAGES,
@@ -90,6 +94,21 @@ const QuestionPalette = ({ questions, current, statuses, onSelect }) => {
   );
 };
 
+/** GET the saved answers, retrying a failed read twice before giving up. */
+async function loadSavedAnswers(assignmentId) {
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await apiRequest(`/answers/assignment/${assignmentId}`);
+    } catch (error) {
+      lastError = error;
+      if (error?.code === "signed_out") break;
+      await new Promise((resolve) => setTimeout(resolve, 1500 * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
+
 const TakeTestInner = ({ submitRef }) => {
   // Proctoring is centralised: this page mounts the provider (see the wrapper at
   // the bottom of this file) and reads its state through this one hook. There is
@@ -115,6 +134,29 @@ const TakeTestInner = ({ submitRef }) => {
   // connection also charged the student with leaving fullscreen.
   const [submitError, setSubmitError] = useState(null);
   const debounceTimers = useRef({});
+
+  // Answers the server has not confirmed. Autosave failures used to go to the
+  // console only, so a student kept answering into nothing and found out when
+  // they came back to a blank paper. They are now kept in this browser
+  // (utils/unsavedAnswers.js), retried, and shown -- see SaveStatusBanner.
+  const studentIdRef = useRef(null);
+  if (studentIdRef.current === null) {
+    try {
+      studentIdRef.current = localStorage.getItem("userId") || "";
+    } catch {
+      studentIdRef.current = "";
+    }
+  }
+  const [unsavedIds, setUnsavedIds] = useState(() => new Set());
+  const markUnsaved = useCallback((questionId, unsaved) => {
+    setUnsavedIds((prev) => {
+      if (prev.has(questionId) === unsaved) return prev;
+      const next = new Set(prev);
+      if (unsaved) next.add(questionId);
+      else next.delete(questionId);
+      return next;
+    });
+  }, []);
   const [hasEnteredExam, setHasEnteredExam] = useState(() => {
     try {
       return sessionStorage.getItem(`exam_entered_${assignmentId}`) === "true";
@@ -133,6 +175,19 @@ const TakeTestInner = ({ submitRef }) => {
   };
 
   const [acknowledgedRules, setAcknowledgedRules] = useState(false);
+
+  // No right-click anywhere on this page, at any stage -- the rules screen and
+  // the pre-exam checks included, before proctoring's own guard is running
+  // (detectors/clipboard.js). Silent: a mis-click is not a violation. The code
+  // editor is left to that guard, since its menu is where cut/copy/paste live.
+  useEffect(() => {
+    const blockContextMenu = (event) => {
+      if (event.target?.closest?.(".monaco-editor")) return;
+      event.preventDefault();
+    };
+    document.addEventListener("contextmenu", blockContextMenu, true);
+    return () => document.removeEventListener("contextmenu", blockContextMenu, true);
+  }, []);
 
   // Coding questions. The code itself lives in `answers` like every other
   // answer; the language is tracked beside it so it can be saved with the code
@@ -455,6 +510,9 @@ const TakeTestInner = ({ submitRef }) => {
       } catch {
         void 0;
       }
+      // Handed in: nothing is waiting to be saved any more.
+      clearPending(studentIdRef.current, assignmentId);
+      setUnsavedIds(new Set());
 
       setIsSubmitting(false);
       // Under Safe Exam Browser the exit page is its configured quit URL, so
@@ -557,7 +615,12 @@ const TakeTestInner = ({ submitRef }) => {
 
       let answersData = [];
       try {
-        answersData = await apiRequest(`/answers/assignment/${assignmentId}`);
+        // A failed read used to be logged and skipped, which handed the student
+        // a blank paper over answers the server still had -- and pressing Submit
+        // on it wiped them. Retried a few times, and if it still fails the page
+        // says so instead of pretending there is nothing saved. (A 404, "nothing
+        // saved yet", comes back as [] from apiRequest and is not a failure.)
+        answersData = await loadSavedAnswers(assignmentId);
 
         if (answersData && answersData.length > 0) {
           const existingAnswers = {};
@@ -625,17 +688,42 @@ const TakeTestInner = ({ submitRef }) => {
         } else {
         }
       } catch (answersError) {
-        if (
-          answersError.message.includes("404") ||
-          answersError.message.includes("not found") ||
-          answersError.message.includes("Resource not found")
-        ) {
-          (
-            "[TakeTest] No existing answers found (404 error) - this is expected when test is in progress but no answers saved yet"
-          );
-        } else {
-          console.error("[TakeTest] Error loading answers:", answersError);
+        console.error("[TakeTest] Error loading answers:", answersError);
+        throw new Error(
+          "Your saved answers could not be loaded. Nothing has been lost -- please reload the page to continue."
+        );
+      }
+
+      // Answers this browser has that the server never confirmed -- typed while
+      // the connection was down, or just before the page went away. They are
+      // newer than the server's copy, so they go on top and are sent again.
+      const local = pendingAnswers(studentIdRef.current, assignmentId);
+      const overlay = {};
+      for (const [questionId, saved] of Object.entries(local)) {
+        const question = assignmentData.testId.questions.find((q) => q._id.toString() === questionId);
+        if (!question) continue;
+        if (question.kind === "mcq") {
+          const index = findOptionIndex(question.options, saved.selectedOption);
+          if (!saved.selectedOption) overlay[questionId] = undefined; // cleared here, not yet on the server
+          else if (index !== -1) overlay[questionId] = index;
+        } else if ((question.kind === "theory" || question.kind === "coding") && typeof saved.textAnswer === "string") {
+          overlay[questionId] = saved.textAnswer;
+          if (question.kind === "coding" && saved.language) {
+            languageRef.current = { ...languageRef.current, [questionId]: normalizeLanguageKey(saved.language) || "python" };
+            setLanguageByQ(languageRef.current);
+          }
         }
+      }
+      const resend = Object.keys(overlay);
+      if (resend.length) {
+        setAnswers((prev) => ({ ...prev, ...overlay }));
+        // The local versions replace the server's rows for these questions, so
+        // a question cleared here is not shown as answered from the old row.
+        answersData = [
+          ...(answersData || []).filter((row) => !resend.includes(String(row.questionId))),
+          ...resend.map((questionId) => ({ questionId, ...local[questionId] })),
+        ];
+        setUnsavedIds(new Set(resend));
       }
 
       // Violations are no longer restored or judged here. The server carries the
@@ -713,6 +801,14 @@ const TakeTestInner = ({ submitRef }) => {
       }));
     }
 
+    // Into the local backup at once, before any debounce: if the page goes away
+    // in the next second, this is the only copy.
+    recordPending(studentIdRef.current, assignmentId, questionId, {
+      selectedOption,
+      textAnswer: question.kind === "mcq" ? undefined : textAnswer,
+      ...(question.kind === "coding" ? { language: languageFor(question) } : {}),
+    });
+
     // Update question status to 'answered' when answer is provided. Left alone
     // when it is already right: this runs on every keystroke in the code
     // editor, and a fresh object each time re-renders everything that reads it.
@@ -748,7 +844,11 @@ const TakeTestInner = ({ submitRef }) => {
     // For theory and coding questions, always save to backend (even empty answers)
     // This ensures that partial answers are preserved and answers are cleared properly
     const question = test?.questions?.find((q) => q._id === questionId);
-    const shouldSave = question && (question.kind === "theory" || question.kind === "coding") ? true : hasAnswer;
+    // Every change is saved, an MCQ "Clear response" included. A cleared MCQ
+    // used to be skipped here, so the server kept the old choice: it came back
+    // on reload, and the hand-in -- which falls back to saved answers wherever
+    // the page is blank (Backend/services/answerMerge.js) -- graded it.
+    const shouldSave = Boolean(question) || hasAnswer;
 
     if (shouldSave) {
       // The option's text goes exactly as written. It is the answer key's own
@@ -757,27 +857,79 @@ const TakeTestInner = ({ submitRef }) => {
       // like HTML by assigning it to innerHTML, which turned `vector<int>` into
       // `vector` (lost on reload, marked wrong by the expiry sweep) and ran any
       // script an option carried. See utils/mcqOption.js.
-      try {
-        const payload = {
-          assignmentId,
-          questionId,
-          selectedOption,
-          textAnswer: textAnswer || "", // Ensure textAnswer is always a string
-          ...(question.kind === "coding" ? { language: languageFor(question) } : {}),
-        };
-
-
-        await apiRequest("/answers", {
-          method: "POST",
-          body: JSON.stringify(payload),
-        });
-      } catch (error) {
-        console.error("❌ Failed to save answer:", error);
-        // Don't show alert for coding questions as it's too frequent
-        // The answer will be saved on next successful attempt
-      }
+      const payload = {
+        assignmentId,
+        questionId,
+        selectedOption,
+        textAnswer: textAnswer || "", // Ensure textAnswer is always a string
+        ...(question.kind === "coding" ? { language: languageFor(question) } : {}),
+      };
+      await postAnswer(payload);
     }
   };
+
+  /**
+   * Send one answer, and keep the record of what is unsaved honest.
+   *
+   * A failure is shown (SaveStatusBanner) and retried below rather than logged
+   * and forgotten. Refusals that retrying cannot fix -- the attempt is over or
+   * was ended by proctoring -- are not retried: the hand-in carries the page's
+   * answers, and the server keeps the saved ones (services/answerMerge.js).
+   */
+  const postAnswer = async (payload) => {
+    const { questionId } = payload;
+    const answer = {
+      selectedOption: payload.selectedOption,
+      textAnswer: payload.selectedOption ? undefined : payload.textAnswer,
+      language: payload.language,
+    };
+    recordPending(studentIdRef.current, assignmentId, questionId, answer);
+    try {
+      await apiRequest("/answers", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      recordSaved(studentIdRef.current, assignmentId, questionId, answer);
+      // Still unsaved if the student changed it again while this was in flight.
+      const left = pendingAnswers(studentIdRef.current, assignmentId);
+      markUnsaved(questionId, Boolean(left[questionId]));
+      return true;
+    } catch (error) {
+      console.error("❌ Failed to save answer:", error);
+      const final = ["attempt_expired", "attempt_not_active", "terminated", "ended", "not_owner", "signed_out"];
+      markUnsaved(questionId, !final.includes(error?.code));
+      return false;
+    }
+  };
+
+  // Retry whatever is unsaved: soon after a failure, then every few seconds.
+  // Each retry sends the latest version of the answer, from the local backup.
+  useEffect(() => {
+    if (!testStarted || isSubmitting || unsavedIds.size === 0) return undefined;
+    const timer = setTimeout(async () => {
+      const pending = pendingAnswers(studentIdRef.current, assignmentId);
+      for (const questionId of unsavedIds) {
+        if (debounceTimers.current[questionId]) continue; // a save is already scheduled
+        const saved = pending[questionId];
+        if (!saved) {
+          markUnsaved(questionId, false);
+          continue;
+        }
+        const ok = await postAnswer({
+          assignmentId,
+          questionId,
+          selectedOption: saved.selectedOption ?? undefined,
+          textAnswer: saved.textAnswer || "",
+          ...(saved.language ? { language: saved.language } : {}),
+        });
+        if (!ok) break; // still failing: wait for the next round
+      }
+      // A round that changed nothing would not re-run this effect; nudge it.
+      setUnsavedIds((prev) => new Set(prev));
+    }, 4000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unsavedIds, testStarted, isSubmitting, assignmentId]);
 
   const saveCurrentQuestionAnswer = async () => {
     const currentQ = test?.questions?.[currentQuestion];
@@ -922,6 +1074,8 @@ const TakeTestInner = ({ submitRef }) => {
 
       // Closes the proctoring session and leaves fullscreen.
       await proctor.endSession();
+      clearPending(studentIdRef.current, assignmentId);
+      setUnsavedIds(new Set());
 
       // Phase 3: Show success briefly
       setAutoSubmitPhase('success');
@@ -960,6 +1114,23 @@ const TakeTestInner = ({ submitRef }) => {
     setShowSubmitConfirmModal(false);
   };
 
+  // Stable handles for the memoised parts of the exam screen
+  // (components/exam/ExamParts.jsx). The handlers themselves are recreated
+  // every render -- every second, for the countdown -- which would defeat the
+  // memo; these forward to the latest one without changing identity.
+  const navigateRef = useRef(handleQuestionNavigation);
+  navigateRef.current = handleQuestionNavigation;
+  const onNavigate = useCallback((index) => navigateRef.current(index), []);
+  const answerChangeRef = useRef(handleAnswerChange);
+  answerChangeRef.current = handleAnswerChange;
+  const onSelectOption = useCallback((questionId, index) => answerChangeRef.current(questionId, index), []);
+
+  // Each question opens at its top, not wherever the last one was scrolled to.
+  const questionScrollRef = useRef(null);
+  useEffect(() => {
+    questionScrollRef.current?.scrollTo?.({ top: 0 });
+  }, [currentQuestion]);
+
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -967,73 +1138,37 @@ const TakeTestInner = ({ submitRef }) => {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="relative w-16 h-16 mx-auto mb-6">
-            <div className="absolute inset-0 rounded-full border-4 border-slate-700"></div>
-            <div className="absolute inset-0 rounded-full border-4 border-t-blue-500 animate-spin"></div>
-          </div>
-          <div className="text-xl font-semibold text-slate-200">Loading test...</div>
-          <p className="text-slate-500 text-sm mt-2">Preparing your exam environment</p>
-        </div>
-      </div>
-    );
+    return <ExamStatusScreen title="Loading your test…" detail="Preparing the exam environment." />;
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white flex items-center justify-center">
-        <div className="text-center max-w-md mx-auto px-6">
-          <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
-            <svg className="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-            </svg>
-          </div>
-          <div className="text-xl font-semibold text-red-300 mb-2">Something went wrong</div>
-          <p className="text-slate-400 mb-6 text-sm">{error}</p>
+      <ExamStatusScreen
+        tone="error"
+        title="Something went wrong"
+        detail={error}
+        action={
           <button
             onClick={() => navigate("/student/assignments")}
-            className="px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl border border-slate-600 font-medium transition-all duration-200"
+            className="h-11 rounded-xl px-5 text-sm font-medium text-slate-200 ring-1 ring-white/10 transition-colors hover:bg-white/[0.05]"
           >
-            ← Back to Assignments
+            ← Back to assignments
           </button>
-        </div>
-      </div>
+        }
+      />
     );
   }
 
 
   if (!testStarted || !test) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="relative w-16 h-16 mx-auto mb-6">
-            <div className="absolute inset-0 rounded-full border-4 border-slate-700"></div>
-            <div className="absolute inset-0 rounded-full border-4 border-t-blue-500 animate-spin"></div>
-          </div>
-          <div className="text-xl font-semibold text-slate-200">Preparing test...</div>
-          <p className="text-slate-500 text-sm mt-2">Setting up proctoring environment</p>
-        </div>
-      </div>
-    );
+    return <ExamStatusScreen title="Preparing your test…" detail="Setting up the proctoring environment." />;
   }
 
   const question = test?.questions?.[currentQuestion];
 
   // Don't render question content if question is not loaded yet
   if (!question) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="relative w-16 h-16 mx-auto mb-6">
-            <div className="absolute inset-0 rounded-full border-4 border-slate-700"></div>
-            <div className="absolute inset-0 rounded-full border-4 border-t-blue-500 animate-spin"></div>
-          </div>
-          <div className="text-xl font-semibold text-slate-200">Loading question...</div>
-        </div>
-      </div>
-    );
+    return <ExamStatusScreen title="Loading question…" />;
   }
 
   // Helper: count answered questions
@@ -1044,6 +1179,7 @@ const TakeTestInner = ({ submitRef }) => {
     return false;
   }).length;
   const totalQuestions = test?.questions?.length || 0;
+  const markedCount = test.questions.filter((q) => questionStatuses[q._id] === "mark-for-review").length;
   const progressPercent = totalQuestions > 0 ? (answeredCount / totalQuestions) * 100 : 0;
   const isTimeLow = timeRemaining <= 300;
   const isTimeCritical = timeRemaining <= 60;
@@ -1056,97 +1192,72 @@ const TakeTestInner = ({ submitRef }) => {
 
   const testDurationMinutes = assignment?.duration || test?.timeLimit || test?.duration || null;
 
-  const formatScheduleTime = (dateVal) => {
-    if (!dateVal) return null;
-    try {
-      const d = new Date(dateVal);
-      if (isNaN(d.getTime())) return null;
-      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ', ' + d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-    } catch {
-      return null;
-    }
-  };
 
   // Everything that can sit on top of either view: the time-up sequence and
   // the submit confirmation.
   const overlays = (
     <>
+      <SaveStatusBanner unsavedCount={unsavedIds.size} />
       {/* ═══════════ SUBMIT FAILED ═══════════ */}
       {submitError && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[70] p-4" role="alertdialog" aria-modal="true">
-          <div className="bg-slate-800 rounded-2xl p-6 max-w-sm w-full text-center border border-red-500/30 shadow-2xl">
-            <h2 className="text-lg font-semibold text-red-400 mb-2">Your test was not submitted</h2>
-            <p className="text-sm text-slate-300 mb-5 break-words">{submitError}</p>
-            <p className="text-xs text-slate-400 mb-5">Your answers are still here. Check your connection and submit again.</p>
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/75 p-4" role="alertdialog" aria-modal="true" aria-labelledby="submit-failed-title">
+          <div className="exam-enter w-full max-w-sm rounded-2xl bg-[#121a28] p-7 text-center ring-1 ring-white/10 shadow-2xl">
+            <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-500/10 ring-1 ring-rose-400/30">
+              <svg className="h-6 w-6 text-rose-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m0 3.75h.008M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+            </div>
+            <h2 id="submit-failed-title" className="text-lg font-semibold text-white">Your test was not submitted</h2>
+            <p className="mt-2 break-words text-sm text-slate-300">{submitError}</p>
+            <p className="mt-3 text-xs leading-relaxed text-slate-400">Your answers are still here. Check your connection and submit again.</p>
             <button
               type="button"
               onClick={() => setSubmitError(null)}
-              className="w-full py-2.5 rounded-xl font-semibold bg-white/90 text-black hover:bg-white"
+              className="mt-6 h-11 w-full rounded-xl bg-white text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-200"
             >
               OK
             </button>
           </div>
         </div>
       )}
-      {/* ═══════════ AUTO-SUBMIT TIME-UP MODAL ═══════════ */}
-      {autoSubmitPhase && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-[60] p-4 auto-submit-overlay">
-          <div className="bg-slate-800/95 backdrop-blur-xl rounded-2xl p-8 max-w-sm w-full text-center border border-slate-700/50 shadow-2xl auto-submit-card">
 
-            {/* Phase: TIME-UP */}
+      {/* ═══════════ AUTO-SUBMIT (TIME UP) ═══════════ */}
+      {autoSubmitPhase && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4 auto-submit-overlay">
+          <div className="w-full max-w-sm rounded-2xl bg-[#121a28] p-8 text-center ring-1 ring-white/10 shadow-2xl auto-submit-card">
             {autoSubmitPhase === 'time-up' && (
               <>
-                <div className="relative w-20 h-20 mx-auto mb-6">
-                  <div className="absolute inset-0 rounded-full bg-red-500/15 auto-submit-pulse-ring"></div>
-                  <div className="w-20 h-20 rounded-full bg-red-500/10 border-2 border-red-500/30 flex items-center justify-center">
-                    <svg className="w-10 h-10 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
+                <div className="relative mx-auto mb-6 h-16 w-16">
+                  <div className="absolute inset-0 rounded-full bg-rose-500/15 auto-submit-pulse-ring"></div>
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-rose-500/10 ring-1 ring-rose-400/40">
+                    <svg className="h-8 w-8 text-rose-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                   </div>
                 </div>
-                <h2 className="text-2xl font-bold text-white mb-2">Time's Up!</h2>
-                <p className="text-slate-400 text-sm">Your exam time has been completed.</p>
-                <p className="text-slate-500 text-xs mt-2">Preparing to submit your exam...</p>
+                <h2 className="text-xl font-semibold text-white">Time is up</h2>
+                <p className="mt-2 text-sm text-slate-400">Your exam time has ended. Preparing to submit your answers…</p>
               </>
             )}
-
-            {/* Phase: SUBMITTING */}
             {autoSubmitPhase === 'submitting' && (
               <>
-                <div className="w-20 h-20 mx-auto mb-6 relative">
-                  <div className="absolute inset-0 rounded-full border-4 border-slate-700"></div>
-                  <div className="absolute inset-0 rounded-full border-4 border-t-blue-500 border-r-transparent border-b-transparent border-l-transparent auto-submit-spinner"></div>
-                </div>
-                <h2 className="text-2xl font-bold text-white mb-2">Submitting Exam...</h2>
-                <p className="text-slate-400 text-sm">Please wait while we submit your answers.</p>
-                <p className="text-slate-500 text-xs mt-2">Do not close this window.</p>
+                <div className="mx-auto mb-6 h-14 w-14 rounded-full border-[3px] border-white/10 border-t-white auto-submit-spinner"></div>
+                <h2 className="text-xl font-semibold text-white">Submitting your exam</h2>
+                <p className="mt-2 text-sm text-slate-400">Please wait and do not close this window.</p>
               </>
             )}
-
-            {/* Phase: SUCCESS */}
             {autoSubmitPhase === 'success' && (
               <>
-                <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-emerald-500/10 border-2 border-emerald-500/30 flex items-center justify-center">
-                  <svg className="w-10 h-10 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
-                    <path className="auto-submit-checkmark" strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
+                <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10 ring-1 ring-emerald-400/40">
+                  <svg className="h-8 w-8 text-emerald-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path className="auto-submit-checkmark" strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
                 </div>
-                <h2 className="text-2xl font-bold text-white mb-2">Exam Submitted!</h2>
-                <p className="text-slate-400 text-sm">Your exam has been submitted successfully.</p>
-                <p className="text-emerald-400/70 text-xs mt-2">Redirecting to your tests...</p>
+                <h2 className="text-xl font-semibold text-white">Exam submitted</h2>
+                <p className="mt-2 text-sm text-slate-400">Your answers were submitted successfully. Taking you back to your tests…</p>
               </>
             )}
-
-            {/* Phase: ERROR */}
             {autoSubmitPhase === 'error' && (
               <>
-                <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-red-500/10 border-2 border-red-500/30 flex items-center justify-center auto-submit-shake">
-                  <svg className="w-10 h-10 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                  </svg>
+                <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-rose-500/10 ring-1 ring-rose-400/40 auto-submit-shake">
+                  <svg className="h-8 w-8 text-rose-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m0 3.75h.008M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
                 </div>
-                <h2 className="text-2xl font-bold text-white mb-2">Submission Failed</h2>
-                <p className="text-slate-400 text-sm mb-4">{autoSubmitError}</p>
+                <h2 className="text-xl font-semibold text-white">Submission failed</h2>
+                <p className="mt-2 mb-6 text-sm text-slate-400">{autoSubmitError}</p>
                 <button
                   onClick={() => {
                     autoSubmitTriggered.current = false;
@@ -1154,44 +1265,65 @@ const TakeTestInner = ({ submitRef }) => {
                     setAutoSubmitError('');
                     handleTimeUp();
                   }}
-                  className="px-6 py-3 rounded-xl font-bold transition-all duration-200 border bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white border-blue-500/50 shadow-lg shadow-blue-500/20 w-full"
+                  className="h-11 w-full rounded-xl bg-white text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-200"
                 >
-                  Retry Submission
+                  Retry submission
                 </button>
               </>
             )}
-
           </div>
         </div>
       )}
 
-      {/* ═══════════ SUBMIT CONFIRMATION MODAL ═══════════ */}
+      {/* ═══════════ SUBMIT CONFIRMATION ═══════════ */}
       {showSubmitConfirmModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-800/95 backdrop-blur-xl rounded-2xl p-8 max-w-md w-full text-center border border-slate-700/50 shadow-2xl">
-            <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
-              <svg className="w-8 h-8 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-              </svg>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal="true" aria-labelledby="submit-confirm-title">
+          <div className="exam-enter w-full max-w-md rounded-2xl bg-[#121a28] p-7 ring-1 ring-white/10 shadow-2xl">
+            <div className="flex items-start gap-4">
+              <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-teal-500/10 ring-1 ring-teal-400/30">
+                <svg className="h-5 w-5 text-teal-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              </div>
+              <div>
+                <h2 id="submit-confirm-title" className="text-lg font-semibold text-white">Submit your test?</h2>
+                <p className="mt-1 text-sm text-slate-400">You won't be able to change your answers after submitting.</p>
+              </div>
             </div>
-            <h2 className="text-2xl font-bold mb-3 text-white">Submit Test?</h2>
-            <p className="text-slate-400 mb-3 text-sm">
-              You have answered <span className="text-white font-semibold">{answeredCount}</span> out of <span className="text-white font-semibold">{totalQuestions}</span> questions.
-            </p>
-            {answeredCount < totalQuestions && (
-              <p className="text-amber-400/80 text-xs mb-6 bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20">
-                ⚠ {totalQuestions - answeredCount} question{totalQuestions - answeredCount !== 1 ? 's' : ''} left unanswered
+            <dl className="mt-6 grid grid-cols-3 gap-2.5 text-center">
+              <div className="rounded-xl bg-white/[0.03] py-3 ring-1 ring-white/[0.06]">
+                <dd className="text-xl font-semibold tabular-nums text-emerald-300">{answeredCount}</dd>
+                <dt className="mt-0.5 text-[11px] text-slate-400">Answered</dt>
+              </div>
+              <div className="rounded-xl bg-white/[0.03] py-3 ring-1 ring-white/[0.06]">
+                <dd className="text-xl font-semibold tabular-nums text-slate-100">{totalQuestions - answeredCount}</dd>
+                <dt className="mt-0.5 text-[11px] text-slate-400">Not answered</dt>
+              </div>
+              <div className="rounded-xl bg-white/[0.03] py-3 ring-1 ring-white/[0.06]">
+                <dd className="text-xl font-semibold tabular-nums text-amber-300">{markedCount}</dd>
+                <dt className="mt-0.5 text-[11px] text-slate-400">For review</dt>
+              </div>
+            </dl>
+            {(answeredCount < totalQuestions || markedCount > 0) && (
+              <p className="mt-4 rounded-xl bg-amber-400/[0.08] px-4 py-3 text-xs leading-relaxed text-amber-200 ring-1 ring-amber-400/25">
+                {answeredCount < totalQuestions
+                  ? `${totalQuestions - answeredCount} question${totalQuestions - answeredCount !== 1 ? "s are" : " is"} still unanswered.`
+                  : ""}
+                {answeredCount < totalQuestions && markedCount > 0 ? " " : ""}
+                {markedCount > 0 ? `${markedCount} ${markedCount !== 1 ? "are" : "is"} marked for review.` : ""}
               </p>
             )}
-            {answeredCount >= totalQuestions && <div className="mb-6"></div>}
-            <div className="flex gap-3">
-              <button onClick={handleCancelSubmit} className="flex-1 px-6 py-3 rounded-xl font-semibold bg-slate-700/80 hover:bg-slate-600 text-white border border-slate-600/50 transition-all duration-200">
-                Go Back
-              </button>
-              <button onClick={handleConfirmSubmit} disabled={isSubmitting}
-                className={`flex-1 px-6 py-3 rounded-xl font-bold transition-all duration-200 border ${isSubmitting ? 'bg-slate-700 text-slate-400 cursor-not-allowed border-slate-600' : 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white border-emerald-500/50 shadow-lg shadow-emerald-500/20'}`}
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={handleCancelSubmit}
+                className="h-11 flex-1 rounded-xl text-sm font-medium text-slate-200 ring-1 ring-white/10 transition-colors hover:bg-white/[0.05]"
               >
-                {isSubmitting ? 'Submitting...' : 'Confirm Submit'}
+                Keep working
+              </button>
+              <button
+                onClick={handleConfirmSubmit}
+                disabled={isSubmitting}
+                className="h-11 flex-1 rounded-xl bg-teal-600 text-sm font-semibold text-white transition-colors hover:bg-teal-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+              >
+                {isSubmitting ? "Submitting…" : "Submit test"}
               </button>
             </div>
           </div>
@@ -1215,102 +1347,98 @@ const TakeTestInner = ({ submitRef }) => {
 
   // ═══════════ PRE-EXAM INSTRUCTIONS SCREEN ═══════════
   if (!hasEnteredExam) {
-    const formattedStartTime = formatScheduleTime(assignment?.startTime);
-    const formattedEndTime = formatScheduleTime(assignment?.deadline || assignment?.endTime);
     const instructionsText = test?.instructions?.trim();
+    const rules = [
+      ["Single display only", "External or secondary monitors are not allowed."],
+      ["Stay in fullscreen", "Switching apps or tabs is recorded as a violation."],
+      ["No trackpad gestures", "Three- or four-finger swipes that switch apps or desktops count as leaving the exam. Right-click and swipe-back are disabled."],
+      ["Continuous monitoring", "Screen sharing and the webcam stay on for the whole test."],
+      ["Auto-save", "Answers save as you go, and the test submits itself when time runs out."],
+    ];
 
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white flex items-start justify-center px-4 py-6 lg:py-8" style={{ zoom: zoomLevel / 100 }}>
+      <div className="exam-scroll flex min-h-screen flex-col items-center justify-center overflow-y-auto bg-[#0a0e17] px-4 py-8 text-slate-100 antialiased sm:py-12" style={{ zoom: zoomLevel / 100 }}>
+        <ExamStyles />
         {overlays}
-        <div className="w-full bg-slate-900/95 backdrop-blur-xl border border-slate-700/50 rounded-2xl shadow-2xl flex flex-col">
-
+        <div className="exam-enter mx-auto w-full max-w-3xl overflow-hidden rounded-2xl bg-[#111724] ring-1 ring-white/[0.06] shadow-[0_24px_48px_-24px_rgba(0,0,0,0.6)]">
           {/* ── Header ── */}
-          <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-slate-800/80 shrink-0">
-            <div className="min-w-0">
-              <h1 className="text-lg sm:text-xl font-bold text-white truncate">{test.title || "Examination"}</h1>
-              <p className="text-xs text-slate-500 mt-0.5">Review the details before starting</p>
+          <div className="flex items-center justify-between gap-4 border-b border-white/[0.06] px-6 py-5 sm:px-8">
+            <div className="flex min-w-0 items-center gap-3.5">
+              <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-white/[0.06] ring-1 ring-white/15">
+                <svg className="h-5 w-5 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+              </div>
+              <div className="min-w-0">
+                <h1 className="truncate text-lg font-semibold tracking-tight text-white">{test.title || "Examination"}</h1>
+                <p className="mt-0.5 text-xs text-slate-400">Read the details below before you begin</p>
+              </div>
             </div>
-            <div className={`shrink-0 flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border text-xs sm:text-sm font-mono font-semibold tabular-nums ${isTimeCritical ? 'bg-red-500/15 text-red-300 border-red-500/30 timer-critical' : isTimeLow ? 'bg-amber-500/10 text-amber-300 border-amber-500/25' : 'bg-slate-800/70 text-slate-300 border-slate-700/50'}`}>
-              <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            <div
+              className={`flex flex-shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 font-mono text-sm font-semibold tabular-nums ring-1 ${
+                isTimeCritical ? "bg-rose-500/[0.12] text-rose-200 ring-rose-400/40" : isTimeLow ? "bg-amber-400/[0.1] text-amber-200 ring-amber-400/30" : "bg-white/[0.03] text-slate-200 ring-white/[0.08]"
+              }`}
+              title="Time left"
+            >
+              <svg className="h-4 w-4 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
               {formatTime(timeRemaining)}
             </div>
           </div>
 
-          {/* ── Content body ── */}
-          <div className="px-6 py-5 space-y-5">
-
-            {/* Metadata row */}
-            <div className="flex flex-wrap gap-2.5">
-              {totalQuestions > 0 && (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/40 text-xs sm:text-sm">
-                  <span className="text-slate-400">Questions</span>
-                  <span className="font-bold text-white">{totalQuestions}</span>
+          <div className="space-y-8 px-6 py-7 sm:px-8">
+            {/* At a glance */}
+            <dl className="grid grid-cols-3 gap-3">
+              {[
+                ["Questions", totalQuestions > 0 ? totalQuestions : "—"],
+                ["Total marks", totalMarks != null ? totalMarks : "—"],
+                ["Duration", testDurationMinutes > 0 ? `${testDurationMinutes} min` : "—"],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-xl bg-white/[0.025] px-4 py-3.5 ring-1 ring-white/[0.06]">
+                  <dt className="text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">{label}</dt>
+                  <dd className="mt-1 text-xl font-semibold tabular-nums text-white">{value}</dd>
                 </div>
-              )}
-              {totalMarks != null && (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/40 text-xs sm:text-sm">
-                  <span className="text-slate-400">Marks</span>
-                  <span className="font-bold text-white">{totalMarks}</span>
-                </div>
-              )}
-              {testDurationMinutes != null && testDurationMinutes > 0 && (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/40 text-xs sm:text-sm">
-                  <span className="text-slate-400">Duration</span>
-                  <span className="font-bold text-white">{testDurationMinutes}m</span>
-                </div>
-              )}
-              {/* {formattedStartTime && (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/40 text-xs sm:text-sm">
-                  <span className="text-slate-400">Start</span>
-                  <span className="font-semibold text-white truncate max-w-[7rem]" title={formattedStartTime}>{formattedStartTime}</span>
-                </div>
-              )}
-              {formattedEndTime && (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/40 text-xs sm:text-sm">
-                  <span className="text-slate-400">Deadline</span>
-                  <span className="font-semibold text-white truncate max-w-[7rem]" title={formattedEndTime}>{formattedEndTime}</span>
-                </div>
-              )} */}
-            </div>
+              ))}
+            </dl>
 
             {/* Instructions */}
-            <div>
-              <h2 className="text-sm sm:text-base font-semibold text-slate-200 mb-2">Test Instructions</h2>
-              <div className="rounded-xl bg-slate-800/40 border border-slate-700/40 p-4 sm:p-5 text-sm sm:text-base text-slate-300 leading-relaxed">
+            <section>
+              <h2 className="mb-3 text-sm font-semibold text-slate-200">Test instructions</h2>
+              <div className="rounded-xl bg-white/[0.025] p-5 text-sm leading-relaxed text-slate-300 ring-1 ring-white/[0.06] sm:text-[0.95rem]">
                 {instructionsText ? (
                   <p className="whitespace-pre-line">{instructionsText}</p>
                 ) : (
-                  <p className="text-slate-500 italic">No special instructions have been provided.</p>
+                  <p className="italic text-slate-500">No special instructions have been provided.</p>
                 )}
               </div>
-            </div>
+            </section>
 
-            {/* Exam rules — compact */}
-            <div>
-              <h2 className="text-sm sm:text-base font-semibold text-amber-300/90 mb-2 flex items-center gap-1.5">
-                <svg className="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
-                Important Exam Rules
+            {/* Rules */}
+            <section>
+              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-amber-200">
+                <svg className="h-4 w-4 text-amber-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m0 3.75h.008M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+                Exam rules
               </h2>
-              <ul className="text-xs sm:text-sm text-slate-400 space-y-1.5 pl-1">
-                <li><span className="text-amber-400/70 mr-1.5">•</span><strong className="text-slate-300">Single display only</strong> — external / secondary monitors are prohibited.</li>
-                <li><span className="text-amber-400/70 mr-1.5">•</span><strong className="text-slate-300">Stay in fullscreen</strong> — switching apps or tabs may trigger violations.</li>
-                <li><span className="text-amber-400/70 mr-1.5">•</span><strong className="text-slate-300">Continuous monitoring</strong> — screen sharing and webcam are active.</li>
-                <li><span className="text-amber-400/70 mr-1.5">•</span><strong className="text-slate-300">Auto-save</strong> — answers save automatically; exam submits when time expires.</li>
+              <ul className="divide-y divide-white/[0.05] overflow-hidden rounded-xl ring-1 ring-white/[0.06]">
+                {rules.map(([title, detail]) => (
+                  <li key={title} className="flex gap-3.5 bg-white/[0.015] px-5 py-3.5">
+                    <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-amber-300/80" />
+                    <p className="text-sm leading-relaxed text-slate-400">
+                      <span className="font-medium text-slate-200">{title}.</span> {detail}
+                    </p>
+                  </li>
+                ))}
               </ul>
-            </div>
-
+            </section>
           </div>
 
           {/* ── Footer ── */}
-          <div className="shrink-0 px-6 py-4 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <label className="flex items-center gap-2.5 cursor-pointer select-none group">
+          <div className="flex flex-col items-center justify-between gap-4 border-t border-white/[0.06] bg-[#0f1521] px-6 py-5 sm:flex-row sm:px-8">
+            <label className="group flex cursor-pointer select-none items-center gap-3">
               <input
                 type="checkbox"
                 checked={acknowledgedRules}
                 onChange={(e) => setAcknowledgedRules(e.target.checked)}
-                className="accent-blue-500 w-4 h-4 rounded cursor-pointer"
+                className="h-4 w-4 cursor-pointer rounded accent-slate-100"
               />
-              <span className="text-xs sm:text-sm text-slate-400 leading-tight group-hover:text-slate-300 transition-colors">
+              <span className="text-sm leading-tight text-slate-400 transition-colors group-hover:text-slate-200">
                 I have read and understood the instructions and exam rules.
               </span>
             </label>
@@ -1318,13 +1446,12 @@ const TakeTestInner = ({ submitRef }) => {
               type="button"
               onClick={handleStartExam}
               disabled={isSubmitting || !acknowledgedRules}
-              className="w-full sm:w-auto shrink-0 px-7 py-2.5 rounded-lg font-semibold text-sm text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-md shadow-blue-500/20 transition-all duration-150 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
+              className="flex h-11 w-full flex-shrink-0 items-center justify-center gap-2 rounded-xl bg-white px-6 text-sm font-semibold text-slate-900 shadow-[0_8px_24px_-12px_rgba(255,255,255,0.35)] transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:bg-white/[0.06] disabled:text-slate-500 disabled:shadow-none sm:w-auto"
             >
-              Start Test
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+              Start test
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
             </button>
           </div>
-
         </div>
       </div>
     );
@@ -1510,6 +1637,15 @@ const TakeTestInner = ({ submitRef }) => {
     );
   }
 
+  // ── Main exam view ──
+  const isMarked = questionStatuses[question._id] === "mark-for-review";
+  const isCurrentAnswered = isAnsweredValue(question, answers[question._id]);
+  const isLastQuestion = currentQuestion === totalQuestions - 1;
+  const markForReviewAndNext = async () => {
+    setQuestionStatuses((prev) => ({ ...prev, [question._id]: "mark-for-review" }));
+    await handleNextQuestion();
+  };
+
   return (
     <>
       <style>
@@ -1574,280 +1710,226 @@ const TakeTestInner = ({ submitRef }) => {
           }
         `}
       </style>
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white p-4 lg:p-6" style={{ zoom: zoomLevel / 100 }}>
-        <div className="max-w-7xl mx-auto">
-
-          {/* ═══════════ HEADER BAR ═══════════ */}
-          <div className="flex justify-between items-start mb-6 p-4 lg:p-5 bg-slate-800/60 backdrop-blur-sm rounded-2xl border border-slate-700/40 shadow-xl">
-            <div className="flex-1 min-w-0">
-              <h1 className="text-xl lg:text-2xl font-bold text-white truncate pr-4">{test.title}</h1>
-              <p className="text-slate-400 text-sm mt-1">
-                Question {currentQuestion + 1} of {totalQuestions}
-              </p>
-              <div className="flex items-center gap-1.5 mt-2.5">
-                <button onClick={handleZoomOut} disabled={zoomLevel <= 80} className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-700/70 hover:bg-slate-600 text-slate-300 hover:text-white font-bold text-sm border border-slate-600/50 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed" title="Zoom Out">−</button>
-                <button onClick={handleZoomReset} className="px-2.5 h-7 flex items-center justify-center rounded-lg bg-slate-700/70 hover:bg-slate-600 text-slate-400 hover:text-white text-xs font-semibold border border-slate-600/50 transition-all duration-200 min-w-[44px]" title="Reset Zoom">{zoomLevel}%</button>
-                <button onClick={handleZoomIn} disabled={zoomLevel >= 150} className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-700/70 hover:bg-slate-600 text-slate-300 hover:text-white font-bold text-sm border border-slate-600/50 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed" title="Zoom In">+</button>
+      <ExamStyles />
+      <div
+        className="flex flex-col overflow-hidden bg-[#0a0e17] text-slate-100 antialiased"
+        // `zoom` scales viewport units too, so the height is divided back out:
+        // at 125% a plain 100vh would render 25% taller than the window.
+        style={{ zoom: zoomLevel / 100, height: `${10000 / zoomLevel}vh` }}
+      >
+        {/* ═══════════ TOP BAR ═══════════ */}
+        <header className="relative flex-shrink-0 border-b border-white/[0.06] bg-[#0d121d]">
+          <div className="mx-auto flex h-[72px] max-w-[1680px] items-center gap-5 px-5 xl:px-8 [@media(max-height:760px)]:h-16">
+            <div className="flex min-w-0 flex-1 items-center gap-3.5">
+              <div className="hidden h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-white/[0.06] ring-1 ring-inset ring-white/15 sm:flex [@media(max-height:760px)]:h-10 [@media(max-height:760px)]:w-10">
+                <svg className="h-5 w-5 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <h1 className="truncate text-[15px] font-semibold tracking-tight text-white xl:text-base" title={test.title}>{test.title}</h1>
+                <p className="mt-0.5 truncate text-xs text-slate-400">
+                  {totalQuestions} questions{totalMarks ? ` · ${totalMarks} marks` : ""}{testDurationMinutes ? ` · ${testDurationMinutes} min` : ""}
+                </p>
               </div>
             </div>
-            <div className="flex-shrink-0 text-right">
-              <div className={`text-2xl lg:text-3xl font-mono px-5 py-2.5 rounded-xl font-bold tracking-wider ${isTimeCritical ? 'bg-red-500/20 text-red-300 border border-red-500/40 timer-critical' : isTimeLow ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30' : 'bg-slate-700/60 text-white border border-slate-600/40'}`}>
-                {formatTime(timeRemaining)}
+
+            {/* Text size, time and submit: one family of controls -- same height,
+                same corner radius, same border weight, evenly spaced. */}
+            <div className="flex flex-shrink-0 items-center gap-3">
+              <div
+                className="hidden h-11 items-center gap-0.5 rounded-xl bg-white/[0.03] px-1 ring-1 ring-inset ring-white/[0.08] md:flex [@media(max-height:760px)]:h-10"
+                role="group"
+                aria-label="Text size"
+              >
+                <button onClick={handleZoomOut} disabled={zoomLevel <= 80} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-300 transition-colors hover:bg-white/[0.08] hover:text-white disabled:pointer-events-none disabled:opacity-30 [@media(max-height:760px)]:h-8 [@media(max-height:760px)]:w-8" title="Smaller text" aria-label="Smaller text">
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.25}><path strokeLinecap="round" d="M5 12h14" /></svg>
+                </button>
+                <button onClick={handleZoomReset} className="flex h-9 min-w-[3.5rem] items-center justify-center rounded-lg px-2 text-sm font-medium tabular-nums text-slate-200 transition-colors hover:bg-white/[0.08] hover:text-white [@media(max-height:760px)]:h-8" title="Reset text size">{zoomLevel}%</button>
+                <button onClick={handleZoomIn} disabled={zoomLevel >= 150} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-300 transition-colors hover:bg-white/[0.08] hover:text-white disabled:pointer-events-none disabled:opacity-30 [@media(max-height:760px)]:h-8 [@media(max-height:760px)]:w-8" title="Larger text" aria-label="Larger text">
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.25}><path strokeLinecap="round" d="M12 5v14M5 12h14" /></svg>
+                </button>
               </div>
-              <div className="text-xs text-slate-500 mt-1.5 font-medium tracking-wide uppercase">Time Remaining</div>
+
+              <div
+                role="timer"
+                aria-label="Time remaining"
+                className={`flex h-11 items-center gap-3 rounded-xl px-4 ring-1 ring-inset transition-colors duration-300 [@media(max-height:760px)]:h-10 ${
+                  isTimeCritical
+                    ? "bg-rose-500/[0.12] text-rose-200 ring-rose-400/40 exam-timer-critical"
+                    : isTimeLow
+                      ? "bg-amber-400/[0.1] text-amber-200 ring-amber-400/30"
+                      : "bg-white/[0.03] text-white ring-white/[0.08]"
+                }`}
+              >
+                <span className={`h-2 w-2 flex-shrink-0 rounded-full ${isTimeCritical ? "bg-rose-400" : isTimeLow ? "bg-amber-400" : "bg-emerald-400"}`} />
+                <span className="hidden text-[11px] font-medium uppercase tracking-[0.12em] opacity-60 lg:inline">Time left</span>
+                <span className="min-w-[4.25rem] text-right font-mono text-lg font-semibold tabular-nums tracking-wide">{formatTime(timeRemaining)}</span>
+              </div>
+
+              <button
+                onClick={handleSubmitClick}
+                disabled={isSubmitting}
+                className="flex h-11 items-center gap-2 rounded-xl bg-teal-600 px-5 text-sm font-semibold text-white ring-1 ring-inset ring-teal-300/25 shadow-[0_8px_24px_-10px_rgba(13,148,136,0.7)] transition-colors hover:bg-teal-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none [@media(max-height:760px)]:h-10"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                {isSubmitting ? "Submitting…" : "Submit test"}
+              </button>
             </div>
           </div>
+          {/* Answered progress, as a hairline along the bottom edge. */}
+          <div className="absolute inset-x-0 bottom-0 h-[2px] bg-transparent">
+            <div className="h-full bg-gradient-to-r from-slate-200 to-emerald-400 transition-[width] duration-500 ease-out" style={{ width: `${progressPercent}%` }} />
+          </div>
+        </header>
 
-          {question.kind === "theory" ? (
-            <div className="grid grid-cols-1 lg:grid-cols-[45%_45%_7%] gap-4" style={{ height: '70vh' }}>
-              {/* Question Panel */}
-              <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-5 lg:p-6 overflow-y-auto h-full border border-slate-700/30 shadow-lg">
-                <div className="flex items-center justify-between mb-5">
-                  <div className="flex items-center gap-3">
-                    <span className="px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs font-bold tracking-wide">Q{currentQuestion + 1}</span>
-                    <span className="px-3 py-1.5 rounded-lg bg-slate-700/50 border border-slate-600/30 text-slate-300 text-xs font-semibold">{question.points} {question.points !== 1 ? "pts" : "pt"}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => handleAnswerChange(question._id, "")} className="px-3.5 py-1.5 bg-slate-700/60 hover:bg-slate-600/80 text-slate-300 hover:text-white rounded-lg text-xs font-semibold transition-all duration-200 border border-slate-600/40">Clear</button>
-                    <button
-                      onClick={() => {
-                        const currentStatus = questionStatuses[question._id];
-                        let newStatus;
-                        if (currentStatus === "mark-for-review") {
-                          const answer = answers[question._id];
-                          const hasAnswer = answer && answer.trim() !== "";
-                          newStatus = hasAnswer ? "answered" : "not-answered";
-                        } else { newStatus = "mark-for-review"; }
-                        setQuestionStatuses((prev) => ({ ...prev, [question._id]: newStatus }));
-                      }}
-                      className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 border ${questionStatuses[question._id] === "mark-for-review" ? "bg-amber-500/20 text-amber-300 border-amber-500/30" : "bg-slate-700/60 text-slate-300 border-slate-600/40 hover:bg-slate-600/80"}`}
-                    >{questionStatuses[question._id] === "mark-for-review" ? "★ Marked" : "☆ Review"}</button>
-                  </div>
-                </div>
-                <div className="text-lg lg:text-xl font-semibold mb-5 text-slate-100 leading-relaxed">
-                  <QuestionText text={question.text} />
-                </div>
-
-                {question.guidelines && (
-                  <div className="bg-slate-700/30 p-4 rounded-xl mb-4 border border-slate-600/20">
-                    <h4 className="font-semibold text-slate-300 mb-2 text-sm flex items-center gap-2">
-                      <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                      Guidelines
-                    </h4>
-                    <p className="text-slate-400 text-sm leading-relaxed">{question.guidelines}</p>
-                  </div>
-                )}
-
-                {question.examples && question.examples.length > 0 && (
-                  <div className="bg-slate-700/30 p-4 rounded-xl mb-4 scrollbar-hide border border-slate-600/20" style={{ maxHeight: '16rem', overflowY: 'auto' }}>
-                    {question.examples.map((example, idx) => (
-                      <div key={idx} className="mb-3 last:mb-0 p-3 bg-slate-800/50 rounded-xl border border-slate-600/20">
-                        <div className="text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Example {idx + 1}</div>
-                        <div className="mb-1 text-xs font-semibold text-slate-400">Input:</div>
-                        <pre className="whitespace-pre-wrap text-slate-300 bg-slate-900/60 p-2.5 rounded-lg text-sm font-mono mb-2">{example.input}</pre>
-                        <div className="mb-1 text-xs font-semibold text-slate-400">Output:</div>
-                        <pre className="whitespace-pre-wrap text-emerald-300 bg-slate-900/60 p-2.5 rounded-lg text-sm font-mono">{example.output}</pre>
-                      </div>
-                    ))}
-                  </div>
-                )}
+        <div className="mx-auto flex min-h-0 w-full max-w-[1680px] flex-1 flex-col gap-5 p-4 lg:flex-row xl:gap-6 xl:p-6 2xl:p-8 [@media(max-height:760px)]:p-3 [@media(max-height:760px)]:gap-4">
+          {/* ═══════════ QUESTION ═══════════ */}
+          <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl bg-[#111724] ring-1 ring-white/[0.06] shadow-[0_24px_48px_-24px_rgba(0,0,0,0.6)]">
+            <div className="flex flex-shrink-0 flex-wrap items-center justify-between gap-3 border-b border-white/[0.06] px-6 py-4 xl:px-8 [@media(max-height:760px)]:py-3">
+              <div className="flex items-center gap-3">
+                <h2 className="text-[15px] font-semibold text-white">
+                  Question {currentQuestion + 1}
+                  <span className="font-normal text-slate-500"> of {totalQuestions}</span>
+                </h2>
+                <span className="rounded-md bg-white/[0.04] px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-slate-400 ring-1 ring-white/[0.08]">
+                  {question.kind === "mcq" ? "Single choice" : "Written answer"}
+                </span>
+                <span className="rounded-md bg-white/[0.06] px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-100 ring-1 ring-white/20">
+                  {question.points} {question.points === 1 ? "mark" : "marks"}
+                </span>
               </div>
-
-              {/* Question Nav Strip */}
-              <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-4 flex flex-col gap-2 max-h-[calc(100vh-160px)] overflow-y-auto scrollbar-hide order-last border border-slate-700/30 shadow-lg">
-                <div className="flex flex-col gap-2 overflow-y-auto scrollbar-hide">
-                  {test?.questions?.map((q, index) => (
-                    <button key={q._id} onClick={() => handleQuestionNavigation(index)}
-                      className={`w-10 h-10 rounded-xl text-sm font-bold transition-all duration-200 hover:scale-110 border-2 flex items-center justify-center ${currentQuestion === index
-                        ? "bg-gradient-to-br from-blue-500 to-blue-600 text-white border-blue-400 shadow-lg shadow-blue-500/25 ring-2 ring-blue-400/30"
-                        : questionStatuses[q._id] === "answered"
-                          ? "bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-emerald-400 shadow-md shadow-emerald-500/20"
-                          : questionStatuses[q._id] === "mark-for-review"
-                            ? "bg-gradient-to-br from-amber-500 to-orange-500 text-white border-amber-400 shadow-md shadow-amber-500/20"
-                            : "bg-slate-800/80 hover:bg-slate-700 border-slate-600/50 hover:border-slate-500 text-slate-300"
-                        }`}
-                    >{index + 1}</button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Answer Panel */}
-              <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-5 lg:p-6 flex flex-col border border-slate-700/30 shadow-lg" style={{ height: '70vh' }}>
-                <div className="flex-1">
-                  <textarea
-                    className="w-full h-full p-4 bg-slate-900/60 text-white rounded-xl border border-slate-600/30 focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 focus:outline-none resize-none transition-all duration-200 placeholder-slate-500 text-sm leading-relaxed"
-                    value={answers[question._id] || ""}
-                    onChange={(e) => handleAnswerChange(question._id, e.target.value)}
-                    placeholder="Type your answer here..."
-                  />
-                </div>
-                <div className="flex gap-3 mt-5">
-                  <button onClick={handlePreviousQuestion} disabled={currentQuestion === 0} className="flex-1 flex items-center justify-center gap-2 bg-slate-800/80 hover:bg-slate-700/90 disabled:opacity-40 disabled:cursor-not-allowed text-white py-2.5 rounded-xl font-semibold transition-all duration-200 border border-slate-600/40">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>Previous
-                  </button>
-                  <button onClick={handleNextQuestion} disabled={currentQuestion === totalQuestions - 1} className="flex-1 flex items-center justify-center gap-2 bg-slate-800/80 hover:bg-slate-700/90 disabled:opacity-40 disabled:cursor-not-allowed text-white py-2.5 rounded-xl font-semibold transition-all duration-200 border border-slate-600/40">
-                    Next<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                  </button>
-                  <button onClick={handleSubmitClick} disabled={isSubmitting} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold transition-all duration-200 border ${isSubmitting ? 'bg-slate-700 text-slate-400 cursor-not-allowed border-slate-600' : 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white border-emerald-500/50 shadow-lg shadow-emerald-500/20'}`}>
-                    {isSubmitting ? 'Submitting...' : <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>Submit</>}
-                  </button>
-                </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => toggleReview(question)}
+                  aria-pressed={isMarked}
+                  className={`flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium ring-1 transition-colors ${
+                    isMarked ? "bg-amber-400/[0.12] text-amber-200 ring-amber-400/40" : "text-slate-300 ring-white/10 hover:bg-white/[0.05] hover:text-white"
+                  }`}
+                >
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill={isMarked ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /></svg>
+                  {isMarked ? "Marked for review" : "Mark for review"}
+                </button>
+                <button
+                  onClick={() => handleAnswerChange(question._id, question.kind === "mcq" ? undefined : "")}
+                  disabled={!isCurrentAnswered}
+                  className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium text-slate-300 ring-1 ring-white/10 transition-colors hover:bg-white/[0.05] hover:text-white disabled:pointer-events-none disabled:opacity-35"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                  Clear response
+                </button>
               </div>
             </div>
-          ) : (
-            /* ═══════════ MCQ LAYOUT ═══════════ */
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-              {/* Question + Options */}
-              <div className="lg:col-span-2">
-                <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-5 lg:p-6 border border-slate-700/30 shadow-lg">
-                  <div className="flex items-center justify-between mb-5">
-                    <div className="flex items-center gap-3">
-                      <span className="px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs font-bold tracking-wide">Q{currentQuestion + 1}</span>
-                      <span className="px-3 py-1.5 rounded-lg bg-slate-700/50 border border-slate-600/30 text-slate-300 text-xs font-semibold">{question.points} {question.points !== 1 ? "pts" : "pt"}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => {
-                          if (question.kind === "mcq") { handleAnswerChange(question._id, undefined); }
-                          else { handleAnswerChange(question._id, ""); }
-                        }}
-                        className="px-3.5 py-1.5 bg-slate-700/60 hover:bg-slate-600/80 text-slate-300 hover:text-white rounded-lg text-xs font-semibold transition-all duration-200 border border-slate-600/40"
-                      >Clear</button>
-                      <button
-                        onClick={() => {
-                          const currentStatus = questionStatuses[question._id];
-                          let newStatus;
-                          if (currentStatus === "mark-for-review") {
-                            const answer = answers[question._id];
-                            let hasAnswer = false;
-                            if (question.kind === "mcq") { hasAnswer = answer !== undefined && answer !== null && answer !== ""; }
-                            else if (question.kind === "theory" || question.kind === "coding") { hasAnswer = answer && answer.trim() !== ""; }
-                            newStatus = hasAnswer ? "answered" : "not-answered";
-                          } else { newStatus = "mark-for-review"; }
-                          setQuestionStatuses((prev) => ({ ...prev, [question._id]: newStatus }));
-                        }}
-                        className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 border ${questionStatuses[question._id] === "mark-for-review" ? "bg-amber-500/20 text-amber-300 border-amber-500/30" : "bg-slate-700/60 text-slate-300 border-slate-600/40 hover:bg-slate-600/80"}`}
-                      >{questionStatuses[question._id] === "mark-for-review" ? "★ Marked" : "☆ Review"}</button>
-                    </div>
-                  </div>
-                  <div className="text-lg lg:text-xl font-semibold mb-6 text-slate-100 leading-relaxed">
+
+            {question.kind === "theory" ? (
+              /* Written answer: question and answer side by side, each scrolling on its own. */
+              <div key={question._id} className="exam-enter grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+                <div ref={questionScrollRef} className="exam-scroll min-h-0 overflow-y-auto border-b border-white/[0.06] px-6 py-8 xl:border-b-0 xl:border-r xl:px-10 xl:py-10">
+                  <div className="text-[1.05rem] font-medium leading-relaxed text-slate-100 xl:text-lg">
                     <QuestionText text={question.text} />
                   </div>
-
-                  {question.kind === "mcq" && (
-                    <div className="space-y-3">
-                      {question.options?.map((option, index) => (
-                        <label
-                          key={index}
-                          className={`flex items-center p-4 rounded-xl cursor-pointer transition-all duration-200 border-2 group ${answers[question._id] === index
-                            ? "bg-blue-500/15 text-white border-blue-500/40 shadow-md shadow-blue-500/10"
-                            : "bg-slate-800/40 hover:bg-slate-700/50 border-slate-600/20 hover:border-slate-500/40"
-                            }`}
-                        >
-                          <div className={`w-8 h-8 rounded-lg border-2 flex items-center justify-center mr-4 flex-shrink-0 transition-all duration-200 text-sm font-bold ${answers[question._id] === index
-                            ? "bg-blue-500 border-blue-400 text-white" : "border-slate-500/50 text-slate-400 group-hover:border-slate-400"
-                            }`}>{String.fromCharCode(65 + index)}</div>
-                          <input type="radio" name={`question-${question._id}`} value={index} checked={answers[question._id] === index} onChange={() => handleAnswerChange(question._id, index)} className="sr-only" />
-                          <span className="text-sm lg:text-base leading-relaxed">{option.text}</span>
-                        </label>
+                  {question.guidelines && (
+                    <div className="mt-8 rounded-xl bg-white/[0.025] p-5 ring-1 ring-white/[0.06]">
+                      <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Guidelines</h4>
+                      <p className="text-sm leading-relaxed text-slate-300">{question.guidelines}</p>
+                    </div>
+                  )}
+                  {question.examples?.length > 0 && (
+                    <div className="mt-4 space-y-3">
+                      {question.examples.map((example, idx) => (
+                        <div key={idx} className="rounded-xl bg-white/[0.025] p-5 ring-1 ring-white/[0.06]">
+                          <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Example {idx + 1}</div>
+                          <div className="mb-1.5 text-xs text-slate-500">Input</div>
+                          <pre className="mb-3 whitespace-pre-wrap rounded-lg bg-black/30 p-3 font-mono text-sm text-slate-200">{example.input}</pre>
+                          <div className="mb-1.5 text-xs text-slate-500">Output</div>
+                          <pre className="whitespace-pre-wrap rounded-lg bg-black/30 p-3 font-mono text-sm text-emerald-300">{example.output}</pre>
+                        </div>
                       ))}
                     </div>
                   )}
-
-                  {question.kind === "theory" && (
-                    <>
-                      {question.guidelines && (
-                        <div className="bg-slate-700/30 p-4 rounded-xl mb-4 border border-slate-600/20">
-                          <h4 className="font-semibold text-slate-300 mb-2 text-sm">Guidelines:</h4>
-                          <p className="text-slate-400 text-sm leading-relaxed">{question.guidelines}</p>
-                        </div>
-                      )}
-                      {question.examples && question.examples.length > 0 && (
-                        <div className="bg-slate-700/30 p-4 rounded-xl mb-4 max-h-64 overflow-y-auto scrollbar-hide border border-slate-600/20">
-                          {question.examples.map((example, idx) => (
-                            <div key={idx} className="mb-3 last:mb-0 p-3 bg-slate-800/50 rounded-xl border border-slate-600/20">
-                              <div className="text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Example {idx + 1}</div>
-                              <div className="mb-1 text-xs font-semibold text-slate-400">Input:</div>
-                              <pre className="whitespace-pre-wrap text-slate-300 bg-slate-900/60 p-2.5 rounded-lg text-sm font-mono mb-2">{example.input}</pre>
-                              <div className="mb-1 text-xs font-semibold text-slate-400">Output:</div>
-                              <pre className="whitespace-pre-wrap text-emerald-300 bg-slate-900/60 p-2.5 rounded-lg text-sm font-mono">{example.output}</pre>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      <textarea
-                        className="w-full p-4 bg-slate-900/60 text-white rounded-xl border border-slate-600/30 focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 focus:outline-none resize-none transition-all duration-200 placeholder-slate-500 text-sm leading-relaxed"
-                        style={{ height: "200px" }}
-                        value={answers[question._id] || ""}
-                        onChange={(e) => handleAnswerChange(question._id, e.target.value)}
-                        placeholder="Type your answer here..."
-                      />
-                    </>
-                  )}
+                </div>
+                <div className="flex min-h-[18rem] flex-col px-6 py-8 xl:px-10 xl:py-10">
+                  <label htmlFor={`answer-${question._id}`} className="mb-3 flex items-center justify-between">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Your answer</span>
+                    <span className="text-xs tabular-nums text-slate-500">{wordCount(answers[question._id])} words</span>
+                  </label>
+                  <textarea
+                    id={`answer-${question._id}`}
+                    className="exam-scroll min-h-0 flex-1 resize-none rounded-xl bg-black/25 p-5 text-[0.975rem] leading-7 text-slate-100 ring-1 ring-white/10 transition-shadow placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-white/40"
+                    value={answers[question._id] || ""}
+                    onChange={(e) => handleAnswerChange(question._id, e.target.value)}
+                    placeholder="Write your answer here…"
+                  />
                 </div>
               </div>
-
-              {/* Navigation Sidebar */}
-              <div className="lg:col-span-1">
-                <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-5 lg:p-6 border border-slate-700/30 shadow-lg">
-                  <h3 className="font-bold mb-4 text-sm uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
-                    Questions
-                  </h3>
-
-                  <div className="grid grid-cols-5 gap-2 overflow-y-auto scrollbar-hide" style={{ maxHeight: "21vh" }}>
-                    {test?.questions?.map((q, index) => (
-                      <button key={q._id} onClick={() => handleQuestionNavigation(index)}
-                        className={`w-9 h-9 rounded-xl text-sm font-bold transition-all duration-200 hover:scale-110 border-2 flex items-center justify-center ${currentQuestion === index
-                          ? "bg-gradient-to-br from-blue-500 to-blue-600 text-white border-blue-400 shadow-lg shadow-blue-500/25 ring-2 ring-blue-400/30"
-                          : questionStatuses[q._id] === "answered"
-                            ? "bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-emerald-400 shadow-md shadow-emerald-500/20"
-                            : questionStatuses[q._id] === "mark-for-review"
-                              ? "bg-gradient-to-br from-amber-500 to-orange-500 text-white border-amber-400 shadow-md shadow-amber-500/20"
-                              : "bg-slate-800/80 hover:bg-slate-700 border-slate-600/50 hover:border-slate-500 text-slate-300"
-                          }`}
-                      >{index + 1}</button>
-                    ))}
+            ) : (
+              /* Single choice */
+              <div ref={questionScrollRef} className="exam-scroll min-h-0 flex-1 overflow-y-auto">
+                <div key={question._id} className="exam-enter mx-auto w-full max-w-[54rem] 2xl:max-w-[60rem] px-6 py-10 xl:px-10 xl:py-12 [@media(max-height:760px)]:py-6">
+                  <div className="text-[1.05rem] font-medium leading-relaxed text-slate-100 xl:text-lg 2xl:text-xl">
+                    <QuestionText text={question.text} />
                   </div>
-
-                  {/* Legend */}
-                  <div className="flex flex-wrap gap-3 mt-4 pt-4 border-t border-slate-700/40">
-                    <div className="flex items-center gap-1.5 text-xs text-slate-400"><div className="w-3 h-3 rounded bg-blue-500"></div> Current</div>
-                    <div className="flex items-center gap-1.5 text-xs text-slate-400"><div className="w-3 h-3 rounded bg-emerald-500"></div> Answered</div>
-                    <div className="flex items-center gap-1.5 text-xs text-slate-400"><div className="w-3 h-3 rounded bg-amber-500"></div> Review</div>
-                    <div className="flex items-center gap-1.5 text-xs text-slate-400"><div className="w-3 h-3 rounded bg-slate-700"></div> Unanswered</div>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex flex-col sm:flex-row gap-3 mt-5">
-                    <button onClick={handlePreviousQuestion} disabled={currentQuestion === 0} className="flex-1 flex items-center justify-center gap-2 bg-slate-800/80 hover:bg-slate-700/90 disabled:opacity-40 disabled:cursor-not-allowed text-white py-2.5 rounded-xl font-semibold transition-all duration-200 border border-slate-600/40">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>Previous
-                    </button>
-                    <button onClick={handleNextQuestion} disabled={currentQuestion === totalQuestions - 1} className="flex-1 flex items-center justify-center gap-2 bg-slate-800/80 hover:bg-slate-700/90 disabled:opacity-40 disabled:cursor-not-allowed text-white py-2.5 rounded-xl font-semibold transition-all duration-200 border border-slate-600/40">
-                      Next<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                    </button>
-                    <button onClick={handleSubmitClick} disabled={isSubmitting} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold transition-all duration-200 border ${isSubmitting ? 'bg-slate-700 text-slate-400 cursor-not-allowed border-slate-600' : 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white border-emerald-500/50 shadow-lg shadow-emerald-500/20'}`}>
-                      {isSubmitting ? 'Submitting...' : <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>Submit</>}
-                    </button>
-                  </div>
-
-                  {/* Progress */}
-                  <div className="mt-5 pt-4 border-t border-slate-700/40">
-                    <div className="flex justify-between text-xs text-slate-400 mb-2 font-semibold">
-                      <span>Progress</span>
-                      <span className="text-slate-300">{answeredCount}/{totalQuestions}</span>
-                    </div>
-                    <div className="w-full bg-slate-700/50 rounded-full h-2.5 overflow-hidden">
-                      <div className="h-2.5 rounded-full transition-all duration-500 ease-out" style={{
-                        width: `${progressPercent}%`,
-                        background: progressPercent === 100 ? 'linear-gradient(90deg, #10b981, #34d399)' : 'linear-gradient(90deg, #3b82f6, #60a5fa)',
-                      }}></div>
-                    </div>
-                  </div>
+                  <p className="mt-9 mb-4 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 [@media(max-height:760px)]:mt-6">Select one answer</p>
+                  <McqOptions
+                    question={question}
+                    selected={answers[question._id]}
+                    number={currentQuestion + 1}
+                    onSelect={onSelectOption}
+                  />
                 </div>
               </div>
-            </div>
-          )}
+            )}
+
+            {/* Navigation */}
+            <footer className="flex flex-shrink-0 items-center justify-between gap-3 border-t border-white/[0.06] bg-[#0f1521] px-6 py-4 xl:px-8 [@media(max-height:760px)]:py-3">
+              <button
+                onClick={handlePreviousQuestion}
+                disabled={currentQuestion === 0}
+                className="flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-medium text-slate-200 ring-1 ring-white/10 transition-colors hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 disabled:pointer-events-none disabled:opacity-35"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                Previous
+              </button>
+              <div className="flex items-center gap-2.5">
+                {!isLastQuestion && (
+                  <button
+                    onClick={markForReviewAndNext}
+                    className="hidden h-10 items-center gap-2 rounded-xl px-4 text-sm font-medium text-amber-200 ring-1 ring-amber-400/30 transition-colors hover:bg-amber-400/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 sm:flex"
+                  >
+                    Mark for review &amp; next
+                  </button>
+                )}
+                {isLastQuestion ? (
+                  <button
+                    onClick={handleSubmitClick}
+                    disabled={isSubmitting}
+                    className="flex h-10 items-center gap-2 rounded-xl bg-teal-600 px-5 text-sm font-semibold text-white ring-1 ring-teal-400/30 transition-colors hover:bg-teal-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                  >
+                    Finish &amp; submit
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleNextQuestion}
+                    className="flex h-10 items-center gap-2 rounded-xl bg-white px-5 text-sm font-semibold text-slate-900 shadow-[0_8px_24px_-12px_rgba(255,255,255,0.35)] transition-colors hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+                  >
+                    Save &amp; next
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                  </button>
+                )}
+              </div>
+            </footer>
+          </main>
+
+          {/* ═══════════ QUESTION NAVIGATOR ═══════════ */}
+          <aside className="flex max-h-[42vh] min-h-0 flex-shrink-0 flex-col overflow-hidden rounded-2xl bg-[#111724] ring-1 ring-white/[0.06] shadow-[0_24px_48px_-24px_rgba(0,0,0,0.6)] lg:max-h-none lg:w-[20rem] xl:w-[22rem] 2xl:w-[24rem]">
+            <QuestionNavigator
+              questions={test.questions}
+              current={currentQuestion}
+              statuses={questionStatuses}
+              answers={answers}
+              onNavigate={onNavigate}
+            />
+          </aside>
         </div>
 
         {overlays}

@@ -77,6 +77,7 @@ const STUDENT = {
 
 const writes = [];
 const sessionDeletes = [];
+const sessionRevokes = [];
 
 // Enough students to fill the first page and push staff onto the second, which is
 // the shape that made the admin panel's KPI row report "Mentors 0, Admins 0".
@@ -151,6 +152,13 @@ stub("middleware/auth", {
   requireRole: () => (_req, _res, next) => next(),
   startSession: async () => {},
   endSession: async () => {},
+  refreshSession: async () => null,
+  // A student's password reset revokes through this, so that a session sitting
+  // a live exam survives it (middleware/auth.js). Recorded like deleteMany.
+  revokeSessions: async (principalId, options) => {
+    sessionRevokes.push({ principalId: String(principalId), ...options });
+    return 1;
+  },
   generateToken: () => "t",
   TOKEN_TTL_HOURS: 1,
 });
@@ -306,8 +314,8 @@ const authRouter = require("../../routes/auth");
   check("and is salted at the same cost as the rest of the app", /^\$2[aby]\$10\$/.test(write.update.$set.password));
 
   check(
-    "reset signs the student out everywhere",
-    sessionDeletes.some((f) => String(f.principalId) === STUDENT._id)
+    "reset signs the student out everywhere -- except a session sitting a live exam",
+    sessionRevokes.some((r) => r.principalId === STUDENT._id && r.keepLiveExam === true)
   );
 
   // A reset that left the lockout standing would look like it had not worked.

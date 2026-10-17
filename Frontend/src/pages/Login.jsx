@@ -37,8 +37,14 @@ export default function Login() {
   useEffect(() => {
     // Check for session expired message in URL
     const message = searchParams.get("message");
+    // Both land here from services/api.js with `redirect` set, so a student
+    // signed out mid-exam goes straight back into it, answers restored.
+    const resumes = Boolean(safeRedirect(searchParams.get("redirect")));
+    const afterwards = resumes ? " Sign in again to continue where you left off." : "";
     if (message === "session_expired") {
-      setError("Your session has expired due to a new login from another device or browser.");
+      setError(`Your session has expired due to a new login from another device or browser.${afterwards}`);
+    } else if (message === "session_timeout") {
+      setError(`Your sign-in has expired.${afterwards}`);
     }
 
     // Check if "Remember Me" was previously set and restore the credentials

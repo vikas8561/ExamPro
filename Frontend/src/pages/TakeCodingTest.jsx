@@ -9,6 +9,8 @@ import { preloadMonaco } from '../components/coding/loadMonaco';
 import { TimerPill } from '../components/coding/codingUi';
 import { examClock, clockFromServer, secondsLeft } from '../utils/examClock';
 import useCodingJudge from '../hooks/useCodingJudge';
+import { recordPending, recordSaved, pendingAnswers, clearPending } from '../utils/unsavedAnswers';
+import SaveStatusBanner from '../components/SaveStatusBanner';
 
 import {
   FALLBACK_LANGUAGES,
@@ -70,6 +72,26 @@ function TakeCodingTestInner({ submitRef }) {
   // connection also charged the student with leaving fullscreen.
   const [submitError, setSubmitError] = useState(null);
   const debounceTimers = useRef({});
+  // Code the server has not confirmed: kept in this browser, retried, and shown.
+  // See utils/unsavedAnswers.js and the matching note in TakeTest.jsx.
+  const studentIdRef = useRef(null);
+  if (studentIdRef.current === null) {
+    try {
+      studentIdRef.current = localStorage.getItem('userId') || '';
+    } catch {
+      studentIdRef.current = '';
+    }
+  }
+  const [unsavedIds, setUnsavedIds] = useState(() => new Set());
+  const markUnsaved = useCallback((questionId, unsaved) => {
+    setUnsavedIds((prev) => {
+      if (prev.has(questionId) === unsaved) return prev;
+      const next = new Set(prev);
+      if (unsaved) next.add(questionId);
+      else next.delete(questionId);
+      return next;
+    });
+  }, []);
   // A ref, not state: the countdown can fire the auto-submit more than once in
   // a single tick, and `isSubmitting` would still read false in the second
   // call. TakeTest.jsx has always guarded this way; this page did not, so the
@@ -192,7 +214,11 @@ function TakeCodingTestInner({ submitRef }) {
         responses: Object.entries(codeByQ).map(([questionId, code]) => ({
           questionId,
           selectedOption: null,
-          textAnswer: code || '',
+          // The starting code this page put in the editor is not the student's
+          // work. Sent as blank, so the server keeps whatever it has saved for
+          // the question (services/answerMerge.js) -- a page that came back
+          // with only templates in it used to overwrite every saved answer.
+          textAnswer: code && code !== insertedTemplateRef.current[questionId] ? code : '',
           language: languageByQ[questionId] || test?.questions?.find(q => q._id === questionId)?.language || 'python', // Save language for mentor review
           isCorrect: false,
           points: 0,
@@ -247,6 +273,8 @@ function TakeCodingTestInner({ submitRef }) {
       // Closes the proctoring session, releases the screen share and camera,
       // and leaves fullscreen.
       await proctor.endSession();
+      clearPending(studentIdRef.current, assignmentId);
+      setUnsavedIds(new Set());
 
       setIsSubmitting(false);
       // Under Safe Exam Browser the exit page is its configured quit URL, so
@@ -458,7 +486,16 @@ function TakeCodingTestInner({ submitRef }) {
       // code was sitting on the server -- which is most of the point of saving
       // it in the first place.
       try {
-        const saved = await apiRequest(`/answers/assignment/${finalAssignmentId}`);
+        let saved;
+        for (let attempt = 0; ; attempt++) {
+          try {
+            saved = await apiRequest(`/answers/assignment/${finalAssignmentId}`);
+            break;
+          } catch (error) {
+            if (attempt >= 2 || error?.code === 'signed_out') throw error;
+            await new Promise((resolve) => setTimeout(resolve, 1500 * (attempt + 1)));
+          }
+        }
         const savedResponses = Array.isArray(saved) ? saved : (saved?.responses || []);
         if (savedResponses.length) {
           const restoredCode = {};
@@ -485,9 +522,29 @@ function TakeCodingTestInner({ submitRef }) {
           }
         }
       } catch (error) {
-        // A failed restore must not stop the student getting back into the
-        // exam; they keep the templates and their time.
+        // This used to carry on with empty templates, which looked to the
+        // student exactly like "all my code was reset" -- and typing into them
+        // overwrote the saved code. The page says so and asks for a reload
+        // instead; the time keeps running on the server either way.
         console.error('Could not restore saved code:', error);
+        throw new Error('Your saved code could not be loaded. Nothing has been lost -- please reload the page to continue.');
+      }
+
+      // Code this browser has that the server never confirmed. It is newer than
+      // the server's copy, so it goes on top and is sent again.
+      const local = pendingAnswers(studentIdRef.current, finalAssignmentId);
+      const localCode = {};
+      const localLangs = {};
+      const paperIds = new Set((assignmentData.testId?.questions || []).map((q) => String(q._id)));
+      for (const [questionId, entry] of Object.entries(local)) {
+        if (!paperIds.has(questionId) || typeof entry.textAnswer !== 'string') continue;
+        localCode[questionId] = entry.textAnswer;
+        if (entry.language) localLangs[questionId] = normalizeLanguageKey(entry.language);
+      }
+      if (Object.keys(localCode).length) {
+        setCodeByQ(prev => ({ ...prev, ...localCode }));
+        setLanguageByQ(prev => ({ ...prev, ...localLangs }));
+        setUnsavedIds(new Set(Object.keys(localCode)));
       }
 
       // Violations are no longer restored or judged here. The server carries the
@@ -541,7 +598,9 @@ function TakeCodingTestInner({ submitRef }) {
   // debounced a second after typing stops, and only reports "Saved" once the
   // server has actually taken it.
   const saveCodeToBackend = useCallback(async (questionId, code, lang) => {
-    if (!questionId) return;
+    if (!questionId) return false;
+    const answer = { selectedOption: null, textAnswer: code || '', language: lang || 'python' };
+    recordPending(studentIdRef.current, assignmentId, questionId, answer);
     try {
       await apiRequest('/answers', {
         method: 'POST',
@@ -554,13 +613,40 @@ function TakeCodingTestInner({ submitRef }) {
         }),
       });
       setLastSaved(new Date());
+      recordSaved(studentIdRef.current, assignmentId, questionId, answer);
+      markUnsaved(questionId, Boolean(pendingAnswers(studentIdRef.current, assignmentId)[questionId]));
+      return true;
     } catch (error) {
-      // Deliberately quiet: this fires while the student is typing, and an
-      // alert every time the network hiccups would be worse than a missed
-      // save. The next keystroke schedules another attempt.
+      // No alert -- this fires while the student is typing, and a dialog would
+      // knock the exam out of fullscreen. But no longer silent either: the code
+      // stays in the local backup, the banner says so, and it is retried below.
       console.error('Auto-save failed:', error);
+      const final = ['attempt_expired', 'attempt_not_active', 'terminated', 'ended', 'not_owner', 'signed_out'];
+      markUnsaved(questionId, !final.includes(error?.code));
+      return false;
     }
-  }, [assignmentId]);
+  }, [assignmentId, markUnsaved]);
+
+  // Retry unsaved code every few seconds until the server takes it, always
+  // sending the latest version from the local backup.
+  useEffect(() => {
+    if (!testStarted || isSubmitting || unsavedIds.size === 0) return undefined;
+    const timer = setTimeout(async () => {
+      const pending = pendingAnswers(studentIdRef.current, assignmentId);
+      for (const questionId of unsavedIds) {
+        if (debounceTimers.current[questionId]) continue; // a save is already scheduled
+        const entry = pending[questionId];
+        if (!entry) {
+          markUnsaved(questionId, false);
+          continue;
+        }
+        const ok = await saveCodeToBackend(questionId, entry.textAnswer, entry.language);
+        if (!ok) break;
+      }
+      setUnsavedIds((prev) => new Set(prev));
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [unsavedIds, testStarted, isSubmitting, assignmentId, saveCodeToBackend, markUnsaved]);
 
   /** Push anything still waiting in a debounce timer, and wait for it. */
   const flushPendingSaves = useCallback(async () => {
@@ -587,6 +673,14 @@ function TakeCodingTestInner({ submitRef }) {
     // answered.
     if (code === insertedTemplateRef.current[questionId]) return;
 
+    // Into the local backup now, before the debounce: if the page goes away in
+    // the next second, this is the only copy.
+    recordPending(studentIdRef.current, assignmentId, questionId, {
+      selectedOption: null,
+      textAnswer: code || '',
+      language: lang || 'python',
+    });
+
     if (debounceTimers.current[questionId]) {
       clearTimeout(debounceTimers.current[questionId].timer);
     }
@@ -598,7 +692,7 @@ function TakeCodingTestInner({ submitRef }) {
         saveCodeToBackend(questionId, code, lang);
       }, 1000),
     };
-  }, [codeByQ, languageByQ, activeQ, autoSaveEnabled, testStarted, saveCodeToBackend]);
+  }, [codeByQ, languageByQ, activeQ, autoSaveEnabled, testStarted, saveCodeToBackend, assignmentId]);
 
   // A closing tab gets one last synchronous attempt. `keepalive` is what lets
   // the request outlive the page; a normal fetch would be cancelled.
@@ -653,6 +747,7 @@ function TakeCodingTestInner({ submitRef }) {
 
   return (
     <>
+      <SaveStatusBanner unsavedCount={unsavedIds.size} />
       {submitError && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4" role="alertdialog" aria-modal="true">
           <div className="bg-[#262626] border border-[#ef4743]/30 rounded-lg p-6 max-w-sm w-full">

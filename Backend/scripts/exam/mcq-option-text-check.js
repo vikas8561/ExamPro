@@ -10,9 +10,12 @@
  * one option they came from (services/legacyMcqText.js) -- never guessed when
  * two options stripped to the same text.
  *
- * Drives the real API, the expiry sweep and the re-grade a test edit triggers,
- * and runs the frontend's own restore code (Frontend/src/utils/mcqOption.js)
- * against what the server stored.
+ * Drives the real API, the expiry sweep and the re-grade service, and runs the
+ * frontend's own restore code (Frontend/src/utils/mcqOption.js) against what
+ * the server stored. A test that has been sat can no longer be edited (PUT
+ * /tests/:id refuses once it has started), so the re-grade that repairs old
+ * papers is checked by calling it directly, and the edit is checked to be
+ * refused without touching anything.
  *
  * Runs against a local API and database only -- see scripts/lib/examHarness.js.
  */
@@ -154,7 +157,7 @@ const section = (title) => console.log(`\n── ${title}`);
     check("Wrong options are still wrong (0/4) -- mapping never upgrades a real choice", r.status === 201 && st.sub?.totalScore === 0, st.sub?.totalScore);
 
     // ── 4. A paper finalised with stripped answers before the fix ──────────
-    section("4. Historical paper marked wrong by the old sweep, repaired by a re-grade");
+    section("4. Historical paper marked wrong by the old sweep, repaired by the re-grade service");
     const old = await sit("historical");
     await TestSubmission.create({
       assignmentId: old.a._id, testId: test._id, userId: old.s.user._id, isFinalized: true, mentorReviewed: true, reviewStatus: "Reviewed",
@@ -163,13 +166,21 @@ const section = (title) => console.log(`\n── ${title}`);
     });
     await Assignment.updateOne({ _id: old.a._id }, { $set: { status: "Completed", completedAt: new Date(), autoScore: 1 } });
 
-    // An admin edit to the test triggers the re-grade (routes/tests.js).
+    // The test has been sat, so an admin edit is refused -- and must not
+    // re-grade, or change anything else, on its way to being refused.
     const current = await Test.findById(test._id).lean();
     r = await api(`/tests/${test._id}`, {
       token: admin.token, method: "PUT",
       body: { instructions: "edited", questions: current.questions.map((q) => ({ ...q, _id: String(q._id) })) },
     });
-    check("Admin edits the test (200)", r.status === 200, r.status);
+    check("Editing the sat test is refused (400, already started)",
+      r.status === 400 && /already started and cannot be edited/.test(r.body?.message || ""), r);
+    st = await stored(old);
+    check("…and the historical paper is untouched by the refused edit (still 1/4)", st.sub.totalScore === 1, st.sub.totalScore);
+
+    // The re-grade itself, run directly, still recovers the stripped answers.
+    const { recalculateScoresForTest } = require("../../services/scoreCalculation");
+    await recalculateScoresForTest(String(test._id));
     st = await stored(old);
     check("Re-grade: the stored total rises from 1 to 3", st.sub.totalScore === 3, st.sub.totalScore);
     check("…with the recoverable answers stored as their real option text",

@@ -1,6 +1,13 @@
 // API service with authentication
 import { API_BASE_URL } from '../config/api';
 import { recordFromResponse, recordServerTime, serverNow, SERVER_TIME_HEADER } from '../utils/serverClock';
+import { isTokenExpired, loginRedirectUrl, shouldRenewToken } from '../utils/authToken';
+
+const clearSignIn = () => {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  localStorage.removeItem('userId');
+};
 
 // Get auth token from localStorage
 const getAuthToken = () => {
@@ -9,27 +16,87 @@ const getAuthToken = () => {
     console.warn('No auth token found in localStorage');
     return null;
   }
-  
-  // Check if token is expired (basic check)
-  try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    // The server's clock, not the device's: a laptop 12 hours fast treated a
-    // fresh 24-hour token as half spent.
-    const currentTime = serverNow() / 1000;
-    if (payload.exp && payload.exp < currentTime) {
-      console.warn('Auth token has expired');
-      // Clear expired token
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      localStorage.removeItem('userId');
-      return null;
-    }
-  } catch (error) {
-    console.warn('Invalid token format:', error);
+
+  // The server's clock, not the device's: a laptop 12 hours fast treated a
+  // fresh 24-hour token as half spent.
+  if (isTokenExpired(token, serverNow())) {
+    console.warn('Auth token has expired');
+    clearSignIn();
     return null;
   }
-  
+
   return token;
+};
+
+/**
+ * The sign-in has ended: send them to the login page, and back here after.
+ *
+ * An expired sign-in used to clear the token and carry on. On the exam page
+ * that meant every autosave and heartbeat was refused while the page looked
+ * perfectly normal, and the student only found out at Submit -- with everything
+ * since the expiry unsaved. Now they are told at once and brought straight back
+ * to the exam after signing in, where saved answers (and any the page could not
+ * save, kept in this browser by utils/unsavedAnswers.js) are restored.
+ */
+let redirecting = false;
+const endSignIn = (reason) => {
+  clearSignIn();
+  if (redirecting || window.location.pathname.startsWith('/login')) return;
+  redirecting = true;
+  window.location.href = loginRedirectUrl(reason, window.location);
+};
+
+/** Refusals from the auth middleware that mean "this sign-in is over". */
+const signInEndedBy = (status, message) => {
+  if (status === 401) return 'session_timeout';
+  if (status === 403 && message === 'Invalid or expired token') return 'session_timeout';
+  if (status === 403 && message === 'Invalid or expired session') return 'session_expired';
+  return null;
+};
+
+/**
+ * Swap the token for a fresh one when it is due (utils/authToken.js).
+ *
+ * One renewal at a time, shared by every request that needs it. A failed
+ * renewal is not retried for a little while, and never blocks the request that
+ * asked: the old token is still valid, and the next request tries again.
+ */
+let renewal = null;
+let renewalFailedAt = 0;
+const RENEWAL_RETRY_MS = 30 * 1000;
+
+const ensureFreshToken = () => {
+  const token = localStorage.getItem('token');
+  if (!token || !shouldRenewToken(token, serverNow())) return Promise.resolve();
+  if (renewal) return renewal;
+  if (Date.now() - renewalFailedAt < RENEWAL_RETRY_MS) return Promise.resolve();
+
+  renewal = (async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
+        cache: 'no-cache',
+      });
+      if (response.ok) {
+        const data = await response.json().catch(() => null);
+        // Another tab may have signed in or renewed meanwhile; never overwrite
+        // a token that is no longer the one this renewal started from.
+        if (data?.token && localStorage.getItem('token') === token) {
+          localStorage.setItem('token', data.token);
+        }
+      } else if (response.status !== 409) {
+        // 409: another tab renewed it first and stored the new token.
+        renewalFailedAt = Date.now();
+      }
+    } catch {
+      renewalFailedAt = Date.now();
+    } finally {
+      renewal = null;
+    }
+  })();
+  return renewal;
 };
 
 // Check if user is authenticated
@@ -56,6 +123,7 @@ const getAuthHeaders = (contentType = 'application/json') => {
 // Generic API request function
 const apiRequest = async (endpoint, options = {}) => {
   const url = `${API_BASE_URL}${endpoint}`;
+  await ensureFreshToken();
   const config = {
     ...options,
     headers: {
@@ -127,23 +195,26 @@ const apiRequest = async (endpoint, options = {}) => {
     
     // Handle authentication errors
     if (response.status === 401) {
-      // Clear potentially invalid token
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      localStorage.removeItem('userId');
-      throw new Error('Authentication required - please log in again');
+      endSignIn('session_timeout');
+      const error = new Error('Authentication required - please log in again');
+      error.status = 401;
+      error.code = 'signed_out';
+      throw error;
     }
     
     if (response.status === 403) {
       const errorData = await response.json().catch(() => ({}));
 
-      // Signed in somewhere else: this session is gone.
-      if (errorData.message === 'Invalid or expired session') {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        localStorage.removeItem('userId');
-        window.location.href = '/login?message=session_expired';
-        throw new Error('Session expired due to new login');
+      // The sign-in ran out, or was replaced by one elsewhere: it is gone.
+      const ended = signInEndedBy(403, errorData.message);
+      if (ended) {
+        endSignIn(ended);
+        const error = new Error(
+          ended === 'session_expired' ? 'Session expired due to new login' : 'Your sign-in has expired - please log in again'
+        );
+        error.status = 403;
+        error.code = 'signed_out';
+        throw error;
       }
 
       // Every other refusal keeps the server's own words and its code. This
@@ -247,6 +318,7 @@ const apiRequest = async (endpoint, options = {}) => {
  * @returns {Promise<void>} resolves when the stream ends
  */
 export const apiStream = async (endpoint, { body, onEvent, signal } = {}) => {
+  await ensureFreshToken();
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     method: 'POST',
     headers: { ...getAuthHeaders(), Accept: 'text/event-stream' },
@@ -257,6 +329,8 @@ export const apiStream = async (endpoint, { body, onEvent, signal } = {}) => {
 
   if (!response.ok || !response.body) {
     const errorData = await response.json().catch(() => ({}));
+    const ended = signInEndedBy(response.status, errorData.message);
+    if (ended) endSignIn(ended);
     const error = new Error(errorData.message || `HTTP error! status: ${response.status}`);
     error.status = response.status;
     if (errorData.code) error.code = errorData.code;

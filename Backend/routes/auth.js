@@ -12,6 +12,7 @@ const {
   authenticateToken,
   startSession,
   endSession,
+  refreshSession,
 } = require("../middleware/auth");
 const {
   normalizeStudent,
@@ -115,6 +116,25 @@ router.post("/login", async (req, res, next) => {
     if (isDatabaseUnavailable(err)) return next(err);
 
     res.status(500).json({ message: "Login failed. Please try again." });
+  }
+});
+
+// Swap a still-valid token for a fresh one. The browser calls this on its own
+// well before its token runs out, so a sign-in that is in use -- above all one
+// sitting an exam -- never expires under the student. See refreshSession in
+// middleware/auth.js. An expired token cannot be renewed: authenticateToken
+// refuses it first.
+router.post("/refresh", authenticateToken, async (req, res, next) => {
+  try {
+    const renewed = await refreshSession(req.authToken, req.user);
+    if (!renewed) {
+      // Another tab renewed this token a moment ago. It is still valid for a
+      // short overlap, and that tab has already stored the new one.
+      return res.status(409).json({ message: "This sign-in was already renewed.", code: "already_renewed" });
+    }
+    res.json({ token: renewed.token });
+  } catch (err) {
+    next(err);
   }
 });
 

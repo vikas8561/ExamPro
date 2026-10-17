@@ -17,7 +17,9 @@
     "test:time": "node scripts/server-time-scenarios.mjs",
     "test:mcq-options": "node scripts/mcq-option-scenarios.mjs",
     "test:display": "node scripts/display-scenarios.mjs",
-    "test:permissions": "node scripts/permissions-scenarios.mjs"
+    "test:permissions": "node scripts/permissions-scenarios.mjs",
+    "test:session": "node scripts/session-scenarios.mjs",
+    "test:exam-input": "node scripts/exam-input-scenarios.mjs"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",

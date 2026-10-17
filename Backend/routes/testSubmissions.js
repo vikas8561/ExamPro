@@ -15,6 +15,8 @@ const Assignment = require("../models/Assignment");
 const Test = require("../models/Test");
 const { authenticateToken, requireRole } = require("../middleware/auth");
 const { requireProctorSession } = require("../middleware/proctorSession");
+const { clearExamSession } = require("../middleware/auth");
+const { mergeWithSaved } = require("../services/answerMerge");
 const ProctorSession = require("../models/ProctorSession");
 const policyService = require("../services/proctorPolicy");
 const { attach, getUniversitiesForBatches } = require("../services/principals");
@@ -197,9 +199,24 @@ router.post("/", authenticateToken, requireProctorSession({ allowTerminated: tru
     //
     // A late auto-submit is marked on what was saved in time, not on what it
     // carries -- see the expiry check above.
+    //
+    // An on-time hand-in is marked on the page's answers, with the saved answer
+    // standing in wherever the page is blank. It used to replace the saved
+    // answers outright, so a page that had come back empty -- after signing in
+    // again, say -- erased the whole paper on Submit. See services/answerMerge.js.
+    let gradedResponses = priorSubmission?.responses || [];
+    if (!gradeFromSavedAnswers) {
+      const merged = mergeWithSaved(cleanResponses, priorSubmission?.responses);
+      gradedResponses = merged.responses;
+      if (merged.fromSaved.length) {
+        console.warn(
+          `⚠️ Submission for assignment ${assignmentId} was blank on ${merged.fromSaved.length} question(s) the server had answers for; kept the saved answers`
+        );
+      }
+    }
     const { processedResponses, totalScore, maxScore } = gradeSubmission({
       test: assignmentWithTest.testId,
-      responses: gradeFromSavedAnswers ? (priorSubmission?.responses || []) : cleanResponses,
+      responses: gradedResponses,
       priorAutoGraded,
     });
 
@@ -362,6 +379,10 @@ router.post("/", authenticateToken, requireProctorSession({ allowTerminated: tru
       // Don't throw - submission was successful, assignment update can be retried
       console.warn("⚠️ Assignment status update failed, but submission was saved");
     }
+
+    // The exam is over for this sign-in: the next sign-in elsewhere may replace
+    // it as usual (middleware/auth.js).
+    await clearExamSession(req.authToken).catch(() => {});
 
     // A receipt, not a result.
     //

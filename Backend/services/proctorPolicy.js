@@ -237,6 +237,34 @@ function causeGroups() {
   return Object.keys(CONSEQUENCES_OF);
 }
 
+/**
+ * Groups that are the same act when they land together, whichever comes first.
+ *
+ * Leaving the exam usually takes fullscreen with it -- switching tabs drops it,
+ * and so do some trackpad gestures and app switches -- and the two signals
+ * arrive a second or more apart: fullscreen at once, the tab switch only once
+ * the page has stayed hidden for HIDDEN_CONFIRM_MS. They were charged as two
+ * violations, and each charge brought its own warning, so students saw a second
+ * "Continue" dialog straight after dismissing the first.
+ *
+ * Unlike CONSEQUENCES_OF there is no fixed cause here, so the rule is symmetric
+ * and keyed on what was CHARGED: once one of these groups has cost the student
+ * something, the other is recorded at weight 0 for LINKED_ACT_WINDOW_MS. Two
+ * genuinely separate departures a few seconds apart are still both visible to
+ * the reviewer; they just cost one.
+ */
+const LINKED_ACT_WINDOW_MS = 5000;
+const LINKED_ACTS = [["left_exam", "fullscreen"]];
+
+/** The groups charged together with `group` as one act. */
+function linkedGroupsOf(group) {
+  const linked = [];
+  for (const set of LINKED_ACTS) {
+    if (set.includes(group)) linked.push(...set.filter((g) => g !== group));
+  }
+  return linked;
+}
+
 // The browser pings this often; the server allows this long before it decides
 // the browser has gone quiet. Three missed pings plus a little slack.
 const HEARTBEAT_INTERVAL_MS = 5000;
@@ -589,6 +617,8 @@ module.exports = {
   CAUSAL_WINDOW_MS,
   isConsequenceOf,
   causeGroups,
+  LINKED_ACT_WINDOW_MS,
+  linkedGroupsOf,
   VIOLATION_GROUPS,
   groupOf,
   BYPASSABLE_PERMISSIONS,
