@@ -23,7 +23,9 @@ import {
   BookOpen,
   Code2,
   FileCheck2,
-  AlertCircle
+  AlertCircle,
+  Filter,
+  ChevronDown
 } from "lucide-react";
 import apiRequest from "../services/api";
 
@@ -76,7 +78,34 @@ export default function Tests() {
   const [cohorts, setCohorts] = useState([]);
   const [selectedStudents, setSelectedStudents] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const user = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem("user") || "{}");
+    } catch {
+      return {};
+    }
+  }, []);
+  const isMentor = (user?.role || "").toLowerCase() === "mentor";
+  const createTestPath = isMentor ? "/mentor/tests/create" : "/admin/tests/create";
+
   const [searchTerm, setSearchTerm] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [subjectFilter, setSubjectFilter] = useState("all");
+  const [batchFilter, setBatchFilter] = useState("all");
+  const [subjects, setSubjects] = useState(() => {
+    try {
+      const u = JSON.parse(localStorage.getItem("user") || "{}");
+      if ((u?.role || "").toLowerCase() === "mentor" && Array.isArray(u?.subjects)) {
+        return u.subjects
+          .map((s) => (typeof s === "string" ? { _id: s, name: s } : s))
+          .filter((s) => (s?.name || "").trim().toLowerCase() !== "all");
+      }
+    } catch {
+      // fallback
+    }
+    return [];
+  });
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState({
@@ -94,18 +123,27 @@ export default function Tests() {
   const isInitialMount = useRef(true);
   const nav = useNavigate();
 
-  const user = useMemo(() => {
-    try {
-      return JSON.parse(localStorage.getItem("user") || "{}");
-    } catch {
-      return {};
-    }
-  }, []);
-  const isMentor = (user?.role || "").toLowerCase() === "mentor";
-  const createTestPath = isMentor ? "/mentor/tests/create" : "/admin/tests/create";
+  const hasActiveFilters =
+    typeFilter !== "all" ||
+    subjectFilter !== "all" ||
+    batchFilter !== "all";
 
-  // Fetch tests with pagination and search
-  const fetchTests = (page = currentPage, search = searchTerm) => {
+  const resetFilters = () => {
+    setTypeFilter("all");
+    setSubjectFilter("all");
+    setBatchFilter("all");
+    setSearchTerm("");
+    setCurrentPage(1);
+  };
+
+  // Fetch tests with pagination, search and filters
+  const fetchTests = (
+    page = currentPage,
+    search = searchTerm,
+    type = typeFilter,
+    subject = subjectFilter,
+    batch = batchFilter
+  ) => {
     setLoading(true);
     const params = new URLSearchParams({
       page: page.toString(),
@@ -114,6 +152,15 @@ export default function Tests() {
 
     if (search) {
       params.append("search", search);
+    }
+    if (type && type !== "all") {
+      params.append("type", type);
+    }
+    if (subject && subject !== "all") {
+      params.append("subject", subject);
+    }
+    if (batch && batch !== "all") {
+      params.append("batch", batch);
     }
 
     apiRequest(`/tests?${params.toString()}`)
@@ -138,21 +185,21 @@ export default function Tests() {
       });
   };
 
-  // Reset to page 1 when search changes
+  // Reset to page 1 when search or filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm]);
+  }, [searchTerm, typeFilter, subjectFilter, batchFilter]);
 
   // Initial load - fetch immediately without debounce
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
-      fetchTests(1, "");
-      return;
+      fetchTests(1, "", typeFilter, subjectFilter, batchFilter);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Debounced search and pagination
+  // Debounced search and filters
   useEffect(() => {
     if (isInitialMount.current) return;
 
@@ -161,7 +208,7 @@ export default function Tests() {
     }
 
     searchDebounceRef.current = setTimeout(() => {
-      fetchTests(currentPage, searchTerm);
+      fetchTests(currentPage, searchTerm, typeFilter, subjectFilter, batchFilter);
     }, 300);
 
     return () => {
@@ -169,7 +216,72 @@ export default function Tests() {
         clearTimeout(searchDebounceRef.current);
       }
     };
-  }, [currentPage, searchTerm]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, searchTerm, typeFilter, subjectFilter, batchFilter]);
+
+  // Load cohorts on mount for Batch filter
+  useEffect(() => {
+    if (isMentor) {
+      apiRequest("/mentor/me/batches")
+        .then((data) => {
+          if (Array.isArray(data.details) && data.details.length > 0) {
+            setCohorts(data.details);
+          } else if (Array.isArray(data.batches) && data.batches.length > 0) {
+            setCohorts(data.batches.map((b) => ({ key: b, label: b })));
+          } else {
+            apiRequest("/assignments/cohorts")
+              .then((d) => setCohorts(d.cohorts || []))
+              .catch(() => setCohorts([]));
+          }
+        })
+        .catch(() => {
+          apiRequest("/assignments/cohorts")
+            .then((d) => setCohorts(d.cohorts || []))
+            .catch(() => setCohorts([]));
+        });
+    } else {
+      apiRequest("/assignments/cohorts")
+        .then((data) => setCohorts(data.cohorts || []))
+        .catch((err) => {
+          console.error("Error fetching cohorts:", err);
+          setCohorts([]);
+        });
+    }
+  }, [isMentor]);
+
+  // Load subjects on mount for Subject filter: mentors only see assigned subjects
+  useEffect(() => {
+    if (isMentor) {
+      apiRequest("/mentor/me/subjects")
+        .then((data) => {
+          if (Array.isArray(data.subjects)) {
+            setSubjects(data.subjects);
+          }
+        })
+        .catch((err) => {
+          console.error("Error fetching mentor subjects:", err);
+        });
+    } else {
+      apiRequest("/subjects")
+        .then((data) => setSubjects(data.subjects || []))
+        .catch(() => {
+          apiRequest("/subjects/public")
+            .then((d) => setSubjects(d.subjects || []))
+            .catch(() => setSubjects([]));
+        });
+    }
+  }, [isMentor]);
+
+  const availableSubjects = useMemo(() => {
+    const fromApi = subjects
+      .map((s) => (typeof s === "string" ? s : s?.name))
+      .filter((s) => Boolean(s) && String(s).trim().toLowerCase() !== "all");
+    if (isMentor) {
+      return Array.from(new Set(fromApi)).sort();
+    }
+    const fromTests = tests.map((t) => t.subject).filter(Boolean);
+    return Array.from(new Set([...fromApi, ...fromTests])).sort();
+  }, [subjects, tests, isMentor]);
 
   // Fetch students when manual assignment mode is selected
   useEffect(() => {
@@ -177,17 +289,6 @@ export default function Tests() {
       fetchStudents();
     }
   }, [assignmentMode, showAssignModal]);
-
-  // Fetch cohorts when modal opens
-  useEffect(() => {
-    if (!showAssignModal) return;
-    apiRequest("/assignments/cohorts")
-      .then((data) => setCohorts(data.cohorts || []))
-      .catch((err) => {
-        console.error("Error fetching cohorts:", err);
-        setCohorts([]);
-      });
-  }, [showAssignModal]);
 
   const fetchStudents = async () => {
     try {
@@ -411,10 +512,10 @@ export default function Tests() {
             </div>
           </div>
 
-          {/* Right: Search, Refresh & Create Test White Button */}
-          <div className="flex items-center gap-2.5 sm:gap-3 w-full md:w-auto shrink-0">
+          {/* Right: Search, Filter, Refresh & Create Test White Button */}
+          <div className="flex items-center gap-2 sm:gap-2.5 md:gap-3 w-full md:w-auto shrink-0">
             {/* Flexible Search Input */}
-            <div className="relative flex-1 min-w-[120px] sm:min-w-[140px] md:w-48 lg:w-64 md:flex-initial">
+            <div className="relative flex-1 min-w-[120px] sm:min-w-[140px] md:w-44 lg:w-56 md:flex-initial">
               <Search className="w-4 h-4 text-[#7E8594] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
@@ -433,9 +534,27 @@ export default function Tests() {
               )}
             </div>
 
+            {/* Filter Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setShowFilters(!showFilters)}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer shrink-0 whitespace-nowrap shadow-sm ${
+                showFilters || hasActiveFilters
+                  ? "bg-[#133B42] text-[#00C4B4] border-[#00C4B4]/40 shadow-[0_0_12px_rgba(0,196,180,0.15)]"
+                  : "bg-[#20242D] hover:bg-[#282D39] text-white border-white/[0.08]"
+              }`}
+              title="Filter tests"
+            >
+              <Filter className="w-3.5 h-3.5 text-[#00C4B4]" />
+              <span>Filters</span>
+              {hasActiveFilters && (
+                <span className="w-1.5 h-1.5 rounded-full bg-[#00C4B4]" />
+              )}
+            </button>
+
             {/* Refresh Sync Button */}
             <button
-              onClick={() => fetchTests(currentPage, searchTerm)}
+              onClick={() => fetchTests(currentPage, searchTerm, typeFilter, subjectFilter, batchFilter)}
               disabled={loading}
               className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-[#133B42] text-[#00C4B4] border border-[#00C4B4]/30 hover:bg-[#1A4C55] transition-all cursor-pointer disabled:opacity-50 shrink-0"
               title="Refresh tests"
@@ -454,6 +573,95 @@ export default function Tests() {
             </Link>
           </div>
         </div>
+
+        {/* Expandable Filter Panel */}
+        {(showFilters || hasActiveFilters) && (
+          <div className="bg-[#181A22] border border-white/[0.06] rounded-2xl p-4 shadow-sm space-y-3 transition-all animate-in fade-in duration-150">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-white tracking-wide flex items-center gap-2">
+                <Filter className="w-3.5 h-3.5 text-[#00C4B4]" />
+                Filter Tests
+              </span>
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="text-xs text-[#00C4B4] hover:underline font-medium cursor-pointer"
+                >
+                  Reset All Filters
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {/* Type Filter */}
+              <div>
+                <label className="block text-[11px] font-semibold text-[#8E95A5] uppercase tracking-wider mb-1">
+                  Type
+                </label>
+                <div className="relative">
+                  <select
+                    value={typeFilter}
+                    onChange={(e) => setTypeFilter(e.target.value)}
+                    className="w-full appearance-none bg-[#20242D] border border-white/[0.08] text-white text-xs rounded-xl pl-3 pr-9 py-2 focus:outline-none focus:border-[#00C4B4]/50 cursor-pointer"
+                  >
+                    <option value="all">All Types</option>
+                    <option value="mcq">MCQ</option>
+                    <option value="coding">Coding</option>
+                    <option value="mixed">Mixed (MCQ + Coding)</option>
+                    <option value="practice">Practice</option>
+                    <option value="theory">Theory</option>
+                  </select>
+                  <ChevronDown className="w-3.5 h-3.5 text-[#8E95A5] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+              </div>
+
+              {/* Subject Filter */}
+              <div>
+                <label className="block text-[11px] font-semibold text-[#8E95A5] uppercase tracking-wider mb-1">
+                  Subject
+                </label>
+                <div className="relative">
+                  <select
+                    value={subjectFilter}
+                    onChange={(e) => setSubjectFilter(e.target.value)}
+                    className="w-full appearance-none bg-[#20242D] border border-white/[0.08] text-white text-xs rounded-xl pl-3 pr-9 py-2 focus:outline-none focus:border-[#00C4B4]/50 cursor-pointer"
+                  >
+                    <option value="all">All Subjects</option>
+                    {availableSubjects.map((subj) => (
+                      <option key={subj} value={subj}>
+                        {subj}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-3.5 h-3.5 text-[#8E95A5] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+              </div>
+
+              {/* Batch Filter */}
+              <div>
+                <label className="block text-[11px] font-semibold text-[#8E95A5] uppercase tracking-wider mb-1">
+                  Batch
+                </label>
+                <div className="relative">
+                  <select
+                    value={batchFilter}
+                    onChange={(e) => setBatchFilter(e.target.value)}
+                    className="w-full appearance-none bg-[#20242D] border border-white/[0.08] text-white text-xs rounded-xl pl-3 pr-9 py-2 focus:outline-none focus:border-[#00C4B4]/50 cursor-pointer"
+                  >
+                    <option value="all">All Batches</option>
+                    {cohorts.map((c) => (
+                      <option key={c.key} value={c.key}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-3.5 h-3.5 text-[#8E95A5] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 4-Card KPI Overview Row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
@@ -566,20 +774,20 @@ export default function Tests() {
               </div>
               <h3 className="text-base font-bold text-white">No Tests Found</h3>
               <p className="text-xs text-[#7E8594] mt-1.5 max-w-sm mx-auto">
-                {searchTerm
-                  ? `No assessments match your search query "${searchTerm}". Try resetting search filters.`
+                {searchTerm || hasActiveFilters
+                  ? "No assessments match your search or filter criteria. Try resetting filters."
                   : "No tests are currently configured in the platform catalog."}
               </p>
-              {searchTerm ? (
+              {searchTerm || hasActiveFilters ? (
                 <button
-                  onClick={() => setSearchTerm("")}
+                  onClick={resetFilters}
                   className="mt-4 px-4 py-2 bg-white/10 hover:bg-white/15 text-white text-xs font-semibold rounded-xl transition-all cursor-pointer"
                 >
-                  Clear Search
+                  Clear Search & Filters
                 </button>
               ) : (
                 <Link
-                  to="/admin/tests/create"
+                  to={createTestPath}
                   className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-100 text-slate-950 text-xs font-semibold rounded-xl transition-all cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
@@ -788,8 +996,8 @@ export default function Tests() {
                         )}
                       </button>
 
-                      {/* Primary Actions: Edit, Assign & Delete */}
-                      <div className="grid grid-cols-3 gap-2">
+                      {/* Primary Actions: Edit & Delete */}
+                      <div className="grid grid-cols-2 gap-2">
                         {/* Edit Button */}
                         {(() => {
                           const isStarted = Boolean(
@@ -813,18 +1021,6 @@ export default function Tests() {
                             </button>
                           );
                         })()}
-
-                        {/* Assign Button */}
-                        <button
-                          onClick={() => {
-                            setSelectedTest(t._id);
-                            setShowAssignModal(true);
-                          }}
-                          className="py-2 px-2 rounded-xl text-xs font-semibold bg-[#133B42] hover:bg-[#1A4C55] text-[#00C4B4] border border-[#00C4B4]/30 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <UserCheck className="w-3.5 h-3.5" />
-                          <span>Assign</span>
-                        </button>
 
                         {/* Delete Button */}
                         <button
