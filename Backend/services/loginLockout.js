@@ -5,10 +5,10 @@
 // university's database and their login state is not ExamPro's to keep there, so
 // the counter lives in this process instead.
 //
-// It sits in its own module rather than inside routes/auth.js because the admin
-// panel reads the same state - to show a student as locked out, and to clear the
-// lock when an admin presses Unblock. Two separate Maps would mean an Unblock
-// button that clears nothing.
+// It sits in its own module rather than inside routes/auth.js because admin
+// panels read the same state to show locked accounts and clear the lock when an
+// admin presses Unblock. Two separate Maps would mean an Unblock button that
+// clears nothing.
 //
 // The state is deliberately not persisted, which has two consequences worth
 // knowing: a server restart forgets every lockout, and if ExamPro is ever run as

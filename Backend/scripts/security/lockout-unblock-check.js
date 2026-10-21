@@ -58,6 +58,7 @@ const query = (result) => {
     lean: () => q,
     maxTimeMS: () => q,
     populate: () => q,
+    sort: () => q,
     then: (resolve, reject) => Promise.resolve(result).then(resolve, reject),
   };
   return q;
@@ -78,6 +79,7 @@ const STUDENT = {
 const writes = [];
 const sessionDeletes = [];
 const sessionRevokes = [];
+let studentFindByIdCalls = 0;
 
 // Enough students to fill the first page and push staff onto the second, which is
 // the shape that made the admin panel's KPI row report "Mentors 0, Admins 0".
@@ -92,13 +94,23 @@ const EXTRA_STUDENTS = Array.from({ length: 11 }, (_, i) => ({
 }));
 
 const MENTORS = [
-  { _id: "cccccccccccccccccccccc01", name: "Dr Rao", email: "rao@exampro.edu", subjects: [] },
+  {
+    _id: "cccccccccccccccccccccc01",
+    name: "Dr Rao",
+    email: "rao@exampro.edu",
+    subjects: [],
+    batches: [],
+    password: bcrypt.hashSync("mentor-password", 10),
+  },
   { _id: "cccccccccccccccccccccc02", name: "Dr Iyer", email: "iyer@exampro.edu", subjects: [] },
 ];
 const ADMINS = [{ _id: "dddddddddddddddddddddd01", name: "Registrar", email: "registrar@exampro.edu" }];
 
 stub("models/Student", {
-  findById: (id) => query(String(id) === STUDENT._id ? { ...STUDENT } : null),
+  findById: (id) => {
+    studentFindByIdCalls += 1;
+    return query(String(id) === STUDENT._id ? { ...STUDENT } : null);
+  },
   find: () => query([{ ...STUDENT }, ...EXTRA_STUDENTS]),
   countDocuments: () => query(1 + EXTRA_STUDENTS.length),
   // The login route looks the student up by whichever identifier was typed.
@@ -127,8 +139,16 @@ const staff = (rows) => ({
   countDocuments: () => query(rows.length),
   findById: () => query(null),
 });
-stub("models/Mentor", staff(MENTORS));
+stub("models/Mentor", {
+  find: () => query(MENTORS.map((mentor) => ({ ...mentor }))),
+  findOne: ({ email } = {}) =>
+    query(MENTORS.find((mentor) => mentor.email === email) || null),
+  findById: (id) =>
+    query(MENTORS.find((mentor) => String(mentor._id) === String(id)) || null),
+});
 stub("models/Admin", staff(ADMINS));
+stub("models/Subject", {});
+stub("models/Test", { aggregate: async () => [] });
 stub("models/Profile", { find: () => query([]), findOne: () => query(null) });
 // The Users directory also lists each student's re-enableable tests, which
 // reads assignments. Out of scope here, and like everything else in this check
@@ -166,6 +186,7 @@ stub("middleware/auth", {
 const lockout = require("../../services/loginLockout");
 const usersRouter = require("../../routes/users");
 const authRouter = require("../../routes/auth");
+const adminMentorsRouter = require("../../routes/adminMentors");
 
 (async () => {
   console.log("\n════ The counter itself ════\n");
@@ -215,6 +236,7 @@ const authRouter = require("../../routes/auth");
   app.use(express.json());
   app.use("/api/auth", authRouter);
   app.use("/api/users", usersRouter);
+  app.use("/api/admin/mentors", adminMentorsRouter);
   // Mirrors server.js: an unreachable database becomes a 503, not a 500.
   app.use((err, _req, res, _next) => res.status(503).json({ code: "db_unavailable", message: err.message }));
 
@@ -233,6 +255,70 @@ const authRouter = require("../../routes/auth");
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ identifier, password }),
     });
+
+  console.log("\n════ Mentor, lockout, admin unblock ════\n");
+  check(
+    "the right password signs the mentor in",
+    (await login(MENTORS[0].email, "mentor-password")).status === 200
+  );
+  for (const attempt of [1, 2, 3]) {
+    check(
+      `mentor wrong password ${attempt} is rejected`,
+      (await login(MENTORS[0].email, `wrong-${attempt}`)).status === 401
+    );
+  }
+  check(
+    "a mentor is locked after three wrong passwords",
+    (await login(MENTORS[0].email, "mentor-password")).status === 403
+  );
+
+  const mentorListUrl = `${origin}/api/admin/mentors`;
+  const lockedMentor = (await call(mentorListUrl)).body.mentors.find(
+    (mentor) => mentor._id === MENTORS[0]._id
+  );
+  check("the admin mentor list shows the lock", lockedMentor?.isLocked === true);
+  check("mentor JSON includes the full lockout state", [
+    lockedMentor?.lockedUntil,
+    lockedMentor?.lockRemainingMs > 0,
+    lockedMentor?.failedLoginAttempts >= 3,
+    lockedMentor?.maxLoginAttempts === 3,
+  ].every(Boolean));
+  check("mentor JSON includes profile and re-enable fields", [
+    lockedMentor?.profileImageSaved === false,
+    Array.isArray(lockedMentor?.reEnableable) && lockedMentor.reEnableable.length === 0,
+  ].every(Boolean));
+
+  const directoryMentors = await call(`${base}/profiles?filter=Mentor`);
+  const directoryMentor = directoryMentors.body.users.find(
+    (mentor) => mentor._id === MENTORS[0]._id
+  );
+  check("mentor directory JSON carries the same lockout state", directoryMentor?.isLocked === true);
+  check("mentor directory JSON includes profile and re-enable fields", [
+    directoryMentor?.profileImageSaved === false,
+    Array.isArray(directoryMentor?.reEnableable) && directoryMentor.reEnableable.length === 0,
+  ].every(Boolean));
+
+  const studentLookupsBeforeMentorUnblock = studentFindByIdCalls;
+  const mentorUnblock = await call(`${base}/${MENTORS[0]._id}/unblock`, {
+    method: "POST",
+  });
+  check("the Users page unblock endpoint accepts an admin mentor unlock", mentorUnblock.status === 200);
+  check("mentor unblock reports the account as active", mentorUnblock.body.isLocked === false);
+  check(
+    "mentor unblock does not query the separate student database",
+    studentFindByIdCalls === studentLookupsBeforeMentorUnblock
+  );
+  check(
+    "the mentor can sign in immediately after unblock",
+    (await login(MENTORS[0].email, "mentor-password")).status === 200
+  );
+  for (const attempt of [1, 2, 3]) {
+    await login(MENTORS[0].email, `again-${attempt}`);
+  }
+  const managementPageUnblock = await call(`${mentorListUrl}/${MENTORS[0]._id}/unblock`, {
+    method: "POST",
+  });
+  check("the Mentor Management page admin unlock remains available", managementPageUnblock.status === 200);
 
   // Clear the counter left over from the unit section above.
   lockout.clearAll([STUDENT.UniversityUID, STUDENT.rollno, STUDENT.studentEmail]);

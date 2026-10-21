@@ -354,35 +354,41 @@ export default function Users({ mentorView = false }) {
     return `${minutes} min left`;
   };
 
-  // Clear a student's failed-login lockout so they can sign in again. Their
-  // password is untouched - use this when they know it and simply mistyped it.
-  const unblockStudent = async (student) => {
+  // Clear a student's or mentor's failed-login lockout. Their password is
+  // untouched - use this when they know it and simply mistyped it.
+  const unblockAccount = async (account) => {
     if (
       !window.confirm(
-        `Unblock ${student.name}? Their failed login attempts will be cleared and they can sign in again straight away with their existing password.`
+        `Unblock ${account.name}? Their failed login attempts will be cleared and they can sign in again straight away with their existing password.`
       )
     ) {
       return;
     }
 
-    setLockAction(`${student._id}:unblock`);
+    setLockAction(`${account._id}:unblock`);
     try {
-      const data = await apiRequest(`/users/${student._id}/unblock`, { method: "POST" });
+      const data = await apiRequest(`/users/${account._id}/unblock`, { method: "POST" });
       // Patch the row in place rather than refetching: the lock state is the only
       // thing that changed, and a refetch would lose the admin's page and search.
       setUsers((prev) =>
         prev.map((row) =>
-          row._id === student._id
-            ? { ...row, isLocked: false, lockedUntil: null, lockRemainingMs: 0, failedLoginAttempts: 0 }
+          row._id === account._id
+            ? {
+                ...row,
+                isLocked: false,
+                lockedUntil: null,
+                lockRemainingMs: 0,
+                failedLoginAttempts: data.failedLoginAttempts ?? 0,
+              }
             : row
         )
       );
-      setResultPopup({ show: true, message: data.message || "Student unblocked.", type: "success" });
+      setResultPopup({ show: true, message: data.message || "Account unblocked.", type: "success" });
     } catch (err) {
-      console.error("Error unblocking student:", err);
+      console.error("Error unblocking account:", err);
       setResultPopup({
         show: true,
-        message: err.message || "Could not unblock this student.",
+        message: err.message || "Could not unblock this account.",
         type: "error"
       });
     } finally {
@@ -1234,8 +1240,8 @@ export default function Users({ mentorView = false }) {
                         </div>
                       </div>
 
-                      {/* Student Login Access / Lockout State */}
-                      {isStudent && (
+                      {/* Student and mentor login access / lockout state */}
+                      {(isStudent || isMentor) && (
                         <div
                           className={`mb-4 rounded-xl border p-2.5 flex items-center gap-2.5 ${
                             u.isLocked
@@ -1381,15 +1387,13 @@ export default function Users({ mentorView = false }) {
                           </button>
                           )}
 
-                          {/* Unblock, once too many wrong passwords have locked
-                              them out. Nothing to clear otherwise, so the slot
-                              reads as a state rather than a dead button. */}
+                          {/* Unblock locked student or mentor accounts. */}
                           {u.isLocked ? (
                             <button
-                              onClick={() => unblockStudent(u)}
+                              onClick={() => unblockAccount(u)}
                               disabled={lockAction?.startsWith(`${u._id}:`)}
                               className="py-2 px-2 rounded-xl text-xs font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/25 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                              title="Clear the failed login attempts locking this student out"
+                              title={`Clear the failed login attempts locking ${isMentor ? "this mentor" : "this student"} out`}
                             >
                               <LockOpen className="w-3.5 h-3.5" />
                               <span>
@@ -1403,19 +1407,19 @@ export default function Users({ mentorView = false }) {
                             </div>
                           )}
 
-                          {/* Reset to the default password. Also clears a lockout,
-                              so it stands on its own for a forgotten password. */}
-                          <button
-                            onClick={() => resetStudentPassword(u)}
-                            disabled={lockAction?.startsWith(`${u._id}:`)}
-                            className="py-2 px-2 rounded-xl text-xs font-semibold bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/25 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                            title={`Set this student's password to ${DEFAULT_STUDENT_PASSWORD} and sign them out everywhere`}
-                          >
-                            <KeyRound className="w-3.5 h-3.5" />
-                            <span>
-                              {lockAction === `${u._id}:reset` ? "Resetting..." : "Reset Password"}
-                            </span>
-                          </button>
+                          {isStudent && (
+                            <button
+                              onClick={() => resetStudentPassword(u)}
+                              disabled={lockAction?.startsWith(`${u._id}:`)}
+                              className="py-2 px-2 rounded-xl text-xs font-semibold bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/25 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                              title={`Set this student's password to ${DEFAULT_STUDENT_PASSWORD} and sign them out everywhere`}
+                            >
+                              <KeyRound className="w-3.5 h-3.5" />
+                              <span>
+                                {lockAction === `${u._id}:reset` ? "Resetting..." : "Reset Password"}
+                              </span>
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <div className="space-y-2">
@@ -1449,7 +1453,31 @@ export default function Users({ mentorView = false }) {
                             </button>
                           </div>
 
-                          {!mentorView && <AdminStaffPasswordReset user={u} />}
+                          {isMentor && (
+                            <div className="grid grid-cols-2 gap-2">
+                              {u.isLocked ? (
+                                <button
+                                  onClick={() => unblockAccount(u)}
+                                  disabled={lockAction?.startsWith(`${u._id}:`)}
+                                  className="py-2 px-2 rounded-xl text-xs font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/25 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                  title="Clear the failed login attempts locking this mentor out"
+                                >
+                                  <LockOpen className="w-3.5 h-3.5" />
+                                  <span>
+                                    {lockAction === `${u._id}:unblock` ? "Unblocking..." : "Unblock"}
+                                  </span>
+                                </button>
+                              ) : (
+                                <div className="py-2 px-2 rounded-xl text-xs font-medium text-[#555C6D] bg-white/[0.02] border border-white/[0.04] text-center flex items-center justify-center gap-1">
+                                  <LockOpen className="w-3.5 h-3.5 text-[#555C6D]" />
+                                  <span>Not Locked</span>
+                                </div>
+                              )}
+                              {!mentorView && <AdminStaffPasswordReset user={u} />}
+                            </div>
+                          )}
+
+                          {!mentorView && !isMentor && <AdminStaffPasswordReset user={u} />}
 
                           {/* Reset Image if exists */}
                           {u.profileImageSaved && (

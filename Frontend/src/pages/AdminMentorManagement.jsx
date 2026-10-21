@@ -22,6 +22,7 @@ import {
   EyeOff,
   Mail,
   Lock,
+  LockOpen,
 } from "lucide-react";
 import { API_BASE_URL } from "../config/api";
 
@@ -55,6 +56,7 @@ export default function AdminMentorManagement() {
 
   // Delete Mentor State
   const [deletingMentorId, setDeletingMentorId] = useState(null);
+  const [unblockingMentorId, setUnblockingMentorId] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null); // { _id, name }
 
   // Toast State
@@ -433,6 +435,44 @@ export default function AdminMentorManagement() {
     }
   };
 
+  const handleUnblockMentor = async (mentor) => {
+    if (
+      !window.confirm(
+        `Unblock ${mentor.name}? Their failed login attempts will be cleared and they can sign in again with their existing password.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setUnblockingMentorId(mentor._id);
+      const res = await apiRequest(`/admin/mentors/${mentor._id}/unblock`, {
+        method: "POST"
+      });
+
+      setMentors((prev) =>
+        prev.map((m) =>
+          m._id === mentor._id
+            ? {
+                ...m,
+                isLocked: false,
+                lockedUntil: null,
+                lockRemainingMs: 0,
+                failedLoginAttempts: res.failedLoginAttempts,
+                maxLoginAttempts: res.maxLoginAttempts
+              }
+            : m
+        )
+      );
+      showToast(res.message || `${mentor.name} can sign in again.`, "success");
+    } catch (err) {
+      console.error("Error unblocking mentor:", err);
+      showToast(err.message || "Failed to unblock mentor", "error");
+    } finally {
+      setUnblockingMentorId(null);
+    }
+  };
+
   // Batch details map for quick badge rendering
   const batchMap = useMemo(() => {
     const map = new Map();
@@ -781,6 +821,25 @@ export default function AdminMentorManagement() {
                                 {mentorName}
                               </p>
                               <p className="text-xs text-[#7E8594] truncate">{mentorEmail}</p>
+                              <span
+                                className={`mt-1 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                                  mentor.isLocked
+                                    ? "border-rose-500/25 bg-rose-500/10 text-rose-300"
+                                    : "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
+                                }`}
+                              >
+                                {mentor.isLocked ? (
+                                  <Lock className="h-3 w-3" />
+                                ) : (
+                                  <LockOpen className="h-3 w-3" />
+                                )}
+                                {mentor.isLocked
+                                  ? `Locked · ${Math.ceil((mentor.lockRemainingMs || 0) / 60000)} min left`
+                                  : "Active"}
+                              </span>
+                              <p className="mt-1 text-[10px] text-[#7E8594]">
+                                Failed attempts: {mentor.failedLoginAttempts || 0}/{mentor.maxLoginAttempts || 3}
+                              </p>
                             </div>
                           </div>
                         </td>
@@ -885,6 +944,26 @@ export default function AdminMentorManagement() {
                         {/* Actions */}
                         <td className="py-4 px-5 text-right">
                           <div className="flex items-center justify-end gap-2">
+                            {mentor.isLocked ? (
+                              <button
+                                onClick={() => handleUnblockMentor(mentor)}
+                                disabled={unblockingMentorId === mentor._id}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-medium text-emerald-300 transition-all hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                                title={`Unblock ${mentorName}`}
+                              >
+                                {unblockingMentorId === mentor._id ? (
+                                  <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-emerald-300 border-t-transparent" />
+                                ) : (
+                                  <LockOpen className="h-3.5 w-3.5" />
+                                )}
+                                <span>{unblockingMentorId === mentor._id ? "Unblocking..." : "Unblock"}</span>
+                              </button>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5 text-xs font-medium text-[#7E8594]">
+                                <LockOpen className="h-3.5 w-3.5" />
+                                Not Locked
+                              </span>
+                            )}
                             <button
                               onClick={() => openSubjectModal(mentor)}
                               className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/10 text-white font-medium text-xs transition-all border border-white/10 cursor-pointer"
