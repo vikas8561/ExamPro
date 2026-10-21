@@ -14,6 +14,7 @@ import {
   Users,
 } from "lucide-react";
 import "../styles/StudentSidebar.mobile.css";
+import StaffPasswordChange from "./StaffPasswordChange";
 
 const Item = ({ to, icon: Icon, children, onClick, end = false, iconColor = "#00C4B4", isCollapsed = false, label = "" }) => {
   const itemLabel = label || (typeof children === "string" ? children : "");
@@ -275,6 +276,8 @@ export default function MentorLayout({
               </div>
             </div>
           </div>
+
+          <StaffPasswordChange isCollapsed={isCollapsed} />
 
           {/* Sign Out Button (Morphs between full button and compact icon square) */}
           <button
