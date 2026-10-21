@@ -64,12 +64,12 @@ export default function StaffPasswordChange({ isCollapsed = false }) {
         }}
         title="Reset Password"
         aria-label="Reset Password"
-        className={`flex items-center justify-center rounded-xl text-xs font-medium transition-all bg-[#00C4B4]/10 hover:bg-[#00C4B4]/20 text-[#2DD4BF] border border-[#00C4B4]/20 cursor-pointer ${
-          isCollapsed ? "w-11 h-11 p-0 mx-auto" : "w-full gap-2 px-3.5 py-2.5"
+        className={`flex flex-shrink-0 items-center justify-center rounded-xl transition-all bg-gradient-to-br from-[#133B42] to-[#1E293B] hover:from-[#174950] hover:to-[#26384D] text-[#00C4B4] border border-[#00C4B4]/40 cursor-pointer ${
+          isCollapsed ? "w-7 h-7" : "w-8 h-8"
         }`}
       >
-        <KeyRound className="w-4 h-4 flex-shrink-0" />
-        <span className={isCollapsed ? "sr-only" : "whitespace-nowrap"}>Reset Password</span>
+        <KeyRound className="w-4 h-4" />
+        <span className="sr-only">Reset Password</span>
       </button>
 
       {isOpen
