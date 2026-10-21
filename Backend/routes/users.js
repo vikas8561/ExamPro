@@ -471,6 +471,55 @@ router.post("/:id/reset-password", authenticateToken, requireRole(["Admin", "Men
   }
 });
 
+// Mentors and admins can change their own password without providing the old one.
+router.post("/change-password", authenticateToken, requireRole(["Admin", "Mentor"]), async (req, res) => {
+  try {
+    const password = req.body?.password;
+    if (typeof password !== "string" || password.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters long." });
+    }
+
+    const staff = await findStaff(req.user.userId);
+    if (!staff || staff.role.toLowerCase() !== String(req.user.role).toLowerCase()) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    staff.doc.password = password;
+    await staff.doc.save();
+    await revokeSessions(staff.doc._id, { keepLiveExam: false, exceptToken: req.authToken });
+
+    res.json({ message: "Password changed successfully." });
+  } catch (err) {
+    console.error("Error changing staff password:", err);
+    res.status(500).json({ message: "Could not change the password. Please try again." });
+  }
+});
+
+// Admins can set a mentor's or another admin's password from the user directory.
+// Student ids are not present in either staff collection and are never updated.
+router.post("/staff/:id/password", authenticateToken, requireRole("Admin"), async (req, res) => {
+  try {
+    const password = req.body?.password;
+    if (typeof password !== "string" || password.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters long." });
+    }
+
+    const staff = await findStaff(req.params.id);
+    if (!staff) {
+      return res.status(404).json({ message: `User not found. ${STUDENTS_ARE_READ_ONLY}` });
+    }
+
+    staff.doc.password = password;
+    await staff.doc.save();
+    await revokeSessions(staff.doc._id, { keepLiveExam: false });
+
+    res.json({ message: `Password reset successfully for ${staff.doc.name}.` });
+  } catch (err) {
+    console.error("Error resetting staff password:", err);
+    res.status(500).json({ message: "Could not reset the password. Please try again." });
+  }
+});
+
 // Create a mentor or an admin (admin only)
 router.post("/", authenticateToken, requireRole("Admin"), async (req, res) => {
   try {

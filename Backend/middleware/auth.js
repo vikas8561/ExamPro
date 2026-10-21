@@ -225,9 +225,10 @@ const examOpenElsewhere = async (principalId, token) =>
  * Revoke a person's sessions -- all of them, or all but those sitting a live
  * exam. Returns how many were revoked.
  */
-const revokeSessions = async (principalId, { keepLiveExam = true } = {}) => {
+const revokeSessions = async (principalId, { keepLiveExam = true, exceptToken = null } = {}) => {
   const filter = { principalId: String(principalId) };
   if (keepLiveExam) filter.$nor = [liveExamFilter()];
+  if (exceptToken) filter.token = { $ne: exceptToken };
   // Read the tokens before deleting them, so the ones being invalidated are
   // dropped from the cache too -- otherwise the revoked device would keep
   // working for up to SESSION_CACHE_MS.
