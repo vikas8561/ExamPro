@@ -216,7 +216,7 @@ router.get("/dashboard", authenticateToken, requireRole(["Mentor", "Admin"]), as
     // Get assignments filtered to tests the mentor conducts in their subjects
     const assignments = await attach(
       await Assignment.find(assignQuery)
-        .populate("testId", "title type subject instructions timeLimit")
+        .populate("testId", "title type subject instructions timeLimit startTime duration")
         .sort({ createdAt: -1 })
         .lean(),
       "userId",
@@ -274,7 +274,7 @@ router.get("/assignments", authenticateToken, requireRole(["Mentor", "Admin"]), 
 
     // Filter assignments to only those the mentor conducts for their subjects
     const rawAssignments = await Assignment.find(assignQuery)
-      .populate("testId", "title type subject instructions timeLimit")
+      .populate("testId", "title type subject instructions timeLimit startTime duration")
       .select("testId userId mentorId status startTime duration deadline startedAt completedAt score autoScore mentorScore mentorFeedback reviewStatus timeSpent createdAt")
       .sort({ createdAt: -1 })
       .limit(limit)
