@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const AuthSession = require('../models/AuthSession');
 
-const TOKEN_TTL_HOURS = 24;
+const TOKEN_TTL_HOURS = 24 * 30 * 6;
 
 /**
  * Short-lived memo of "this token still has a live session".
@@ -52,21 +52,21 @@ function forgetSessions(tokens) {
 // Authentication middleware
 const authenticateToken = async (req, res, next) => {
   // Skip authentication for OPTIONS requests (CORS preflight)
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return next();
   }
 
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
 
   if (!token) {
-    return res.status(401).json({ message: 'Access token required' });
+    return res.status(401).json({ message: "Access token required" });
   }
 
   // Fail if JWT_SECRET is not configured
   if (!process.env.JWT_SECRET) {
-    console.error('FATAL: JWT_SECRET environment variable is not set!');
-    return res.status(500).json({ message: 'Server configuration error' });
+    console.error("FATAL: JWT_SECRET environment variable is not set!");
+    return res.status(500).json({ message: "Server configuration error" });
   }
 
   // A bad signature or a passed expiry is the token's own fault, and it is the
@@ -75,7 +75,7 @@ const authenticateToken = async (req, res, next) => {
   try {
     decoded = jwt.verify(token, process.env.JWT_SECRET);
   } catch (err) {
-    return res.status(403).json({ message: 'Invalid or expired token' });
+    return res.status(403).json({ message: "Invalid or expired token" });
   }
 
   // Single-session check. This used to read `User.activeSessions`, but a
@@ -102,7 +102,7 @@ const authenticateToken = async (req, res, next) => {
     }
     if (!session) {
       sessionCache.delete(token);
-      return res.status(403).json({ message: 'Invalid or expired session' });
+      return res.status(403).json({ message: "Invalid or expired session" });
     }
     rememberSession(token);
   }
@@ -118,19 +118,21 @@ const authenticateToken = async (req, res, next) => {
 const requireRole = (role) => {
   return (req, res, next) => {
     if (!req.user) {
-      return res.status(401).json({ message: 'Authentication required' });
+      return res.status(401).json({ message: "Authentication required" });
     }
 
     // Allow array of roles
     const allowedRoles = Array.isArray(role) ? role : [role];
 
     // Normalize role to string and lowercase for comparison
-    const userRole = String(req.user?.role || '').toLowerCase();
-    const normalizedAllowedRoles = allowedRoles.map(r => String(r).toLowerCase());
+    const userRole = String(req.user?.role || "").toLowerCase();
+    const normalizedAllowedRoles = allowedRoles.map((r) =>
+      String(r).toLowerCase(),
+    );
 
     if (!normalizedAllowedRoles.includes(userRole)) {
       return res.status(403).json({
-        message: `Access denied. ${allowedRoles.join(' or ')} role required. Your role: ${req.user.role}`
+        message: `Access denied. ${allowedRoles.join(" or ")} role required. Your role: ${req.user.role}`,
       });
     }
 
@@ -146,7 +148,7 @@ const requireRole = (role) => {
 // session with the new one" could replace a token with itself.
 const generateToken = (principal) => {
   if (!process.env.JWT_SECRET) {
-    throw new Error('FATAL: JWT_SECRET environment variable is not set!');
+    throw new Error("FATAL: JWT_SECRET environment variable is not set!");
   }
   return jwt.sign(
     { userId: principal._id, email: principal.email, role: principal.role },
@@ -223,9 +225,10 @@ const examOpenElsewhere = async (principalId, token) =>
  * Revoke a person's sessions -- all of them, or all but those sitting a live
  * exam. Returns how many were revoked.
  */
-const revokeSessions = async (principalId, { keepLiveExam = true } = {}) => {
+const revokeSessions = async (principalId, { keepLiveExam = true, exceptToken = null } = {}) => {
   const filter = { principalId: String(principalId) };
   if (keepLiveExam) filter.$nor = [liveExamFilter()];
+  if (exceptToken) filter.token = { $ne: exceptToken };
   // Read the tokens before deleting them, so the ones being invalidated are
   // dropped from the cache too -- otherwise the revoked device would keep
   // working for up to SESSION_CACHE_MS.

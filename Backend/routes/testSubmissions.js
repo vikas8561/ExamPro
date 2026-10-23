@@ -19,7 +19,7 @@ const { clearExamSession } = require("../middleware/auth");
 const { mergeWithSaved } = require("../services/answerMerge");
 const ProctorSession = require("../models/ProctorSession");
 const policyService = require("../services/proctorPolicy");
-const { attach, getUniversitiesForBatches } = require("../services/principals");
+const { attach, getUniversitiesForBatches, findStudentById } = require("../services/principals");
 const Subject = require("../models/Subject");
 const Mentor = require("../models/Mentor");
 const Student = require("../models/Student");
@@ -496,7 +496,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
     const userId = req.user.userId;
 
     // Get the assignment to check the deadline and test details
-    const assignment = await Assignment.findById(assignmentId)
+    let assignment = await Assignment.findById(assignmentId)
       .populate({
         path: "testId",
         select: "title subject createdBy questions negativeMarkingPercent timeLimit",
@@ -507,8 +507,26 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
       });
 
     if (!assignment) {
+      // Check if assignmentId is actually a TestSubmission _id
+      const subDoc = await TestSubmission.findById(assignmentId).select("assignmentId").lean();
+      if (subDoc && subDoc.assignmentId) {
+        assignment = await Assignment.findById(subDoc.assignmentId)
+          .populate({
+            path: "testId",
+            select: "title subject createdBy questions negativeMarkingPercent timeLimit",
+            populate: {
+              path: "questions",
+              select: "kind text options answer answers guidelines examples points"
+            }
+          });
+      }
+    }
+
+    if (!assignment) {
       return res.status(404).json({ message: "Assignment not found" });
     }
+
+    const student = await findStudentById(assignment.userId);
 
     const isStudent = assignment.userId.toString() === userId;
 
@@ -623,7 +641,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
     }
 
     // Find submission for the student (assignment.userId), not the current user
-    const submission = await TestSubmission.findOne({ assignmentId, userId: assignment.userId })
+    const submission = await TestSubmission.findOne({ assignmentId: assignment._id, userId: assignment.userId })
       .populate({
         path: "testId",
         select: "title questions",
@@ -801,6 +819,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
             autoSubmit: submission.autoSubmit,
             ...proctorRecordFor(submission)
           },
+          student,
           showResults: true
         });
       } else {
@@ -853,6 +872,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
             autoSubmit: submission.autoSubmit,
             ...proctorRecordFor(submission)
           },
+          student,
           showResults: false,
           message: `Results available after ${remainingTimeString}`
         });
@@ -905,6 +925,7 @@ router.get("/assignment/:assignmentId", authenticateToken, async (req, res, next
           finalScore: 0,
           permissions: null
         },
+        student,
         showResults: showResults,
         message: showResults ?
           "Test Completion Status\nThis test has been assessed immediately upon submission.\n\nNo test submission data is available as the test was not fully completed." :

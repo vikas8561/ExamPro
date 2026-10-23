@@ -23,8 +23,8 @@ const {
 
 // Brute-force protection: 3 wrong passwords inside 5 minutes locks that
 // identifier out for 30 minutes. The counter lives in services/loginLockout
-// rather than here, because the admin panel reads and clears the same state when
-// it shows a student as locked out and unblocks them.
+// rather than here, because the admin panels read and clear the same state when
+// they show a student or mentor as locked out and unblock them.
 const lockout = require("../services/loginLockout");
 
 // Roll numbers and UIDs are stored the way the university typed them

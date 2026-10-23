@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { formatDateIST, formatDateTimeIST } from "../utils/istTime";
+import { formatDateIST, formatDateTimeIST, formatFullDateTimeIST } from "../utils/istTime";
 import { useNavigate } from "react-router-dom";
 import { API_BASE_URL } from "../config/api";
 import "../styles/StudentDashboard.mobile.css";
@@ -81,9 +81,15 @@ export default function MentorAssignments() {
 
   // Group unique assignments by testId
   const uniqueAssignments = useMemo(() => {
-    return Array.from(new Map(assignments.map((a) => [a.testId?._id, a])).values()).filter(
-      (a) => a.testId?._id
-    );
+    const map = new Map();
+    for (const a of assignments) {
+      if (!a.testId?._id) continue;
+      const key = a.testId._id;
+      if (!map.has(key) || (!map.get(key).startTime && a.startTime)) {
+        map.set(key, a);
+      }
+    }
+    return Array.from(map.values());
   }, [assignments]);
 
   // Overall statistics for top KPI row
@@ -107,8 +113,9 @@ export default function MentorAssignments() {
       const title = (assignment.testId?.title || "").toLowerCase();
       const subject = (assignment.testId?.subject || "").toLowerCase();
       const type = (assignment.testId?.type || "").toLowerCase();
-      const dateStr = assignment.createdAt
-        ? formatDateIST(assignment.createdAt).toLowerCase()
+      const scheduledDate = assignment.startTime || assignment.testId?.startTime || assignment.createdAt;
+      const dateStr = scheduledDate
+        ? `${formatFullDateTimeIST(scheduledDate)} ${formatDateIST(scheduledDate)}`.toLowerCase()
         : "";
       return (
         title.includes(searchLower) ||
@@ -431,7 +438,7 @@ export default function MentorAssignments() {
                 <tr className="border-b border-white/[0.05] bg-[#181A22]/50 text-[#7E8594] text-[11px] font-semibold uppercase tracking-wider">
                   <th className="py-3.5 px-5">Examination Title</th>
                   <th className="py-3.5 px-5 hidden md:table-cell">Subject & Type</th>
-                  <th className="py-3.5 px-5">Assigned Date</th>
+                  <th className="py-3.5 px-5">Schedule Date</th>
                   <th className="py-3.5 px-5">Turnout Status</th>
                   <th className="py-3.5 px-5 text-right">Actions</th>
                 </tr>
@@ -476,8 +483,9 @@ export default function MentorAssignments() {
                         ? Math.round((testCompleted.length / testAssigned.length) * 100)
                         : 0;
 
-                    const dateFormatted = assignment.createdAt
-                      ? formatDateIST(assignment.createdAt)
+                    const scheduledDate = assignment.startTime || assignment.testId?.startTime || assignment.createdAt;
+                    const dateFormatted = scheduledDate
+                      ? formatFullDateTimeIST(scheduledDate)
                       : "N/A";
 
                     return (
@@ -516,10 +524,10 @@ export default function MentorAssignments() {
                           </div>
                         </td>
 
-                        {/* Created Date */}
+                        {/* Schedule Date */}
                         <td className="py-4 px-5">
-                          <div className="flex items-center gap-1.5 text-xs text-[#8E95A5]">
-                            <Calendar className="w-3.5 h-3.5 text-[#7E8594]" />
+                          <div className="flex items-center gap-1.5 text-xs text-[#8E95A5] whitespace-nowrap">
+                            <Calendar className="w-3.5 h-3.5 text-[#7E8594] flex-shrink-0" />
                             <span>{dateFormatted}</span>
                           </div>
                         </td>

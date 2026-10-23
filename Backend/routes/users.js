@@ -148,6 +148,7 @@ async function loadDirectory({ search = "", filter = "", requesterRole = "admin"
       subjects: doc.subjects || [],
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
+      ...lockout.statusFor([doc.email]),
     })),
     ...admins.map((doc) => ({
       _id: doc._id,
@@ -310,7 +311,11 @@ router.get("/profiles", authenticateToken, requireRole(["Admin", "Mentor"]), asy
       console.error("Re-enable lookup failed; showing the directory without it:", lookupError.message);
     }
     const users = pageRows.map((r) =>
-      r.role === "Student" ? { ...r, reEnableable: reEnableable.get(String(r._id)) || [] } : r
+      r.role === "Student"
+        ? { ...r, reEnableable: reEnableable.get(String(r._id)) || [] }
+        : r.role === "Mentor"
+          ? { ...r, reEnableable: [] }
+          : r
     );
 
     res.json({
@@ -390,28 +395,46 @@ router.get("/:id/full-profile", authenticateToken, requireRole("admin"), async (
   }
 });
 
-// Let a locked-out student sign in again. Admins, and mentors for students in
-// their assigned batches.
-//
-// There is no "blocked" flag to unset: the lockout is the failed-attempt counter
-// in services/loginLockout, so unblocking is just forgetting the attempts
-// recorded against every identifier this student could have typed.
+// Let locked accounts sign in again. Admins, and mentors for students in their
+// assigned batches. Only admins may unblock mentor accounts.
 router.post("/:id/unblock", authenticateToken, requireRole(["Admin", "Mentor"]), async (req, res) => {
   try {
-    const { student, error, status } = await findManageableStudent(req, req.params.id);
-    if (error) {
-      return res.status(status).json({ message: error });
+    const requesterRole = String(req.user?.role || "").toLowerCase();
+    if (requesterRole === "admin") {
+      // Resolve ExamPro accounts before querying the university's student
+      // database. A mentor unlock should not depend on that separate database.
+      const staff = await findStaff(req.params.id);
+      if (staff) {
+        if (staff.role !== "Mentor") {
+          return res.status(404).json({ message: "Account not found." });
+        }
+
+        lockout.clear(staff.doc.email);
+        return res.json({
+          message: `${staff.doc.name} can sign in again.`,
+          ...lockout.statusFor([staff.doc.email]),
+        });
+      }
     }
 
-    const keys = studentLoginKeys(student);
-    lockout.clearAll(keys);
+    const student = await findStudent(req.params.id);
+    if (student) {
+      if (!(await canManageStudent(req.user, student._id))) {
+        return res.status(403).json({ message: "You can only manage students in your assigned batches." });
+      }
 
-    res.json({
-      message: `${student.name} can sign in again.`,
-      ...lockout.statusFor(keys),
-    });
+      const keys = studentLoginKeys(student);
+      lockout.clearAll(keys);
+
+      return res.json({
+        message: `${student.name} can sign in again.`,
+        ...lockout.statusFor(keys),
+      });
+    }
+
+    return res.status(404).json({ message: "Account not found." });
   } catch (err) {
-    console.error("Error unblocking student:", err);
+    console.error("Error unblocking account:", err);
     res.status(500).json({ message: err.message });
   }
 });
@@ -467,6 +490,55 @@ router.post("/:id/reset-password", authenticateToken, requireRole(["Admin", "Men
     // global handler turns this into a 503 the admin can act on.
     if (isDatabaseUnavailable(err)) return next(err);
 
+    res.status(500).json({ message: "Could not reset the password. Please try again." });
+  }
+});
+
+// Mentors and admins can change their own password without providing the old one.
+router.post("/change-password", authenticateToken, requireRole(["Admin", "Mentor"]), async (req, res) => {
+  try {
+    const password = req.body?.password;
+    if (typeof password !== "string" || password.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters long." });
+    }
+
+    const staff = await findStaff(req.user.userId);
+    if (!staff || staff.role.toLowerCase() !== String(req.user.role).toLowerCase()) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    staff.doc.password = password;
+    await staff.doc.save();
+    await revokeSessions(staff.doc._id, { keepLiveExam: false, exceptToken: req.authToken });
+
+    res.json({ message: "Password changed successfully." });
+  } catch (err) {
+    console.error("Error changing staff password:", err);
+    res.status(500).json({ message: "Could not change the password. Please try again." });
+  }
+});
+
+// Admins can set a mentor's or another admin's password from the user directory.
+// Student ids are not present in either staff collection and are never updated.
+router.post("/staff/:id/password", authenticateToken, requireRole("Admin"), async (req, res) => {
+  try {
+    const password = req.body?.password;
+    if (typeof password !== "string" || password.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters long." });
+    }
+
+    const staff = await findStaff(req.params.id);
+    if (!staff) {
+      return res.status(404).json({ message: `User not found. ${STUDENTS_ARE_READ_ONLY}` });
+    }
+
+    staff.doc.password = password;
+    await staff.doc.save();
+    await revokeSessions(staff.doc._id, { keepLiveExam: false });
+
+    res.json({ message: `Password reset successfully for ${staff.doc.name}.` });
+  } catch (err) {
+    console.error("Error resetting staff password:", err);
     res.status(500).json({ message: "Could not reset the password. Please try again." });
   }
 });

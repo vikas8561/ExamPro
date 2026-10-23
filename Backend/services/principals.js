@@ -1,6 +1,7 @@
 const Student = require("../models/Student");
 const Mentor = require("../models/Mentor");
 const Admin = require("../models/Admin");
+const User = require("../models/User");
 
 // Identities now live in three places: students in the university's database,
 // mentors and admins in ExamPro's own `mentors` / `admins` collections. Mongoose
@@ -9,7 +10,7 @@ const Admin = require("../models/Admin");
 // return the same shape the old populate produced - `{ _id, name, email }` plus
 // a few student-only extras - so callers and the frontend see no difference.
 
-const STUDENT_FIELDS = "studentName studentEmail UniversityUID rollno University";
+const STUDENT_FIELDS = "studentName studentEmail currentEmail UniversityUID rollno University imageUrl profileImage avatar";
 
 // The app targets assignments at RU or SU cohorts. The university database
 // records the full institution name instead, so derive the category from it:
@@ -25,11 +26,12 @@ function normalizeStudent(doc) {
     name: doc.studentName || doc.rollno || doc.UniversityUID || "Unknown student",
     // Students sign in with a UID or roll number and many have no address on
     // file, so `email` can legitimately be empty here.
-    email: doc.studentEmail || "",
+    email: doc.studentEmail || doc.currentEmail || "",
     rollno: doc.rollno || "",
     universityUID: doc.UniversityUID || "",
     university: doc.University || "",
     studentCategory: categoryOf(doc.University),
+    profileImage: doc.imageUrl || doc.profileImage || doc.avatar || null,
     role: "Student",
   };
 }
@@ -46,6 +48,21 @@ function normalizeMentor(doc) {
 function normalizeAdmin(doc) {
   if (!doc) return null;
   return { _id: doc._id, name: doc.name, email: doc.email, role: "Admin" };
+}
+
+function normalizeUser(doc) {
+  if (!doc) return null;
+  return {
+    _id: doc._id,
+    name: doc.name || "Unknown student",
+    email: doc.email || "",
+    rollno: doc.rollno || "",
+    universityUID: doc.universityUID || "",
+    university: doc.university || "",
+    studentCategory: doc.studentCategory || "RU",
+    profileImage: doc.profileImage || null,
+    role: "Student",
+  };
 }
 
 // The cohorts a test can be assigned to. The university database has no notion
@@ -171,7 +188,12 @@ async function cohortCounts() {
 }
 
 async function findStudentById(id) {
-  return normalizeStudent(await Student.findById(id).select(STUDENT_FIELDS).lean());
+  if (!id) return null;
+  const doc = await Student.findById(id).select(STUDENT_FIELDS).lean();
+  if (doc) return normalizeStudent(doc);
+  const userDoc = await User.findById(id).select("name email role profileImage rollno universityUID studentCategory").lean();
+  if (userDoc) return normalizeUser(userDoc);
+  return null;
 }
 
 async function findPrincipalById(id, role) {
@@ -189,7 +211,13 @@ async function studentMap(ids) {
   const unique = [...new Set((ids || []).filter(Boolean).map(String))];
   if (!unique.length) return new Map();
   const docs = await Student.find({ _id: { $in: unique } }).select(STUDENT_FIELDS).lean();
-  return new Map(docs.map((d) => [String(d._id), normalizeStudent(d)]));
+  const map = new Map(docs.map((d) => [String(d._id), normalizeStudent(d)]));
+  const missing = unique.filter((id) => !map.has(id));
+  if (missing.length) {
+    const userDocs = await User.find({ _id: { $in: missing } }).select("name email role profileImage rollno universityUID studentCategory").lean();
+    userDocs.forEach((d) => map.set(String(d._id), normalizeUser(d)));
+  }
+  return map;
 }
 
 async function mentorMap(ids) {

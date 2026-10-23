@@ -24,7 +24,7 @@ router.get("/assignments", authenticateToken, requireRole(["Mentor", "Admin"]), 
     const assignments = await Assignment.find(assignQuery)
       .populate({
         path: "testId",
-        select: "title type instructions timeLimit subject",
+        select: "title type instructions timeLimit subject startTime duration",
         match: { type: { $ne: "practice" } } // Exclude practice tests from mentor assignments
       })
       .sort({ createdAt: -1 })

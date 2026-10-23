@@ -4,8 +4,10 @@ const mongoose = require("mongoose");
 const Mentor = require("../models/Mentor");
 const Subject = require("../models/Subject");
 const Test = require("../models/Test");
+const Profile = require("../models/Profile");
 const { BATCHES, cohortCounts } = require("../services/principals");
 const { authenticateToken, requireRole } = require("../middleware/auth");
+const lockout = require("../services/loginLockout");
 
 /**
  * GET /api/admin/mentors
@@ -28,6 +30,14 @@ router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) 
     ]);
 
     const countMap = new Map(testCounts.map((tc) => [String(tc._id), tc.count]));
+    const profiles = await Profile.find({
+      principalId: { $in: mentorIds.map((id) => String(id)) }
+    })
+      .select("principalId profileImageSaved")
+      .lean();
+    const profileSavedById = new Map(
+      profiles.map((profile) => [profile.principalId, !!profile.profileImageSaved])
+    );
 
     const result = mentors.map((m) => ({
       _id: m._id,
@@ -36,10 +46,39 @@ router.get("/", authenticateToken, requireRole("admin"), async (req, res, next) 
       subjects: m.subjects || [],
       batches: m.batches || [],
       testCount: countMap.get(String(m._id)) || 0,
-      createdAt: m.createdAt
+      createdAt: m.createdAt,
+      ...lockout.statusFor([m.email]),
+      profileImageSaved: profileSavedById.get(String(m._id)) || false,
+      reEnableable: []
     }));
 
     res.json({ mentors: result });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/admin/mentors/:mentorId/unblock
+ * Clears a mentor's failed-login counter. Accessible only by Admin.
+ */
+router.post("/:mentorId/unblock", authenticateToken, requireRole("admin"), async (req, res, next) => {
+  try {
+    const { mentorId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(mentorId)) {
+      return res.status(400).json({ message: "Invalid mentor ID" });
+    }
+
+    const mentor = await Mentor.findById(mentorId).select("name email").lean();
+    if (!mentor) {
+      return res.status(404).json({ message: "Mentor not found" });
+    }
+
+    lockout.clear(mentor.email);
+    res.json({
+      message: `${mentor.name} can sign in again.`,
+      ...lockout.statusFor([mentor.email])
+    });
   } catch (error) {
     next(error);
   }

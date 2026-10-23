@@ -12,6 +12,7 @@ import {
   UserCheck,
 } from "lucide-react";
 import "../styles/StudentSidebar.mobile.css";
+import StaffPasswordChange from "./StaffPasswordChange";
 
 const Item = ({ to, icon: Icon, children, onClick, end = false, iconColor = "#00C4B4", isCollapsed = false, label = "" }) => {
   const itemLabel = label || (typeof children === "string" ? children : "");
@@ -250,12 +251,12 @@ export default function AdminSidebar({
             title={userDisplayName}
             className={`group flex items-center rounded-2xl transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] border bg-[#20242D]/60 border-white/[0.04] text-slate-300 ${
               isCollapsed
-                ? "w-11 h-11 p-0 justify-center mx-auto"
-                : "w-full gap-3 p-2.5"
+                ? "w-[72px] h-11 p-1 gap-1 justify-center mx-auto"
+                : "w-full min-w-0 gap-3 p-2.5"
             }`}
           >
             {/* User Initials Avatar */}
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#133B42] to-[#1E293B] border border-[#00C4B4]/30 flex items-center justify-center text-[#00C4B4] font-bold text-xs flex-shrink-0 shadow-sm transition-transform duration-200 group-hover:scale-105">
+            <div className={`${isCollapsed ? "w-7 h-7" : "w-9 h-9"} rounded-xl bg-gradient-to-br from-[#133B42] to-[#1E293B] border border-[#00C4B4]/30 flex items-center justify-center text-[#00C4B4] font-bold text-xs flex-shrink-0 shadow-sm transition-transform duration-200 group-hover:scale-105`}>
               {userDisplayName.charAt(0).toUpperCase()}
             </div>
 
@@ -274,6 +275,8 @@ export default function AdminSidebar({
                 Admin Account
               </div>
             </div>
+
+            <StaffPasswordChange isCollapsed={isCollapsed} />
           </div>
 
           {/* Sign Out Button (Morphs between full button and compact icon square) */}
@@ -301,4 +304,3 @@ export default function AdminSidebar({
     </>
   );
 }
-

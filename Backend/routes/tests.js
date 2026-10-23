@@ -50,7 +50,7 @@ router.get("/", authenticateToken, requireRole(["admin", "Mentor"]), async (req,
     const limit = parseInt(req.query.limit) || 9;
     const skip = (page - 1) * limit;
     const searchTerm = req.query.search || "";
-    const { status } = req.query;
+    const { status, type, subject, batch } = req.query;
 
     // Build query
     const query = {};
@@ -78,18 +78,55 @@ router.get("/", authenticateToken, requireRole(["admin", "Mentor"]), async (req,
       }
     }
 
-    if (status) {
-      query.status = status;
+    const conditions = [];
+
+    if (status && status !== "all") {
+      conditions.push({ status });
+    }
+
+    if (type && type !== "all") {
+      if (type === "practice") {
+        conditions.push({ $or: [{ type: "practice" }, { isPracticeTest: true }] });
+      } else if (type === "theory") {
+        conditions.push({ type: { $in: ["theory", "theoretical"] } });
+      } else {
+        conditions.push({ type });
+      }
+    }
+
+    if (subject && subject !== "all") {
+      conditions.push({
+        subject: { $regex: new RegExp(`^\\s*${subject.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "i") }
+      });
+    }
+
+    if (batch && batch !== "all") {
+      const matchingAssignments = await Assignment.find({
+        cohort: batch,
+        status: { $ne: "Cancelled" }
+      }).distinct("testId");
+      conditions.push({
+        $or: [
+          { cohort: batch },
+          { _id: { $in: matchingAssignments } }
+        ]
+      });
     }
 
     // Search functionality - search in title, subject, type and status
     if (searchTerm) {
-      query.$or = [
-        { title: { $regex: searchTerm, $options: "i" } },
-        { subject: { $regex: searchTerm, $options: "i" } },
-        { type: { $regex: searchTerm, $options: "i" } },
-        { status: { $regex: searchTerm, $options: "i" } }
-      ];
+      conditions.push({
+        $or: [
+          { title: { $regex: searchTerm, $options: "i" } },
+          { subject: { $regex: searchTerm, $options: "i" } },
+          { type: { $regex: searchTerm, $options: "i" } },
+          { status: { $regex: searchTerm, $options: "i" } }
+        ]
+      });
+    }
+
+    if (conditions.length > 0) {
+      query.$and = (query.$and || []).concat(conditions);
     }
 
     // Get total count for pagination
