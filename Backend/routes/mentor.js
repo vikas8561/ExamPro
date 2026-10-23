@@ -376,6 +376,23 @@ router.get("/assignments", authenticateToken, requireRole(["Mentor", "Admin"]), 
   }
 });
 
+// Helper to determine if a submission has a valid, graded score
+function isValidScoredSubmission(sub) {
+  if (!sub || sub.isFinalized === false) return false;
+  if (sub.mentorReviewed === false || sub.reviewStatus === "Pending" || sub.reviewStatus === "In Review") {
+    return false;
+  }
+  const total = Number(sub.totalScore);
+  const max = Number(sub.maxScore);
+  if (isNaN(total) || isNaN(max) || sub.totalScore === null || sub.maxScore === null) {
+    return false;
+  }
+  if (total < 0 || max <= 0) {
+    return false;
+  }
+  return true;
+}
+
 // Get test submissions for monitoring - grouped by student (mentor/admin only)
 router.get("/submissions", authenticateToken, requireRole(["Mentor", "Admin"]), async (req, res) => {
   try {
@@ -420,7 +437,10 @@ router.get("/submissions", authenticateToken, requireRole(["Mentor", "Admin"]), 
           student: {
             _id: submission.userId._id,
             name: submission.userId.name,
-            email: submission.userId.email
+            email: submission.userId.email,
+            rollno: submission.userId.rollno || "",
+            universityUID: submission.userId.universityUID || "",
+            profileImage: submission.userId.profileImage || null
           },
           submissions: [],
           totalSubmissions: 0,
@@ -432,16 +452,30 @@ router.get("/submissions", authenticateToken, requireRole(["Mentor", "Admin"]), 
       const studentData = studentsMap.get(studentId);
       studentData.submissions.push(submission);
       studentData.totalSubmissions++;
-      studentData.totalScore += submission.totalScore || 0;
     });
     
     // Calculate average scores and convert to array
-    const groupedStudents = Array.from(studentsMap.values()).map(studentData => ({
-      ...studentData,
-      averageScore: studentData.totalSubmissions > 0 
-        ? Math.round(studentData.totalScore / studentData.totalSubmissions) 
-        : 0
-    }));
+    const groupedStudents = Array.from(studentsMap.values()).map(studentData => {
+      const validSubmissions = studentData.submissions.filter(isValidScoredSubmission);
+      const totalMarksEarned = validSubmissions.reduce(
+        (sum, sub) => sum + Math.min(Number(sub.totalScore), Number(sub.maxScore)),
+        0
+      );
+      const totalMaxMarks = validSubmissions.reduce(
+        (sum, sub) => sum + Number(sub.maxScore),
+        0
+      );
+      const averageScore = totalMaxMarks > 0
+        ? Math.min(100, Math.max(0, Math.round((totalMarksEarned / totalMaxMarks) * 100)))
+        : 0;
+
+      return {
+        ...studentData,
+        totalScore: totalMarksEarned,
+        maxScore: totalMaxMarks,
+        averageScore
+      };
+    });
 
     // Get total count for pagination info
     const totalCount = await TestSubmission.countDocuments({

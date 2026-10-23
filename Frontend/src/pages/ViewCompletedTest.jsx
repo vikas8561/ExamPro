@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { testSubmissionsAPI } from "../services/api";
 import SyntaxHighlighter, { vscDarkPlus } from "../components/SyntaxHighlighter";
 import QuestionText from "../components/QuestionText";
@@ -20,7 +20,8 @@ import {
   MessageSquareQuote,
   Layers,
   ChevronRight,
-  RotateCcw
+  RotateCcw,
+  User
 } from "lucide-react";
 
 // Safe helper to extract string from string or { text: "..." } object
@@ -32,9 +33,74 @@ const getTextValue = (val) => {
   return String(val);
 };
 
+// Circular animated donut chart displaying score percentage with percentage centered inside
+const CircularScoreDonut = ({ percentage }) => {
+  const [animatedPct, setAnimatedPct] = useState(0);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setAnimatedPct(percentage);
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [percentage]);
+
+  const radius = 38;
+  const strokeWidth = 7;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference - (animatedPct / 100) * circumference;
+
+  const ringColor =
+    percentage >= 80
+      ? "#34D399"
+      : percentage >= 60
+      ? "#00C4B4"
+      : percentage >= 40
+      ? "#FB923C"
+      : "#F87171";
+
+  return (
+    <div className="relative flex items-center justify-center flex-shrink-0">
+      <svg className="w-20 h-20 sm:w-22 sm:h-22 -rotate-90 transform" viewBox="0 0 100 100">
+        <circle
+          cx="50"
+          cy="50"
+          r={radius}
+          stroke="rgba(255, 255, 255, 0.08)"
+          strokeWidth={strokeWidth}
+          fill="transparent"
+        />
+        <circle
+          cx="50"
+          cy="50"
+          r={radius}
+          stroke={ringColor}
+          strokeWidth={strokeWidth}
+          strokeDasharray={circumference}
+          strokeDashoffset={strokeDashoffset}
+          strokeLinecap="round"
+          fill="transparent"
+          style={{
+            transition: "stroke-dashoffset 1.1s cubic-bezier(0.16, 1, 0.3, 1)",
+            filter: `drop-shadow(0 0 4px ${ringColor}40)`,
+          }}
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center text-center select-none pointer-events-none">
+        <span className="text-sm sm:text-base font-black text-white tracking-tight leading-none">
+          {percentage}%
+        </span>
+        <span className="text-[9px] uppercase tracking-wider text-[#7E8594] font-semibold mt-0.5">
+          Score
+        </span>
+      </div>
+    </div>
+  );
+};
+
 const ViewCompletedTest = () => {
   const { assignmentId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [testData, setTestData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -226,7 +292,37 @@ const ViewCompletedTest = () => {
       ? submission.maxScore
       : questions.reduce((acc, q) => acc + (q.points || 0), 0) || 100;
 
-  const scorePercentage = Math.round(maxScore > 0 ? (totalScore / maxScore) * 100 : totalScore);
+  const earnedScore = Math.min(Number(totalScore), Number(maxScore));
+  const scorePercentage =
+    maxScore > 0
+      ? Math.min(100, Math.max(0, Math.round((earnedScore / maxScore) * 100)))
+      : 0;
+
+  const student =
+    location.state?.student ||
+    testData?.student ||
+    testData?.submission?.student ||
+    testData?.submission?.userId ||
+    (user.role === "Student" ? user : null);
+  const studentName =
+    student?.name ||
+    student?.studentName ||
+    (user.role === "Student" ? user.name : "Student");
+  const studentUID =
+    student?.universityUID ||
+    student?.rollno ||
+    (user.role === "Student" ? (user.universityUID || user.rollno) : "");
+  const studentEmail =
+    student?.email ||
+    student?.studentEmail ||
+    student?.currentEmail ||
+    (user.role === "Student" ? user.email : "");
+  const studentImage =
+    student?.profileImage ||
+    student?.imageUrl ||
+    student?.avatar ||
+    student?.image ||
+    (user.role === "Student" ? (user.profileImage || user.imageUrl || user.avatar) : null);
 
   // Score Color Classes
   const getScoreColor = (pct) => {
@@ -294,6 +390,62 @@ const ViewCompletedTest = () => {
             >
               All Results
             </button>
+          </div>
+        </div>
+
+        {/* Compact Student Details Card */}
+        <div className="bg-[#181A22] border border-white/[0.06] hover:border-white/10 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm transition-all">
+          {/* Left: Avatar & Candidate Info */}
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="w-12 h-12 rounded-xl bg-[#133B42] border border-[#00C4B4]/20 flex items-center justify-center font-bold text-lg text-[#00C4B4] shadow-[0_0_15px_rgba(0,196,180,0.15)] flex-shrink-0 overflow-hidden relative">
+              {studentImage ? (
+                <img
+                  src={studentImage}
+                  alt={studentName}
+                  className="w-full h-full object-cover rounded-xl"
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                    const fb = e.currentTarget.parentElement?.querySelector(".avatar-fallback");
+                    if (fb) fb.style.display = "flex";
+                  }}
+                />
+              ) : null}
+              <span
+                className="avatar-fallback w-full h-full items-center justify-center"
+                style={{ display: studentImage ? "none" : "flex" }}
+              >
+                {studentName && studentName !== "Student" ? (
+                  studentName.charAt(0).toUpperCase()
+                ) : (
+                  <User className="w-5 h-5 text-[#00C4B4]" />
+                )}
+              </span>
+            </div>
+            <div className="min-w-0">
+              <span className="text-[10px] font-semibold text-[#00C4B4] uppercase tracking-wider block">
+                Student Details
+              </span>
+              <h2 className="text-base sm:text-lg font-bold text-white tracking-tight truncate mt-0.5">
+                {studentName}
+              </h2>
+              <div className="flex flex-wrap items-center gap-2 mt-1">
+                {studentUID && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-mono text-[#00C4B4] bg-[#133B42]/60 px-2.5 py-0.5 rounded-full border border-[#00C4B4]/20">
+                    ID / Roll: {studentUID}
+                  </span>
+                )}
+                {studentEmail && (
+                  <span className="text-xs text-[#8E95A5] truncate hidden sm:inline">
+                    {studentEmail}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Circular Animated Donut Chart */}
+          <div className="flex items-center gap-3 self-center sm:self-auto flex-shrink-0">
+            <CircularScoreDonut percentage={scorePercentage} />
           </div>
         </div>
 

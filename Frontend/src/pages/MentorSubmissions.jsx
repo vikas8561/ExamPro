@@ -94,33 +94,66 @@ const MentorSubmissions = () => {
     return formatDateIST(dateString, "N/A");
   };
 
+  // Helper to determine if a submission has a valid, graded score
+  const isValidScoredSubmission = (sub) => {
+    if (!sub || sub.isFinalized === false) return false;
+    if (sub.mentorReviewed === false || sub.reviewStatus === "Pending" || sub.reviewStatus === "In Review") {
+      return false;
+    }
+    const total = Number(sub.totalScore);
+    const max = Number(sub.maxScore);
+    if (isNaN(total) || isNaN(max) || sub.totalScore === null || sub.maxScore === null) {
+      return false;
+    }
+    if (total < 0 || max <= 0) {
+      return false;
+    }
+    return true;
+  };
+
+  const calculateStudentAverage = (submissions) => {
+    const valid = (submissions || []).filter(isValidScoredSubmission);
+    const earned = valid.reduce((acc, sub) => acc + Math.min(Number(sub.totalScore), Number(sub.maxScore)), 0);
+    const max = valid.reduce((acc, sub) => acc + Number(sub.maxScore), 0);
+    return max > 0 ? Math.min(100, Math.max(0, Math.round((earned / max) * 100))) : 0;
+  };
+
   // KPI Calculations
   const stats = useMemo(() => {
     const totalStudents = students.length;
     const totalSubmissions = students.reduce(
-      (total, s) => total + (s.totalSubmissions || 0),
+      (total, s) => total + (s.totalSubmissions || (s.submissions || []).length || 0),
       0
     );
-    const passingSubmissions = students.reduce((total, s) => {
-      return (
-        total +
-        (s.submissions || []).filter((sub) => (sub.totalScore || 0) >= 70).length
-      );
-    }, 0);
-    const totalScoreSum = students.reduce((total, s) => {
-      return (
-        total +
-        (s.submissions || []).reduce(
-          (sum, sub) => sum + (sub.totalScore || 0),
-          0
-        )
-      );
-    }, 0);
+
+    let totalMarksEarned = 0;
+    let totalMaxMarks = 0;
+    let passingSubmissions = 0;
+    let validSubmissionsCount = 0;
+
+    students.forEach((s) => {
+      (s.submissions || []).forEach((sub) => {
+        if (isValidScoredSubmission(sub)) {
+          const earned = Math.min(Number(sub.totalScore), Number(sub.maxScore));
+          const max = Number(sub.maxScore);
+          totalMarksEarned += earned;
+          totalMaxMarks += max;
+          validSubmissionsCount++;
+          const scorePct = Math.round((earned / max) * 100);
+          if (scorePct >= 70) {
+            passingSubmissions++;
+          }
+        }
+      });
+    });
+
     const averageScore =
-      totalSubmissions > 0 ? Math.round(totalScoreSum / totalSubmissions) : 0;
+      totalMaxMarks > 0
+        ? Math.min(100, Math.max(0, Math.round((totalMarksEarned / totalMaxMarks) * 100)))
+        : 0;
     const passingRate =
-      totalSubmissions > 0
-        ? Math.round((passingSubmissions / totalSubmissions) * 100)
+      validSubmissionsCount > 0
+        ? Math.round((passingSubmissions / validSubmissionsCount) * 100)
         : 0;
 
     return { totalStudents, totalSubmissions, passingSubmissions, averageScore, passingRate };
@@ -276,7 +309,7 @@ const MentorSubmissions = () => {
           <div className="bg-[#20242D] border border-white/[0.06] rounded-2xl p-5 hover:border-white/10 transition-all">
             <div className="flex items-center justify-between mb-2.5">
               <span className="text-xs font-semibold tracking-wide text-[#7E8594] uppercase">
-                Average Score
+                Average
               </span>
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[#3D271D] text-[#FB923C] border border-[#FB923C]/20">
                 Cumulative
@@ -335,7 +368,7 @@ const MentorSubmissions = () => {
               const studentEmail = student.email || "No email";
               const studentUID = student.universityUID || student.rollno || "";
               const isExpanded = expandedStudents.has(student._id);
-              const avgScore = studentData.averageScore ?? 0;
+              const avgScore = calculateStudentAverage(studentData.submissions);
               const subCount = studentData.totalSubmissions || 0;
 
               return (
@@ -441,7 +474,7 @@ const MentorSubmissions = () => {
                             const totalScore = submission.totalScore ?? 0;
                             const maxScore = submission.maxScore ?? 0;
                             const scorePct =
-                              maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : totalScore;
+                              maxScore > 0 ? Math.min(100, Math.max(0, Math.round((totalScore / maxScore) * 100))) : 0;
                             const timeSpentMinutes = Math.floor(
                               (submission.timeSpent || 0) / 60
                             );
@@ -496,7 +529,9 @@ const MentorSubmissions = () => {
                                 <td className="py-3.5 px-5 text-right">
                                   <button
                                     onClick={() =>
-                                      navigate(`/mentor/view-test/${targetAssignmentId}`)
+                                      navigate(`/mentor/view-test/${targetAssignmentId}`, {
+                                        state: { student: studentData.student }
+                                      })
                                     }
                                     className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-xs transition-all shadow-sm active:scale-95 cursor-pointer"
                                   >
@@ -796,8 +831,11 @@ const MentorSubmissions = () => {
                               <td className="py-3 px-4 text-right">
                                 <button
                                   onClick={() => {
+                                    const candidate = selectedStudent?.student || selectedStudent?.userId || selectedStudent;
                                     closeStudentProfile();
-                                    navigate(`/mentor/view-test/${targetId}`);
+                                    navigate(`/mentor/view-test/${targetId}`, {
+                                      state: { student: candidate }
+                                    });
                                   }}
                                   className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-[11px] transition-all cursor-pointer"
                                 >
